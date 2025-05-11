@@ -1,0 +1,572 @@
+{
+    "job_id": "EQUS-20250511-TQXL5MBVE4",
+    "files": [
+        {
+            "filename": "condition.json",
+            "size": 7440,
+            "hash": "sha256:2112096cace03b6cc4d2ef8bab449037edfa39ee623040637ea47cdb7dec7bfa",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/condition.json",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/condition.json"
+            }
+        },
+        {
+            "filename": "metadata.json",
+            "size": 689,
+            "hash": "sha256:b0c97a565019af0198db5548ec8a465394bee787f2a77a24b1d7f9d52032617c",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/metadata.json",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/metadata.json"
+            }
+        },
+        {
+            "filename": "symbology.json",
+            "size": 425,
+            "hash": "sha256:d19fa1653d38c84d54b5ceb1933adf325d79997df4eba1c9adf42b2f0170069e",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/symbology.json",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/symbology.json"
+            }
+        },
+        {
+            "filename": "equs-mini-20250203.trades.dbn.zst",
+            "size": 4532,
+            "hash": "sha256:9fcdbacf0431fa135e9a7ca1a05fa59d73826ff7b252129456041eee53d0c955",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250203.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250203.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250204.trades.dbn.zst",
+            "size": 8098,
+            "hash": "sha256:96b87ac24ae95e8498761a5a10464f40e2400d189978c7e7fbdb73bfd30aa70c",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250204.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250204.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250205.trades.dbn.zst",
+            "size": 3688,
+            "hash": "sha256:17ae154954e4ad877c0dc195cd57fe68f2a870f9a52fef102120951bd5c53c00",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250205.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250205.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250206.trades.dbn.zst",
+            "size": 2710,
+            "hash": "sha256:3fd4ca22a12d28ba61aaca95509a3c3c7f3f74c0666f28dab9b67d755b04f985",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250206.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250206.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250207.trades.dbn.zst",
+            "size": 3905,
+            "hash": "sha256:0930c2399a115bfd1f6d264352bfda37632186a5108c6b37be61f35d1dfa0fcd",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250207.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250207.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250210.trades.dbn.zst",
+            "size": 5735,
+            "hash": "sha256:4f2cbae52c6d72befd4134e2b1dc8af90a7b893ad7389406c8cf66af2947d8b8",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250210.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250210.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250211.trades.dbn.zst",
+            "size": 4283,
+            "hash": "sha256:63f23aa82efe8ae82fac0c1f85834a2929b84bc731e11356c42920377e48bee0",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250211.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250211.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250212.trades.dbn.zst",
+            "size": 3020,
+            "hash": "sha256:c82619e27807e3e6932ccd931cb3168898d09708f126008aae809c7235e9b88b",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250212.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250212.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250213.trades.dbn.zst",
+            "size": 3486,
+            "hash": "sha256:71fc6db8a00261f548c41c32a0e9ed8695042a42d8de042aca7891f3acedb621",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250213.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250213.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250214.trades.dbn.zst",
+            "size": 3084,
+            "hash": "sha256:891a865f909f1eb262cba55768318cb73b32ed846c7b7ebf22a2be97956a1d0b",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250214.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250214.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250218.trades.dbn.zst",
+            "size": 2199,
+            "hash": "sha256:ef9b5dd6c685db04d294ef52a75d24f4f6c54764edead6c55cb3300f2a838030",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250218.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250218.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250219.trades.dbn.zst",
+            "size": 2857,
+            "hash": "sha256:ef0d3b729a1025093a197b121a263bd3580fb046fa9eb971d153f92ac639b3a2",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250219.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250219.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250220.trades.dbn.zst",
+            "size": 49764,
+            "hash": "sha256:9610abcd0899c2b64eaec910ee99de0c8d226a53b65775e6d979a19d904116f0",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250220.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250220.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250221.trades.dbn.zst",
+            "size": 1524085,
+            "hash": "sha256:a216a31455bdfcb64401d5d6b4c929dd597f21a4794e028d7f62cc7207e38572",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250221.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250221.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250224.trades.dbn.zst",
+            "size": 184708,
+            "hash": "sha256:38afbf1f8a39f5780c67efb7854165170f5a37c253366862e170b6e9e029e770",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250224.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250224.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250225.trades.dbn.zst",
+            "size": 75542,
+            "hash": "sha256:e700bb49dd540b06b5b0a473d9f6281bc75d2e7847a02703cc5a710a747c8c2c",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250225.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250225.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250226.trades.dbn.zst",
+            "size": 39918,
+            "hash": "sha256:1fc7b76b7432831b0330e091b4d3f812df1ba5e76eafbd7d06a50676ea17e4ae",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250226.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250226.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250227.trades.dbn.zst",
+            "size": 93157,
+            "hash": "sha256:a5bdb2e72e63bbcaf6bc2f9b81337f921ebde8f9a52870f4b814be4dcf3ed0af",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250227.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250227.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250228.trades.dbn.zst",
+            "size": 18558,
+            "hash": "sha256:7ecc12a667b566eff9430cbd7c74ae81dcb4e7e495ae6bc46d640b596fb5ddce",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250228.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250228.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250303.trades.dbn.zst",
+            "size": 16033,
+            "hash": "sha256:27cfe81f129ea8a8179edf1184ee567cd2c786cd93205eeef84d66b221966ad6",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250303.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250303.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250304.trades.dbn.zst",
+            "size": 16594,
+            "hash": "sha256:d152cedc5216a4cd03bfd15d2f0d3f1d400d78d437324db5faa5bf937b5cad04",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250304.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250304.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250305.trades.dbn.zst",
+            "size": 43167,
+            "hash": "sha256:1060378d6f185fb8c7c2ca546ea66c6ac703295758604d0f1b387036b5f70f79",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250305.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250305.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250306.trades.dbn.zst",
+            "size": 10572,
+            "hash": "sha256:9889c22fb25f4e9e790d188a856c0a8c08b2cf049c67ad6ca7cf66b4d64120a1",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250306.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250306.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250307.trades.dbn.zst",
+            "size": 9373,
+            "hash": "sha256:426ecfe75b58c7c86255e9be16f25307f786ba293e04ac37bc8c64d143a7dec4",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250307.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250307.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250310.trades.dbn.zst",
+            "size": 6481,
+            "hash": "sha256:df25bddd2339842bd446a651150f5c917e077348814479a96b519fef5f29b7ff",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250310.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250310.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250311.trades.dbn.zst",
+            "size": 53252,
+            "hash": "sha256:9036a3203d07178ea6f57d8ebc8ceea569a68350fcc6acf6ae83dc52e1c44db0",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250311.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250311.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250312.trades.dbn.zst",
+            "size": 13118,
+            "hash": "sha256:f80ae940a769a62d27eff36b79449fa2e22a46f6a914218906abb60bd318f99e",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250312.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250312.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250313.trades.dbn.zst",
+            "size": 18705,
+            "hash": "sha256:179e801c948d6b483f8c605e39623ee87b3633347745bc703a1b5a8f61360380",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250313.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250313.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250314.trades.dbn.zst",
+            "size": 39201,
+            "hash": "sha256:15a7e83e2451638f755df239193b4eb68e74553aaa43de3d27f7a3d553ab4f45",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250314.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250314.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250317.trades.dbn.zst",
+            "size": 13800,
+            "hash": "sha256:82326ed59745395e22994d9e73967e8384dd501c2030429712efbbe139014748",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250317.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250317.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250318.trades.dbn.zst",
+            "size": 12145,
+            "hash": "sha256:6b4e51306253ab76eb74fb75b1822855553c352e47d39932668d790dbe73442d",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250318.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250318.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250319.trades.dbn.zst",
+            "size": 9648,
+            "hash": "sha256:82e55354cae5157cf0fe5fb65ff781fcdb7e7197b15d1553e15d5aa53a8d4352",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250319.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250319.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250320.trades.dbn.zst",
+            "size": 8662,
+            "hash": "sha256:3c2ebb8283a13e891ab49ff85749c81a71aa62cfb5504d86387b33be81debaef",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250320.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250320.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250321.trades.dbn.zst",
+            "size": 16179,
+            "hash": "sha256:00eec225b4ec8b280d2975ce8bd116ac33a08122beb1ab27b39e3ef47ed3097f",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250321.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250321.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250324.trades.dbn.zst",
+            "size": 1054121,
+            "hash": "sha256:3896a33b9c731f596a88d071db6ed4283852f0312409fd519e9623febc278d24",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250324.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250324.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250325.trades.dbn.zst",
+            "size": 408790,
+            "hash": "sha256:42b5f30100ce4fce0976fc2aa5f8eb17e8fd18465eccdcccbfc8ee27e073cdf5",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250325.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250325.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250326.trades.dbn.zst",
+            "size": 180137,
+            "hash": "sha256:7f20df829d859e96e1db636718323b184bd8c4431877e46932bc3d845b12b1e7",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250326.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250326.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250327.trades.dbn.zst",
+            "size": 373896,
+            "hash": "sha256:b679ebd30ea8f9431f7c9c37179f4e08b3c25a21689ea87a1784623c54c326d6",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250327.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250327.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250328.trades.dbn.zst",
+            "size": 219161,
+            "hash": "sha256:f99977435cde4d1df1c94c3945c6253c3758efc45da3150363e833930b97a867",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250328.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250328.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250331.trades.dbn.zst",
+            "size": 286316,
+            "hash": "sha256:dd16d8d3d70a3a5ed8831ea4218b7258763c8cc7a334a21ab8c3ac1c143d9f0a",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250331.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250331.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250401.trades.dbn.zst",
+            "size": 187306,
+            "hash": "sha256:f20a832fff06baa6edc7e0002fe24b835a851f1d8ee1b037305c5a86ae9f4b4f",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250401.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250401.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250402.trades.dbn.zst",
+            "size": 64112,
+            "hash": "sha256:724cfc74ae84f310083847b9a0a85ae76e153a0162d41dedd8793807e25cde1c",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250402.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250402.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250403.trades.dbn.zst",
+            "size": 82902,
+            "hash": "sha256:ee969b400d2bca9dfbe019a1b8ec437d8d88d0a4f985cd6a13085a1feef66c57",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250403.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250403.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250404.trades.dbn.zst",
+            "size": 73541,
+            "hash": "sha256:87a9fbf5e2ab94ca61e6efd04208258ae50522df5e3a2ddb82b3c7006a863d93",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250404.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250404.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250407.trades.dbn.zst",
+            "size": 37010,
+            "hash": "sha256:245339367be38f09a0c71fa11b20330ef579f0dafb6d64cf3d86b8aa582237a1",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250407.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250407.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250408.trades.dbn.zst",
+            "size": 32899,
+            "hash": "sha256:de17201a2325358cd5448fe2ce7b6b31e125c0176a5a0fd5db727df5afad589f",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250408.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250408.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250409.trades.dbn.zst",
+            "size": 14213,
+            "hash": "sha256:64be6cd73bf06477e5fabcd52444f381ee323e8cafb941914f026de442925fbc",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250409.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250409.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250410.trades.dbn.zst",
+            "size": 19402,
+            "hash": "sha256:ec849d55519419cbb714540af9268b60c2392a7f8d773660f4fded1459bae4da",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250410.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250410.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250411.trades.dbn.zst",
+            "size": 16519,
+            "hash": "sha256:b35dbba1c6a46f2ce4ce8fd9ec7955d9d98fa9096c5371aef084c94c89c3f315",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250411.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250411.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250414.trades.dbn.zst",
+            "size": 17350,
+            "hash": "sha256:00a5264e6988ee21c62d3d749ece57ecd178392d351b46de5da7111e7f2290cd",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250414.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250414.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250415.trades.dbn.zst",
+            "size": 22615,
+            "hash": "sha256:0db54b73f503e662d3cc5f93dfcd8b0f965edf790c1dd55fdca8e7b83c30576c",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250415.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250415.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250416.trades.dbn.zst",
+            "size": 27412,
+            "hash": "sha256:c3670704562a7f8df75ec1c8c40a000fa5f7fc4d555e2cce568a0b2bc5a27679",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250416.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250416.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250417.trades.dbn.zst",
+            "size": 25759,
+            "hash": "sha256:367b759b5ad6a996b52403b245cc9ac84eee14b680d4172bc0e611cce3efb636",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250417.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250417.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250421.trades.dbn.zst",
+            "size": 406235,
+            "hash": "sha256:45141d58aafc89338dabda7742cffcf96641cb323f3445131a438e38da0c4ac8",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250421.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250421.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250422.trades.dbn.zst",
+            "size": 75524,
+            "hash": "sha256:d482319aa033c7008604d01787a7b20dc96cf5d64d33d2027602bc10ee962732",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250422.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250422.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250423.trades.dbn.zst",
+            "size": 55393,
+            "hash": "sha256:f3bfdb003ad75b17b8dcee746fbf74c38c3f35d5b4751d92534737ed9a7163a1",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250423.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250423.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250424.trades.dbn.zst",
+            "size": 38917,
+            "hash": "sha256:1bda1ee1d685570b3c1a34acb5702a736ac148a02c22d086f75b5d1f46ed6a4e",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250424.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250424.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250425.trades.dbn.zst",
+            "size": 21541,
+            "hash": "sha256:11fa6fe80ca29889ad0c47179d0dde7e995b06765526a92bcefd2cee1898d570",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250425.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250425.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250428.trades.dbn.zst",
+            "size": 138586,
+            "hash": "sha256:fb91e24cc36745f35efaa57bd6ca9a6ded5be40268a4e278e560fb851e7ec016",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250428.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250428.trades.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250429.trades.dbn.zst",
+            "size": 53773,
+            "hash": "sha256:e3fc8a318f3423e46497ddb30ea7b4183361404fd7104f5389a7174d04630279",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250429.trades.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-TQXL5MBVE4/equs-mini-20250429.trades.dbn.zst"
+            }
+        }
+    ]
+}

@@ -1,0 +1,28 @@
+{
+    "version": 1,
+    "job_id": "EQUS-20250511-MY5V6RNNGT",
+    "query": {
+        "dataset": "EQUS.MINI",
+        "schema": "mbp-1",
+        "symbols": [
+            "MLGO"
+        ],
+        "stype_in": "raw_symbol",
+        "stype_out": "instrument_id",
+        "start": 1738368000000000000,
+        "end": 1745971200000000000,
+        "limit": null,
+        "encoding": "dbn",
+        "compression": "zstd"
+    },
+    "customizations": {
+        "pretty_px": false,
+        "pretty_ts": false,
+        "map_symbols": false,
+        "split_symbols": false,
+        "split_duration": "day",
+        "split_size": null,
+        "packaging": null,
+        "delivery": "download"
+    }
+}

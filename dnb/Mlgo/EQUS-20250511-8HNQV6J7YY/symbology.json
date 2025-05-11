@@ -1,0 +1,22 @@
+{
+    "result": {
+        "MLGO": [
+            {
+                "d0": "2023-03-28",
+                "d1": "2025-05-10",
+                "s": "10637"
+            }
+        ]
+    },
+    "symbols": [
+        "MLGO"
+    ],
+    "stype_in": "raw_symbol",
+    "stype_out": "instrument_id",
+    "start_date": "2023-03-28",
+    "end_date": "2025-05-10",
+    "partial": [],
+    "not_found": [],
+    "message": "OK",
+    "status": 0
+}
