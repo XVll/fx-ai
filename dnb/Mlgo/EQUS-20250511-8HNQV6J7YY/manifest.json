@@ -1,0 +1,41 @@
+{
+    "job_id": "EQUS-20250511-8HNQV6J7YY",
+    "files": [
+        {
+            "filename": "condition.json",
+            "size": 66479,
+            "hash": "sha256:27121612386da35883befb6624b219caefdeeb2524c48c319e28480ad082008a",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-8HNQV6J7YY/condition.json",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-8HNQV6J7YY/condition.json"
+            }
+        },
+        {
+            "filename": "metadata.json",
+            "size": 690,
+            "hash": "sha256:b3a6927d73a30dd6157a8ceb55fa9dd38e9bb2f78fcc3f7908596ebcb9bbcdd9",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-8HNQV6J7YY/metadata.json",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-8HNQV6J7YY/metadata.json"
+            }
+        },
+        {
+            "filename": "symbology.json",
+            "size": 425,
+            "hash": "sha256:33f3fc6c5ef12f74f3dc1a996645f01ed58ed91832da2f47e547327b4ad66aa2",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-8HNQV6J7YY/symbology.json",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-8HNQV6J7YY/symbology.json"
+            }
+        },
+        {
+            "filename": "equs-mini-20230328-20250509.ohlcv-1d.dbn.zst",
+            "size": 12399,
+            "hash": "sha256:f1d6cd37969b531eb85eba30562b3d840da16c32ac619ec88785a7ca822cf55a",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-8HNQV6J7YY/equs-mini-20230328-20250509.ohlcv-1d.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-8HNQV6J7YY/equs-mini-20230328-20250509.ohlcv-1d.dbn.zst"
+            }
+        }
+    ]
+}

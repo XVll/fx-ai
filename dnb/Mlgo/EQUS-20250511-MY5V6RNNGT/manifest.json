@@ -1,0 +1,572 @@
+{
+    "job_id": "EQUS-20250511-MY5V6RNNGT",
+    "files": [
+        {
+            "filename": "condition.json",
+            "size": 7440,
+            "hash": "sha256:2112096cace03b6cc4d2ef8bab449037edfa39ee623040637ea47cdb7dec7bfa",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/condition.json",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/condition.json"
+            }
+        },
+        {
+            "filename": "metadata.json",
+            "size": 688,
+            "hash": "sha256:8778155649dead3e1ee695b7ab0aefb4c5c311f6f94c91f4dcfad2d5b65a8d04",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/metadata.json",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/metadata.json"
+            }
+        },
+        {
+            "filename": "symbology.json",
+            "size": 425,
+            "hash": "sha256:d19fa1653d38c84d54b5ceb1933adf325d79997df4eba1c9adf42b2f0170069e",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/symbology.json",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/symbology.json"
+            }
+        },
+        {
+            "filename": "equs-mini-20250203.mbp-1.dbn.zst",
+            "size": 251187,
+            "hash": "sha256:5c55471f09ba93e70d3bbd1de6b92445f01c18fa6a9be2806edb053803f8d2e9",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250203.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250203.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250204.mbp-1.dbn.zst",
+            "size": 296476,
+            "hash": "sha256:6bc1518bfcf771187503a12b9f4ba0b59adbe1db3b340261203442c07be280b4",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250204.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250204.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250205.mbp-1.dbn.zst",
+            "size": 374146,
+            "hash": "sha256:77214a5e1db135426ad4e158139700cc2e5882e917b45034ebf3875a5b257b6f",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250205.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250205.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250206.mbp-1.dbn.zst",
+            "size": 260937,
+            "hash": "sha256:c10253004f03dafc4b6a7d71a66da1d9b6bd90f09b425b45b777c54719b67ed4",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250206.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250206.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250207.mbp-1.dbn.zst",
+            "size": 318588,
+            "hash": "sha256:f5aaa2f499e25bfb44cb30b77ac2167d1dbf6ab3d7173147cd0c6b918eeeb180",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250207.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250207.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250210.mbp-1.dbn.zst",
+            "size": 283567,
+            "hash": "sha256:aff3601dedb2aec4552bdafdeb77c6cb30f627eb9bab16d23c950fcfc4434989",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250210.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250210.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250211.mbp-1.dbn.zst",
+            "size": 199850,
+            "hash": "sha256:e5fc4d41136833f40ea1dc2f31181e32aadd57c6c5d0b334b482009bc3b717a3",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250211.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250211.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250212.mbp-1.dbn.zst",
+            "size": 213630,
+            "hash": "sha256:98bc37a3addcc1e0cc5fe8b8a862c9be82882a5c9d9430b63305b7a35e825824",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250212.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250212.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250213.mbp-1.dbn.zst",
+            "size": 241187,
+            "hash": "sha256:0280bfbbe75fb4919743a53caa2ce857fc7fb60774c5a66ebba34690303751b2",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250213.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250213.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250214.mbp-1.dbn.zst",
+            "size": 250408,
+            "hash": "sha256:19e558bba59a2b9eb6fa57c614598857b8e19436fb2626da453f11968b0a66d5",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250214.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250214.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250218.mbp-1.dbn.zst",
+            "size": 89943,
+            "hash": "sha256:e31a4ff5bf39fd84bc9550e83a90794c745c326d458a95a3e25084a25d8b82dc",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250218.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250218.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250219.mbp-1.dbn.zst",
+            "size": 264021,
+            "hash": "sha256:91c726628507b5b552073539b419470915d42aa79502a1ca817e1b5016d86564",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250219.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250219.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250220.mbp-1.dbn.zst",
+            "size": 341615,
+            "hash": "sha256:255c256707037ba5c8c8dc8f9fcfa521548e184094c6f46e1ff03e8e34b07932",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250220.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250220.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250221.mbp-1.dbn.zst",
+            "size": 28278598,
+            "hash": "sha256:80517d9f9fdc12ccb4135bf045ac7fd3087b64ca5b983b4d00048159244c5a56",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250221.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250221.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250224.mbp-1.dbn.zst",
+            "size": 2385810,
+            "hash": "sha256:bcdb14720a035912b2dcf1b2312ac976ccd73b1bf567080adf0613177d38f793",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250224.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250224.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250225.mbp-1.dbn.zst",
+            "size": 2339244,
+            "hash": "sha256:bba7b3abb845f575e32d34f77de2c78468a57cd2ef56e479d9b70422eb9606f2",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250225.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250225.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250226.mbp-1.dbn.zst",
+            "size": 1742832,
+            "hash": "sha256:8ea59674b4b7d1f81c796f32d11eea628f06924e8af9f77de688ad82ac40a8c3",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250226.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250226.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250227.mbp-1.dbn.zst",
+            "size": 4056395,
+            "hash": "sha256:10be928db6eaa99de2c8f336885c99a6a9944e060f05fec8fff32898ce4cd921",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250227.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250227.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250228.mbp-1.dbn.zst",
+            "size": 1377702,
+            "hash": "sha256:c1e2013f6224bc406ea9ee645241f6d064a9ce06be79dca479433bc5191c1e04",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250228.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250228.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250303.mbp-1.dbn.zst",
+            "size": 845770,
+            "hash": "sha256:bd28bf73b6b965aaf089bac129e397c0a1d27254019da72037160afb1de1cc61",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250303.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250303.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250304.mbp-1.dbn.zst",
+            "size": 766697,
+            "hash": "sha256:86d62f043cbf1d1dfa59e5c6f4a43bd922a49439ed0efeee64af416556f5450a",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250304.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250304.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250305.mbp-1.dbn.zst",
+            "size": 1444966,
+            "hash": "sha256:103d3b819c03c37ce076a4a7800222db5fbcedb87168f346e8a69625b1428670",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250305.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250305.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250306.mbp-1.dbn.zst",
+            "size": 552091,
+            "hash": "sha256:ad3bff159bfd23691fc54ffe9b41d13f878655c7b8ea8d406a9c738cd55b2863",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250306.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250306.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250307.mbp-1.dbn.zst",
+            "size": 551793,
+            "hash": "sha256:31de9ed3809c112d3886ca8e6907373c97b4d478d4ea5977672100dab1d52679",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250307.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250307.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250310.mbp-1.dbn.zst",
+            "size": 328231,
+            "hash": "sha256:01ade8606f59eb8394b854e1456008b301ad69b878b7c00c9dbd1e405cf06b32",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250310.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250310.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250311.mbp-1.dbn.zst",
+            "size": 1030704,
+            "hash": "sha256:4de1ada53108a7b2c977122c58652d40b65898916d91770c09c71f36dca37273",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250311.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250311.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250312.mbp-1.dbn.zst",
+            "size": 504722,
+            "hash": "sha256:48b44d39ab76e2c216e620bd061fa233d1327a912a0508d41cf31a7117c69cde",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250312.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250312.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250313.mbp-1.dbn.zst",
+            "size": 781675,
+            "hash": "sha256:a2d83f333e10c8d00668cd642b3d6bb42a0274c836bc512bb92a152af7e2a626",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250313.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250313.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250314.mbp-1.dbn.zst",
+            "size": 1157669,
+            "hash": "sha256:0ce6b16aab09c0b6059162bceafabab23089679318fb1c4073ad9552168eddda",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250314.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250314.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250317.mbp-1.dbn.zst",
+            "size": 515299,
+            "hash": "sha256:59d9c1e3b7ef6eaf6d366b93212a510ecdca5eef96258dd7df0e0665b0a21f82",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250317.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250317.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250318.mbp-1.dbn.zst",
+            "size": 470863,
+            "hash": "sha256:6dde8d2ccc55b0a8bbb44152a0d1ef8eca3197e663c30cd6411f5dfb7e82afa1",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250318.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250318.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250319.mbp-1.dbn.zst",
+            "size": 371982,
+            "hash": "sha256:64b5eebcaba7788ae53f5f85376a6b27f03ae9261178a64236ceea8939b67ee2",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250319.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250319.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250320.mbp-1.dbn.zst",
+            "size": 201717,
+            "hash": "sha256:d49c63bd769aca4dd6d8efc87ee789a67bbe2f140bac411bb20e5f124503528a",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250320.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250320.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250321.mbp-1.dbn.zst",
+            "size": 436691,
+            "hash": "sha256:7ddaa40b0e33d0fcc4ff0417ed4816c575316e3e39002ebf97e7bd23054a3168",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250321.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250321.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250324.mbp-1.dbn.zst",
+            "size": 19477384,
+            "hash": "sha256:41d45ea882304ba1b689e977fe316d8deb1d2f9beb4177a43df5eaf62295fa43",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250324.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250324.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250325.mbp-1.dbn.zst",
+            "size": 2375595,
+            "hash": "sha256:94712fb298aaa477a9801ea48606b39c54df439ee76e3c59b7181e6d070ca152",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250325.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250325.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250326.mbp-1.dbn.zst",
+            "size": 2080743,
+            "hash": "sha256:72b867f6417c449a5d09259a2546dfc1241bda66cd2f2ec8b05fc713014389b7",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250326.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250326.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250327.mbp-1.dbn.zst",
+            "size": 3604347,
+            "hash": "sha256:01a461213f0b7a546f2c3cd27d26c5a805e5d04c8c1da76a19144cbbff8e7b89",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250327.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250327.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250328.mbp-1.dbn.zst",
+            "size": 1290561,
+            "hash": "sha256:fe304b7f08243d18bfa8d5daac2d7c53c80ce79682d6b2ed583c43b38e5e15cc",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250328.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250328.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250331.mbp-1.dbn.zst",
+            "size": 6485771,
+            "hash": "sha256:1dc5d8765cce6a5a66847d95ff8944ebb02bb765c2932ff2c3b10d498730ca6f",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250331.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250331.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250401.mbp-1.dbn.zst",
+            "size": 1347071,
+            "hash": "sha256:2688461d026c5eea3478bdbe280b26ca6a591de168725416a22d691e811714cd",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250401.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250401.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250402.mbp-1.dbn.zst",
+            "size": 968738,
+            "hash": "sha256:4f7b3a387dd704f456540d13dc77ea9e2877a580e4384c6f4659b66210342a54",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250402.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250402.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250403.mbp-1.dbn.zst",
+            "size": 2334631,
+            "hash": "sha256:f4829bba2c4ce3b9e5a5d6b1d2eaf06bdf9f36d955152242f12330c566c73d40",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250403.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250403.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250404.mbp-1.dbn.zst",
+            "size": 1594095,
+            "hash": "sha256:5938034348abdd7e7d83dd0d7ebd92ae077a9a6cdb4beecccef6343ad1bd0d27",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250404.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250404.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250407.mbp-1.dbn.zst",
+            "size": 780043,
+            "hash": "sha256:8a51a48f24187b0a30d30c980d5fbdf20640181255de9717da9a940a1e494ac5",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250407.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250407.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250408.mbp-1.dbn.zst",
+            "size": 752836,
+            "hash": "sha256:c02f17044fa77253388f0f39e80d32e5e7fc819397a2fca76c69dcd45def2a3b",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250408.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250408.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250409.mbp-1.dbn.zst",
+            "size": 416061,
+            "hash": "sha256:1d9fc505f7666e63d4092d9f83ec8dc3edf1f7d488131664227b0f9cb47efb92",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250409.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250409.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250410.mbp-1.dbn.zst",
+            "size": 392106,
+            "hash": "sha256:10a6b35a2d13527416e9310432bc9d46e9ccbaed0b3811e20c9f08fec2caacfb",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250410.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250410.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250411.mbp-1.dbn.zst",
+            "size": 374517,
+            "hash": "sha256:80c1ad3de3b10db04404e0da21488034d363463db73ca437edf598166461f85a",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250411.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250411.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250414.mbp-1.dbn.zst",
+            "size": 319017,
+            "hash": "sha256:4a4aa77800e0c1c65cf008082645485eeb0e948a0e6c623f23c008a652f87dca",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250414.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250414.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250415.mbp-1.dbn.zst",
+            "size": 499484,
+            "hash": "sha256:a66cfd658bcf1cd4cfb09ac998dd1a0c6641024660e21ccf193d6b6b974037fd",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250415.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250415.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250416.mbp-1.dbn.zst",
+            "size": 542531,
+            "hash": "sha256:b2788edead25fa563298bc274f582c2a06bf9ca7d1a0dce75ba822b2972f42dc",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250416.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250416.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250417.mbp-1.dbn.zst",
+            "size": 429962,
+            "hash": "sha256:f5612f1f312c0b77d8f909ffbf6c2118d31069304703700dd71c99f6f1694505",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250417.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250417.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250421.mbp-1.dbn.zst",
+            "size": 7045198,
+            "hash": "sha256:845cf0c547cd5e3d6078661dfeb9da7f8780b27348939a98d2327328c47adfbd",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250421.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250421.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250422.mbp-1.dbn.zst",
+            "size": 1330004,
+            "hash": "sha256:0aed26e5ed96a1076148559e74516d0794158001eaa605803f9fba7b133ecc06",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250422.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250422.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250423.mbp-1.dbn.zst",
+            "size": 1222417,
+            "hash": "sha256:b10c20807eab3190180d2f101ad9180891d2fbb80cd0873f689122174c7259e3",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250423.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250423.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250424.mbp-1.dbn.zst",
+            "size": 775015,
+            "hash": "sha256:ab36377872196224abcac987fb44f009eb524c3bdaac2c45f7c2f4107025e6b1",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250424.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250424.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250425.mbp-1.dbn.zst",
+            "size": 388465,
+            "hash": "sha256:db8ab55903cfe928127c13c4cd33743652bb1af18a60422007bd7cea9764e9cc",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250425.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250425.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250428.mbp-1.dbn.zst",
+            "size": 2416388,
+            "hash": "sha256:893504a23cd272d56ead453697db642a65bd2104c70038d0147fe95f6c6f6bf7",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250428.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250428.mbp-1.dbn.zst"
+            }
+        },
+        {
+            "filename": "equs-mini-20250429.mbp-1.dbn.zst",
+            "size": 934519,
+            "hash": "sha256:2c604461ecea1ea7cb5dbd54c33cf4aa43b28c7a99a3e3818076d1fd71cdd1c1",
+            "urls": {
+                "https": "https://api.databento.com/v0/batch/download/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250429.mbp-1.dbn.zst",
+                "ftp": "ftp://ftp.databento.com/USEJN6JS/EQUS-20250511-MY5V6RNNGT/equs-mini-20250429.mbp-1.dbn.zst"
+            }
+        }
+    ]
+}
