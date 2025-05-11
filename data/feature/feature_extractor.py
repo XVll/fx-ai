@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from ..utils.indicators import calculate_ema, calculate_macd, calculate_vwap
 
+
 class FeatureExtractor:
     """
     Extracts features from raw market data for use by the AI model.
@@ -48,7 +49,8 @@ class FeatureExtractor:
         # Price returns for different windows
         for window in self.price_windows:
             col_name = f"{timeframe}_return_{window}"
-            features[col_name] = bars_df['close'].pct_change(window)
+            # Fix the FutureWarning by explicitly setting fill_method=None
+            features[col_name] = bars_df['close'].pct_change(window, fill_method=None)
 
         # High-Low range relative to close
         features[f"{timeframe}_hlc_ratio"] = (bars_df['high'] - bars_df['low']) / bars_df['close']
@@ -63,12 +65,12 @@ class FeatureExtractor:
             low_window = bars_df['low'].rolling(window).min()
             features[f"{timeframe}_pct_off_low_{window}"] = (bars_df['close'] - low_window) / low_window
 
-        # Whole and half dollar proximity
+        # Whole and half dollar proximity - fix NaN handling
         features[f"{timeframe}_dist_to_whole_dollar"] = bars_df['close'].apply(
-            lambda x: abs(x - round(x))
+            lambda x: abs(x - round(x)) if not pd.isna(x) else np.nan
         )
         features[f"{timeframe}_dist_to_half_dollar"] = bars_df['close'].apply(
-            lambda x: abs(x - round(x * 2) / 2)
+            lambda x: abs(x - round(x * 2) / 2) if not pd.isna(x) else np.nan
         )
 
         return features
@@ -106,11 +108,24 @@ class FeatureExtractor:
 
         # Price-volume correlation
         for window in self.volume_windows:
-            price_returns = bars_df['close'].pct_change(1).rolling(window)
-            volume_changes = bars_df['volume'].pct_change(1).rolling(window)
+            # Calculate returns and volume changes first
+            price_changes = bars_df['close'].pct_change(1, fill_method=None)
+            volume_changes = bars_df['volume'].pct_change(1, fill_method=None)
 
-            # Correlation between price changes and volume changes
-            features[f"{timeframe}_price_vol_corr_{window}"] = price_returns.corr(volume_changes)
+            # Calculate correlation over rolling windows
+            if window > 1 and len(price_changes) >= window:
+                # Create a temporary DataFrame with both series
+                temp_df = pd.DataFrame({
+                    'price': price_changes,
+                    'volume': volume_changes
+                })
+
+                # Apply rolling correlation
+                rolling_corr = temp_df['price'].rolling(window).corr(temp_df['volume'])
+                features[f"{timeframe}_price_vol_corr_{window}"] = rolling_corr
+            else:
+                # For window size 1 or not enough data, set correlation to NaN
+                features[f"{timeframe}_price_vol_corr_{window}"] = float('nan')
 
         return features
 
@@ -282,7 +297,7 @@ class FeatureExtractor:
         # Fill values for the whole period
         features['is_trading'] = 1  # Default: trading
         features['is_quoting'] = 1  # Default: quoting
-        features['is_halted'] = 0   # Default: not halted
+        features['is_halted'] = 0  # Default: not halted
         features['is_short_sell_restricted'] = 0  # Default: not restricted
 
         # Update based on status messages
