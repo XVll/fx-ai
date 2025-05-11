@@ -1,473 +1,342 @@
 # data/provider/data_bento/databento_file_provider.py
 import databento as db
-from typing import Dict, List, Optional, Union, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Union, Tuple, Any
+from datetime import datetime
 import pandas as pd
-import numpy as np
+# import numpy as np # Not strictly needed in this version
 import os
 import logging
+import json
+from functools import lru_cache
 
+# Assuming HistoricalDataProvider is in a reachable path like this:
 from data.provider.data_provider import HistoricalDataProvider
+from data.utils.helpers import ensure_timezone_aware
 
 
 class DabentoFileProvider(HistoricalDataProvider):
-    """Implementation of Historical Provider using Databento file storage."""
+    """
+    Implementation of HistoricalDataProvider using local Databento file storage,
+    leveraging Databento's metadata.json and manifest.json for efficient file discovery.
+    """
 
-    def __init__(self, data_dir: str, symbol_info_file: str = None, verbose: bool = False):
+    _TIMEFRAME_TO_SCHEMA_MAP = {
+        "trades": "trades",
+        "quotes": "mbp-1",  # Default, adjust if using e.g., mbp-10
+        "status": "status",
+        "1s": "ohlcv-1s",
+        "1m": "ohlcv-1m",
+        "5m": "ohlcv-5m",
+        "1h": "ohlcv-1h",
+        "1d": "ohlcv-1d",
+    }
+    _BAR_SCHEMAS = {"ohlcv-1s", "ohlcv-1m", "ohlcv-5m", "ohlcv-1h", "ohlcv-1d"}
+
+    def __init__(self, data_dir: str,
+                 symbol_info_file: Optional[str] = None,
+                 verbose: bool = False,
+                 dbn_cache_size: int = 32):
         """
         Initialize the Databento file provider.
 
         Args:
-            data_dir: Directory containing Databento data files
-            symbol_info_file: Optional path to a file with symbol metadata
-            verbose: Enable verbose logging
+            data_dir: Directory containing Databento job folders.
+            symbol_info_file: Optional path to a CSV file with symbol metadata.
+            verbose: Enable verbose logging for debugging.
+            dbn_cache_size: Max DBN file contents (DataFrames) to keep in LRU cache.
         """
         self.data_dir = data_dir
-        self._symbol_info = {}
-        self.file_paths = []
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
-
-        # Load symbol info if provided
-        if symbol_info_file and os.path.exists(symbol_info_file):
-            self._symbol_info = pd.read_csv(symbol_info_file).set_index('symbol').to_dict('index')
-
-        # Scan for files
-        self._scan_files()
-
-    def _log(self, msg: str, level: int = logging.INFO):
-        """Log messages based on verbose setting."""
-        if self.verbose or level >= logging.WARNING:
-            self.logger.log(level, msg)
-
-    def _scan_files(self):
-        """Scan for all .dbn.zst files in directory and subdirectories"""
-        self._log(f"Scanning for Databento files in {self.data_dir}")
-
-        for root, dirs, files in os.walk(self.data_dir):
-            for file in files:
-                if file.endswith('.dbn.zst') or file.endswith('.dbn'):
-                    file_path = os.path.join(root, file)
-                    self.file_paths.append(file_path)
-
-        self.logger.info(f"Found {len(self.file_paths)} DBN files")
-
-        # Print sample files only if verbose
-        if self.verbose and self.file_paths:
-            samples = [os.path.basename(f) for f in self.file_paths[:5]]
-            self._log(f"Sample files: {', '.join(samples)}" +
-                      (f" and {len(self.file_paths) - 5} more" if len(self.file_paths) > 5 else ""))
-
-    def _find_dataset_files_for_date(self, schema: str, date_str: str) -> List[str]:
-        """Find files for a given schema and date."""
-        # Find files for this schema and date
-        matching_files = [f for f in self.file_paths if
-                          schema.lower() in os.path.basename(f).lower() and
-                          date_str in os.path.basename(f)]
-
-        if not matching_files:
-            # Try to find files that might contain this date range
-            matching_files = [f for f in self.file_paths if
-                              schema.lower() in os.path.basename(f).lower()]
-
-            # For OHLCV-1d specifically, look for ranges that might include our date
-            if schema == 'ohlcv-1d':
-                range_files = []
-                for f in matching_files:
-                    basename = os.path.basename(f)
-                    parts = basename.split('.')
-                    if len(parts) > 1:
-                        name_parts = parts[0].split('-')
-                        if len(name_parts) >= 3:  # Might be a date range
-                            try:
-                                # Check if we can parse start and end dates
-                                for part in name_parts:
-                                    if len(part) == 8 and part.isdigit():
-                                        range_files.append(f)
-                                        break
-                            except:
-                                pass
-
-                if range_files:
-                    return range_files
-
-        return matching_files
-
-    def _ensure_timezone_aware(self, dt: Union[datetime, str], is_end_time: bool = False) -> pd.Timestamp:
-        """
-        Ensure datetime is timezone-aware, converting to UTC if needed.
-
-        Args:
-            dt: datetime or string to convert
-            is_end_time: If True and input is a date without time, will set time to 23:59:59
-
-        Returns:
-            Timezone-aware pandas Timestamp
-        """
-        # Handle date strings by expanding to full days
-        if isinstance(dt, str):
-            if len(dt) <= 10 and '-' in dt:  # YYYY-MM-DD format
-                if is_end_time:
-                    dt = f"{dt} 23:59:59"  # End of day for end timestamps
-                else:
-                    dt = f"{dt} 00:00:00"  # Start of day for start timestamps
-            dt = pd.Timestamp(dt)
-
-        # If datetime is naive, make it timezone aware (UTC)
-        if dt.tzinfo is None:
-            dt = pd.Timestamp(dt).tz_localize('UTC')
-        elif dt.tzinfo.tzname(dt) != 'UTC':
-            dt = dt.astimezone('UTC')
-
-        return dt
-
-    def get_symbol_info(self, symbol: str) -> Dict:
-        """Get metadata for a symbol."""
-        if symbol in self._symbol_info:
-            return self._symbol_info[symbol]
+        if self.verbose:
+            self.logger.setLevel(logging.DEBUG)
         else:
-            # Return minimal info
-            return {"symbol": symbol, "description": f"Unknown symbol {symbol}"}
+            self.logger.setLevel(logging.INFO)  # Default to INFO
 
-    def get_available_symbols(self) -> List[str]:
-        """Get all available symbols."""
-        # This finds all unique symbols in the dataset
-        symbols = set()
-        checked_files = 0
+        self._symbol_info_map: Dict[str, Dict[str, Any]] = {}
+        if symbol_info_file and os.path.exists(symbol_info_file):
+            try:
+                df_info = pd.read_csv(symbol_info_file)
+                if 'symbol' in df_info.columns:
+                    # Normalize symbol to uppercase for consistent lookup
+                    df_info['symbol'] = df_info['symbol'].astype(str).str.upper()
+                    self._symbol_info_map = df_info.set_index('symbol').to_dict('index')
+                    self.logger.info(
+                        f"Loaded symbol info from {symbol_info_file} for {len(self._symbol_info_map)} symbols.")
+                else:
+                    self.logger.warning(f"'symbol' column not found in {symbol_info_file}. Symbol info not loaded.")
+            except Exception as e:
+                self.logger.error(f"Error loading symbol info from {symbol_info_file}: {e}")
 
-        # Only check the first few files to avoid scanning everything
-        for file_path in self.file_paths[:10]:  # Limit to first 10 files
+        self.metadata_index: List[Dict[str, Any]] = []
+        self._scan_and_build_metadata_index()
+
+        @lru_cache(maxsize=dbn_cache_size)
+        def _read_dbn_file_to_df_cached(file_path: str) -> pd.DataFrame:
+            self._log(f"CACHE MISS: Reading DBN file: {file_path}", logging.DEBUG)
             try:
                 store = db.DBNStore.from_file(file_path)
                 df = store.to_df()
-                if not df.empty and 'symbol' in df.columns:
-                    unique_symbols = df['symbol'].unique()
-                    for symbol in unique_symbols:
-                        symbols.add(symbol)
-                checked_files += 1
-            except:
-                pass
 
-        if not symbols:
-            # Fallback to dataset names from filenames
-            for file in self.file_paths:
-                basename = os.path.basename(file)
-                parts = basename.split('.')[0].split('_')
-                if parts:
-                    symbols.add(parts[0])
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    if 'ts_event' in df.columns:  # Common timestamp column from Databento
+                        df['ts_event'] = pd.to_datetime(df['ts_event'], unit='ns', errors='coerce')
+                        df = df.set_index('ts_event')
+                    elif pd.api.types.is_datetime64_any_dtype(df.index):  # Already a DatetimeIndex but not instance?
+                        pass  # Index is already datetime-like
+                    elif len(df.columns) > 0 and pd.api.types.is_datetime64_any_dtype(df.iloc[:, 0]):
+                        # Try to set the first column as index if it's datetime-like
+                        df = df.set_index(df.columns[0])
+                    else:
+                        self.logger.warning(
+                            f"Cannot determine DatetimeIndex for DBN file {file_path}. Index: {df.index}, Columns: {df.columns}")
+                        return pd.DataFrame()
 
-        return list(symbols)
+                if df.empty or not isinstance(df.index, pd.DatetimeIndex):  # Re-check after potential index setting
+                    self.logger.debug(f"DataFrame is empty or has no DatetimeIndex after processing {file_path}.")
+                    return pd.DataFrame()
+
+                if df.index.tz is None:
+                    df.index = df.index.tz_localize('UTC')
+                elif str(df.index.tz).upper() != 'UTC':
+                    df.index = df.index.tz_convert('UTC')
+
+                # Normalize symbol column to uppercase if exists, for consistent filtering
+                if 'symbol' in df.columns:
+                    df['symbol'] = df['symbol'].astype(str).str.upper()
+                return df
+            except Exception as e:
+                self.logger.error(f"Error reading or processing DBN file {file_path}: {e}")
+                return pd.DataFrame()
+
+        self._cached_read_dbn_file = _read_dbn_file_to_df_cached
+
+    def _log(self, msg: str, level: int = logging.INFO):
+        if level >= self.logger.level:  # Respect the logger's configured level
+            self.logger.log(level, msg)
+
+    def _scan_and_build_metadata_index(self):
+        self.metadata_index = []
+        self.logger.info(f"Scanning for Databento metadata in '{self.data_dir}'...")
+        found_job_dirs = 0
+        for root, dirs, files in os.walk(self.data_dir, topdown=True):
+            if "metadata.json" in files and "manifest.json" in files:
+                found_job_dirs += 1
+                job_id_dir = root
+                job_id_name = os.path.basename(job_id_dir)
+                self._log(f"Processing Databento job directory: {job_id_dir}", logging.DEBUG)
+                try:
+                    with open(os.path.join(job_id_dir, "metadata.json"), 'r') as f_meta:
+                        meta_content = json.load(f_meta)
+                    with open(os.path.join(job_id_dir, "manifest.json"), 'r') as f_manifest:
+                        manifest_content = json.load(f_manifest)
+
+                    query_info = meta_content.get("query", {})
+                    schema = query_info.get("schema")
+                    # Normalize symbols from metadata to uppercase
+                    symbols_list = [str(s).upper() for s in query_info.get("symbols", [])]
+                    start_ns = query_info.get("start")
+                    end_ns = query_info.get("end")
+
+                    if not all([schema, symbols_list, start_ns is not None, end_ns is not None]):
+                        self._log(f"Skipping '{job_id_dir}': missing essential fields in metadata.json's query.",
+                                  logging.WARNING)
+                        continue
+
+                    start_utc = pd.Timestamp(start_ns, unit='ns', tz='UTC')
+                    end_utc = pd.Timestamp(end_ns, unit='ns', tz='UTC')
+
+                    for file_entry in manifest_content.get("files", []):
+                        dbn_filename = file_entry.get("filename", "")
+                        if dbn_filename.endswith((".dbn", ".dbn.zst")):
+                            if schema.lower() in dbn_filename.lower():
+                                dbn_file_path = os.path.join(job_id_dir, dbn_filename)
+                                if os.path.exists(dbn_file_path):
+                                    self.metadata_index.append({
+                                        'dbn_file_path': dbn_file_path,
+                                        'schema': schema.lower(),
+                                        'symbols': symbols_list,
+                                        'start_time_utc': start_utc,
+                                        'end_time_utc': end_utc,
+                                        'job_id': meta_content.get("job_id", job_id_name)
+                                    })
+                                    self._log(
+                                        f"Indexed DBN: '{dbn_filename}' for symbols {symbols_list}, schema '{schema}'",
+                                        logging.DEBUG)
+                                else:
+                                    self._log(f"DBN file '{dbn_file_path}' listed in manifest but not found on disk.",
+                                              logging.WARNING)
+                except Exception as e:  # Catch broader exceptions during file processing
+                    self._log(f"Error processing directory '{job_id_dir}': {e}", logging.ERROR)
+        self.logger.info(
+            f"Finished scanning. Found {found_job_dirs} job directories, indexed {len(self.metadata_index)} DBN file entries.")
+        if not self.metadata_index:
+            self.logger.warning(
+                f"No DBN files were indexed. Check 'data_dir' ('{self.data_dir}') and Databento download structure.")
+
+    def _find_dbn_files_for_query(self, schema_filter: str, symbol_filter: str,
+                                  query_start_utc: pd.Timestamp, query_end_utc: pd.Timestamp) -> List[str]:
+        matching_file_paths = set()
+        schema_filter_lower = schema_filter.lower()
+        symbol_filter_upper = str(symbol_filter).upper()  # Normalize query symbol
+
+        for entry in self.metadata_index:
+            if entry['schema'] != schema_filter_lower:
+                continue
+            # entry['symbols'] is already list of uppercase strings from _scan_and_build_metadata_index
+            if symbol_filter_upper not in entry['symbols']:
+                continue
+            if max(entry['start_time_utc'], query_start_utc) <= min(entry['end_time_utc'], query_end_utc):
+                matching_file_paths.add(entry['dbn_file_path'])
+
+        if not matching_file_paths:
+            self._log(f"No DBN files found in index for: {symbol_filter_upper}@{schema_filter_lower} "
+                      f"between {query_start_utc} and {query_end_utc}", logging.DEBUG)
+        return sorted(list(matching_file_paths))
+
+    def _load_data_for_request(self, schema_key: str, symbol: str,
+                               start_time_utc: pd.Timestamp, end_time_utc: pd.Timestamp) -> pd.DataFrame:
+        databento_schema = self._TIMEFRAME_TO_SCHEMA_MAP.get(schema_key.lower(), schema_key.lower())
+        symbol_upper = str(symbol).upper()  # Normalize query symbol
+
+        dbn_file_paths = self._find_dbn_files_for_query(databento_schema, symbol_upper, start_time_utc, end_time_utc)
+        if not dbn_file_paths:
+            return pd.DataFrame()
+
+        all_symbol_data_in_range = []
+        for file_path in dbn_file_paths:
+            df_full_file = self._cached_read_dbn_file(file_path)  # Symbols already uppercased here
+            if df_full_file.empty:
+                continue
+
+            df_symbol_specific = df_full_file
+            if 'symbol' in df_full_file.columns:
+                # Filter by the specific symbol (already uppercased in df_full_file)
+                df_symbol_specific = df_full_file[df_full_file['symbol'] == symbol_upper]
+
+            if df_symbol_specific.empty:
+                self._log(f"Symbol '{symbol_upper}' not found in data from file '{file_path}' after filtering.",
+                          logging.DEBUG)
+                continue
+
+            if not df_symbol_specific.index.is_monotonic_increasing:
+                df_symbol_specific = df_symbol_specific.sort_index()
+
+            # Pandas loc slicing is inclusive of both start and end if they exist in the index
+            df_in_time_range = df_symbol_specific.loc[start_time_utc:end_time_utc]
+
+            if not df_in_time_range.empty:
+                all_symbol_data_in_range.append(df_in_time_range)
+
+        if not all_symbol_data_in_range:
+            self._log(
+                f"No data for {symbol_upper}@{databento_schema} found within DBN files in range {start_time_utc} to {end_time_utc}",
+                logging.DEBUG)
+            return pd.DataFrame()
+
+        final_df = pd.concat(all_symbol_data_in_range)
+        if not final_df.index.is_unique:
+            final_df = final_df[~final_df.index.duplicated(keep='first')]
+        return final_df.sort_index()
+
+    def get_symbol_info(self, symbol: str) -> Dict:
+        symbol_upper = str(symbol).upper()
+        if symbol_upper in self._symbol_info_map:
+            return self._symbol_info_map[symbol_upper]
+
+        related_jobs = [entry['job_id'] for entry in self.metadata_index if symbol_upper in entry['symbols']]
+        description = f"Data potentially available for {symbol_upper}."
+        if related_jobs:
+            description += f" Associated with Databento job(s): {', '.join(list(set(related_jobs))[:3])}"
+            if len(related_jobs) > 3: description += "..."
+
+        return {"symbol": symbol_upper, "description": description}
+
+    def get_available_symbols(self) -> List[str]:
+        if not self.metadata_index:
+            self.logger.warning("Metadata index is empty. Cannot determine available symbols.")
+            return []
+        all_symbols = set()
+        for entry in self.metadata_index:
+            all_symbols.update(entry['symbols'])  # entry['symbols'] is already a list of uppercase strings
+        return sorted(list(all_symbols))
 
     def get_trades(self, symbol: str, start_time: Union[datetime, str],
                    end_time: Union[datetime, str]) -> pd.DataFrame:
-        """Get historical trades for a symbol in a time range."""
-        self._log(f"Loading trades for {symbol} between {start_time} and {end_time}")
-
-        # Make sure dates are timezone-aware datetime objects
-        start_time = self._ensure_timezone_aware(start_time, is_end_time=False)
-        end_time = self._ensure_timezone_aware(end_time, is_end_time=True)
-
-        # Format date for search
-        date_str = start_time.strftime('%Y%m%d')
-
-        # Find trade files for this date
-        trade_files = self._find_dataset_files_for_date('trades', date_str)
-
-        if not trade_files:
-            self._log(f"No trade files found for {symbol} on {date_str}", logging.WARNING)
-            return pd.DataFrame()
-
-        # Extract trades from each file
-        all_trades = []
-
-        for file_path in trade_files:
-            basename = os.path.basename(file_path)
-            self._log(f"Processing {basename}", logging.DEBUG)
-
-            try:
-                # Read the file
-                store = db.DBNStore.from_file(file_path)
-                df = store.to_df()
-
-                if df.empty:
-                    continue
-
-                # Try to filter by symbol if symbol column exists
-                if 'symbol' in df.columns:
-                    symbol_df = df[df['symbol'] == symbol]
-                    if symbol_df.empty:
-                        continue
-                    df = symbol_df
-
-                # Ensure index is timezone-aware
-                if df.index.tz is None:
-                    df.index = df.index.tz_localize('UTC')
-
-                # Filter for the time range
-                mask = (df.index >= start_time) & (df.index <= end_time)
-                filtered_df = df[mask]
-
-                if not filtered_df.empty:
-                    all_trades.append(filtered_df)
-
-            except Exception as e:
-                self._log(f"Error processing {basename}: {str(e)}", logging.WARNING)
-
-        # Combine all trades
-        if not all_trades:
-            self._log(f"No trades found for {symbol} in the specified date range", logging.WARNING)
-            return pd.DataFrame()
-
-        trades_df = pd.concat(all_trades)
-        trades_df = trades_df.sort_index()
-
-        self.logger.info(f"Loaded {len(trades_df)} trades for {symbol}")
-        return trades_df
+        self.logger.info(f"Requesting trades for {symbol} from {start_time} to {end_time}")
+        start_utc = ensure_timezone_aware(start_time, is_end_time=False)
+        end_utc = ensure_timezone_aware(end_time, is_end_time=True)
+        df_trades = self._load_data_for_request("trades", symbol, start_utc, end_utc)
+        self._log(f"Loaded {len(df_trades)} trades for {symbol} in range {start_utc}-{end_utc}.", logging.INFO)
+        return df_trades
 
     def get_quotes(self, symbol: str, start_time: Union[datetime, str],
                    end_time: Union[datetime, str]) -> pd.DataFrame:
-        """Get historical quotes for a symbol in a time range."""
-        self._log(f"Loading quotes for {symbol} between {start_time} and {end_time}")
-
-        # Make sure dates are timezone-aware datetime objects
-        start_time = self._ensure_timezone_aware(start_time, is_end_time=False)
-        end_time = self._ensure_timezone_aware(end_time, is_end_time=True)
-
-        # Format date for search
-        date_str = start_time.strftime('%Y%m%d')
-
-        # Find quote files for this date (mbp-1)
-        quote_files = self._find_dataset_files_for_date('mbp-1', date_str)
-
-        if not quote_files:
-            self._log(f"No quote files found for {symbol} on {date_str}", logging.WARNING)
-            return pd.DataFrame()
-
-        # Extract quotes from each file
-        all_quotes = []
-
-        for file_path in quote_files:
-            basename = os.path.basename(file_path)
-            self._log(f"Processing {basename}", logging.DEBUG)
-
-            try:
-                # Read the file
-                store = db.DBNStore.from_file(file_path)
-                df = store.to_df()
-
-                if df.empty:
-                    continue
-
-                # Try to filter by symbol if symbol column exists
-                if 'symbol' in df.columns:
-                    symbol_df = df[df['symbol'] == symbol]
-                    if symbol_df.empty:
-                        continue
-                    df = symbol_df
-
-                # Ensure index is timezone-aware
-                if df.index.tz is None:
-                    df.index = df.index.tz_localize('UTC')
-
-                # Filter for the time range
-                mask = (df.index >= start_time) & (df.index <= end_time)
-                filtered_df = df[mask]
-
-                if not filtered_df.empty:
-                    all_quotes.append(filtered_df)
-
-            except Exception as e:
-                self._log(f"Error processing {basename}: {str(e)}", logging.WARNING)
-
-        # Combine all quotes
-        if not all_quotes:
-            self._log(f"No quotes found for {symbol} in the specified date range", logging.WARNING)
-            return pd.DataFrame()
-
-        quotes_df = pd.concat(all_quotes)
-        quotes_df = quotes_df.sort_index()
-
-        self.logger.info(f"Loaded {len(quotes_df)} quotes for {symbol}")
-        return quotes_df
+        self.logger.info(f"Requesting quotes for {symbol} from {start_time} to {end_time}")
+        start_utc = ensure_timezone_aware(start_time, is_end_time=False)
+        end_utc = ensure_timezone_aware(end_time, is_end_time=True)
+        df_quotes = self._load_data_for_request(self._TIMEFRAME_TO_SCHEMA_MAP["quotes"], symbol, start_utc, end_utc)
+        self._log(f"Loaded {len(df_quotes)} quotes for {symbol} in range {start_utc}-{end_utc}.", logging.INFO)
+        return df_quotes
 
     def get_bars(self, symbol: str, timeframe: str, start_time: Union[datetime, str],
                  end_time: Union[datetime, str]) -> pd.DataFrame:
-        """Get OHLCV bars for a symbol, timeframe in a time range."""
-        self._log(f"Loading {timeframe} bars for {symbol} between {start_time} and {end_time}")
+        self.logger.info(f"Requesting {timeframe} bars for {symbol} from {start_time} to {end_time}")
+        start_utc = ensure_timezone_aware(start_time, is_end_time=False)
+        end_utc = ensure_timezone_aware(end_time, is_end_time=True)
 
-        # Make sure dates are timezone-aware datetime objects
-        start_time = self._ensure_timezone_aware(start_time, is_end_time=False)
-        end_time = self._ensure_timezone_aware(end_time, is_end_time=True)
+        databento_schema = self._TIMEFRAME_TO_SCHEMA_MAP.get(timeframe.lower())
+        if not databento_schema:
+            msg = f"Unsupported timeframe: {timeframe}. Supported: {list(self._TIMEFRAME_TO_SCHEMA_MAP.keys())}"
+            self.logger.error(msg)
+            raise ValueError(msg)
 
-        # Format date for search
-        date_str = start_time.strftime('%Y%m%d')
+        df_bars = self._load_data_for_request(databento_schema, symbol, start_utc, end_utc)
 
-        # Map the timeframe string to Databento's schema format
-        timeframe_map = {
-            "1s": "ohlcv-1s",
-            "1m": "ohlcv-1m",
-            "5m": "ohlcv-5m",
-            "1d": "ohlcv-1d"
-        }
+        if timeframe.lower() == "5m" and df_bars.empty:
+            self.logger.info(f"No direct 5m bars found for {symbol}. Trying to create from 1m bars.")
+            df_bars = self._create_5m_bars_from_1m(symbol, start_utc, end_utc)
 
-        if timeframe not in timeframe_map:
-            raise ValueError(f"Unsupported timeframe: {timeframe}. Supported: {list(timeframe_map.keys())}")
+        self._log(f"Loaded {len(df_bars)} {timeframe} bars for {symbol} in range {start_utc}-{end_utc}.", logging.INFO)
+        return df_bars
 
-        schema = timeframe_map[timeframe]
+    def _create_5m_bars_from_1m(self, symbol: str,
+                                start_time_utc: pd.Timestamp,
+                                end_time_utc: pd.Timestamp) -> pd.DataFrame:
+        self.logger.debug(
+            f"Attempting to fetch 1m bars for {symbol} ({start_time_utc} to {end_time_utc}) to resample into 5m bars.")
+        bars_1m_df = self._load_data_for_request(self._TIMEFRAME_TO_SCHEMA_MAP["1m"], symbol, start_time_utc,
+                                                 end_time_utc)
 
-        # Find bar files for this date
-        bar_files = self._find_dataset_files_for_date(schema, date_str)
-
-        # Special case for 1d timeframe - check for files that contain date ranges
-        if timeframe == "1d" and not bar_files:
-            # Try to find daily ohlc files that might contain multiple dates
-            bar_files = [f for f in self.file_paths if
-                         'ohlcv-1d' in os.path.basename(f).lower()]
-
-        if not bar_files:
-            # Special case for 5m timeframe which might not exist directly
-            if timeframe == "5m":
-                return self._create_5m_bars_from_1m(symbol, start_time, end_time)
-
-            self._log(f"No {timeframe} bar files found for {symbol} on {date_str}", logging.WARNING)
+        if bars_1m_df.empty:
+            self.logger.info(
+                f"No 1m data found for {symbol} to create 5m bars in range {start_time_utc}-{end_time_utc}.")
+            return pd.DataFrame()
+        if not isinstance(bars_1m_df.index, pd.DatetimeIndex):
+            self.logger.warning("1m bars data does not have a DatetimeIndex. Cannot resample.")
             return pd.DataFrame()
 
-        # Extract bars from each file
-        all_bars = []
-
-        for file_path in bar_files:
-            basename = os.path.basename(file_path)
-            self._log(f"Processing {basename}", logging.DEBUG)
-
-            try:
-                # Read the file
-                store = db.DBNStore.from_file(file_path)
-                df = store.to_df()
-
-                if df.empty:
-                    continue
-
-                # Try to filter by symbol if symbol column exists
-                if 'symbol' in df.columns:
-                    symbol_df = df[df['symbol'] == symbol]
-                    if symbol_df.empty:
-                        continue
-                    df = symbol_df
-
-                # Ensure index is timezone-aware
-                if df.index.tz is None:
-                    df.index = df.index.tz_localize('UTC')
-
-                # Filter for the time range
-                mask = (df.index >= start_time) & (df.index <= end_time)
-                filtered_df = df[mask]
-
-                if not filtered_df.empty:
-                    all_bars.append(filtered_df)
-
-            except Exception as e:
-                self._log(f"Error processing {basename}: {str(e)}", logging.WARNING)
-
-        # Combine all bars
-        if not all_bars:
-            # If timeframe is 5m and we couldn't find direct data, try to create from 1m
-            if timeframe == "5m":
-                self._log("Trying to create 5m bars from 1m data", logging.INFO)
-                return self._create_5m_bars_from_1m(symbol, start_time, end_time)
-
-            self._log(f"No {timeframe} bars found for {symbol} in the specified date range", logging.WARNING)
+        required_cols = {'open', 'high', 'low', 'close', 'volume'}
+        if not required_cols.issubset(bars_1m_df.columns):
+            missing = required_cols - set(bars_1m_df.columns)
+            self.logger.warning(f"1m bars data is missing required columns for OHLCV resampling: {missing}")
             return pd.DataFrame()
-
-        bars_df = pd.concat(all_bars)
-        bars_df = bars_df.sort_index()
-
-        self.logger.info(f"Loaded {len(bars_df)} {timeframe} bars for {symbol}")
-        return bars_df
-
-    def _create_5m_bars_from_1m(self, symbol: str, start_time: Union[datetime, str],
-                                end_time: Union[datetime, str]) -> pd.DataFrame:
-        """Create 5-minute bars by resampling 1-minute data."""
-        # Get 1-minute bars
-        bars_1m = self.get_bars(symbol, "1m", start_time, end_time)
-
-        if bars_1m.empty:
-            self._log("No 1m data found to create 5m bars", logging.WARNING)
+        try:
+            resampled_df = bars_1m_df.resample('5min', closed='left', label='left').agg({
+                'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+            })
+            resampled_df.dropna(subset=['open'], inplace=True)
+            self.logger.info(f"Successfully created {len(resampled_df)} 5m bars from 1m data for {symbol}.")
+            return resampled_df
+        except Exception as e:
+            self.logger.error(f"Error resampling 1m to 5m bars for {symbol}: {e}")
             return pd.DataFrame()
-
-        # Resample to 5-minute bars
-        resampled = bars_1m.resample('5min').agg({
-            'open': 'first',
-            'high': 'max',
-            'low': 'min',
-            'close': 'last',
-            'volume': 'sum'
-        })
-
-        self._log(f"Created {len(resampled)} 5m bars from 1m data")
-        return resampled
 
     def get_status(self, symbol: str, start_time: Union[datetime, str],
                    end_time: Union[datetime, str]) -> pd.DataFrame:
-        """Get status updates (halts, etc.) for a symbol in a time range."""
-        self._log(f"Loading status updates for {symbol} between {start_time} and {end_time}")
-
-        # Make sure dates are timezone-aware datetime objects
-        start_time = self._ensure_timezone_aware(start_time, is_end_time=False)
-        end_time = self._ensure_timezone_aware(end_time, is_end_time=True)
-
-        # Format date for search
-        date_str = start_time.strftime('%Y%m%d')
-
-        # Find status files for this date
-        status_files = self._find_dataset_files_for_date('status', date_str)
-
-        if not status_files:
-            self._log(f"No status files found for {symbol} on {date_str}", logging.INFO)
-            return pd.DataFrame()
-
-        # Extract status updates from each file
-        all_status = []
-
-        for file_path in status_files:
-            basename = os.path.basename(file_path)
-            self._log(f"Processing {basename}", logging.DEBUG)
-
-            try:
-                # Read the file
-                store = db.DBNStore.from_file(file_path)
-                df = store.to_df()
-
-                if df.empty:
-                    continue
-
-                # Try to filter by symbol if symbol column exists
-                if 'symbol' in df.columns:
-                    symbol_df = df[df['symbol'] == symbol]
-                    if symbol_df.empty:
-                        continue
-                    df = symbol_df
-
-                # Ensure index is timezone-aware
-                if df.index.tz is None:
-                    df.index = df.index.tz_localize('UTC')
-
-                # Filter for the time range
-                mask = (df.index >= start_time) & (df.index <= end_time)
-                filtered_df = df[mask]
-
-                if not filtered_df.empty:
-                    all_status.append(filtered_df)
-
-            except Exception as e:
-                self._log(f"Error processing {basename}: {str(e)}", logging.WARNING)
-
-        # Combine all status updates
-        if not all_status:
-            self._log(f"No status updates found for {symbol} in the specified date range", logging.INFO)
-            return pd.DataFrame()
-
-        status_df = pd.concat(all_status)
-        status_df = status_df.sort_index()
-
-        self.logger.info(f"Loaded {len(status_df)} status updates for {symbol}")
-        return status_df
+        self.logger.info(f"Requesting status updates for {symbol} from {start_time} to {end_time}")
+        start_utc = ensure_timezone_aware(start_time, is_end_time=False)
+        end_utc = ensure_timezone_aware(end_time, is_end_time=True)
+        df_status = self._load_data_for_request(self._TIMEFRAME_TO_SCHEMA_MAP["status"], symbol, start_utc, end_utc)
+        self._log(f"Loaded {len(df_status)} status updates for {symbol} in range {start_utc}-{end_utc}.", logging.INFO)
+        return df_status
