@@ -5,6 +5,8 @@ import numpy as np
 from datetime import datetime
 import logging
 
+import torch
+
 from feature.feature_extractor import FeatureExtractor
 from feature.state_manager import StateManager
 from simulation.market_simulator import MarketSimulator
@@ -61,6 +63,44 @@ class Simulator:
         if self.logger:
             self.logger.log(level, message)
 
+    def get_current_state_tensor_dict(self) -> Dict[str, torch.Tensor]:
+        """
+        Get the current state as a dictionary of tensors for the transformer model.
+
+        Returns:
+            Dictionary with tensors for different branches
+        """
+        # Try to get structured tensor state from state manager
+        if hasattr(self.state_manager, 'get_state_tensor_dict'):
+            return self.state_manager.get_state_tensor_dict()
+
+        # Fallback: create dummy tensors with right shapes
+        batch_size = 1
+        hf_seq_len = 60
+        hf_feat_dim = 20
+        mf_seq_len = 30
+        mf_feat_dim = 15
+        lf_seq_len = 30
+        lf_feat_dim = 10
+        static_feat_dim = 15
+
+        state_dict = {
+            'hf_features': torch.zeros((batch_size, hf_seq_len, hf_feat_dim)),
+            'mf_features': torch.zeros((batch_size, mf_seq_len, mf_feat_dim)),
+            'lf_features': torch.zeros((batch_size, lf_seq_len, lf_feat_dim)),
+            'static_features': torch.zeros((batch_size, static_feat_dim))
+        }
+
+        # Add position features to static tensor
+        if self.state_manager:
+            pos_info = self.state_manager.get_state_dict()
+            if pos_info:
+                state_dict['static_features'][0, 0] = pos_info.get('current_position', 0)
+                state_dict['static_features'][0, 1] = pos_info.get('unrealized_pnl', 0)
+                state_dict['static_features'][0, 2] = pos_info.get('entry_price', 0)
+                state_dict['static_features'][0, 3] = pos_info.get('last_price', 0)
+
+        return state_dict
     def initialize_for_symbol(self, symbol: str,
                               mode: str = 'backtesting',
                               start_time: Union[datetime, str] = None,

@@ -17,3 +17,42 @@ train/explained_variance : How well the value function predicts returns (1.0 is 
 train/policy_gradient_loss & value_loss : The raw losses. Watching these decrease (and stabilize) indicates learning is progressing.
 
 * Environments uses -> Agents uses -> Models (Policies) 
+
+
+
+II. SOTA Model Architecture: Multi-Branch Transformer with Attention Fusion
+
+Rationale: Explicitly handles multi-timescale features with specialized processing and allows learned interaction between processed representations.
+
+Inputs: (Normalized)
+HF Sequence: (BatchSize, T_hf, Num_HF_Features) (e.g., T_hf=60)
+MF Sequence (Rolling 1m Context): (BatchSize, T_mf, Num_MF_Features) (e.g., T_mf=30)
+LF Sequence (Rolling 5m Context): (BatchSize, T_lf, Num_LF_Features) (e.g., T_lf=30)
+Static Features (S/R Distances, Agent State, Time Encoding): (BatchSize, Num_Static_Features)
+Branch Processing:
+HF Branch:
+Optional: 1D Convolutional Layer(s) with activation (e.g., ReLU/GeLU) for local pattern extraction.
+Linear Projection to d_model.
+Add Positional Encoding.
+Transformer Encoder Stack (L_hf layers, d_model, num_heads_hf).
+Aggregate Output (e.g., embedding of the last time step) -> (BatchSize, d_model).
+MF Branch:
+Linear Projection to d_model.
+Add Positional Encoding.
+Transformer Encoder Stack (L_mf layers, d_model, num_heads_mf).
+Aggregate Output -> (BatchSize, d_model).
+LF Branch:
+Linear Projection to d_model.
+Add Positional Encoding.
+Transformer Encoder Stack (L_lf layers, d_model, num_heads_lf).
+Aggregate Output -> (BatchSize, d_model).
+Static Branch:
+MLP (e.g., 2 layers with ReLU/GeLU) projecting Num_Static_Features -> d_model. Output -> (BatchSize, d_model).
+Fusion Mechanism:
+Concatenate outputs from all branches: (BatchSize, 4 * d_model).
+Pass concatenated vector through a Self-Attention Layer (or a 1-2 layer Transformer Encoder without positional encoding) to allow learned interaction between the fused branch representations.
+Output of fusion layer: (BatchSize, d_fused) (where d_fused might be 4 * d_model or projected down).
+Output Heads (MLPs):
+Feed the final d_fused representation into separate MLPs for:
+Actor: Outputs Mean and Log Standard Deviation for a Squashed Gaussian policy (use Tanh).
+Critics (Twin Q-Networks for SAC): Takes fused state representation and the action as input (concatenate action before first MLP layer) -> Outputs Q-value estimates (Q1 and Q2).

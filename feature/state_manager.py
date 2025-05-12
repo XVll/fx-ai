@@ -5,6 +5,8 @@ import numpy as np
 from datetime import datetime
 import logging
 
+import torch
+
 
 class StateManager:
     """
@@ -45,6 +47,41 @@ class StateManager:
         self.loss_count = 0
         self.total_pnl = 0.0
 
+    def get_state_tensor_dict(self) -> Dict[str, torch.Tensor]:
+        """
+        Get the current state as a dictionary of tensors suitable for the transformer model.
+
+        Returns:
+            Dictionary with state tensors for each branch
+        """
+        if not hasattr(self, 'tensor_state'):
+            # Create dummy tensors if not available
+            batch_size = 1
+            hf_seq_len = 60
+            hf_feat_dim = 20
+            mf_seq_len = 30
+            mf_feat_dim = 15
+            lf_seq_len = 30
+            lf_feat_dim = 10
+            static_feat_dim = 15
+
+            self.tensor_state = {
+                'hf_features': torch.zeros((batch_size, hf_seq_len, hf_feat_dim)),
+                'mf_features': torch.zeros((batch_size, mf_seq_len, mf_feat_dim)),
+                'lf_features': torch.zeros((batch_size, lf_seq_len, lf_feat_dim)),
+                'static_features': torch.zeros((batch_size, static_feat_dim))
+            }
+
+            # Add position-related features to static features
+            if self.current_state:
+                static_features = self.tensor_state['static_features']
+                static_features[0, 0] = self.current_position
+                static_features[0, 1] = self.unrealized_pnl
+                static_features[0, 2] = self.entry_price if self.entry_price > 0 else 0
+                static_features[0, 3] = self.last_price if self.last_price > 0 else 0
+                static_features[0, 4] = self.win_count / max(1, self.trade_count)
+
+        return self.tensor_state
     def _log(self, message: str, level: int = logging.INFO):
         """Helper method for logging."""
         if self.logger:
