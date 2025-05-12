@@ -39,6 +39,10 @@ class MarketSimulator:
         self.luld_enabled = self.config.get('luld_enabled', True)  # Enable LULD circuit breakers
         self.luld_band_pct = self.config.get('luld_band_pct', 0.05)  # 5% LULD band (tier 2 stocks)
         self.min_price_increment = self.config.get('min_price_increment', 0.0001)  # Min price movement (e.g., $0.0001)
+        self.enforce_time_ordering = self.config.get('enforce_time_ordering',
+                                                     True)  # Strictly enforce timestamp ordering
+        self.allow_backwards_time = self.config.get('allow_backwards_time',
+                                                    False)  # Allow time to go backwards (for debug)
 
         # Current market state
         self.current_price = None
@@ -58,6 +62,9 @@ class MarketSimulator:
         self.trades_df = None
         self.bars_df = None
         self.status_df = None
+
+        # Track initialization state
+        self.initialized = False
 
     def _log(self, message: str, level: int = logging.INFO):
         """Helper method for logging."""
@@ -90,44 +97,68 @@ class MarketSimulator:
         self.halt_start_time = None
         self.halt_end_time = None
 
+        # Find the earliest timestamp across all data sources
+        earliest_time = None
+
+        for df in [quotes_df, trades_df, bars_df, status_df]:
+            if df is not None and not df.empty:
+                if earliest_time is None or df.index.min() < earliest_time:
+                    earliest_time = df.index.min()
+
+        if earliest_time is None:
+            self._log("No data available for market initialization", logging.WARNING)
+            return
+
+        self._log(f"Initializing market from common start time: {earliest_time}")
+
+        # Initialize from the earliest common timestamp
+        self.current_timestamp = earliest_time
+
         # Try to initialize from various data sources, in order of preference
         if not quotes_df.empty and 'bid_px_00' in quotes_df.columns and 'ask_px_00' in quotes_df.columns:
-            # Get initial bid/ask from first row
-            first_row = quotes_df.iloc[0]
-            if pd.notna(first_row['bid_px_00']) and pd.notna(first_row['ask_px_00']):
-                self.current_bid = first_row['bid_px_00']
-                self.current_ask = first_row['ask_px_00']
-                self.current_spread = self.current_ask - self.current_bid
-                self.current_price = (self.current_bid + self.current_ask) / 2
-                self.current_timestamp = quotes_df.index[0]
-                self._log(
-                    f"Initialized market from quotes: Price=${self.current_price:.4f}, Bid=${self.current_bid:.4f}, Ask=${self.current_ask:.4f}")
+            # Get initial bid/ask from first available quote
+            quotes_at_time = quotes_df[quotes_df.index >= earliest_time]
+            if not quotes_at_time.empty:
+                first_row = quotes_at_time.iloc[0]
+                if pd.notna(first_row['bid_px_00']) and pd.notna(first_row['ask_px_00']):
+                    self.current_bid = first_row['bid_px_00']
+                    self.current_ask = first_row['ask_px_00']
+                    self.current_spread = self.current_ask - self.current_bid
+                    self.current_price = (self.current_bid + self.current_ask) / 2
+                    self.current_timestamp = quotes_at_time.index[0]
+                    self._log(
+                        f"Initialized market from quotes: Price=${self.current_price:.4f}, Bid=${self.current_bid:.4f}, Ask=${self.current_ask:.4f}")
 
         # If quotes didn't provide valid data, try trades
         if self.current_price is None and not trades_df.empty and 'price' in trades_df.columns:
-            first_price = trades_df['price'].iloc[0]
-            if pd.notna(first_price) and first_price > 0:
-                self.current_price = first_price
-                # Synthesize bid/ask with typical spread
-                spread = self.current_price * self.typical_spread_pct
-                self.current_bid = self.current_price - spread / 2
-                self.current_ask = self.current_price + spread / 2
-                self.current_spread = spread
-                self.current_timestamp = trades_df.index[0]
-                self._log(f"Initialized market from trades: Price=${self.current_price:.4f}")
+            trades_at_time = trades_df[trades_df.index >= earliest_time]
+            if not trades_at_time.empty:
+                first_price = trades_at_time['price'].iloc[0]
+                if pd.notna(first_price) and first_price > 0:
+                    self.current_price = first_price
+                    # Synthesize bid/ask with typical spread
+                    spread = self.current_price * self.typical_spread_pct
+                    self.current_bid = self.current_price - spread / 2
+                    self.current_ask = self.current_price + spread / 2
+                    self.current_spread = spread
+                    self.current_timestamp = trades_at_time.index[0]
+                    self._log(f"Initialized market from trades: Price=${self.current_price:.4f}")
 
         # If neither quotes nor trades worked, try bars
         if self.current_price is None and not bars_df.empty:
-            if 'open' in bars_df.columns and pd.notna(bars_df['open'].iloc[0]) and bars_df['open'].iloc[0] > 0:
-                # Use open price from first bar
-                self.current_price = bars_df['open'].iloc[0]
-                # Synthesize bid/ask
-                spread = self.current_price * self.typical_spread_pct
-                self.current_bid = self.current_price - spread / 2
-                self.current_ask = self.current_price + spread / 2
-                self.current_spread = spread
-                self.current_timestamp = bars_df.index[0]
-                self._log(f"Initialized market from bars: Price=${self.current_price:.4f}")
+            bars_at_time = bars_df[bars_df.index >= earliest_time]
+            if not bars_at_time.empty and 'open' in bars_at_time.columns:
+                first_price = bars_at_time['open'].iloc[0]
+                if pd.notna(first_price) and first_price > 0:
+                    # Use open price from first bar
+                    self.current_price = first_price
+                    # Synthesize bid/ask
+                    spread = self.current_price * self.typical_spread_pct
+                    self.current_bid = self.current_price - spread / 2
+                    self.current_ask = self.current_price + spread / 2
+                    self.current_spread = spread
+                    self.current_timestamp = bars_at_time.index[0]
+                    self._log(f"Initialized market from bars: Price=${self.current_price:.4f}")
 
         # If still not initialized, set some default values for testing
         if self.current_price is None:
@@ -138,26 +169,21 @@ class MarketSimulator:
             self.current_ask = 10.05
             self.current_spread = 0.10
 
-            # Try to get a timestamp at least
-            if not quotes_df.empty:
-                self.current_timestamp = quotes_df.index[0]
-            elif not trades_df.empty:
-                self.current_timestamp = trades_df.index[0]
-            elif not bars_df.empty:
-                self.current_timestamp = bars_df.index[0]
-
         # Check if market is halted at the start
         if status_df is not None and not status_df.empty:
             self._update_halt_status(self.current_timestamp)
 
         # Calculate initial volatility
-        if not bars_df.empty and len(bars_df) > 10:
-            # Use 10-bar rolling volatility
-            returns = bars_df['close'].pct_change().iloc[1:11]
-            self.cached_volatility = np.std(returns) if len(returns) > 0 else 0.01
+        if not bars_df.empty:
+            bars_at_time = bars_df[bars_df.index >= earliest_time]
+            if len(bars_at_time) > 10:
+                # Use 10-bar rolling volatility
+                returns = bars_at_time['close'].pct_change().iloc[1:11]
+                self.cached_volatility = np.std(returns) if len(returns) > 0 else 0.01
 
         self._log(
             f"Market initialized: Price=${self.current_price:.4f}, Bid=${self.current_bid:.4f}, Ask=${self.current_ask:.4f}, Spread=${self.current_spread:.4f}")
+        self.initialized = True
 
     def update_to_timestamp(self, timestamp: datetime) -> None:
         """
@@ -166,6 +192,10 @@ class MarketSimulator:
         Args:
             timestamp: Target timestamp to update to
         """
+        if not self.initialized:
+            self._log("Market simulator not initialized yet", logging.WARNING)
+            return
+
         # Handle timezone comparison safely
         if self.current_timestamp is not None:
             # Ensure both timestamps have consistent timezone information
@@ -180,9 +210,12 @@ class MarketSimulator:
 
             # Now we can safely compare
             if target_ts == current_ts:
-                return  # Already at this timestamp
+                # Already at this timestamp, no update needed
+                return
 
-            if target_ts < current_ts:
+            if target_ts < current_ts and self.enforce_time_ordering and not self.allow_backwards_time:
+                # If strict time ordering is enforced, log a warning but allow the update
+                # This makes simulation more robust in the face of slightly out-of-order data
                 self._log(f"Cannot move market backwards from {self.current_timestamp} to {timestamp}", logging.WARNING)
                 return
 
@@ -208,31 +241,43 @@ class MarketSimulator:
             if not quotes_up_to.empty:
                 latest_quote = quotes_up_to.iloc[-1]
                 if 'bid_px_00' in latest_quote and 'ask_px_00' in latest_quote:
-                    self.current_bid = latest_quote['bid_px_00']
-                    self.current_ask = latest_quote['ask_px_00']
-                    self.current_spread = self.current_ask - self.current_bid
-                    self.current_price = (self.current_bid + self.current_ask) / 2
+                    if pd.notna(latest_quote['bid_px_00']) and pd.notna(latest_quote['ask_px_00']):
+                        self.current_bid = latest_quote['bid_px_00']
+                        self.current_ask = latest_quote['ask_px_00']
+                        self.current_spread = self.current_ask - self.current_bid
+                        self.current_price = (self.current_bid + self.current_ask) / 2
+                        return
 
-        # If no quotes or incomplete quote data, use trades or bars
-        if self.current_price is None or np.isnan(self.current_price):
-            if self.trades_df is not None and not self.trades_df.empty:
-                trades_up_to = self.trades_df[self.trades_df.index <= timestamp]
-                if not trades_up_to.empty and 'price' in trades_up_to.columns:
-                    self.current_price = trades_up_to.iloc[-1]['price']
-                    # Synthesize bid/ask
-                    spread = self.current_price * self.typical_spread_pct
-                    self.current_bid = self.current_price - spread / 2
-                    self.current_ask = self.current_price + spread / 2
-                    self.current_spread = spread
-            elif self.bars_df is not None and not self.bars_df.empty:
-                bars_up_to = self.bars_df[self.bars_df.index <= timestamp]
-                if not bars_up_to.empty:
-                    self.current_price = bars_up_to.iloc[-1]['close']
-                    # Synthesize bid/ask
-                    spread = self.current_price * self.typical_spread_pct
-                    self.current_bid = self.current_price - spread / 2
-                    self.current_ask = self.current_price + spread / 2
-                    self.current_spread = spread
+        # If no quotes or incomplete quote data, use trades
+        if self.trades_df is not None and not self.trades_df.empty:
+            trades_up_to = self.trades_df[self.trades_df.index <= timestamp]
+            if not trades_up_to.empty and 'price' in trades_up_to.columns:
+                latest_price = trades_up_to.iloc[-1]['price']
+                if pd.notna(latest_price) and latest_price > 0:
+                    # Update price from trade
+                    self.current_price = latest_price
+
+                    # Only update bid/ask if we don't have current values
+                    if self.current_bid is None or self.current_ask is None:
+                        spread = self.current_price * self.typical_spread_pct
+                        self.current_bid = self.current_price - spread / 2
+                        self.current_ask = self.current_price + spread / 2
+                        self.current_spread = spread
+                    return
+
+        # If we still need prices, try bars
+        if self.bars_df is not None and not self.bars_df.empty:
+            bars_up_to = self.bars_df[self.bars_df.index <= timestamp]
+            if not bars_up_to.empty:
+                latest_close = bars_up_to.iloc[-1]['close']
+                if pd.notna(latest_close) and latest_close > 0:
+                    self.current_price = latest_close
+                    # Synthesize bid/ask if needed
+                    if self.current_bid is None or self.current_ask is None:
+                        spread = self.current_price * self.typical_spread_pct
+                        self.current_bid = self.current_price - spread / 2
+                        self.current_ask = self.current_price + spread / 2
+                        self.current_spread = spread
 
     def _update_volatility(self, timestamp: datetime) -> None:
         """
