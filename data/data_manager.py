@@ -94,7 +94,6 @@ class DataManager:
 
         try:
             for data_type in data_types:
-                self._log(f"Loading {data_type} for {symbol} from {start_time} to {end_time}")
 
                 if data_type == 'trades':
                     df = self.provider.get_trades(symbol, start_time, end_time)
@@ -113,10 +112,11 @@ class DataManager:
                     # Cache the data
                     self.data_cache[symbol][data_type] = df
                     loaded_data[data_type] = df
+                    self._log(f"Loaded {len(df)} {data_type} data for {symbol} from {pd.Timestamp(start_time).date()} to {pd.Timestamp(end_time).date()}")
                 else:
                     self._log(f"No data found for {symbol} {data_type}", logging.WARNING)
 
-            self._log(f"Loaded data for {symbol}: {', '.join(loaded_data.keys())}")
+            self._log(f"Loaded data for {symbol} from {start_time} to {end_time}: {', '.join(loaded_data.keys())}")
             return loaded_data
 
         except Exception as e:
