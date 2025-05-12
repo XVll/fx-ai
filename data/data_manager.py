@@ -91,9 +91,13 @@ class DataManager:
 
         # Load data for each requested type
         loaded_data = {}
+        successful_types = []
 
         try:
+            self._log(f"Loading data for {symbol} from {start_time} to {end_time} - types: {data_types}")
+
             for data_type in data_types:
+                self._log(f"Loading {data_type} data for {symbol}...", logging.DEBUG)
 
                 if data_type == 'trades':
                     df = self.provider.get_trades(symbol, start_time, end_time)
@@ -108,19 +112,32 @@ class DataManager:
                     self._log(f"Unknown data type: {data_type}", logging.WARNING)
                     continue
 
-                if not df.empty:
+                if df is not None and not df.empty:
+                    # Check if DataFrame has index (should be DatetimeIndex)
+                    if not isinstance(df.index, pd.DatetimeIndex):
+                        self._log(f"WARNING: {data_type} DataFrame has no DatetimeIndex, skipping", logging.WARNING)
+                        continue
+
                     # Cache the data
                     self.data_cache[symbol][data_type] = df
                     loaded_data[data_type] = df
-                    self._log(f"Loaded {len(df)} {data_type} data for {symbol} from {pd.Timestamp(start_time).date()} to {pd.Timestamp(end_time).date()}")
+                    successful_types.append(data_type)
+                    self._log(f"Loaded {len(df)} rows of {data_type} data for {symbol}", logging.DEBUG)
                 else:
-                    self._log(f"No data found for {symbol} {data_type}", logging.WARNING)
+                    self._log(f"No {data_type} data found for {symbol}", logging.WARNING)
 
-            self._log(f"Loaded data for {symbol} from {start_time} to {end_time}: {', '.join(loaded_data.keys())}")
+            if successful_types:
+                self._log(f"Loaded data for {symbol} from {start_time} to {end_time}: {', '.join(successful_types)}")
+            else:
+                self._log(f"No data was successfully loaded for {symbol} from {start_time} to {end_time}",
+                          logging.WARNING)
+
             return loaded_data
 
         except Exception as e:
             self._log(f"Error loading data for {symbol}: {e}", logging.ERROR)
+            import traceback
+            self._log(f"Traceback: {traceback.format_exc()}", logging.DEBUG)
             return {}
 
     def get_data(self, symbol: str = None, data_types: List[str] = None) -> Dict[str, pd.DataFrame]:

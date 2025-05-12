@@ -262,20 +262,70 @@ class DabentoFileProvider(HistoricalDataProvider):
 
     def get_trades(self, symbol: str, start_time: Union[datetime, str],
                    end_time: Union[datetime, str]) -> pd.DataFrame:
+        """
+        Get historical trades for a symbol in a time range.
+
+        Args:
+            symbol: Symbol to get data for
+            start_time: Start time
+            end_time: End time
+
+        Returns:
+            DataFrame with trades data
+        """
         start_utc = ensure_timezone_aware(start_time, is_end_time=False)
         end_utc = ensure_timezone_aware(end_time, is_end_time=True)
+
         df_trades = self._load_data_for_request("trades", symbol, start_utc, end_utc)
+
+        if not df_trades.empty:
+            self.logger.info(
+                f"Loaded {len(df_trades)} trades data for {symbol} from {start_utc.date()} to {end_utc.date()}")
+        else:
+            self.logger.warning(f"No trades data loaded for {symbol} in range {start_utc} to {end_utc}")
+
         return df_trades
 
     def get_quotes(self, symbol: str, start_time: Union[datetime, str],
                    end_time: Union[datetime, str]) -> pd.DataFrame:
+        """
+        Get historical quotes for a symbol in a time range.
+
+        Args:
+            symbol: Symbol to get data for
+            start_time: Start time
+            end_time: End time
+
+        Returns:
+            DataFrame with quotes data
+        """
         start_utc = ensure_timezone_aware(start_time, is_end_time=False)
         end_utc = ensure_timezone_aware(end_time, is_end_time=True)
+
         df_quotes = self._load_data_for_request(self._TIMEFRAME_TO_SCHEMA_MAP["quotes"], symbol, start_utc, end_utc)
+
+        if not df_quotes.empty:
+            self.logger.info(
+                f"Loaded {len(df_quotes)} quotes data for {symbol} from {start_utc.date()} to {end_utc.date()}")
+        else:
+            self.logger.warning(f"No quotes data loaded for {symbol} in range {start_utc} to {end_utc}")
+
         return df_quotes
 
     def get_bars(self, symbol: str, timeframe: str, start_time: Union[datetime, str],
                  end_time: Union[datetime, str]) -> pd.DataFrame:
+        """
+        Get OHLCV bars for a symbol, timeframe in a time range.
+
+        Args:
+            symbol: Symbol to get data for
+            timeframe: Timeframe for bars (e.g., "1s", "1m", "5m", "1d")
+            start_time: Start time
+            end_time: End time
+
+        Returns:
+            DataFrame with OHLCV bars
+        """
         start_utc = ensure_timezone_aware(start_time, is_end_time=False)
         end_utc = ensure_timezone_aware(end_time, is_end_time=True)
 
@@ -287,9 +337,16 @@ class DabentoFileProvider(HistoricalDataProvider):
 
         df_bars = self._load_data_for_request(databento_schema, symbol, start_utc, end_utc)
 
+        # If 5m bars not found directly, try to create from 1m
         if timeframe.lower() == "5m" and df_bars.empty:
-            self._log(f"No direct 5m bars found for {symbol}. Trying to create from 1m bars.",logging.DEBUG)
+            self._log(f"No direct 5m bars found for {symbol}. Trying to create from 1m bars.", logging.DEBUG)
             df_bars = self._create_5m_bars_from_1m(symbol, start_utc, end_utc)
+
+        if not df_bars.empty:
+            self.logger.info(
+                f"Loaded {len(df_bars)} {timeframe} bars for {symbol} from {start_utc.date()} to {end_utc.date()}")
+        else:
+            self.logger.warning(f"No {timeframe} bars loaded for {symbol} in range {start_utc} to {end_utc}")
 
         return df_bars
 
@@ -327,7 +384,26 @@ class DabentoFileProvider(HistoricalDataProvider):
 
     def get_status(self, symbol: str, start_time: Union[datetime, str],
                    end_time: Union[datetime, str]) -> pd.DataFrame:
+        """
+        Get status updates (halts, etc.) for a symbol in a time range.
+
+        Args:
+            symbol: Symbol to get data for
+            start_time: Start time
+            end_time: End time
+
+        Returns:
+            DataFrame with status data
+        """
         start_utc = ensure_timezone_aware(start_time, is_end_time=False)
         end_utc = ensure_timezone_aware(end_time, is_end_time=True)
+
         df_status = self._load_data_for_request(self._TIMEFRAME_TO_SCHEMA_MAP["status"], symbol, start_utc, end_utc)
+
+        if not df_status.empty:
+            self.logger.info(
+                f"Loaded {len(df_status)} status data for {symbol} from {start_utc.date()} to {end_utc.date()}")
+        else:
+            self.logger.info(f"No status data found for {symbol} in range {start_utc} to {end_utc}")
+
         return df_status
