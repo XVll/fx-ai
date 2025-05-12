@@ -1,20 +1,22 @@
-# data/feature/feature_extractor.py
-from typing import Dict, List, Union, Tuple, Optional, Any, Set, Callable
-import pandas as pd
+# feature/feature_extractor.py
 import numpy as np
-from functools import lru_cache
+import pandas as pd
+from typing import Dict, List, Union, Optional, Any
 import logging
-from data.utils.indicators import calculate_ema, calculate_macd, calculate_vwap
+from datetime import datetime, timedelta
 
 
 class FeatureExtractor:
     """
-    Extracts features from raw market data for use by the AI model.
-    Designed with:
-    - Modular feature groups
-    - Efficient caching
-    - Support for incremental updates
-    - Extensible architecture
+    Extracts trading features from raw market data.
+    Designed to capture multi-timeframe signals for momentum trading.
+
+    Features extracted include:
+    - Price returns across multiple timeframes
+    - Volume metrics
+    - Technical indicators (EMA, VWAP, MACD)
+    - Tape and order book features
+    - Volatility metrics
     """
 
     def __init__(self, config: Dict = None, logger: logging.Logger = None):
@@ -22,625 +24,867 @@ class FeatureExtractor:
         Initialize the feature extractor.
 
         Args:
-            config: Configuration dictionary with parameters like window sizes, indicators, etc.
+            config: Configuration dictionary with feature parameters
             logger: Optional logger
         """
         self.config = config or {}
         self.logger = logger or logging.getLogger(__name__)
 
-        # Default parameters if not in config
-        self.price_windows = self.config.get('price_windows', [5, 10, 20, 50])
+        # Feature configuration
+        self.include_price_features = self.config.get('include_price_features', True)
+        self.include_volume_features = self.config.get('include_volume_features', True)
+        self.include_technical_indicators = self.config.get('include_technical_indicators', True)
+        self.include_tape_features = self.config.get('include_tape_features', True)
+        self.include_order_book_features = self.config.get('include_order_book_features', True)
+        self.include_volatility_features = self.config.get('include_volatility_features', True)
+
+        # Price return windows
+        self.price_return_windows = self.config.get('price_return_windows', [5, 10, 20, 50, 100])
+
+        # Moving average windows
+        self.ema_windows = self.config.get('ema_windows', [9, 20, 50, 200])
+
+        # VWAP period
+        self.vwap_period = self.config.get('vwap_period', 'day')
+
+        # MACD parameters
+        self.macd_fast = self.config.get('macd_fast', 12)
+        self.macd_slow = self.config.get('macd_slow', 26)
+        self.macd_signal = self.config.get('macd_signal', 9)
+
+        # Volume windows
         self.volume_windows = self.config.get('volume_windows', [5, 10, 20, 50])
-        self.ema_periods = self.config.get('ema_periods', [9, 20, 50, 200])
-        self.vwap_enabled = self.config.get('vwap_enabled', True)
-        self.macd_params = self.config.get('macd_params', {'fast': 12, 'slow': 26, 'signal': 9})
 
-        # Feature group registry - mapping feature group names to feature generation functions
-        self.feature_groups = {
-            'price': self._extract_price_features,
-            'volume': self._extract_volume_features,
-            'indicators': self._extract_indicator_features,
-            'tape': self._extract_tape_features,
-            'quote': self._extract_quote_features,
-            'status': self._extract_status_features,
-        }
+        # Volatility windows
+        self.volatility_windows = self.config.get('volatility_windows', [10, 20, 50])
 
-        # Custom feature extractors can be registered
-        self.custom_extractors = {}
+        # Support/resistance levels
+        self.sup_res_lookback = self.config.get('sup_res_lookback', 100)
+        self.sup_res_threshold = self.config.get('sup_res_threshold', 0.005)
 
-        # Cached feature DataFrames
-        self.feature_cache = {}
+        # Half/whole dollars
+        self.half_dollar_threshold = self.config.get('half_dollar_threshold', 0.05)  # 5% of price
 
-    def _log(self, message: str, level: int = logging.INFO):
-        """Helper method for logging."""
-        if self.logger:
-            self.logger.log(level, message)
+        # Resampling frequencies
+        self.resample_frequencies = self.config.get('resample_frequencies',
+                                                    {'1s' , '1m', '5m'})
 
-    def _extract_price_features(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+        # Processing options
+        self.use_parallel = self.config.get('use_parallel', False)
+        self.fillna_method = self.config.get('fillna_method', 'ffill')
+
+        # Cache for computed features
+        self._feature_cache = {}
+
+    def extract_features(self, data_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         """
-        Extract price-based features from OHLCV data.
+        Extract features from raw market data.
 
         Args:
-            bars_df: DataFrame with OHLCV bars data
-            timeframe: Timeframe string (e.g., "1s", "1m")
+            data_dict: Dictionary with market data
+                {
+                    'bars_1s': DataFrame with 1-second bars,
+                    'bars_1m': DataFrame with 1-minute bars,
+                    'bars_5m': DataFrame with 5-minute bars,
+                    'bars_1d': DataFrame with daily bars,
+                    'trades': DataFrame with trades,
+                    'quotes': DataFrame with quotes,
+                    'status': DataFrame with status updates
+                }
 
         Returns:
             DataFrame with extracted features
         """
-        if bars_df.empty:
-            return pd.DataFrame(index=bars_df.index)
+        # Clear cache
+        self._feature_cache = {}
 
-        features = pd.DataFrame(index=bars_df.index)
-
-        # Price returns for different windows
-        for window in self.price_windows:
-            col_name = f"return_{window}"
-            features[col_name] = bars_df['close'].pct_change(window, fill_method=None)
-
-        # High-Low range relative to close
-        features[f"hlc_ratio"] = (bars_df['high'] - bars_df['low']) / bars_df['close']
-
-        # Distance from high/low of different windows
-        for window in self.price_windows:
-            # Percent off high
-            high_window = bars_df['high'].rolling(window).max()
-            features[f"pct_off_high_{window}"] = (bars_df['close'] - high_window) / high_window
-
-            # Percent off low
-            low_window = bars_df['low'].rolling(window).min()
-            features[f"pct_off_low_{window}"] = (bars_df['close'] - low_window) / low_window
-
-        # Whole and half dollar proximity
-        features[f"dist_to_whole_dollar"] = bars_df['close'].apply(
-            lambda x: abs(x - round(x)) if not pd.isna(x) else np.nan
-        )
-        features[f"dist_to_half_dollar"] = bars_df['close'].apply(
-            lambda x: abs(x - round(x * 2) / 2) if not pd.isna(x) else np.nan
-        )
-
-        return features
-
-    def _extract_volume_features(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
-        """
-        Extract volume-based features from OHLCV data.
-
-        Args:
-            bars_df: DataFrame with OHLCV bars data
-            timeframe: Timeframe string (e.g., "1s", "1m")
-
-        Returns:
-            DataFrame with extracted features
-        """
-        if bars_df.empty:
-            return pd.DataFrame(index=bars_df.index)
-
-        features = pd.DataFrame(index=bars_df.index)
-
-        # Volume relative to average for different windows
-        for window in self.volume_windows:
-            vol_avg = bars_df['volume'].rolling(window).mean()
-            features[f"{timeframe}_vol_ratio_{window}"] = bars_df['volume'] / vol_avg
-
-        # Volume increasing/decreasing flags
-        for window in self.volume_windows:
-            prev_vol = bars_df['volume'].shift(window)
-            features[f"{timeframe}_vol_incr_{window}"] = (bars_df['volume'] > prev_vol).astype(int)
-
-        # Volume spikes (> 5x average)
-        for window in self.volume_windows:
-            vol_avg = bars_df['volume'].rolling(window).mean()
-            features[f"{timeframe}_vol_spike_{window}"] = (bars_df['volume'] > vol_avg * 5).astype(int)
-
-        # Price-volume correlation
-        for window in self.volume_windows:
-            if window > 1 and len(bars_df) >= window:
-                # Calculate returns and volume changes
-                price_changes = bars_df['close'].pct_change(1, fill_method=None)
-                volume_changes = bars_df['volume'].pct_change(1, fill_method=None)
-
-                # Create a temporary DataFrame with both series
-                temp_df = pd.DataFrame({
-                    'price': price_changes,
-                    'volume': volume_changes
-                })
-
-                # Apply rolling correlation
-                rolling_corr = temp_df['price'].rolling(window).corr(temp_df['volume'])
-                features[f"{timeframe}_price_vol_corr_{window}"] = rolling_corr
-            else:
-                features[f"{timeframe}_price_vol_corr_{window}"] = float('nan')
-
-        return features
-
-    def _extract_indicator_features(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
-        """
-        Extract technical indicator features from OHLCV data.
-
-        Args:
-            bars_df: DataFrame with OHLCV bars data
-            timeframe: Timeframe string (e.g., "1s", "1m")
-
-        Returns:
-            DataFrame with extracted features
-        """
-        if bars_df.empty:
-            return pd.DataFrame(index=bars_df.index)
-
-        features = pd.DataFrame(index=bars_df.index)
-
-        # EMAs
-        for period in self.ema_periods:
-            ema_name = f"{timeframe}_ema_{period}"
-            ema_values = calculate_ema(bars_df['close'], period)
-            features[ema_name] = ema_values
-
-            # Distance from EMA (percentage)
-            features[f"{timeframe}_pct_from_ema_{period}"] = (bars_df['close'] - ema_values) / ema_values
-
-            # Above/below EMA (binary indicator)
-            features[f"{timeframe}_above_ema_{period}"] = (bars_df['close'] > ema_values).astype(int)
-
-        # VWAP (if enabled)
-        if self.vwap_enabled:
-            vwap_values = calculate_vwap(bars_df)
-            features[f"{timeframe}_vwap"] = vwap_values
-            features[f"{timeframe}_pct_from_vwap"] = (bars_df['close'] - vwap_values) / vwap_values
-            features[f"{timeframe}_above_vwap"] = (bars_df['close'] > vwap_values).astype(int)
-
-        # MACD
-        macd, signal, hist = calculate_macd(
-            bars_df['close'],
-            self.macd_params['fast'],
-            self.macd_params['slow'],
-            self.macd_params['signal']
-        )
-        features[f"{timeframe}_macd"] = macd
-        features[f"{timeframe}_macd_signal"] = signal
-        features[f"{timeframe}_macd_hist"] = hist
-        features[f"{timeframe}_macd_crossover"] = (hist > 0) & (hist.shift(1) <= 0)
-        features[f"{timeframe}_macd_crossunder"] = (hist < 0) & (hist.shift(1) >= 0)
-
-        return features
-
-    def _extract_tape_features(self, trades_df: pd.DataFrame, timeframe: str = "1s") -> pd.DataFrame:
-        """
-        Extract features from time & sales data (trades).
-
-        Args:
-            trades_df: DataFrame with trades data
-            timeframe: Timeframe to resample trades (default "1s")
-
-        Returns:
-            DataFrame with extracted features
-        """
-        if trades_df.empty:
+        # Check for required data
+        if not data_dict:
+            self.logger.error("No data provided for feature extraction")
             return pd.DataFrame()
 
-        # Convert index to datetime if not already
-        if not isinstance(trades_df.index, pd.DatetimeIndex):
-            self._log("Trades DataFrame index is not DatetimeIndex. Skipping tape features.", logging.WARNING)
+        # Create a base timeline for all features
+        timeline_df = self._create_timeline(data_dict)
+        if timeline_df.empty:
+            self.logger.error("Could not create timeline for features")
             return pd.DataFrame()
 
-        features = pd.DataFrame()
+        self.logger.info(f"Created timeline with {len(timeline_df)} timestamps")
 
-        # Resample trades to the specified timeframe
-        try:
-            resampled = trades_df.resample(timeframe).agg({
-                'price': ['first', 'last', 'mean', 'count'],
-                'size': ['sum', 'mean', 'max']
-            })
+        # Extract features from each data source
+        feature_dfs = []
 
-            resampled.columns = ['_'.join(col).strip() for col in resampled.columns.values]
+        # Price features from bars
+        if self.include_price_features:
+            # 1-second features
+            if 'bars_1s' in data_dict and not data_dict['bars_1s'].empty:
+                self.logger.info("Extracting 1-second price features")
+                feature_dfs.append(self._extract_price_features(data_dict['bars_1s'], '1s'))
 
-            # Trade frequency (trades per second)
-            features['trade_frequency'] = resampled['price_count']
+            # 1-minute features
+            if 'bars_1m' in data_dict and not data_dict['bars_1m'].empty:
+                self.logger.info("Extracting 1-minute price features")
+                feature_dfs.append(self._extract_price_features(data_dict['bars_1m'], '1m'))
 
-            # Average trade size
-            features['avg_trade_size'] = resampled['size_mean']
+            # 5-minute features
+            if 'bars_5m' in data_dict and not data_dict['bars_5m'].empty:
+                self.logger.info("Extracting 5-minute price features")
+                feature_dfs.append(self._extract_price_features(data_dict['bars_5m'], '5m'))
 
-            # Total volume
-            features['total_volume'] = resampled['size_sum']
+            # Daily features
+            if 'bars_1d' in data_dict and not data_dict['bars_1d'].empty:
+                self.logger.info("Extracting daily price features")
+                feature_dfs.append(self._extract_price_features(data_dict['bars_1d'], '1d'))
 
-            # Largest trade
-            features['max_trade_size'] = resampled['size_max']
+        # Volume features
+        if self.include_volume_features:
+            # From bars
+            for timeframe in ['bars_1s', 'bars_1m', 'bars_5m']:
+                if timeframe in data_dict and not data_dict[timeframe].empty:
+                    self.logger.info(f"Extracting volume features from {timeframe}")
+                    tf_short = timeframe.split('_')[1]
+                    feature_dfs.append(self._extract_volume_features(data_dict[timeframe], tf_short))
 
-            # Tape color/imbalance (if side information is available)
-            if 'side' in trades_df.columns:
-                # Create buy/sell masks
-                buy_mask = trades_df['side'] == 'B'
-                sell_mask = trades_df['side'] == 'A'
+            # From trades
+            if 'trades' in data_dict and not data_dict['trades'].empty:
+                self.logger.info("Extracting volume features from trades")
+                feature_dfs.append(self._extract_tape_features(data_dict['trades']))
 
-                # Compute buy volume
-                buy_vol = trades_df[buy_mask].resample(timeframe)['size'].sum()
-                features['buy_volume'] = buy_vol
+        # Technical indicators
+        if self.include_technical_indicators:
+            # From 1-minute bars
+            if 'bars_1m' in data_dict and not data_dict['bars_1m'].empty:
+                self.logger.info("Extracting technical indicators from 1-minute bars")
+                feature_dfs.append(self._extract_technical_indicators(data_dict['bars_1m'], '1m'))
 
-                # Compute sell volume
-                sell_vol = trades_df[sell_mask].resample(timeframe)['size'].sum()
-                features['sell_volume'] = sell_vol
+            # From 5-minute bars
+            if 'bars_5m' in data_dict and not data_dict['bars_5m'].empty:
+                self.logger.info("Extracting technical indicators from 5-minute bars")
+                feature_dfs.append(self._extract_technical_indicators(data_dict['bars_5m'], '5m'))
 
-                # Tape imbalance (Buy - Sell) / (Buy + Sell)
-                total_vol = buy_vol + sell_vol
-                features['tape_imbalance'] = np.where(total_vol > 0, (buy_vol - sell_vol) / total_vol, 0)
+        # Order book features
+        if self.include_order_book_features and 'quotes' in data_dict and not data_dict['quotes'].empty:
+            self.logger.info("Extracting order book features")
+            feature_dfs.append(self._extract_order_book_features(data_dict['quotes']))
 
-                # Large trades (identify prints larger than X% of average size)
-                avg_size = trades_df['size'].mean()
-                large_threshold = avg_size * 5  # 5x average
+        # Volatility features
+        if self.include_volatility_features:
+            # From 1-second bars
+            if 'bars_1s' in data_dict and not data_dict['bars_1s'].empty:
+                self.logger.info("Extracting volatility features from 1-second bars")
+                feature_dfs.append(self._extract_volatility_features(data_dict['bars_1s'], '1s'))
 
-                large_buys = trades_df[buy_mask & (trades_df['size'] > large_threshold)]
-                large_sells = trades_df[sell_mask & (trades_df['size'] > large_threshold)]
+            # From 1-minute bars
+            if 'bars_1m' in data_dict and not data_dict['bars_1m'].empty:
+                self.logger.info("Extracting volatility features from 1-minute bars")
+                feature_dfs.append(self._extract_volatility_features(data_dict['bars_1m'], '1m'))
 
-                large_buy_vol = large_buys.resample(timeframe)['size'].sum()
-                large_sell_vol = large_sells.resample(timeframe)['size'].sum()
-
-                features['large_buy_volume'] = large_buy_vol
-                features['large_sell_volume'] = large_sell_vol
-
-                # Count of large trades
-                features['large_buy_count'] = large_buys.resample(timeframe).size()
-                features['large_sell_count'] = large_sells.resample(timeframe).size()
-
-                # Flag for very large prints (10x average)
-                very_large_threshold = avg_size * 10  # 10x average
-                features['very_large_buy'] = (trades_df[buy_mask & (trades_df['size'] > very_large_threshold)]
-                                              .resample(timeframe).size() > 0).astype(int)
-                features['very_large_sell'] = (trades_df[sell_mask & (trades_df['size'] > very_large_threshold)]
-                                               .resample(timeframe).size() > 0).astype(int)
-
-            return features
-
-        except Exception as e:
-            self._log(f"Error extracting tape features: {str(e)}", logging.ERROR)
-            return pd.DataFrame()
-
-    def _extract_quote_features(self, quotes_df: pd.DataFrame, timeframe: str = "1s") -> pd.DataFrame:
-        """
-        Extract features from quote data (bid/ask).
-
-        Args:
-            quotes_df: DataFrame with quote data
-            timeframe: Timeframe to resample quotes (default "1s")
-
-        Returns:
-            DataFrame with extracted features
-        """
-        if quotes_df.empty:
-            return pd.DataFrame()
-
-        # Convert index to datetime if not already
-        if not isinstance(quotes_df.index, pd.DatetimeIndex):
-            self._log("Quotes DataFrame index is not DatetimeIndex. Skipping quote features.", logging.WARNING)
-            return pd.DataFrame()
-
-        features = pd.DataFrame()
-
-        try:
-            # Resample quotes to the specified timeframe
-            resampled = quotes_df.resample(timeframe).last()
-
-            # Spread (absolute and relative)
-            if 'ask_px_00' in resampled.columns and 'bid_px_00' in resampled.columns:
-                features['bid_ask_spread'] = resampled['ask_px_00'] - resampled['bid_px_00']
-                features['spread_pct'] = features['bid_ask_spread'] / resampled['bid_px_00']
-
-            # Quote imbalance (bid size vs ask size)
-            if 'bid_sz_00' in resampled.columns and 'ask_sz_00' in resampled.columns:
-                total_size = resampled['bid_sz_00'] + resampled['ask_sz_00']
-                features['quote_imbalance'] = np.where(total_size > 0,
-                                                       (resampled['bid_sz_00'] - resampled['ask_sz_00']) / total_size,
-                                                       0)
-
-                # Bid/Ask size
-                features['bid_size'] = resampled['bid_sz_00']
-                features['ask_size'] = resampled['ask_sz_00']
-
-            # Quote count
-            if 'bid_ct_00' in resampled.columns and 'ask_ct_00' in resampled.columns:
-                features['bid_count'] = resampled['bid_ct_00']
-                features['ask_count'] = resampled['ask_ct_00']
-
-                # Compute size/count ratios - average order size
-                features['bid_avg_size'] = np.where(resampled['bid_ct_00'] > 0,
-                                                    resampled['bid_sz_00'] / resampled['bid_ct_00'], 0)
-                features['ask_avg_size'] = np.where(resampled['ask_ct_00'] > 0,
-                                                    resampled['ask_sz_00'] / resampled['ask_ct_00'], 0)
-
-            # Quote dynamics
-            # Calculate changes in bid/ask
-            if len(resampled) > 1:
-                # Bid/ask price movement
-                if 'bid_px_00' in resampled.columns:
-                    features['bid_price_change'] = resampled['bid_px_00'].diff()
-                if 'ask_px_00' in resampled.columns:
-                    features['ask_price_change'] = resampled['ask_px_00'].diff()
-
-                # Size changes
-                if 'bid_sz_00' in resampled.columns:
-                    features['bid_size_change'] = resampled['bid_sz_00'].diff()
-                if 'ask_sz_00' in resampled.columns:
-                    features['ask_size_change'] = resampled['ask_sz_00'].diff()
-
-                # Spread changes
-                if 'bid_ask_spread' in features.columns:
-                    features['spread_change'] = features['bid_ask_spread'].diff()
-
-            return features
-
-        except Exception as e:
-            self._log(f"Error extracting quote features: {str(e)}", logging.ERROR)
-            return pd.DataFrame()
-
-    def _extract_status_features(self, status_df: pd.DataFrame, timeframe: str = "1s") -> pd.DataFrame:
-        """
-        Extract features from status updates (halts, etc.).
-
-        Args:
-            status_df: DataFrame with status data
-            timeframe: Timeframe to resample status (default "1s")
-
-        Returns:
-            DataFrame with extracted features
-        """
-        if status_df.empty:
-            return pd.DataFrame()
-
-        try:
-            # Create a DataFrame covering the entire period
-            start_time = status_df.index.min()
-            end_time = status_df.index.max()
-            if pd.isna(start_time) or pd.isna(end_time):
-                return pd.DataFrame()
-
-            idx = pd.date_range(start=start_time, end=end_time, freq=timeframe)
-            features = pd.DataFrame(index=idx)
-
-            # Fill values for the whole period
-            features['is_trading'] = 1  # Default: trading
-            features['is_quoting'] = 1  # Default: quoting
-            features['is_halted'] = 0  # Default: not halted
-            features['is_short_sell_restricted'] = 0  # Default: not restricted
-
-            # Update based on status messages
-            for _, row in status_df.iterrows():
-                timestamp = row.name
-
-                # Find the relevant index in our features DataFrame
-                idx_pos = features.index.get_indexer([timestamp], method='ffill')[0]
-                if idx_pos < 0:
-                    continue
-
-                # Update trading status
-                if 'is_trading' in row and row['is_trading'] == 'N':
-                    features.loc[features.index[idx_pos:], 'is_trading'] = 0
-                elif 'is_trading' in row and row['is_trading'] == 'Y':
-                    features.loc[features.index[idx_pos:], 'is_trading'] = 1
-
-                # Update quoting status
-                if 'is_quoting' in row and row['is_quoting'] == 'N':
-                    features.loc[features.index[idx_pos:], 'is_quoting'] = 0
-                elif 'is_quoting' in row and row['is_quoting'] == 'Y':
-                    features.loc[features.index[idx_pos:], 'is_quoting'] = 1
-
-                # Update halt status (action 8 is a halt)
-                if 'action' in row and row['action'] == 8:
-                    features.loc[features.index[idx_pos:], 'is_halted'] = 1
-                # Resume trading (action 7)
-                elif 'action' in row and row['action'] == 7:
-                    features.loc[features.index[idx_pos:], 'is_halted'] = 0
-
-                # Update short sell restriction
-                if 'is_short_sell_restricted' in row and row['is_short_sell_restricted'] == 'Y':
-                    features.loc[features.index[idx_pos:], 'is_short_sell_restricted'] = 1
-                elif 'is_short_sell_restricted' in row and row['is_short_sell_restricted'] == 'N':
-                    features.loc[features.index[idx_pos:], 'is_short_sell_restricted'] = 0
-
-            return features
-
-        except Exception as e:
-            self._log(f"Error extracting status features: {str(e)}", logging.ERROR)
-            return pd.DataFrame()
-
-    def register_custom_extractor(self, name: str, extractor_fn: Callable):
-        """
-        Register a custom feature extractor function.
-
-        Args:
-            name: Name of the feature extractor
-            extractor_fn: Function that takes data and returns features
-        """
-        self.custom_extractors[name] = extractor_fn
-
-    def extract_features(self, data_dict: Dict[str, pd.DataFrame],
-                         feature_groups: List[str] = None,
-                         cache_key: str = None) -> pd.DataFrame:
-        """
-        Extract features from provided data.
-
-        Args:
-            data_dict: Dictionary mapping data types to DataFrames
-            feature_groups: List of feature groups to extract. If None, extracts all
-            cache_key: Optional key for caching features (e.g., 'symbol_date')
-
-        Returns:
-            DataFrame with all extracted features
-        """
-        all_features = {}
-
-        # Determine which feature groups to include
-        if feature_groups is None:
-            # Use all registered feature groups
-            feature_groups = list(self.feature_groups.keys()) + list(self.custom_extractors.keys())
-
-        # Process OHLCV bars for each timeframe
-        for tf in ['1s', '1m', '5m', '1d']:
-            key = f'bars_{tf}'
-            if key in data_dict and not data_dict[key].empty:
-                bars_df = data_dict[key]
-
-                # Extract price features if requested
-                if 'price' in feature_groups:
-                    try:
-                        price_features = self._extract_price_features(bars_df, tf)
-                        if not price_features.empty:
-                            all_features[f'{tf}_price'] = price_features
-                    except Exception as e:
-                        self._log(f"Error extracting price features for {tf}: {str(e)}", logging.ERROR)
-
-                # Extract volume features if requested
-                if 'volume' in feature_groups:
-                    try:
-                        volume_features = self._extract_volume_features(bars_df, tf)
-                        if not volume_features.empty:
-                            all_features[f'{tf}_volume'] = volume_features
-                    except Exception as e:
-                        self._log(f"Error extracting volume features for {tf}: {str(e)}", logging.ERROR)
-
-                # Extract indicator features if requested
-                if 'indicators' in feature_groups:
-                    try:
-                        indicator_features = self._extract_indicator_features(bars_df, tf)
-                        if not indicator_features.empty:
-                            all_features[f'{tf}_indicators'] = indicator_features
-                    except Exception as e:
-                        self._log(f"Error extracting indicator features for {tf}: {str(e)}", logging.ERROR)
-
-        # Process trade data
-        if 'tape' in feature_groups and 'trades' in data_dict and not data_dict['trades'].empty:
-            try:
-                tape_features = self._extract_tape_features(data_dict['trades'])
-                if not tape_features.empty:
-                    all_features['tape'] = tape_features
-            except Exception as e:
-                self._log(f"Error extracting tape features: {str(e)}", logging.ERROR)
-
-        # Process quote data
-        if 'quote' in feature_groups and 'quotes' in data_dict and not data_dict['quotes'].empty:
-            try:
-                quote_features = self._extract_quote_features(data_dict['quotes'])
-                if not quote_features.empty:
-                    all_features['quotes'] = quote_features
-            except Exception as e:
-                self._log(f"Error extracting quote features: {str(e)}", logging.ERROR)
-
-        # Process status data
-        if 'status' in feature_groups and 'status' in data_dict and not data_dict['status'].empty:
-            try:
-                status_features = self._extract_status_features(data_dict['status'])
-                if not status_features.empty:
-                    all_features['status'] = status_features
-            except Exception as e:
-                self._log(f"Error extracting status features: {str(e)}", logging.ERROR)
-
-        # Process custom extractors
-        for name, extractor_fn in self.custom_extractors.items():
-            if name in feature_groups:
-                try:
-                    features = extractor_fn(data_dict)
-                    if features is not None and not features.empty:
-                        all_features[name] = features
-                except Exception as e:
-                    self._log(f"Error in custom extractor '{name}': {str(e)}", logging.ERROR)
+        # Status features (halts, etc.)
+        if 'status' in data_dict and not data_dict['status'].empty:
+            self.logger.info("Extracting status features")
+            feature_dfs.append(self._extract_status_features(data_dict['status']))
 
         # Combine all features
-        if not all_features:
-            self._log("No features extracted. Check input data and feature groups.", logging.WARNING)
+        if not feature_dfs:
+            self.logger.error("No features were extracted")
             return pd.DataFrame()
 
-        # Get the highest frequency index (most points)
-        main_index = None
-        for features_df in all_features.values():
-            if features_df is not None and not features_df.empty:
-                if main_index is None or len(features_df.index) > len(main_index):
-                    main_index = features_df.index
+        self.logger.info(f"Combining {len(feature_dfs)} feature sets")
+        combined_features = timeline_df.copy()
 
-        if main_index is None:
-            return pd.DataFrame()
+        for df in feature_dfs:
+            if not df.empty:
+                # Align to timeline and join
+                combined_features = combined_features.join(df, how='left')
 
-        # Create a combined features DataFrame
-        combined_features = pd.DataFrame(index=main_index)
+        # Fill missing values
+        if self.fillna_method == 'ffill':
+            combined_features = combined_features.ffill()
+        elif self.fillna_method == 'bfill':
+            combined_features = combined_features.bfill()
+        elif self.fillna_method == 'zero':
+            combined_features = combined_features.fillna(0)
 
-        # Add each feature set, forward-filling if necessary
-        for feature_name, features_df in all_features.items():
-            if features_df is None or features_df.empty:
-                continue
+        # Drop rows with too many missing values
+        # Calculate what percentage of features should be present
+        min_feature_pct = 0.5  # At least 50% of features should be present
+        min_features = int(len(combined_features.columns) * min_feature_pct)
 
-            # Reindex to main index
-            reindexed = features_df.reindex(main_index, method='ffill')
+        # Count non-null values in each row
+        non_null_counts = combined_features.count(axis=1)
 
-            # Add prefix to column names to avoid collisions
-            # Make sure each column has a unique prefix that includes the feature set name
-            reindexed.columns = [f"{feature_name}_{col}" if not col.startswith(feature_name) else col
-                                 for col in reindexed.columns]
+        # Keep only rows with enough features
+        valid_rows = non_null_counts >= min_features
+        combined_features = combined_features[valid_rows]
 
-            # Join to combined features
-            combined_features = combined_features.join(reindexed)
-
-        # Handle NaN values
-        combined_features = combined_features.ffill().fillna(0)
-
-        # Cache if a cache key is provided
-        if cache_key:
-            self.feature_cache[cache_key] = combined_features
-
+        # Final cleanup
+        self.logger.info(
+            f"Final feature set has {len(combined_features)} rows and {len(combined_features.columns)} columns")
         return combined_features
 
-    def update_features(self, data_dict: Dict[str, pd.DataFrame],
-                        existing_features: pd.DataFrame,
-                        feature_groups: List[str] = None) -> pd.DataFrame:
+    def update_features(self, data_dict: Dict[str, pd.DataFrame], existing_features: pd.DataFrame) -> pd.DataFrame:
         """
         Update existing features with new data.
 
         Args:
-            data_dict: Dictionary mapping data types to DataFrames with new data
-            existing_features: DataFrame with existing features
-            feature_groups: List of feature groups to extract. If None, extracts all
+            data_dict: New market data
+            existing_features: Existing features DataFrame
 
         Returns:
-            DataFrame with updated features
+            Updated features DataFrame
         """
-        if existing_features.empty:
-            return self.extract_features(data_dict, feature_groups)
-
         # Extract features from new data
-        new_features = self.extract_features(data_dict, feature_groups)
+        new_features = self.extract_features(data_dict)
 
         if new_features.empty:
             return existing_features
 
-        # Find the latest timestamp in existing features
-        latest_timestamp = existing_features.index[-1]
+        if existing_features.empty:
+            return new_features
 
-        # Get only new features (after the latest timestamp)
-        newer_features = new_features[new_features.index > latest_timestamp]
+        # Get last timestamp from existing features
+        last_timestamp = existing_features.index[-1]
 
-        if newer_features.empty:
-            return existing_features
+        # Get new data after last timestamp
+        new_data = new_features[new_features.index > last_timestamp]
 
-        # Combine existing and new features
-        updated_features = pd.concat([existing_features, newer_features])
+        # Combine with existing features
+        updated_features = pd.concat([existing_features, new_data])
 
         return updated_features
 
-    def get_cached_features(self, cache_key: str) -> pd.DataFrame:
+    def _create_timeline(self, data_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         """
-        Get cached features by key.
+        Create a base timeline for all features.
 
         Args:
-            cache_key: Key for cached features
+            data_dict: Dictionary with market data
 
         Returns:
-            DataFrame with cached features or empty DataFrame if not found
+            DataFrame with timeline
         """
-        return self.feature_cache.get(cache_key, pd.DataFrame())
+        # Get all timestamps from all data sources
+        all_timestamps = []
 
-    def clear_cache(self, cache_key: str = None):
+        for key, df in data_dict.items():
+            if not df.empty and hasattr(df, 'index'):
+                all_timestamps.extend(df.index.tolist())
+
+        if not all_timestamps:
+            return pd.DataFrame()
+
+        # Create unique, sorted timeline
+        timeline = pd.Series(1, index=pd.DatetimeIndex(sorted(set(all_timestamps))))
+
+        # Create a DataFrame with the timeline index and a placeholder column
+        timeline_df = pd.DataFrame({'timeline': 1}, index=timeline.index)
+
+        return timeline_df
+
+    def _extract_price_features(self, df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         """
-        Clear feature cache.
+        Extract price-based features from OHLCV data.
 
         Args:
-            cache_key: Specific key to clear. If None, clears all cache
+            df: DataFrame with OHLCV data
+            timeframe: Timeframe string (e.g. '1s', '1m', '5m', '1d')
+
+        Returns:
+            DataFrame with price features
         """
-        if cache_key:
-            if cache_key in self.feature_cache:
-                del self.feature_cache[cache_key]
+        # Check required columns
+        required_cols = ['open', 'high', 'low', 'close']
+        if not all(col in df.columns for col in required_cols):
+            # Try to find alternative column names
+            if 'price' in df.columns:
+                # Create OHLCV from trade price
+                close_col = 'price'
+                resampled = True
+            else:
+                self.logger.warning(f"Missing required columns for price features in {timeframe} data")
+                return pd.DataFrame()
         else:
-            self.feature_cache = {}
+            close_col = 'close'
+            resampled = False
+
+        # Create features DataFrame with same index as input
+        features = pd.DataFrame(index=df.index)
+
+        # If we need to resample to the target timeframe
+        if resampled:
+            # Get the resample frequency
+            resample_freq = self.resample_frequencies.get(timeframe, timeframe)
+
+            # Resample the data
+            resampled_df = df.resample(resample_freq).agg({
+                'price': ['first', 'max', 'min', 'last', 'mean'],
+                'size': 'sum'
+            })
+
+            # Flatten the MultiIndex columns
+            resampled_df.columns = ['_'.join(col).strip() for col in resampled_df.columns.values]
+
+            # Rename columns to match OHLCV
+            resampled_df = resampled_df.rename(columns={
+                'price_first': 'open',
+                'price_max': 'high',
+                'price_min': 'low',
+                'price_last': 'close',
+                'price_mean': 'vwap',
+                'size_sum': 'volume'
+            })
+
+            # Use the resampled DataFrame
+            df_to_use = resampled_df
+            close_col = 'close'
+        else:
+            # Use the original DataFrame
+            df_to_use = df
+
+        # Price changes and returns
+        for window in self.price_return_windows:
+            # Absolute price changes
+            features[f'{timeframe}_price_change_{window}'] = df_to_use[close_col].diff(window)
+
+            # Percentage returns
+            features[f'{timeframe}_price_return_{window}'] = df_to_use[close_col].pct_change(window) * 100
+
+        if not resampled and all(col in df.columns for col in required_cols):
+            # HLC ratio (close relative to day's range)
+            features[f'{timeframe}_price_hlc_ratio'] = (df_to_use['close'] - df_to_use['low']) / (
+                        df_to_use['high'] - df_to_use['low'])
+
+            # Percentage off high/low
+            for window in [5, 10, 20, 50]:
+                if len(df_to_use) >= window:
+                    # Rolling high/low
+                    rolling_high = df_to_use['high'].rolling(window).max()
+                    rolling_low = df_to_use['low'].rolling(window).min()
+
+                    # Percentage off high/low
+                    features[f'{timeframe}_price_pct_off_high_{window}'] = (rolling_high - df_to_use[
+                        'close']) / rolling_high * 100
+                    features[f'{timeframe}_price_pct_off_low_{window}'] = (df_to_use[
+                                                                               'close'] - rolling_low) / rolling_low * 100
+
+        # Half/whole dollar proximity
+        if timeframe in ['1s', '1m']:  # Only for short timeframes
+            features[f'{timeframe}_dist_to_half_dollar'] = self._distance_to_half_dollar(df_to_use[close_col])
+            features[f'{timeframe}_dist_to_whole_dollar'] = self._distance_to_whole_dollar(df_to_use[close_col])
+
+            # Normalize to percentage of price
+            avg_price = df_to_use[close_col].mean()
+            if avg_price > 0:
+                features[f'{timeframe}_dist_to_half_dollar_pct'] = features[
+                                                                       f'{timeframe}_dist_to_half_dollar'] / avg_price * 100
+                features[f'{timeframe}_dist_to_whole_dollar_pct'] = features[
+                                                                        f'{timeframe}_dist_to_whole_dollar'] / avg_price * 100
+
+        # Price gaps between timeframes (only for higher timeframes)
+        if timeframe in ['1m', '5m', '1d']:
+            features[f'{timeframe}_price_gap'] = df_to_use['open'] - df_to_use['close'].shift(1)
+            features[f'{timeframe}_price_gap_pct'] = features[f'{timeframe}_price_gap'] / df_to_use['close'].shift(
+                1) * 100
+
+        # Remove features with all NaN values
+        features = features.dropna(axis=1, how='all')
+
+        # Add timeframe prefix to avoid column name collisions
+        features.columns = [f"{timeframe}_{col}" if not col.startswith(f"{timeframe}_") else col for col in
+                            features.columns]
+
+        return features
+
+    def _extract_volume_features(self, df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+        """
+        Extract volume-based features.
+
+        Args:
+            df: DataFrame with volume data
+            timeframe: Timeframe string
+
+        Returns:
+            DataFrame with volume features
+        """
+        # Check for volume column
+        volume_col = 'volume' if 'volume' in df.columns else 'size' if 'size' in df.columns else None
+        if volume_col is None:
+            self.logger.warning(f"No volume column found in {timeframe} data")
+            return pd.DataFrame()
+
+        # Create features DataFrame with same index as input
+        features = pd.DataFrame(index=df.index)
+
+        # Volume features
+        if len(df) > max(self.volume_windows):
+            # Volume changes
+            for window in self.volume_windows:
+                # Absolute volume change
+                features[f'volume_change_{window}'] = df[volume_col].diff(window)
+
+                # Percentage volume change
+                features[f'volume_change_pct_{window}'] = df[volume_col].pct_change(window) * 100
+
+            # Rolling volume metrics
+            for window in self.volume_windows:
+                # Rolling average volume
+                features[f'volume_avg_{window}'] = df[volume_col].rolling(window).mean()
+
+                # Volume relative to moving average
+                features[f'volume_rel_avg_{window}'] = df[volume_col] / features[f'volume_avg_{window}']
+
+                # Cumulative volume in window
+                features[f'volume_cum_{window}'] = df[volume_col].rolling(window).sum()
+
+        # Remove features with all NaN values
+        features = features.dropna(axis=1, how='all')
+
+        # Add timeframe prefix to avoid column name collisions
+        features.columns = [f"{timeframe}_{col}" if not col.startswith(f"{timeframe}_") else col for col in
+                            features.columns]
+
+        return features
+
+    def _extract_technical_indicators(self, df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+        """
+        Extract technical indicators like EMAs, VWAP, MACD.
+
+        Args:
+            df: DataFrame with OHLCV data
+            timeframe: Timeframe string
+
+        Returns:
+            DataFrame with technical indicators
+        """
+        # Check required columns
+        if 'close' not in df.columns:
+            self.logger.warning(f"No close column found in {timeframe} data")
+            return pd.DataFrame()
+
+        # Create features DataFrame with same index as input
+        features = pd.DataFrame(index=df.index)
+
+        # Exponential Moving Averages (EMAs)
+        for window in self.ema_windows:
+            if len(df) >= window:
+                # EMA calculation
+                features[f'ema_{window}'] = df['close'].ewm(span=window, adjust=False).mean()
+
+                # Price relative to EMA
+                features[f'close_to_ema_{window}'] = df['close'] / features[f'ema_{window}'] - 1
+
+                # EMA slope (1-period change)
+                features[f'ema_{window}_slope'] = features[f'ema_{window}'].diff() / features[f'ema_{window}'].shift(
+                    1) * 100
+
+        # VWAP calculation
+        if 'volume' in df.columns or 'size' in df.columns:
+            volume_col = 'volume' if 'volume' in df.columns else 'size'
+
+            if self.vwap_period == 'day':
+                # Daily VWAP - reset at the start of each day
+                # Group by date
+                df['date'] = df.index.date
+                grouped = df.groupby('date')
+
+                # Calculate VWAP for each day
+                vwap_list = []
+                for date, group in grouped:
+                    # Cumulative sum of price * volume and volume
+                    cumulative_pv = (group['close'] * group[volume_col]).cumsum()
+                    cumulative_volume = group[volume_col].cumsum()
+
+                    # VWAP = cumulative_pv / cumulative_volume
+                    vwap = cumulative_pv / cumulative_volume
+                    vwap_list.append(vwap)
+
+                # Combine all VWAPs
+                if vwap_list:
+                    vwap_series = pd.concat(vwap_list)
+                    features['vwap'] = vwap_series
+
+                    # Price relative to VWAP
+                    features['close_to_vwap'] = df['close'] / features['vwap'] - 1
+            else:
+                # Rolling VWAP for a specific window
+                window = int(self.vwap_period) if self.vwap_period.isdigit() else 100
+
+                # Cumulative sum of price * volume and volume for the rolling window
+                rolling_pv = (df['close'] * df[volume_col]).rolling(window).sum()
+                rolling_volume = df[volume_col].rolling(window).sum()
+
+                # VWAP = rolling_pv / rolling_volume
+                features['vwap'] = rolling_pv / rolling_volume
+
+                # Price relative to VWAP
+                features['close_to_vwap'] = df['close'] / features['vwap'] - 1
+
+        # MACD calculation
+        if len(df) >= max(self.macd_slow, self.macd_fast, self.macd_signal):
+            # Fast and slow EMAs
+            ema_fast = df['close'].ewm(span=self.macd_fast, adjust=False).mean()
+            ema_slow = df['close'].ewm(span=self.macd_slow, adjust=False).mean()
+
+            # MACD line
+            features['macd'] = ema_fast - ema_slow
+
+            # Signal line
+            features['macd_signal'] = features['macd'].ewm(span=self.macd_signal, adjust=False).mean()
+
+            # Histogram
+            features['macd_hist'] = features['macd'] - features['macd_signal']
+
+            # MACD momentum (change in histogram)
+            features['macd_momentum'] = features['macd_hist'].diff()
+
+        # Remove features with all NaN values
+        features = features.dropna(axis=1, how='all')
+
+        # Add timeframe prefix to avoid column name collisions
+        features.columns = [f"{timeframe}_{col}" if not col.startswith(f"{timeframe}_") else col for col in
+                            features.columns]
+
+        return features
+
+    def _extract_tape_features(self, trades_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Extract features from the trade tape (Time & Sales).
+
+        Args:
+            trades_df: DataFrame with trades
+
+        Returns:
+            DataFrame with tape features
+        """
+        if trades_df.empty:
+            return pd.DataFrame()
+
+        # Get the timeline - we'll need to resample trades to a uniform timeline
+        timeline_index = pd.date_range(
+            start=trades_df.index.min(),
+            end=trades_df.index.max(),
+            freq='1s'  # 1-second frequency
+        )
+
+        # Create features DataFrame with timeline index
+        features = pd.DataFrame(index=timeline_index)
+
+        # Check required columns
+        required_cols = ['price', 'side']
+        size_col = 'size' if 'size' in trades_df.columns else 'volume' if 'volume' in trades_df.columns else None
+
+        if not all(col in trades_df.columns for col in required_cols) or size_col is None:
+            self.logger.warning("Missing required columns for tape features")
+            return pd.DataFrame()
+
+        # Resample trades to 1-second bins
+        resampled = trades_df.resample('1s').agg({
+            'price': ['count', 'mean', 'min', 'max', 'last'],
+            size_col: 'sum'
+        })
+
+        # Flatten the MultiIndex columns
+        resampled.columns = ['_'.join(col).strip() for col in resampled.columns.values]
+
+        # Rename columns
+        resampled = resampled.rename(columns={
+            f'price_count': 'trade_count',
+            'price_mean': 'price_mean',
+            'price_min': 'price_min',
+            'price_max': 'price_max',
+            'price_last': 'price_last',
+            f'{size_col}_sum': 'volume'
+        })
+
+        # Add calculated features
+        features['trade_count'] = resampled['trade_count'].fillna(0)
+        features['price'] = resampled['price_last'].ffill()
+        features['volume'] = resampled['volume'].fillna(0)
+
+        # Calculate trade speed (trades per second) for different windows
+        for window in [5, 10, 30, 60]:
+            features[f'trade_speed_{window}s'] = features['trade_count'].rolling(window).sum() / window
+
+        # Separate trades by side (buy/sell)
+        buy_trades = trades_df[trades_df['side'] == 'B']
+        sell_trades = trades_df[trades_df['side'] == 'A']
+
+        # Resample buy/sell trades to 1-second bins
+        buy_resampled = buy_trades.resample('1s').agg({size_col: 'sum'})
+        sell_resampled = sell_trades.resample('1s').agg({size_col: 'sum'})
+
+        # Calculate tape imbalance (buy volume - sell volume) / total volume
+        features['buy_volume'] = buy_resampled[size_col].fillna(0)
+        features['sell_volume'] = sell_resampled[size_col].fillna(0)
+
+        # Calculate tape imbalance for different windows
+        for window in [5, 10, 30, 60]:
+            # Sum volumes over window
+            buy_vol_window = features['buy_volume'].rolling(window).sum()
+            sell_vol_window = features['sell_volume'].rolling(window).sum()
+            total_vol_window = buy_vol_window + sell_vol_window
+
+            # Calculate imbalance
+            with np.errstate(divide='ignore', invalid='ignore'):
+                features[f'tape_imbalance_{window}s'] = np.where(
+                    total_vol_window > 0,
+                    (buy_vol_window - sell_vol_window) / total_vol_window,
+                    0
+                )
+
+        # Detect large trades (sudden volume spikes)
+        median_volume = features['volume'].rolling(60).median()
+        features['volume_ratio'] = features['volume'] / median_volume
+
+        # Flag large trades (e.g., 5x normal volume)
+        features['large_trade_flag'] = (features['volume_ratio'] > 5).astype(int)
+
+        # Remove features with all NaN values
+        features = features.dropna(axis=1, how='all')
+
+        # Add 'tape' prefix to avoid column name collisions
+        features.columns = [f"tape_{col}" if not col.startswith("tape_") else col for col in features.columns]
+
+        return features
+
+    def _extract_order_book_features(self, quotes_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Extract features from the order book (quotes).
+
+        Args:
+            quotes_df: DataFrame with quotes
+
+        Returns:
+            DataFrame with order book features
+        """
+        if quotes_df.empty:
+            return pd.DataFrame()
+
+        # Get the timeline - we'll need to resample quotes to a uniform timeline
+        timeline_index = pd.date_range(
+            start=quotes_df.index.min(),
+            end=quotes_df.index.max(),
+            freq='1s'  # 1-second frequency
+        )
+
+        # Create features DataFrame with timeline index
+        features = pd.DataFrame(index=timeline_index)
+
+        # Check required columns
+        bid_px_col = 'bid_px_00' if 'bid_px_00' in quotes_df.columns else 'bid' if 'bid' in quotes_df.columns else None
+        ask_px_col = 'ask_px_00' if 'ask_px_00' in quotes_df.columns else 'ask' if 'ask' in quotes_df.columns else None
+        bid_sz_col = 'bid_sz_00' if 'bid_sz_00' in quotes_df.columns else 'bid_size' if 'bid_size' in quotes_df.columns else None
+        ask_sz_col = 'ask_sz_00' if 'ask_sz_00' in quotes_df.columns else 'ask_size' if 'ask_size' in quotes_df.columns else None
+
+        if not all(col is not None for col in [bid_px_col, ask_px_col, bid_sz_col, ask_sz_col]):
+            self.logger.warning("Missing required columns for order book features")
+            return pd.DataFrame()
+
+        # Resample quotes to 1-second bins
+        # For price, we want the last value in the bin
+        # For size, we could use mean, last, or max depending on the use case
+        resampled = quotes_df.resample('1s').agg({
+            bid_px_col: 'last',
+            ask_px_col: 'last',
+            bid_sz_col: 'last',
+            ask_sz_col: 'last'
+        })
+
+        # Add price features
+        features['bid'] = resampled[bid_px_col].ffill()
+        features['ask'] = resampled[ask_px_col].ffill()
+        features['mid'] = (features['bid'] + features['ask']) / 2
+        features['spread'] = features['ask'] - features['bid']
+        features['spread_pct'] = features['spread'] / features['mid'] * 100
+
+        # Add size features
+        features['bid_size'] = resampled[bid_sz_col].ffill()
+        features['ask_size'] = resampled[ask_sz_col].ffill()
+        features['total_size'] = features['bid_size'] + features['ask_size']
+
+        # Calculate order book imbalance
+        with np.errstate(divide='ignore', invalid='ignore'):
+            features['ob_imbalance'] = np.where(
+                features['total_size'] > 0,
+                (features['bid_size'] - features['ask_size']) / features['total_size'],
+                0
+            )
+
+        # Calculate rolling statistics for order book features
+        for window in [5, 10, 30, 60]:
+            # Spread moving average
+            features[f'spread_ma_{window}s'] = features['spread'].rolling(window).mean()
+            features[f'spread_pct_ma_{window}s'] = features['spread_pct'].rolling(window).mean()
+
+            # Imbalance moving average
+            features[f'ob_imbalance_ma_{window}s'] = features['ob_imbalance'].rolling(window).mean()
+
+            # Bid/ask size moving average
+            features[f'bid_size_ma_{window}s'] = features['bid_size'].rolling(window).mean()
+            features[f'ask_size_ma_{window}s'] = features['ask_size'].rolling(window).mean()
+
+        # Detect significant order book changes
+        features['spread_change'] = features['spread'].diff()
+        features['spread_pct_change'] = features['spread_pct'].diff()
+        features['ob_imbalance_change'] = features['ob_imbalance'].diff()
+
+        # Flag significant changes (e.g., sudden spread widening or narrowing)
+        features['spread_widening'] = (features['spread_change'] > features['spread'].rolling(30).std()).astype(int)
+        features['spread_narrowing'] = (features['spread_change'] < -features['spread'].rolling(30).std()).astype(int)
+
+        # Remove features with all NaN values
+        features = features.dropna(axis=1, how='all')
+
+        # Add 'ob' prefix to avoid column name collisions
+        features.columns = [f"ob_{col}" if not col.startswith("ob_") else col for col in features.columns]
+
+        return features
+
+    def _extract_volatility_features(self, df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+        """
+        Extract volatility features.
+
+        Args:
+            df: DataFrame with OHLCV data
+            timeframe: Timeframe string
+
+        Returns:
+            DataFrame with volatility features
+        """
+        # Check required columns
+        if 'close' not in df.columns:
+            self.logger.warning(f"No close column found in {timeframe} data")
+            return pd.DataFrame()
+
+        # Create features DataFrame with same index as input
+        features = pd.DataFrame(index=df.index)
+
+        # Calculate returns
+        returns = df['close'].pct_change()
+
+        # Calculate volatility for different windows
+        for window in self.volatility_windows:
+            if len(df) >= window:
+                # Standard deviation of returns (volatility)
+                features[f'volatility_{window}'] = returns.rolling(window).std() * 100  # Convert to percentage
+
+                # Annualized volatility (depends on timeframe)
+                annualization_factor = {
+                    '1s': np.sqrt(252 * 6.5 * 60 * 60),  # 252 days * 6.5 hours * 60 minutes * 60 seconds
+                    '1m': np.sqrt(252 * 6.5 * 60),  # 252 days * 6.5 hours * 60 minutes
+                    '5m': np.sqrt(252 * 6.5 * 12),  # 252 days * 6.5 hours * 12 (5-minute bars per hour)
+                    '1d': np.sqrt(252)  # 252 trading days
+                }.get(timeframe, np.sqrt(252))
+
+                features[f'volatility_annual_{window}'] = features[f'volatility_{window}'] * annualization_factor
+
+        # Calculate high-low range
+        if all(col in df.columns for col in ['high', 'low']):
+            # High-low range
+            features['hl_range'] = (df['high'] - df['low']) / df['close'] * 100  # Convert to percentage
+
+            # Rolling high-low range
+            for window in self.volatility_windows:
+                features[f'hl_range_{window}'] = features['hl_range'].rolling(window).mean()
+
+        # Calculate LULD bands (limit up/limit down)
+        if timeframe in ['1m', '5m']:  # Only for minute-level data
+            # Use 5-minute moving average for reference price
+            reference_price = df['close'].rolling(5).mean()
+
+            # Default tier 2 stock percentages
+            tier2_up_pct = 0.10  # 10%
+            tier2_down_pct = 0.10  # 10%
+
+            # Calculate LULD bands
+            features['luld_up'] = reference_price * (1 + tier2_up_pct)
+            features['luld_down'] = reference_price * (1 - tier2_down_pct)
+
+            # Distance to LULD bands (as percentage of current price)
+            features['dist_to_luld_up_pct'] = (features['luld_up'] - df['close']) / df['close'] * 100
+            features['dist_to_luld_down_pct'] = (df['close'] - features['luld_down']) / df['close'] * 100
+
+        # Remove features with all NaN values
+        features = features.dropna(axis=1, how='all')
+
+        # Add timeframe prefix to avoid column name collisions
+        features.columns = [f"{timeframe}_{col}" if not col.startswith(f"{timeframe}_") else col for col in
+                            features.columns]
+
+        return features
+
+    def _extract_status_features(self, status_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Extract features from status updates (halts, etc.).
+
+        Args:
+            status_df: DataFrame with status updates
+
+        Returns:
+            DataFrame with status features
+        """
+        if status_df.empty:
+            return pd.DataFrame()
+
+        # Get the timeline - we'll need to forward-fill status to a uniform timeline
+        timeline_index = pd.date_range(
+            start=status_df.index.min(),
+            end=status_df.index.max(),
+            freq='1s'  # 1-second frequency
+        )
+
+        # Create features DataFrame with timeline index
+        features = pd.DataFrame(index=timeline_index)
+
+        # Check required columns
+        required_cols = ['is_trading', 'is_quoting']
+        if not all(col in status_df.columns for col in required_cols):
+            self.logger.warning("Missing required columns for status features")
+            return pd.DataFrame()
+
+        # Convert status indicators to binary
+        is_trading = status_df['is_trading'].apply(lambda x: 1 if x == 'Y' else 0 if x == 'N' else np.nan)
+        is_quoting = status_df['is_quoting'].apply(lambda x: 1 if x == 'Y' else 0 if x == 'N' else np.nan)
+
+        # Resample to 1-second frequency with forward-fill
+        features['is_trading'] = is_trading.reindex(timeline_index, method='ffill')
+        features['is_quoting'] = is_quoting.reindex(timeline_index, method='ffill')
+
+        # Add 'status' prefix to avoid column name collisions
+        features.columns = [f"status_{col}" for col in features.columns]
+
+        return features
+
+    def _distance_to_half_dollar(self, prices: pd.Series) -> pd.Series:
+        """
+        Calculate distance to the nearest half-dollar level.
+
+        Args:
+            prices: Series of prices
+
+        Returns:
+            Series with distances
+        """
+        # Calculate the distance to the nearest half-dollar
+        floor_half = np.floor(prices * 2) / 2
+        ceil_half = np.ceil(prices * 2) / 2
+
+        # Return the minimum distance
+        return np.minimum(prices - floor_half, ceil_half - prices)
+
+    def _distance_to_whole_dollar(self, prices: pd.Series) -> pd.Series:
+        """
+        Calculate distance to the nearest whole-dollar level.
+
+        Args:
+            prices: Series of prices
+
+        Returns:
+            Series with distances
+        """
+        # Calculate the distance to the nearest whole-dollar
+        floor_dollar = np.floor(prices)
+        ceil_dollar = np.ceil(prices)
+
+        # Return the minimum distance
+        return np.minimum(prices - floor_dollar, ceil_dollar - prices)

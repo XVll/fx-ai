@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # main.py - Main entry point for the trading environment
 import os
 import logging
@@ -68,7 +67,12 @@ def run_random_agent_test(env, num_episodes=5, max_steps=100):
         logger.info(f"Starting episode {episode + 1}/{num_episodes}")
 
         # Reset environment
-        state, info = env.reset()
+        state_array, info = env.reset()
+
+        # Check if state is valid
+        if state_array is None or len(state_array) == 0:
+            logger.error(f"Invalid initial state array: {state_array}")
+            continue
 
         total_reward = 0
         done = False
@@ -79,17 +83,19 @@ def run_random_agent_test(env, num_episodes=5, max_steps=100):
             action = np.random.uniform(-1, 1, size=(1,))
 
             # Step environment
-            next_state, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
+            try:
+                next_state, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
 
-            logger.debug(f"Step {step_count + 1}: Action={action[0]:.4f}, Reward={reward:.4f}")
+                total_reward += reward
+                step_count += 1
 
-            total_reward += reward
-            step_count += 1
-
-            # Print progress every 20 steps
-            if step_count % 20 == 0:
-                logger.info(f"Episode {episode + 1}, Step {step_count}: Total Reward={total_reward:.4f}")
+                # Log debug info periodically
+                if step_count % 20 == 0:
+                    logger.info(f"Episode {episode + 1}, Step {step_count}: Total Reward={total_reward:.4f}")
+            except Exception as e:
+                logger.error(f"Error stepping environment: {e}")
+                break
 
         # Episode summary
         logger.info(f"Episode {episode + 1} finished: Steps={step_count}, Total Reward={total_reward:.4f}")
@@ -97,7 +103,7 @@ def run_random_agent_test(env, num_episodes=5, max_steps=100):
         # Get episode metrics
         if 'episode' in info:
             episode_info = info['episode']
-            logger.info(f"Episode metrics: PnL=${episode_info['total_pnl']:.2f}, "
+            logger.info(f"Episode metrics: PnL=${episode_info['pnl']:.2f}, "
                         f"Win Rate={episode_info['win_rate']:.1%}, "
                         f"Trade Count={episode_info['trade_count']}")
 
@@ -105,16 +111,16 @@ def run_random_agent_test(env, num_episodes=5, max_steps=100):
                 'episode': episode + 1,
                 'steps': step_count,
                 'reward': total_reward,
-                'pnl': episode_info['total_pnl'],
+                'pnl': episode_info['pnl'],
                 'win_rate': episode_info['win_rate'],
                 'trade_count': episode_info['trade_count'],
-                'max_drawdown': episode_info['max_drawdown_pct']
+                'max_drawdown': episode_info['max_drawdown_pct'] if 'max_drawdown_pct' in episode_info else 0.0
             })
 
     return episode_results
 
 
-def run_momentum_strategy_test(env, num_episodes=5, max_steps=100):
+def run_momentum_strategy_test(env, num_episodes=5, max_steps=1000):
     """
     Run a simple momentum strategy to test the environment.
 
@@ -132,7 +138,12 @@ def run_momentum_strategy_test(env, num_episodes=5, max_steps=100):
         logger.info(f"Starting episode {episode + 1}/{num_episodes}")
 
         # Reset environment
-        state, info = env.reset()
+        state_array, info = env.reset()
+
+        # Check if state is valid
+        if state_array is None or len(state_array) == 0:
+            logger.error(f"Invalid initial state array: {state_array}")
+            continue
 
         total_reward = 0
         done = False
@@ -143,17 +154,48 @@ def run_momentum_strategy_test(env, num_episodes=5, max_steps=100):
         entry_price = 0
         position_steps = 0
         prev_prices = []
+        max_position_size = 0.75  # Maximum position size (75% of max allowed)
+
+        # Track trading metrics
+        trades_taken = 0
+        winning_trades = 0
+        losing_trades = 0
 
         while not done and step_count < max_steps:
             # Get current market state
             market_state = env.simulator.get_market_state()
+
+            if market_state is None or not isinstance(market_state, dict):
+                logger.error(f"Invalid market state at step {step_count}")
+                break
+
             current_price = market_state.get('price', 0)
             tape_imbalance = market_state.get('tape_imbalance', 0)
 
+            # Skip if price is invalid
+            if current_price <= 0:
+                logger.warning(f"Invalid price at step {step_count}: {current_price}")
+                action = np.array([0.0])  # Stay flat
+                next_state, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+                step_count += 1
+                continue
+
             # Keep track of recent prices
             prev_prices.append(current_price)
-            if len(prev_prices) > 10:
+            if len(prev_prices) > 20:
                 prev_prices.pop(0)
+
+            # Get position info
+            position_info = env.simulator.portfolio_simulator.get_position(env.simulator.current_symbol)
+            current_position_size = position_info['quantity'] if position_info else 0
+            in_position = current_position_size > 0
+
+            # Calculate unrealized PnL if in position
+            unrealized_pnl_pct = 0
+            if in_position and position_info:
+                entry_price = position_info.get('avg_price', 0)
+                unrealized_pnl_pct = ((current_price / entry_price) - 1) * 100
 
             # Simple momentum strategy
             if len(prev_prices) >= 10:
@@ -165,70 +207,90 @@ def run_momentum_strategy_test(env, num_episodes=5, max_steps=100):
 
                 # Determine action based on momentum and tape
                 if not in_position:
-                    # Entry logic
+                    # Entry logic - looking for strong momentum and positive tape
                     if short_term_return > 0.2 and tape_imbalance > 0.3 and trend > 0:
                         # Strong momentum, positive tape, uptrend - enter long
-                        action = np.array([0.75])  # 75% of max position
-                        in_position = True
-                        entry_price = current_price
-                        position_steps = 0
+                        action = np.array([max_position_size])  # 75% of max position
                         logger.info(
                             f"ENTRY at ${current_price:.4f}, Momentum={short_term_return:.2f}%, Tape={tape_imbalance:.2f}")
                     else:
+                        # No entry conditions met
                         action = np.array([0.0])  # Stay flat
                 else:
-                    # Exit logic
+                    # Exit logic - monitor for reversal signs
                     position_steps += 1
 
-                    # Calculate position P&L
-                    pnl_pct = (current_price / entry_price - 1) * 100
+                    # Calculate position P&L and current metrics
+                    pnl_pct = unrealized_pnl_pct
 
-                    # Exit conditions
+                    # Exit conditions (multiple scenarios)
                     if pnl_pct > 1.0:
-                        # Take profit at 1%
-                        action = np.array([0.0])  # Flat
-                        in_position = False
+                        # Take profit at 1% gain
+                        action = np.array([0.0])  # Exit position
                         logger.info(f"PROFIT TAKE at ${current_price:.4f}, P&L={pnl_pct:.2f}%")
+                        trades_taken += 1
+                        winning_trades += 1
                     elif pnl_pct < -0.5:
                         # Stop loss at -0.5%
-                        action = np.array([0.0])  # Flat
-                        in_position = False
+                        action = np.array([0.0])  # Exit position
                         logger.info(f"STOP LOSS at ${current_price:.4f}, P&L={pnl_pct:.2f}%")
+                        trades_taken += 1
+                        losing_trades += 1
                     elif tape_imbalance < -0.3 and short_term_return < 0:
-                        # Momentum reversal - exit
-                        action = np.array([0.0])  # Flat
-                        in_position = False
+                        # Momentum reversal signals - negative tape and dropping prices
+                        action = np.array([0.0])  # Exit position
                         logger.info(f"REVERSAL EXIT at ${current_price:.4f}, P&L={pnl_pct:.2f}%")
-                    elif position_steps > 20:
-                        # Time-based exit
-                        action = np.array([0.0])  # Flat
-                        in_position = False
+                        trades_taken += 1
+                        winning_trades += 1 if pnl_pct > 0 else losing_trades + 1
+                    elif position_steps > 30:
+                        # Time-based exit - don't hold positions too long
+                        action = np.array([0.0])  # Exit position
                         logger.info(f"TIME EXIT at ${current_price:.4f}, P&L={pnl_pct:.2f}%")
+                        trades_taken += 1
+                        winning_trades += 1 if pnl_pct > 0 else losing_trades + 1
+                    elif pnl_pct > 0.3 and short_term_return < 0:
+                        # Lock in some profits if momentum starts to fade
+                        action = np.array([max_position_size / 2])  # Scale out 50%
+                        logger.info(f"SCALING OUT at ${current_price:.4f}, P&L={pnl_pct:.2f}%")
+                    elif pnl_pct > 0.3 and short_term_return > 0.5 and tape_imbalance > 0.5:
+                        # Pyramid if momentum gets stronger
+                        action = np.array([max_position_size])  # Increase position
+                        logger.info(f"SCALING IN at ${current_price:.4f}, Momentum increasing")
                     else:
                         # Hold position
-                        action = np.array([0.75])  # Maintain position
+                        action = np.array([current_position_size / 1000])  # Maintain current position
             else:
                 # Not enough price history
                 action = np.array([0.0])  # Stay flat
 
             # Step environment
-            next_state, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
+            try:
+                next_state, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+            except Exception as e:
+                logger.error(f"Error stepping environment: {e}")
+                break
 
             total_reward += reward
             step_count += 1
 
-            # Print progress every 20 steps
-            if step_count % 20 == 0:
+            # Print progress every 50 steps
+            if step_count % 50 == 0:
                 logger.info(f"Episode {episode + 1}, Step {step_count}: Total Reward={total_reward:.4f}")
+
+            # Ensure we're not stuck in an infinite loop
+            if step_count >= max_steps:
+                logger.warning(f"Reached maximum steps {max_steps}")
+                break
 
         # Episode summary
         logger.info(f"Episode {episode + 1} finished: Steps={step_count}, Total Reward={total_reward:.4f}")
+        logger.info(f"Trading stats: Trades taken: {trades_taken}, Winners: {winning_trades}, Losers: {losing_trades}")
 
         # Get episode metrics
         if 'episode' in info:
             episode_info = info['episode']
-            logger.info(f"Episode metrics: PnL=${episode_info['total_pnl']:.2f}, "
+            logger.info(f"Episode metrics: PnL=${episode_info['pnl']:.2f}, "
                         f"Win Rate={episode_info['win_rate']:.1%}, "
                         f"Trade Count={episode_info['trade_count']}")
 
@@ -236,10 +298,10 @@ def run_momentum_strategy_test(env, num_episodes=5, max_steps=100):
                 'episode': episode + 1,
                 'steps': step_count,
                 'reward': total_reward,
-                'pnl': episode_info['total_pnl'],
+                'pnl': episode_info['pnl'],
                 'win_rate': episode_info['win_rate'],
                 'trade_count': episode_info['trade_count'],
-                'max_drawdown': episode_info['max_drawdown_pct']
+                'max_drawdown': episode_info['max_drawdown_pct'] if 'max_drawdown_pct' in episode_info else 0.0
             })
 
     return episode_results
@@ -410,7 +472,7 @@ def main():
         return
 
     # Create provider, data manager, and simulator
-    provider = DabentoFileProvider(config['data_dir'], verbose=config['debug'])
+    provider = DabentoFileProvider(config['data_dir'])
     data_manager = DataManager(provider, logger=logger)
 
     # Configure simulators
@@ -418,7 +480,8 @@ def main():
         'min_spread_pct': 0.001,
         'slippage_factor': 0.5,
         'latency_ms': 250,
-        'luld_enabled': True
+        'luld_enabled': True,
+        'enforce_time_ordering': False  # Allow time to go backwards for testing
     }
 
     execution_config = {
@@ -435,7 +498,8 @@ def main():
     sim_config = {
         'market_config': market_config,
         'execution_config': execution_config,
-        'portfolio_config': portfolio_config
+        'portfolio_config': portfolio_config,
+        'max_steps': config['max_steps']  # Add max_steps to config
     }
 
     simulator = Simulator(data_manager, sim_config, logger=logger)
@@ -447,9 +511,14 @@ def main():
 
     # Initialize simulator
     logger.info(f"Initializing simulator for {config['symbol']} on {config['date']}")
+
+    # Find the appropriate time range to capture market hours
+    start_time = f"{config['date']} 08:00:00"  # Start at market open
+    end_time = f"{config['date']} 16:30:00"  # End at market close with some buffer
+
     success = simulator.initialize_for_symbol(
         config['symbol'], mode='backtesting',
-        start_time=config['date'], end_time=config['date'],
+        start_time=start_time, end_time=end_time,
         timeframes=["1s", "1m", "5m", "1d"]
     )
 

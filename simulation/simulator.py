@@ -137,8 +137,6 @@ class Simulator:
             if self.end_timestamp.tzinfo is None:
                 self.end_timestamp = self.end_timestamp.tz_localize('UTC')
 
-        self.current_timestamp = self.start_timestamp if self.start_timestamp else None
-
         # Clear existing features for this symbol
         if symbol in self.features_cache:
             del self.features_cache[symbol]
@@ -187,6 +185,16 @@ class Simulator:
             # Store the raw data
             self.raw_data = data_dict
 
+            # Now sync all data to start from the same time
+            # Find common start time to ensure all data sources align
+            common_start_time = self._find_common_start_time(data_dict)
+            if common_start_time is None:
+                self._log(f"Failed to find common start time across all data sources", logging.ERROR)
+                return False
+
+            self._log(f"Identified common start time: {common_start_time}")
+            self.current_timestamp = common_start_time
+
             # Initialize market simulator with data
             quotes_df = data_dict.get('quotes', pd.DataFrame())
             trades_df = data_dict.get('trades', pd.DataFrame())
@@ -200,6 +208,16 @@ class Simulator:
 
             status_df = data_dict.get('status', pd.DataFrame())
 
+            # Filter all data to start from the common start time
+            if not quotes_df.empty:
+                quotes_df = quotes_df[quotes_df.index >= common_start_time]
+            if not trades_df.empty:
+                trades_df = trades_df[trades_df.index >= common_start_time]
+            if bars_df is not None and not bars_df.empty:
+                bars_df = bars_df[bars_df.index >= common_start_time]
+            if not status_df.empty:
+                status_df = status_df[status_df.index >= common_start_time]
+
             self.market_simulator.initialize_from_data(quotes_df, trades_df, bars_df, status_df)
 
             if load_features:
@@ -210,6 +228,14 @@ class Simulator:
                 if symbol in self.features_cache and self.features_cache[symbol].empty:
                     self._log(f"No features extracted for {symbol}", logging.WARNING)
                     return False
+
+                # Filter features to start from common start time
+                if not self.features_cache[symbol].empty:
+                    self.features_cache[symbol] = self.features_cache[symbol][
+                        self.features_cache[symbol].index >= common_start_time]
+                    if self.features_cache[symbol].empty:
+                        self._log(f"No features left after filtering to common start time", logging.WARNING)
+                        return False
 
                 # Notify feature update callbacks
                 for callback in self.feature_update_callbacks:
@@ -246,6 +272,40 @@ class Simulator:
             self._log(f"Invalid mode: {mode}", logging.ERROR)
             return False
 
+    def _find_common_start_time(self, data_dict: Dict[str, pd.DataFrame]) -> Optional[datetime]:
+        """
+        Find the latest start time across all data sources to ensure synchronization.
+
+        Args:
+            data_dict: Dictionary of DataFrames with market data
+
+        Returns:
+            Common start timestamp or None if no valid time can be found
+        """
+        start_times = []
+
+        # Collect all start times
+        for key, df in data_dict.items():
+            if not df.empty and hasattr(df, 'index') and isinstance(df.index, pd.DatetimeIndex):
+                start_times.append(df.index.min())
+
+        if not start_times:
+            return None
+
+        # Find the latest start time (all data sources will have data from this point)
+        latest_start = max(start_times)
+
+        # Check if we have data from all sources after this time
+        valid_start = True
+        for key, df in data_dict.items():
+            if not df.empty and hasattr(df, 'index') and isinstance(df.index, pd.DatetimeIndex):
+                # If this data source doesn't have entries after the latest start time
+                if df.index.min() > latest_start:
+                    valid_start = False
+                    break
+
+        return latest_start if valid_start else None
+
     def reset(self, random_day: bool = False) -> Dict[str, Any]:
         """
         Reset the simulator to start a new episode.
@@ -280,17 +340,33 @@ class Simulator:
 
         # Get data for initialization
         if self.raw_data:
+            # Find common start time
+            common_start_time = self._find_common_start_time(self.raw_data)
+            if common_start_time is None:
+                self._log("Failed to find common start time during reset", logging.ERROR)
+                return {}
+
+            # Filter data to start from common start time
             quotes_df = self.raw_data.get('quotes', pd.DataFrame())
+            if not quotes_df.empty:
+                quotes_df = quotes_df[quotes_df.index >= common_start_time]
+
             trades_df = self.raw_data.get('trades', pd.DataFrame())
+            if not trades_df.empty:
+                trades_df = trades_df[trades_df.index >= common_start_time]
 
             # Get appropriate bar data - prefer 1m if available
             bars_df = None
             for tf in ['bars_1m', 'bars_1s', 'bars_5m', 'bars_1d']:
                 if tf in self.raw_data and not self.raw_data[tf].empty:
                     bars_df = self.raw_data[tf]
+                    if bars_df is not None and not bars_df.empty:
+                        bars_df = bars_df[bars_df.index >= common_start_time]
                     break
 
             status_df = self.raw_data.get('status', pd.DataFrame())
+            if not status_df.empty:
+                status_df = status_df[status_df.index >= common_start_time]
 
             # Initialize market simulator with data
             self.market_simulator.initialize_from_data(quotes_df, trades_df, bars_df, status_df)
@@ -321,16 +397,21 @@ class Simulator:
                 first_timestamp = bars_df.index[0]
                 self.current_timestamp = first_timestamp
         else:
-            # Use the first timestamp
-            first_timestamp = self.start_timestamp
+            # Use the first synchronized timestamp
+            first_timestamp = common_start_time
             if self.features_cache and self.current_symbol in self.features_cache:
-                # Use the first timestamp from features
-                first_timestamp = self.features_cache[self.current_symbol].index[0]
+                # Filter features to ensure they start at or after the common start time
+                features_df = self.features_cache[self.current_symbol]
+                if not features_df.empty:
+                    features_df = features_df[features_df.index >= common_start_time]
+                    if not features_df.empty:
+                        first_timestamp = features_df.index[0]
 
             self.current_timestamp = first_timestamp
 
         # Update simulators to the first timestamp
         if self.current_timestamp:
+            self._log(f"Resetting to timestamp: {self.current_timestamp}")
             self.market_simulator.update_to_timestamp(self.current_timestamp)
             self.execution_simulator.update_to_timestamp(self.current_timestamp)
             self.portfolio_simulator.update_to_timestamp(self.current_timestamp)
@@ -387,9 +468,15 @@ class Simulator:
         # Move to the next timestep
         next_timestamp = self._get_next_timestamp()
 
-        # Handle timezone comparison safely
+        # Update step counter now, so it's always accurate even if we return early
+        self.step_count += 1
+
+        # Handle episode termination
+        done = False
+
+        # Check if we've reached the end of data
         if next_timestamp is None:
-            # End of data, episode is done
+            self._log(f"End of data reached after {self.step_count} steps", logging.INFO)
             done = True
         elif self.end_timestamp is not None:
             # Ensure consistent timezone awareness before comparison
@@ -403,21 +490,30 @@ class Simulator:
                 end_ts = end_ts.tz_localize('UTC')
 
             done = next_ts > end_ts
-        else:
-            # No end timestamp set
-            done = False
+            if done:
+                self._log(f"Reached end timestamp: {end_ts}", logging.INFO)
+
+        # Check for maximum steps
+        if self.step_count >= self.config.get('max_steps', 1000):
+            done = True
+            self._log(f"Reached maximum steps: {self.step_count}", logging.INFO)
 
         if done:
             # Force close any open positions
             if prev_position_size != 0:
+                self._log(f"Closing position of {prev_position_size} at episode end", logging.INFO)
                 self.portfolio_simulator.execute_action(
                     self.current_symbol,
                     0.0,  # Flat position
                     timestamp=self.current_timestamp
                 )
+
+            # We don't need to update to next timestamp if done
+            next_state = self.state_manager.get_state_dict()
         else:
             # Advance time
             self.current_timestamp = next_timestamp
+            self._log(f"Advancing to timestamp: {self.current_timestamp}", logging.DEBUG)
 
             # Update simulators
             self.market_simulator.update_to_timestamp(self.current_timestamp)
@@ -429,11 +525,11 @@ class Simulator:
                 self.state_manager.update_from_features(self.features_cache[self.current_symbol],
                                                         self.current_timestamp)
 
+            # Get the next state
+            next_state = self.state_manager.get_state_dict()
+
         # Calculate reward
         reward = self._calculate_reward(result, prev_portfolio_value)
-
-        # Get the next state
-        next_state = self.state_manager.get_state_dict()
 
         # Notify callbacks
         for callback in self.state_update_callbacks:
@@ -443,7 +539,6 @@ class Simulator:
             callback(self.portfolio_simulator.get_portfolio_state())
 
         # Update episode tracking
-        self.step_count += 1
         self.total_reward += reward
 
         # Create info dict
@@ -500,41 +595,28 @@ class Simulator:
 
         # Debug info
         self._log(f"Looking for next timestamp after {self.current_timestamp}", logging.DEBUG)
-        self._log(f"Features index contains {len(features_df.index)} timestamps", logging.DEBUG)
-        self._log(f"First few timestamps: {features_df.index[:5].tolist()}", logging.DEBUG)
 
         # Make sure current timestamp has consistent timezone info
-        current_ts = self.current_timestamp
+        current_ts = pd.Timestamp(self.current_timestamp)
         if current_ts.tzinfo is None and features_df.index.tzinfo is not None:
             current_ts = current_ts.tz_localize(features_df.index.tzinfo)
         elif current_ts.tzinfo is not None and features_df.index.tzinfo is None:
-            # If feature index doesn't have timezone but current_ts does,
-            # we can't directly compare, so use get_indexer with 'nearest' method
-            pass
+            features_df_localized = features_df.copy()
+            features_df_localized.index = features_df_localized.index.tz_localize(current_ts.tzinfo)
+            features_df = features_df_localized
 
-        # Find index of current timestamp using get_indexer with 'nearest' method
         try:
-            current_idx = features_df.index.get_indexer([current_ts], method='nearest')[0]
+            # Simple approach - find timestamps greater than current
+            future_timestamps = features_df.index[features_df.index > current_ts]
 
-            if current_idx < 0:
-                self._log(f"Current timestamp {self.current_timestamp} not found in features index", logging.WARNING)
+            if len(future_timestamps) == 0:
+                self._log("No more timestamps available in features data", logging.INFO)
                 return None
 
-            # If we found an approximate match, verify it's not after the current timestamp
-            if features_df.index[current_idx] > current_ts and current_idx > 0:
-                # If the nearest match is after our timestamp, use the previous one
-                current_idx -= 1
-
-            self._log(f"Current index: {current_idx}, timestamp: {features_df.index[current_idx]}", logging.DEBUG)
-
-            # Get next timestamp if available
-            if current_idx + 1 < len(features_df):
-                next_timestamp = features_df.index[current_idx + 1]
-                self._log(f"Next timestamp found: {next_timestamp}", logging.DEBUG)
-                return next_timestamp
-            else:
-                self._log("Reached end of data", logging.DEBUG)
-                return None
+            # Get the immediate next timestamp
+            next_timestamp = future_timestamps[0]
+            self._log(f"Next timestamp found: {next_timestamp}", logging.DEBUG)
+            return next_timestamp
 
         except Exception as e:
             # Log the error for debugging
