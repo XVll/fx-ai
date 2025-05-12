@@ -56,6 +56,61 @@ class TradingEnv(gym.Env):
         self.current_step = 0
         self.total_reward = 0.0
 
+    # envs/trading_env.py (modify the _get_normalized_state method)
+
+    def _get_normalized_state(self) -> np.ndarray:
+        """
+        Get normalized state representation for RL model.
+
+        Returns:
+            NumPy array with normalized state
+        """
+        # Get state from simulator - this now uses the tensor dict format
+        # but we'll convert it back to flat array for compatibility
+        raw_state_dict = self.simulator.get_current_state_tensor_dict()
+
+        # For backward compatibility, flatten the tensors
+        flattened_state = []
+
+        # Add high-frequency features (truncated if too large)
+        hf = raw_state_dict['hf_features'].cpu().numpy().flatten()
+        if len(hf) > 0:
+            flattened_state.append(hf[:min(len(hf), 600)])  # Limit to 600 elements
+
+        # Add medium-frequency features
+        mf = raw_state_dict['mf_features'].cpu().numpy().flatten()
+        if len(mf) > 0:
+            flattened_state.append(mf[:min(len(mf), 300)])  # Limit to 300 elements
+
+        # Add low-frequency features
+        lf = raw_state_dict['lf_features'].cpu().numpy().flatten()
+        if len(lf) > 0:
+            flattened_state.append(lf[:min(len(lf), 300)])  # Limit to 300 elements
+
+        # Add static features
+        sf = raw_state_dict['static_features'].cpu().numpy().flatten()
+        if len(sf) > 0:
+            flattened_state.append(sf)
+
+        # Concatenate all features
+        flat_state = np.concatenate(flattened_state) if flattened_state else np.array([])
+
+        # If state is empty, return zeros
+        if len(flat_state) == 0:
+            return np.zeros(self.state_dim, dtype=np.float32)
+
+        # Ensure right length
+        if len(flat_state) > self.state_dim:
+            # Truncate if too long
+            norm_state = flat_state[:self.state_dim]
+        elif len(flat_state) < self.state_dim:
+            # Pad with zeros if too short
+            norm_state = np.pad(flat_state, (0, self.state_dim - len(flat_state)))
+        else:
+            norm_state = flat_state
+
+        return norm_state.astype(np.float32)
+
     def reset(self, *, seed=None, options=None):
         """
         Reset the environment to start a new episode.
@@ -88,7 +143,7 @@ class TradingEnv(gym.Env):
             Tuple of (next_state, reward, terminated, truncated, info)
         """
         # Ensure action is in correct format
-        action_value = float(action[0]) if hasattr(action, "__len__") else float(action)
+        action_value = float(action[0].item() if hasattr(action[0], "item") else action[0]) if hasattr(action, "__len__") else float(action)
 
         # Execute in simulator
         simulator_result = self.simulator.step(action_value)
