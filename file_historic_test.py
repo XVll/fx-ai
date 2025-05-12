@@ -1,5 +1,5 @@
 # data/file_historic_test.py
-from data.feature.data_processor import DataProcessor
+from simulation.simulator import Simulator
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
 from data.data_manager import DataManager
 import pandas as pd
@@ -10,7 +10,7 @@ import os
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(message)s',
     stream=sys.stdout
 )
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def trade_callback(trade):
 
 def main():
     # Make sure the data directory exists
-    data_dir = "../dnb/Mlgo"
+    data_dir = "dnb/Mlgo"
     if not os.path.exists(data_dir):
         logger.error(f"Data directory {data_dir} does not exist. Please check the path.")
         return
@@ -46,7 +46,7 @@ def main():
     data_manager = DataManager(provider, logger=logger)
 
     # Create data processor with both callbacks
-    data_processor = DataProcessor(data_manager, logger=logger)
+    data_processor = Simulator(data_manager, logger=logger)
     data_processor.add_state_update_callback(state_update_callback)
     data_processor.add_trade_callback(trade_callback)
 
