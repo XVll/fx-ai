@@ -1,0 +1,1378 @@
+2025-05-12 16:46:48,403 - ERROR - Data directory data/dnb/ does not exist. Please check the path.
+2025-05-12 16:55:03,645 - DEBUG - Scanning for metadata in './dnb/mlgo'...
+2025-05-12 16:55:03,646 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-8HNQV6J7YY
+2025-05-12 16:55:03,647 - DEBUG - Indexed DBN: 'equs-mini-20230328-20250509.ohlcv-1d.dbn.zst' for symbols ['MLGO'], schema 'ohlcv-1d'
+2025-05-12 16:55:03,647 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-CD45FE9XTL
+2025-05-12 16:55:03,647 - DEBUG - Indexed DBN: 'equs-mini-20250201-20250429.ohlcv-1m.dbn.zst' for symbols ['MLGO'], schema 'ohlcv-1m'
+2025-05-12 16:55:03,653 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT
+2025-05-12 16:55:03,653 - DEBUG - Indexed DBN: 'equs-mini-20250203.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250204.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250205.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250206.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250207.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250210.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250211.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250212.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250213.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250214.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250218.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250219.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,654 - DEBUG - Indexed DBN: 'equs-mini-20250220.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250221.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250224.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250225.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250226.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250227.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250228.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250303.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250304.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250305.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250306.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250307.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250310.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250311.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,655 - DEBUG - Indexed DBN: 'equs-mini-20250312.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250313.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250314.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250317.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250318.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250319.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250320.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250321.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250324.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250325.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250326.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250327.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250328.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250331.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,656 - DEBUG - Indexed DBN: 'equs-mini-20250401.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250402.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250403.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250404.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250407.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250408.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250409.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250410.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250411.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250414.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250415.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250416.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250417.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250421.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250422.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250423.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250424.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250425.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250428.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,657 - DEBUG - Indexed DBN: 'equs-mini-20250429.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 16:55:03,659 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4
+2025-05-12 16:55:03,660 - DEBUG - Indexed DBN: 'equs-mini-20250203.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250204.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250205.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250206.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250207.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250210.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250211.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250212.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250213.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250214.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250218.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,661 - DEBUG - Indexed DBN: 'equs-mini-20250219.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250220.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250221.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250224.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250225.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250226.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250227.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250228.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250303.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250304.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250305.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250306.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250307.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250310.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,662 - DEBUG - Indexed DBN: 'equs-mini-20250311.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,663 - DEBUG - Indexed DBN: 'equs-mini-20250312.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,663 - DEBUG - Indexed DBN: 'equs-mini-20250313.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,663 - DEBUG - Indexed DBN: 'equs-mini-20250314.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,663 - DEBUG - Indexed DBN: 'equs-mini-20250317.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,663 - DEBUG - Indexed DBN: 'equs-mini-20250318.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,663 - DEBUG - Indexed DBN: 'equs-mini-20250319.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,663 - DEBUG - Indexed DBN: 'equs-mini-20250320.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,663 - DEBUG - Indexed DBN: 'equs-mini-20250321.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250324.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250325.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250326.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250327.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250328.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250331.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250401.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250402.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250403.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250404.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,667 - DEBUG - Indexed DBN: 'equs-mini-20250407.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250408.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250409.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250410.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250411.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250414.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250415.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250416.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250417.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250421.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250422.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250423.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250424.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250425.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,668 - DEBUG - Indexed DBN: 'equs-mini-20250428.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,669 - DEBUG - Indexed DBN: 'equs-mini-20250429.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 16:55:03,669 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-VPHTC8SUKM
+2025-05-12 16:55:03,670 - DEBUG - Indexed DBN: 'equs-mini-20250201-20250429.ohlcv-1s.dbn.zst' for symbols ['MLGO'], schema 'ohlcv-1s'
+2025-05-12 16:55:03,671 - DEBUG - Processing Databento job directory: ./dnb/mlgo\XNAS-20250511-SR77YDTATU
+2025-05-12 16:55:03,671 - DEBUG - Indexed DBN: 'xnas-itch-20250203.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,671 - DEBUG - Indexed DBN: 'xnas-itch-20250204.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,671 - DEBUG - Indexed DBN: 'xnas-itch-20250205.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,671 - DEBUG - Indexed DBN: 'xnas-itch-20250206.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,671 - DEBUG - Indexed DBN: 'xnas-itch-20250207.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,671 - DEBUG - Indexed DBN: 'xnas-itch-20250210.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250211.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250212.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250213.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250214.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250218.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250219.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250220.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250221.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250224.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250225.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250226.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250227.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250228.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,672 - DEBUG - Indexed DBN: 'xnas-itch-20250303.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250304.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250305.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250306.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250307.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250310.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250311.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250312.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250313.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250314.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250317.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250318.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250319.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250320.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,673 - DEBUG - Indexed DBN: 'xnas-itch-20250321.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250324.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250325.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250326.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250327.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250328.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250331.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250401.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250402.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250403.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250404.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250407.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250408.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250409.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,674 - DEBUG - Indexed DBN: 'xnas-itch-20250410.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250411.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250414.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250415.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250416.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250417.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250421.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250422.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250423.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250424.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250425.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250428.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - DEBUG - Indexed DBN: 'xnas-itch-20250429.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 16:55:03,675 - INFO - Scanning finished in ./dnb/mlgo. Found 6 scheme directories, indexed 183 DBN file entries.
+2025-05-12 16:55:03,676 - INFO - Initializing simulator for MLGO on 2025-03-27
+2025-05-12 16:55:03,676 - INFO - Loading data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 16:55:03,677 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-VPHTC8SUKM\equs-mini-20250201-20250429.ohlcv-1s.dbn.zst
+2025-05-12 16:55:04,667 - INFO - Loaded 6466 bars_1s data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 16:55:04,668 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-CD45FE9XTL\equs-mini-20250201-20250429.ohlcv-1m.dbn.zst
+2025-05-12 16:55:04,828 - INFO - Loaded 571 bars_1m data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 16:55:04,828 - DEBUG - No DBN files found in index for: MLGO@ohlcv-5m between 2025-03-27 00:00:00+00:00 and 2025-03-27 23:59:59.999999999+00:00
+2025-05-12 16:55:04,828 - DEBUG - No direct 5m bars found for MLGO. Trying to create from 1m bars.
+2025-05-12 16:55:04,829 - DEBUG - Attempting to fetch 1m bars for MLGO (2025-03-27 00:00:00+00:00 to 2025-03-27 23:59:59.999999999+00:00) to resample into 5m bars.
+2025-05-12 16:55:04,835 - DEBUG - Successfully created 159 5m bars from 1m data for MLGO.
+2025-05-12 16:55:04,836 - INFO - Loaded 159 bars_5m data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 16:55:04,836 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-8HNQV6J7YY\equs-mini-20230328-20250509.ohlcv-1d.dbn.zst
+2025-05-12 16:55:04,850 - INFO - Loaded 1 bars_1d data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 16:55:04,850 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250203.trades.dbn.zst
+2025-05-12 16:55:04,858 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250204.trades.dbn.zst
+2025-05-12 16:55:04,870 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250205.trades.dbn.zst
+2025-05-12 16:55:04,879 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250206.trades.dbn.zst
+2025-05-12 16:55:04,890 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250207.trades.dbn.zst
+2025-05-12 16:55:04,902 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250210.trades.dbn.zst
+2025-05-12 16:55:04,914 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250211.trades.dbn.zst
+2025-05-12 16:55:04,925 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250212.trades.dbn.zst
+2025-05-12 16:55:04,944 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250213.trades.dbn.zst
+2025-05-12 16:55:04,953 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250214.trades.dbn.zst
+2025-05-12 16:55:04,962 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250218.trades.dbn.zst
+2025-05-12 16:55:04,973 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250219.trades.dbn.zst
+2025-05-12 16:55:04,983 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250220.trades.dbn.zst
+2025-05-12 16:55:05,024 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250221.trades.dbn.zst
+2025-05-12 16:55:06,035 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250224.trades.dbn.zst
+2025-05-12 16:55:06,146 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250225.trades.dbn.zst
+2025-05-12 16:55:06,193 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250226.trades.dbn.zst
+2025-05-12 16:55:06,219 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250227.trades.dbn.zst
+2025-05-12 16:55:06,289 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250228.trades.dbn.zst
+2025-05-12 16:55:06,305 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250303.trades.dbn.zst
+2025-05-12 16:55:06,318 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250304.trades.dbn.zst
+2025-05-12 16:55:06,332 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250305.trades.dbn.zst
+2025-05-12 16:55:06,359 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250306.trades.dbn.zst
+2025-05-12 16:55:06,370 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250307.trades.dbn.zst
+2025-05-12 16:55:06,379 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250310.trades.dbn.zst
+2025-05-12 16:55:06,386 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250311.trades.dbn.zst
+2025-05-12 16:55:06,419 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250312.trades.dbn.zst
+2025-05-12 16:55:06,431 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250313.trades.dbn.zst
+2025-05-12 16:55:06,445 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250314.trades.dbn.zst
+2025-05-12 16:55:06,473 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250317.trades.dbn.zst
+2025-05-12 16:55:06,489 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250318.trades.dbn.zst
+2025-05-12 16:55:06,503 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250319.trades.dbn.zst
+2025-05-12 16:55:06,517 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250320.trades.dbn.zst
+2025-05-12 16:55:06,530 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250321.trades.dbn.zst
+2025-05-12 16:55:06,545 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250324.trades.dbn.zst
+2025-05-12 16:55:07,160 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250325.trades.dbn.zst
+2025-05-12 16:55:07,396 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250326.trades.dbn.zst
+2025-05-12 16:55:07,496 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250327.trades.dbn.zst
+2025-05-12 16:55:07,706 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250328.trades.dbn.zst
+2025-05-12 16:55:07,836 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250331.trades.dbn.zst
+2025-05-12 16:55:07,991 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250401.trades.dbn.zst
+2025-05-12 16:55:08,098 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250402.trades.dbn.zst
+2025-05-12 16:55:08,139 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250403.trades.dbn.zst
+2025-05-12 16:55:08,187 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250404.trades.dbn.zst
+2025-05-12 16:55:08,229 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250407.trades.dbn.zst
+2025-05-12 16:55:08,253 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250408.trades.dbn.zst
+2025-05-12 16:55:08,275 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250409.trades.dbn.zst
+2025-05-12 16:55:08,288 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250410.trades.dbn.zst
+2025-05-12 16:55:08,302 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250411.trades.dbn.zst
+2025-05-12 16:55:08,316 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250414.trades.dbn.zst
+2025-05-12 16:55:08,331 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250415.trades.dbn.zst
+2025-05-12 16:55:08,346 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250416.trades.dbn.zst
+2025-05-12 16:55:08,364 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250417.trades.dbn.zst
+2025-05-12 16:55:08,381 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250421.trades.dbn.zst
+2025-05-12 16:55:08,615 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250422.trades.dbn.zst
+2025-05-12 16:55:08,659 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250423.trades.dbn.zst
+2025-05-12 16:55:08,691 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250424.trades.dbn.zst
+2025-05-12 16:55:08,718 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250425.trades.dbn.zst
+2025-05-12 16:55:08,735 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250428.trades.dbn.zst
+2025-05-12 16:55:08,817 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250429.trades.dbn.zst
+2025-05-12 16:55:08,859 - INFO - Loaded 22383 trades data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 16:55:08,860 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250203.mbp-1.dbn.zst
+2025-05-12 16:55:08,989 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250204.mbp-1.dbn.zst
+2025-05-12 16:55:09,145 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250205.mbp-1.dbn.zst
+2025-05-12 16:55:09,376 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250206.mbp-1.dbn.zst
+2025-05-12 16:55:09,505 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250207.mbp-1.dbn.zst
+2025-05-12 16:55:09,673 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250210.mbp-1.dbn.zst
+2025-05-12 16:55:09,819 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250211.mbp-1.dbn.zst
+2025-05-12 16:55:09,931 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250212.mbp-1.dbn.zst
+2025-05-12 16:55:10,049 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250213.mbp-1.dbn.zst
+2025-05-12 16:55:10,181 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250214.mbp-1.dbn.zst
+2025-05-12 16:55:10,313 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250218.mbp-1.dbn.zst
+2025-05-12 16:55:10,368 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250219.mbp-1.dbn.zst
+2025-05-12 16:55:10,533 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250220.mbp-1.dbn.zst
+2025-05-12 16:55:10,713 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250221.mbp-1.dbn.zst
+2025-05-12 16:55:28,151 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250224.mbp-1.dbn.zst
+2025-05-12 16:55:29,727 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250225.mbp-1.dbn.zst
+2025-05-12 16:55:31,053 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250226.mbp-1.dbn.zst
+2025-05-12 16:55:32,103 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250227.mbp-1.dbn.zst
+2025-05-12 16:55:34,790 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250228.mbp-1.dbn.zst
+2025-05-12 16:55:35,578 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250303.mbp-1.dbn.zst
+2025-05-12 16:55:36,058 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250304.mbp-1.dbn.zst
+2025-05-12 16:55:36,486 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250305.mbp-1.dbn.zst
+2025-05-12 16:55:37,272 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250306.mbp-1.dbn.zst
+2025-05-12 16:55:37,561 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250307.mbp-1.dbn.zst
+2025-05-12 16:55:37,850 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250310.mbp-1.dbn.zst
+2025-05-12 16:55:38,015 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250311.mbp-1.dbn.zst
+2025-05-12 16:55:38,551 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250312.mbp-1.dbn.zst
+2025-05-12 16:55:38,811 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250313.mbp-1.dbn.zst
+2025-05-12 16:55:39,215 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250314.mbp-1.dbn.zst
+2025-05-12 16:55:39,819 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250317.mbp-1.dbn.zst
+2025-05-12 16:55:40,080 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250318.mbp-1.dbn.zst
+2025-05-12 16:55:40,329 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250319.mbp-1.dbn.zst
+2025-05-12 16:55:40,523 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250320.mbp-1.dbn.zst
+2025-05-12 16:55:40,628 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250321.mbp-1.dbn.zst
+2025-05-12 16:55:40,863 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250324.mbp-1.dbn.zst
+2025-05-12 16:55:52,721 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250325.mbp-1.dbn.zst
+2025-05-12 16:55:53,981 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250326.mbp-1.dbn.zst
+2025-05-12 16:55:55,142 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250327.mbp-1.dbn.zst
+2025-05-12 16:55:57,060 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250328.mbp-1.dbn.zst
+2025-05-12 16:55:57,719 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250331.mbp-1.dbn.zst
+2025-05-12 16:56:01,396 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250401.mbp-1.dbn.zst
+2025-05-12 16:56:02,114 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250402.mbp-1.dbn.zst
+2025-05-12 16:56:02,651 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250403.mbp-1.dbn.zst
+2025-05-12 16:56:04,011 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250404.mbp-1.dbn.zst
+2025-05-12 16:56:04,901 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250407.mbp-1.dbn.zst
+2025-05-12 16:56:05,339 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250408.mbp-1.dbn.zst
+2025-05-12 16:56:05,788 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250409.mbp-1.dbn.zst
+2025-05-12 16:56:06,013 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250410.mbp-1.dbn.zst
+2025-05-12 16:56:06,218 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250411.mbp-1.dbn.zst
+2025-05-12 16:56:06,421 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250414.mbp-1.dbn.zst
+2025-05-12 16:56:06,599 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250415.mbp-1.dbn.zst
+2025-05-12 16:56:06,882 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250416.mbp-1.dbn.zst
+2025-05-12 16:56:07,222 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250417.mbp-1.dbn.zst
+2025-05-12 16:56:07,464 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250421.mbp-1.dbn.zst
+2025-05-12 16:56:11,800 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250422.mbp-1.dbn.zst
+2025-05-12 16:56:12,611 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250423.mbp-1.dbn.zst
+2025-05-12 16:56:13,260 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250424.mbp-1.dbn.zst
+2025-05-12 16:56:13,663 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250425.mbp-1.dbn.zst
+2025-05-12 16:56:13,864 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250428.mbp-1.dbn.zst
+2025-05-12 16:56:15,173 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250429.mbp-1.dbn.zst
+2025-05-12 16:56:15,732 - INFO - Loaded 195422 quotes data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 16:56:15,733 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250203.status.dbn.zst
+2025-05-12 16:56:15,742 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250204.status.dbn.zst
+2025-05-12 16:56:15,750 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250205.status.dbn.zst
+2025-05-12 16:56:15,757 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250206.status.dbn.zst
+2025-05-12 16:56:15,762 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250207.status.dbn.zst
+2025-05-12 16:56:15,767 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250210.status.dbn.zst
+2025-05-12 16:56:15,774 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250211.status.dbn.zst
+2025-05-12 16:56:15,805 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250212.status.dbn.zst
+2025-05-12 16:56:15,814 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250213.status.dbn.zst
+2025-05-12 16:56:15,824 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250214.status.dbn.zst
+2025-05-12 16:56:15,834 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250218.status.dbn.zst
+2025-05-12 16:56:15,843 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250219.status.dbn.zst
+2025-05-12 16:56:15,863 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250220.status.dbn.zst
+2025-05-12 16:56:15,871 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250221.status.dbn.zst
+2025-05-12 16:56:15,878 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250224.status.dbn.zst
+2025-05-12 16:56:15,889 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250225.status.dbn.zst
+2025-05-12 16:56:15,897 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250226.status.dbn.zst
+2025-05-12 16:56:15,902 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250227.status.dbn.zst
+2025-05-12 16:56:15,909 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250228.status.dbn.zst
+2025-05-12 16:56:15,915 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250303.status.dbn.zst
+2025-05-12 16:56:15,921 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250304.status.dbn.zst
+2025-05-12 16:56:15,926 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250305.status.dbn.zst
+2025-05-12 16:56:15,933 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250306.status.dbn.zst
+2025-05-12 16:56:15,938 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250307.status.dbn.zst
+2025-05-12 16:56:15,948 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250310.status.dbn.zst
+2025-05-12 16:56:15,956 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250311.status.dbn.zst
+2025-05-12 16:56:15,979 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250312.status.dbn.zst
+2025-05-12 16:56:15,992 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250313.status.dbn.zst
+2025-05-12 16:56:16,002 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250314.status.dbn.zst
+2025-05-12 16:56:16,013 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250317.status.dbn.zst
+2025-05-12 16:56:16,023 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250318.status.dbn.zst
+2025-05-12 16:56:16,038 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250319.status.dbn.zst
+2025-05-12 16:56:16,045 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250320.status.dbn.zst
+2025-05-12 16:56:16,051 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250321.status.dbn.zst
+2025-05-12 16:56:16,056 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250324.status.dbn.zst
+2025-05-12 16:56:16,062 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250325.status.dbn.zst
+2025-05-12 16:56:16,066 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250326.status.dbn.zst
+2025-05-12 16:56:16,071 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250327.status.dbn.zst
+2025-05-12 16:56:16,076 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250328.status.dbn.zst
+2025-05-12 16:56:16,081 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250331.status.dbn.zst
+2025-05-12 16:56:16,086 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250401.status.dbn.zst
+2025-05-12 16:56:16,090 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250402.status.dbn.zst
+2025-05-12 16:56:16,095 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250403.status.dbn.zst
+2025-05-12 16:56:16,099 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250404.status.dbn.zst
+2025-05-12 16:56:16,104 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250407.status.dbn.zst
+2025-05-12 16:56:16,109 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250408.status.dbn.zst
+2025-05-12 16:56:16,114 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250409.status.dbn.zst
+2025-05-12 16:56:16,118 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250410.status.dbn.zst
+2025-05-12 16:56:16,123 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250411.status.dbn.zst
+2025-05-12 16:56:16,127 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250414.status.dbn.zst
+2025-05-12 16:56:16,132 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250415.status.dbn.zst
+2025-05-12 16:56:16,138 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250416.status.dbn.zst
+2025-05-12 16:56:16,144 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250417.status.dbn.zst
+2025-05-12 16:56:16,149 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250421.status.dbn.zst
+2025-05-12 16:56:16,157 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250422.status.dbn.zst
+2025-05-12 16:56:16,163 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250423.status.dbn.zst
+2025-05-12 16:56:16,171 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250424.status.dbn.zst
+2025-05-12 16:56:16,177 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250425.status.dbn.zst
+2025-05-12 16:56:16,184 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250428.status.dbn.zst
+2025-05-12 16:56:16,190 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250429.status.dbn.zst
+2025-05-12 16:56:16,197 - INFO - Loaded 6 status data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 16:56:16,197 - INFO - Loaded data for MLGO from 2025-03-27 to 2025-03-27: bars_1s, bars_1m, bars_5m, bars_1d, trades, quotes, status
+2025-05-12 16:56:16,200 - INFO - Market initialized: Price=$nan, Bid=$nan, Ask=$nan, Spread=$nan
+2025-05-12 16:56:16,200 - INFO - Extracting features for MLGO
+2025-05-12 16:56:17,855 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 16:56:17,855 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 16:56:17,855 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 16:56:17,856 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 16:56:17,856 - INFO - Running momentum strategy test
+2025-05-12 16:56:17,856 - INFO - Starting episode 1/3
+2025-05-12 16:56:17,858 - INFO - Market initialized: Price=$nan, Bid=$nan, Ask=$nan, Spread=$nan
+2025-05-12 16:56:17,858 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 16:56:17,858 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 16:56:17,858 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 16:56:17,858 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 16:56:17,867 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:03:08,894 - DEBUG - Scanning for metadata in './dnb/mlgo'...
+2025-05-12 17:03:08,894 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-8HNQV6J7YY
+2025-05-12 17:03:08,895 - DEBUG - Indexed DBN: 'equs-mini-20230328-20250509.ohlcv-1d.dbn.zst' for symbols ['MLGO'], schema 'ohlcv-1d'
+2025-05-12 17:03:08,895 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-CD45FE9XTL
+2025-05-12 17:03:08,895 - DEBUG - Indexed DBN: 'equs-mini-20250201-20250429.ohlcv-1m.dbn.zst' for symbols ['MLGO'], schema 'ohlcv-1m'
+2025-05-12 17:03:08,896 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT
+2025-05-12 17:03:08,897 - DEBUG - Indexed DBN: 'equs-mini-20250203.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,897 - DEBUG - Indexed DBN: 'equs-mini-20250204.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,897 - DEBUG - Indexed DBN: 'equs-mini-20250205.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,897 - DEBUG - Indexed DBN: 'equs-mini-20250206.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,897 - DEBUG - Indexed DBN: 'equs-mini-20250207.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,897 - DEBUG - Indexed DBN: 'equs-mini-20250210.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,897 - DEBUG - Indexed DBN: 'equs-mini-20250211.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,897 - DEBUG - Indexed DBN: 'equs-mini-20250212.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250213.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250214.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250218.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250219.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250220.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250221.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250224.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250225.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250226.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250227.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250228.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250303.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,898 - DEBUG - Indexed DBN: 'equs-mini-20250304.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250305.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250306.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250307.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250310.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250311.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250312.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250313.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250314.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250317.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250318.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250319.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250320.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250321.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,899 - DEBUG - Indexed DBN: 'equs-mini-20250324.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250325.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250326.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250327.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250328.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250331.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250401.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250402.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250403.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250404.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250407.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250408.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250409.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,900 - DEBUG - Indexed DBN: 'equs-mini-20250410.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250411.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250414.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250415.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250416.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250417.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250421.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250422.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250423.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250424.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250425.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250428.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,901 - DEBUG - Indexed DBN: 'equs-mini-20250429.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:03:08,902 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4
+2025-05-12 17:03:08,903 - DEBUG - Indexed DBN: 'equs-mini-20250203.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,903 - DEBUG - Indexed DBN: 'equs-mini-20250204.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,903 - DEBUG - Indexed DBN: 'equs-mini-20250205.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,903 - DEBUG - Indexed DBN: 'equs-mini-20250206.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250207.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250210.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250211.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250212.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250213.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250214.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250218.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250219.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250220.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250221.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250224.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250225.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,904 - DEBUG - Indexed DBN: 'equs-mini-20250226.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250227.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250228.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250303.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250304.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250305.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250306.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250307.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250310.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250311.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250312.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250313.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250314.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250317.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250318.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,905 - DEBUG - Indexed DBN: 'equs-mini-20250319.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250320.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250321.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250324.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250325.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250326.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250327.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250328.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250331.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250401.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250402.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250403.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250404.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250407.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,906 - DEBUG - Indexed DBN: 'equs-mini-20250408.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250409.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250410.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250411.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250414.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250415.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250416.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250417.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250421.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250422.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250423.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250424.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250425.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,907 - DEBUG - Indexed DBN: 'equs-mini-20250428.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,908 - DEBUG - Indexed DBN: 'equs-mini-20250429.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:03:08,908 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-VPHTC8SUKM
+2025-05-12 17:03:08,908 - DEBUG - Indexed DBN: 'equs-mini-20250201-20250429.ohlcv-1s.dbn.zst' for symbols ['MLGO'], schema 'ohlcv-1s'
+2025-05-12 17:03:08,909 - DEBUG - Processing Databento job directory: ./dnb/mlgo\XNAS-20250511-SR77YDTATU
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250203.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250204.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250205.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250206.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250207.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250210.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250211.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250212.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250213.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250214.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,910 - DEBUG - Indexed DBN: 'xnas-itch-20250218.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250219.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250220.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250221.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250224.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250225.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250226.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250227.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250228.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250303.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250304.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,911 - DEBUG - Indexed DBN: 'xnas-itch-20250305.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250306.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250307.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250310.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250311.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250312.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250313.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250314.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250317.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250318.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250319.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250320.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,912 - DEBUG - Indexed DBN: 'xnas-itch-20250321.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250324.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250325.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250326.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250327.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250328.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250331.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250401.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250402.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250403.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250404.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250407.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,913 - DEBUG - Indexed DBN: 'xnas-itch-20250408.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250409.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250410.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250411.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250414.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250415.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250416.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250417.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250421.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250422.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250423.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250424.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250425.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250428.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,914 - DEBUG - Indexed DBN: 'xnas-itch-20250429.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:03:08,915 - INFO - Scanning finished in ./dnb/mlgo. Found 6 scheme directories, indexed 183 DBN file entries.
+2025-05-12 17:03:08,915 - INFO - Initializing simulator for MLGO on 2025-03-27
+2025-05-12 17:03:08,915 - INFO - Loading data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:03:08,916 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-VPHTC8SUKM\equs-mini-20250201-20250429.ohlcv-1s.dbn.zst
+2025-05-12 17:03:09,980 - INFO - Loaded 6466 bars_1s data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:03:09,981 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-CD45FE9XTL\equs-mini-20250201-20250429.ohlcv-1m.dbn.zst
+2025-05-12 17:03:10,131 - INFO - Loaded 571 bars_1m data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:03:10,131 - DEBUG - No DBN files found in index for: MLGO@ohlcv-5m between 2025-03-27 00:00:00+00:00 and 2025-03-27 23:59:59.999999999+00:00
+2025-05-12 17:03:10,131 - DEBUG - No direct 5m bars found for MLGO. Trying to create from 1m bars.
+2025-05-12 17:03:10,131 - DEBUG - Attempting to fetch 1m bars for MLGO (2025-03-27 00:00:00+00:00 to 2025-03-27 23:59:59.999999999+00:00) to resample into 5m bars.
+2025-05-12 17:03:10,137 - DEBUG - Successfully created 159 5m bars from 1m data for MLGO.
+2025-05-12 17:03:10,137 - INFO - Loaded 159 bars_5m data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:03:10,138 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-8HNQV6J7YY\equs-mini-20230328-20250509.ohlcv-1d.dbn.zst
+2025-05-12 17:03:10,147 - INFO - Loaded 1 bars_1d data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:03:10,147 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250203.trades.dbn.zst
+2025-05-12 17:03:10,155 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250204.trades.dbn.zst
+2025-05-12 17:03:10,164 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250205.trades.dbn.zst
+2025-05-12 17:03:10,171 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250206.trades.dbn.zst
+2025-05-12 17:03:10,177 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250207.trades.dbn.zst
+2025-05-12 17:03:10,185 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250210.trades.dbn.zst
+2025-05-12 17:03:10,196 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250211.trades.dbn.zst
+2025-05-12 17:03:10,208 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250212.trades.dbn.zst
+2025-05-12 17:03:10,218 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250213.trades.dbn.zst
+2025-05-12 17:03:10,227 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250214.trades.dbn.zst
+2025-05-12 17:03:10,235 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250218.trades.dbn.zst
+2025-05-12 17:03:10,242 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250219.trades.dbn.zst
+2025-05-12 17:03:10,251 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250220.trades.dbn.zst
+2025-05-12 17:03:10,289 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250221.trades.dbn.zst
+2025-05-12 17:03:11,238 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250224.trades.dbn.zst
+2025-05-12 17:03:11,346 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250225.trades.dbn.zst
+2025-05-12 17:03:11,392 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250226.trades.dbn.zst
+2025-05-12 17:03:11,419 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250227.trades.dbn.zst
+2025-05-12 17:03:11,480 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250228.trades.dbn.zst
+2025-05-12 17:03:11,496 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250303.trades.dbn.zst
+2025-05-12 17:03:11,510 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250304.trades.dbn.zst
+2025-05-12 17:03:11,523 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250305.trades.dbn.zst
+2025-05-12 17:03:11,549 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250306.trades.dbn.zst
+2025-05-12 17:03:11,559 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250307.trades.dbn.zst
+2025-05-12 17:03:11,568 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250310.trades.dbn.zst
+2025-05-12 17:03:11,576 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250311.trades.dbn.zst
+2025-05-12 17:03:11,612 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250312.trades.dbn.zst
+2025-05-12 17:03:11,623 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250313.trades.dbn.zst
+2025-05-12 17:03:11,637 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250314.trades.dbn.zst
+2025-05-12 17:03:11,663 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250317.trades.dbn.zst
+2025-05-12 17:03:11,676 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250318.trades.dbn.zst
+2025-05-12 17:03:11,688 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250319.trades.dbn.zst
+2025-05-12 17:03:11,700 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250320.trades.dbn.zst
+2025-05-12 17:03:11,710 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250321.trades.dbn.zst
+2025-05-12 17:03:11,727 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250324.trades.dbn.zst
+2025-05-12 17:03:12,358 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250325.trades.dbn.zst
+2025-05-12 17:03:12,590 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250326.trades.dbn.zst
+2025-05-12 17:03:12,689 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250327.trades.dbn.zst
+2025-05-12 17:03:12,902 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250328.trades.dbn.zst
+2025-05-12 17:03:13,022 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250331.trades.dbn.zst
+2025-05-12 17:03:13,178 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250401.trades.dbn.zst
+2025-05-12 17:03:13,283 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250402.trades.dbn.zst
+2025-05-12 17:03:13,318 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250403.trades.dbn.zst
+2025-05-12 17:03:13,364 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250404.trades.dbn.zst
+2025-05-12 17:03:13,405 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250407.trades.dbn.zst
+2025-05-12 17:03:13,433 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250408.trades.dbn.zst
+2025-05-12 17:03:13,457 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250409.trades.dbn.zst
+2025-05-12 17:03:13,468 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250410.trades.dbn.zst
+2025-05-12 17:03:13,482 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250411.trades.dbn.zst
+2025-05-12 17:03:13,493 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250414.trades.dbn.zst
+2025-05-12 17:03:13,506 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250415.trades.dbn.zst
+2025-05-12 17:03:13,521 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250416.trades.dbn.zst
+2025-05-12 17:03:13,538 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250417.trades.dbn.zst
+2025-05-12 17:03:13,555 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250421.trades.dbn.zst
+2025-05-12 17:03:13,781 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250422.trades.dbn.zst
+2025-05-12 17:03:13,824 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250423.trades.dbn.zst
+2025-05-12 17:03:13,859 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250424.trades.dbn.zst
+2025-05-12 17:03:13,884 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250425.trades.dbn.zst
+2025-05-12 17:03:13,900 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250428.trades.dbn.zst
+2025-05-12 17:03:13,975 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250429.trades.dbn.zst
+2025-05-12 17:03:14,015 - INFO - Loaded 22383 trades data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:03:14,016 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250203.mbp-1.dbn.zst
+2025-05-12 17:03:14,148 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250204.mbp-1.dbn.zst
+2025-05-12 17:03:14,305 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250205.mbp-1.dbn.zst
+2025-05-12 17:03:14,526 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250206.mbp-1.dbn.zst
+2025-05-12 17:03:14,654 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250207.mbp-1.dbn.zst
+2025-05-12 17:03:14,821 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250210.mbp-1.dbn.zst
+2025-05-12 17:03:14,968 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250211.mbp-1.dbn.zst
+2025-05-12 17:03:15,081 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250212.mbp-1.dbn.zst
+2025-05-12 17:03:15,243 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250213.mbp-1.dbn.zst
+2025-05-12 17:03:15,401 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250214.mbp-1.dbn.zst
+2025-05-12 17:03:15,539 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250218.mbp-1.dbn.zst
+2025-05-12 17:03:15,587 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250219.mbp-1.dbn.zst
+2025-05-12 17:03:15,750 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250220.mbp-1.dbn.zst
+2025-05-12 17:03:15,931 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250221.mbp-1.dbn.zst
+2025-05-12 17:03:32,621 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250224.mbp-1.dbn.zst
+2025-05-12 17:03:34,035 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250225.mbp-1.dbn.zst
+2025-05-12 17:03:35,335 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250226.mbp-1.dbn.zst
+2025-05-12 17:03:36,354 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250227.mbp-1.dbn.zst
+2025-05-12 17:03:38,649 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250228.mbp-1.dbn.zst
+2025-05-12 17:03:39,413 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250303.mbp-1.dbn.zst
+2025-05-12 17:03:39,870 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250304.mbp-1.dbn.zst
+2025-05-12 17:03:40,282 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250305.mbp-1.dbn.zst
+2025-05-12 17:03:41,039 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250306.mbp-1.dbn.zst
+2025-05-12 17:03:41,329 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250307.mbp-1.dbn.zst
+2025-05-12 17:03:41,612 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250310.mbp-1.dbn.zst
+2025-05-12 17:03:41,782 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250311.mbp-1.dbn.zst
+2025-05-12 17:03:42,324 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250312.mbp-1.dbn.zst
+2025-05-12 17:03:42,590 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250313.mbp-1.dbn.zst
+2025-05-12 17:03:43,006 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250314.mbp-1.dbn.zst
+2025-05-12 17:03:43,616 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250317.mbp-1.dbn.zst
+2025-05-12 17:03:43,877 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250318.mbp-1.dbn.zst
+2025-05-12 17:03:44,129 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250319.mbp-1.dbn.zst
+2025-05-12 17:03:44,323 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250320.mbp-1.dbn.zst
+2025-05-12 17:03:44,437 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250321.mbp-1.dbn.zst
+2025-05-12 17:03:44,670 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250324.mbp-1.dbn.zst
+2025-05-12 17:03:55,962 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250325.mbp-1.dbn.zst
+2025-05-12 17:03:57,271 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250326.mbp-1.dbn.zst
+2025-05-12 17:03:58,463 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250327.mbp-1.dbn.zst
+2025-05-12 17:04:00,842 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250328.mbp-1.dbn.zst
+2025-05-12 17:04:01,523 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250331.mbp-1.dbn.zst
+2025-05-12 17:04:05,271 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250401.mbp-1.dbn.zst
+2025-05-12 17:04:05,986 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250402.mbp-1.dbn.zst
+2025-05-12 17:04:06,530 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250403.mbp-1.dbn.zst
+2025-05-12 17:04:07,933 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250404.mbp-1.dbn.zst
+2025-05-12 17:04:08,851 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250407.mbp-1.dbn.zst
+2025-05-12 17:04:09,281 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250408.mbp-1.dbn.zst
+2025-05-12 17:04:09,730 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250409.mbp-1.dbn.zst
+2025-05-12 17:04:10,031 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250410.mbp-1.dbn.zst
+2025-05-12 17:04:10,230 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250411.mbp-1.dbn.zst
+2025-05-12 17:04:10,422 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250414.mbp-1.dbn.zst
+2025-05-12 17:04:10,607 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250415.mbp-1.dbn.zst
+2025-05-12 17:04:10,877 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250416.mbp-1.dbn.zst
+2025-05-12 17:04:11,163 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250417.mbp-1.dbn.zst
+2025-05-12 17:04:11,381 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250421.mbp-1.dbn.zst
+2025-05-12 17:04:15,533 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250422.mbp-1.dbn.zst
+2025-05-12 17:04:16,252 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250423.mbp-1.dbn.zst
+2025-05-12 17:04:16,916 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250424.mbp-1.dbn.zst
+2025-05-12 17:04:17,324 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250425.mbp-1.dbn.zst
+2025-05-12 17:04:17,526 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250428.mbp-1.dbn.zst
+2025-05-12 17:04:18,855 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250429.mbp-1.dbn.zst
+2025-05-12 17:04:19,438 - INFO - Loaded 195422 quotes data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:04:19,439 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250203.status.dbn.zst
+2025-05-12 17:04:19,448 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250204.status.dbn.zst
+2025-05-12 17:04:19,454 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250205.status.dbn.zst
+2025-05-12 17:04:19,461 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250206.status.dbn.zst
+2025-05-12 17:04:19,466 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250207.status.dbn.zst
+2025-05-12 17:04:19,472 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250210.status.dbn.zst
+2025-05-12 17:04:19,480 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250211.status.dbn.zst
+2025-05-12 17:04:19,521 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250212.status.dbn.zst
+2025-05-12 17:04:19,530 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250213.status.dbn.zst
+2025-05-12 17:04:19,539 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250214.status.dbn.zst
+2025-05-12 17:04:19,549 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250218.status.dbn.zst
+2025-05-12 17:04:19,558 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250219.status.dbn.zst
+2025-05-12 17:04:19,574 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250220.status.dbn.zst
+2025-05-12 17:04:19,583 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250221.status.dbn.zst
+2025-05-12 17:04:19,592 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250224.status.dbn.zst
+2025-05-12 17:04:19,601 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250225.status.dbn.zst
+2025-05-12 17:04:19,610 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250226.status.dbn.zst
+2025-05-12 17:04:19,618 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250227.status.dbn.zst
+2025-05-12 17:04:19,625 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250228.status.dbn.zst
+2025-05-12 17:04:19,631 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250303.status.dbn.zst
+2025-05-12 17:04:19,637 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250304.status.dbn.zst
+2025-05-12 17:04:19,643 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250305.status.dbn.zst
+2025-05-12 17:04:19,651 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250306.status.dbn.zst
+2025-05-12 17:04:19,660 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250307.status.dbn.zst
+2025-05-12 17:04:19,669 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250310.status.dbn.zst
+2025-05-12 17:04:19,675 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250311.status.dbn.zst
+2025-05-12 17:04:19,696 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250312.status.dbn.zst
+2025-05-12 17:04:19,709 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250313.status.dbn.zst
+2025-05-12 17:04:19,722 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250314.status.dbn.zst
+2025-05-12 17:04:19,733 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250317.status.dbn.zst
+2025-05-12 17:04:19,741 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250318.status.dbn.zst
+2025-05-12 17:04:19,756 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250319.status.dbn.zst
+2025-05-12 17:04:19,767 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250320.status.dbn.zst
+2025-05-12 17:04:19,771 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250321.status.dbn.zst
+2025-05-12 17:04:19,777 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250324.status.dbn.zst
+2025-05-12 17:04:19,784 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250325.status.dbn.zst
+2025-05-12 17:04:19,788 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250326.status.dbn.zst
+2025-05-12 17:04:19,794 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250327.status.dbn.zst
+2025-05-12 17:04:19,799 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250328.status.dbn.zst
+2025-05-12 17:04:19,803 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250331.status.dbn.zst
+2025-05-12 17:04:19,809 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250401.status.dbn.zst
+2025-05-12 17:04:19,813 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250402.status.dbn.zst
+2025-05-12 17:04:19,818 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250403.status.dbn.zst
+2025-05-12 17:04:19,824 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250404.status.dbn.zst
+2025-05-12 17:04:19,828 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250407.status.dbn.zst
+2025-05-12 17:04:19,835 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250408.status.dbn.zst
+2025-05-12 17:04:19,840 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250409.status.dbn.zst
+2025-05-12 17:04:19,845 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250410.status.dbn.zst
+2025-05-12 17:04:19,850 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250411.status.dbn.zst
+2025-05-12 17:04:19,855 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250414.status.dbn.zst
+2025-05-12 17:04:19,860 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250415.status.dbn.zst
+2025-05-12 17:04:19,865 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250416.status.dbn.zst
+2025-05-12 17:04:19,870 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250417.status.dbn.zst
+2025-05-12 17:04:19,877 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250421.status.dbn.zst
+2025-05-12 17:04:19,882 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250422.status.dbn.zst
+2025-05-12 17:04:19,891 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250423.status.dbn.zst
+2025-05-12 17:04:19,897 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250424.status.dbn.zst
+2025-05-12 17:04:19,906 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250425.status.dbn.zst
+2025-05-12 17:04:19,913 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250428.status.dbn.zst
+2025-05-12 17:04:19,919 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250429.status.dbn.zst
+2025-05-12 17:04:19,926 - INFO - Loaded 6 status data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:04:19,926 - INFO - Loaded data for MLGO from 2025-03-27 to 2025-03-27: bars_1s, bars_1m, bars_5m, bars_1d, trades, quotes, status
+2025-05-12 17:04:19,929 - INFO - Market initialized: Price=$nan, Bid=$nan, Ask=$nan, Spread=$nan
+2025-05-12 17:04:19,929 - INFO - Extracting features for MLGO
+2025-05-12 17:04:21,821 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,821 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,822 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,822 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,823 - INFO - Running momentum strategy test
+2025-05-12 17:04:21,823 - INFO - Starting episode 1/3
+2025-05-12 17:04:21,827 - INFO - Market initialized: Price=$nan, Bid=$nan, Ask=$nan, Spread=$nan
+2025-05-12 17:04:21,827 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,827 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,827 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,828 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,840 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,841 - INFO - Episode 1 finished: 1 steps, reward: 0.00, PnL: $0.00
+2025-05-12 17:04:21,842 - INFO - Episode 1 finished: Steps=1, Total Reward=0.0000
+2025-05-12 17:04:21,842 - INFO - Episode metrics: PnL=$0.00, Win Rate=0.0%, Trade Count=0
+2025-05-12 17:04:21,842 - INFO - Starting episode 2/3
+2025-05-12 17:04:21,845 - INFO - Market initialized: Price=$nan, Bid=$nan, Ask=$nan, Spread=$nan
+2025-05-12 17:04:21,845 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,845 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,846 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,846 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,856 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,858 - INFO - Episode 2 finished: 1 steps, reward: 0.00, PnL: $0.00
+2025-05-12 17:04:21,859 - INFO - Episode 2 finished: Steps=1, Total Reward=0.0000
+2025-05-12 17:04:21,860 - INFO - Episode metrics: PnL=$0.00, Win Rate=0.0%, Trade Count=0
+2025-05-12 17:04:21,860 - INFO - Starting episode 3/3
+2025-05-12 17:04:21,863 - INFO - Market initialized: Price=$nan, Bid=$nan, Ask=$nan, Spread=$nan
+2025-05-12 17:04:21,863 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,863 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,863 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,863 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,877 - WARNING - Cannot move market backwards from 2025-03-27 05:55:36.567452314+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:04:21,879 - INFO - Episode 3 finished: 1 steps, reward: 0.00, PnL: $0.00
+2025-05-12 17:04:21,880 - INFO - Episode 3 finished: Steps=1, Total Reward=0.0000
+2025-05-12 17:04:21,880 - INFO - Episode metrics: PnL=$0.00, Win Rate=0.0%, Trade Count=0
+2025-05-12 17:04:21,880 - INFO - Results Summary:
+2025-05-12 17:04:21,880 - INFO - Episode 1: Reward=0.00, PnL=$0.00, Win Rate=0.0%, Trades=0
+2025-05-12 17:04:21,880 - INFO - Episode 2: Reward=0.00, PnL=$0.00, Win Rate=0.0%, Trades=0
+2025-05-12 17:04:21,880 - INFO - Episode 3: Reward=0.00, PnL=$0.00, Win Rate=0.0%, Trades=0
+2025-05-12 17:04:21,881 - INFO - Average PnL: $0.00
+2025-05-12 17:04:21,881 - INFO - Average Win Rate: 0.0%
+2025-05-12 17:04:21,881 - INFO - Average Trades per Episode: 0.0
+2025-05-12 17:04:21,881 - INFO - Test completed successfully
+2025-05-12 17:21:17,173 - ERROR - Data directory data/dnb/ does not exist. Please check the path.
+2025-05-12 17:21:45,660 - ERROR - Data directory /dnb/mlgo does not exist. Please check the path.
+2025-05-12 17:21:54,512 - DEBUG - Scanning for metadata in './dnb/mlgo'...
+2025-05-12 17:21:54,512 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-8HNQV6J7YY
+2025-05-12 17:21:54,513 - DEBUG - Indexed DBN: 'equs-mini-20230328-20250509.ohlcv-1d.dbn.zst' for symbols ['MLGO'], schema 'ohlcv-1d'
+2025-05-12 17:21:54,513 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-CD45FE9XTL
+2025-05-12 17:21:54,513 - DEBUG - Indexed DBN: 'equs-mini-20250201-20250429.ohlcv-1m.dbn.zst' for symbols ['MLGO'], schema 'ohlcv-1m'
+2025-05-12 17:21:54,514 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT
+2025-05-12 17:21:54,515 - DEBUG - Indexed DBN: 'equs-mini-20250203.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,515 - DEBUG - Indexed DBN: 'equs-mini-20250204.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,515 - DEBUG - Indexed DBN: 'equs-mini-20250205.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,515 - DEBUG - Indexed DBN: 'equs-mini-20250206.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,516 - DEBUG - Indexed DBN: 'equs-mini-20250207.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,516 - DEBUG - Indexed DBN: 'equs-mini-20250210.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,516 - DEBUG - Indexed DBN: 'equs-mini-20250211.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,516 - DEBUG - Indexed DBN: 'equs-mini-20250212.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,516 - DEBUG - Indexed DBN: 'equs-mini-20250213.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,516 - DEBUG - Indexed DBN: 'equs-mini-20250214.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,516 - DEBUG - Indexed DBN: 'equs-mini-20250218.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,516 - DEBUG - Indexed DBN: 'equs-mini-20250219.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,516 - DEBUG - Indexed DBN: 'equs-mini-20250220.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,517 - DEBUG - Indexed DBN: 'equs-mini-20250221.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,517 - DEBUG - Indexed DBN: 'equs-mini-20250224.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,517 - DEBUG - Indexed DBN: 'equs-mini-20250225.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,517 - DEBUG - Indexed DBN: 'equs-mini-20250226.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,517 - DEBUG - Indexed DBN: 'equs-mini-20250227.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,517 - DEBUG - Indexed DBN: 'equs-mini-20250228.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,517 - DEBUG - Indexed DBN: 'equs-mini-20250303.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,518 - DEBUG - Indexed DBN: 'equs-mini-20250304.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,518 - DEBUG - Indexed DBN: 'equs-mini-20250305.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,518 - DEBUG - Indexed DBN: 'equs-mini-20250306.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,518 - DEBUG - Indexed DBN: 'equs-mini-20250307.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,518 - DEBUG - Indexed DBN: 'equs-mini-20250310.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,518 - DEBUG - Indexed DBN: 'equs-mini-20250311.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,518 - DEBUG - Indexed DBN: 'equs-mini-20250312.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,518 - DEBUG - Indexed DBN: 'equs-mini-20250313.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,519 - DEBUG - Indexed DBN: 'equs-mini-20250314.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,519 - DEBUG - Indexed DBN: 'equs-mini-20250317.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,519 - DEBUG - Indexed DBN: 'equs-mini-20250318.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,519 - DEBUG - Indexed DBN: 'equs-mini-20250319.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,519 - DEBUG - Indexed DBN: 'equs-mini-20250320.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,519 - DEBUG - Indexed DBN: 'equs-mini-20250321.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,519 - DEBUG - Indexed DBN: 'equs-mini-20250324.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,519 - DEBUG - Indexed DBN: 'equs-mini-20250325.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,520 - DEBUG - Indexed DBN: 'equs-mini-20250326.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,520 - DEBUG - Indexed DBN: 'equs-mini-20250327.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,520 - DEBUG - Indexed DBN: 'equs-mini-20250328.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,520 - DEBUG - Indexed DBN: 'equs-mini-20250331.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,520 - DEBUG - Indexed DBN: 'equs-mini-20250401.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,520 - DEBUG - Indexed DBN: 'equs-mini-20250402.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,520 - DEBUG - Indexed DBN: 'equs-mini-20250403.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250404.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250407.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250408.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250409.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250410.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250411.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250414.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250415.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250416.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,521 - DEBUG - Indexed DBN: 'equs-mini-20250417.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,522 - DEBUG - Indexed DBN: 'equs-mini-20250421.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,522 - DEBUG - Indexed DBN: 'equs-mini-20250422.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,522 - DEBUG - Indexed DBN: 'equs-mini-20250423.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,522 - DEBUG - Indexed DBN: 'equs-mini-20250424.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,522 - DEBUG - Indexed DBN: 'equs-mini-20250425.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,522 - DEBUG - Indexed DBN: 'equs-mini-20250428.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,523 - DEBUG - Indexed DBN: 'equs-mini-20250429.mbp-1.dbn.zst' for symbols ['MLGO'], schema 'mbp-1'
+2025-05-12 17:21:54,525 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4
+2025-05-12 17:21:54,526 - DEBUG - Indexed DBN: 'equs-mini-20250203.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,527 - DEBUG - Indexed DBN: 'equs-mini-20250204.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,527 - DEBUG - Indexed DBN: 'equs-mini-20250205.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,527 - DEBUG - Indexed DBN: 'equs-mini-20250206.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,527 - DEBUG - Indexed DBN: 'equs-mini-20250207.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,527 - DEBUG - Indexed DBN: 'equs-mini-20250210.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,527 - DEBUG - Indexed DBN: 'equs-mini-20250211.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,527 - DEBUG - Indexed DBN: 'equs-mini-20250212.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,527 - DEBUG - Indexed DBN: 'equs-mini-20250213.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,527 - DEBUG - Indexed DBN: 'equs-mini-20250214.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,528 - DEBUG - Indexed DBN: 'equs-mini-20250218.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,528 - DEBUG - Indexed DBN: 'equs-mini-20250219.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,528 - DEBUG - Indexed DBN: 'equs-mini-20250220.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,528 - DEBUG - Indexed DBN: 'equs-mini-20250221.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,528 - DEBUG - Indexed DBN: 'equs-mini-20250224.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,528 - DEBUG - Indexed DBN: 'equs-mini-20250225.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,528 - DEBUG - Indexed DBN: 'equs-mini-20250226.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,528 - DEBUG - Indexed DBN: 'equs-mini-20250227.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250228.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250303.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250304.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250305.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250306.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250307.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250310.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250311.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250312.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250313.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,529 - DEBUG - Indexed DBN: 'equs-mini-20250314.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250317.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250318.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250319.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250320.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250321.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250324.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250325.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250326.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250327.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250328.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250331.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250401.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250402.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250403.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,530 - DEBUG - Indexed DBN: 'equs-mini-20250404.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250407.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250408.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250409.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250410.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250411.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250414.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250415.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250416.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250417.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250421.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250422.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250423.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250424.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,531 - DEBUG - Indexed DBN: 'equs-mini-20250425.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,532 - DEBUG - Indexed DBN: 'equs-mini-20250428.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,532 - DEBUG - Indexed DBN: 'equs-mini-20250429.trades.dbn.zst' for symbols ['MLGO'], schema 'trades'
+2025-05-12 17:21:54,532 - DEBUG - Processing Databento job directory: ./dnb/mlgo\EQUS-20250511-VPHTC8SUKM
+2025-05-12 17:21:54,532 - DEBUG - Indexed DBN: 'equs-mini-20250201-20250429.ohlcv-1s.dbn.zst' for symbols ['MLGO'], schema 'ohlcv-1s'
+2025-05-12 17:21:54,533 - DEBUG - Processing Databento job directory: ./dnb/mlgo\XNAS-20250511-SR77YDTATU
+2025-05-12 17:21:54,534 - DEBUG - Indexed DBN: 'xnas-itch-20250203.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,534 - DEBUG - Indexed DBN: 'xnas-itch-20250204.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,534 - DEBUG - Indexed DBN: 'xnas-itch-20250205.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,534 - DEBUG - Indexed DBN: 'xnas-itch-20250206.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,534 - DEBUG - Indexed DBN: 'xnas-itch-20250207.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,534 - DEBUG - Indexed DBN: 'xnas-itch-20250210.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,534 - DEBUG - Indexed DBN: 'xnas-itch-20250211.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,535 - DEBUG - Indexed DBN: 'xnas-itch-20250212.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,535 - DEBUG - Indexed DBN: 'xnas-itch-20250213.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,535 - DEBUG - Indexed DBN: 'xnas-itch-20250214.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,535 - DEBUG - Indexed DBN: 'xnas-itch-20250218.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,535 - DEBUG - Indexed DBN: 'xnas-itch-20250219.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,535 - DEBUG - Indexed DBN: 'xnas-itch-20250220.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,535 - DEBUG - Indexed DBN: 'xnas-itch-20250221.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,535 - DEBUG - Indexed DBN: 'xnas-itch-20250224.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,536 - DEBUG - Indexed DBN: 'xnas-itch-20250225.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,536 - DEBUG - Indexed DBN: 'xnas-itch-20250226.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,537 - DEBUG - Indexed DBN: 'xnas-itch-20250227.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,538 - DEBUG - Indexed DBN: 'xnas-itch-20250228.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,538 - DEBUG - Indexed DBN: 'xnas-itch-20250303.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250304.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250305.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250306.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250307.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250310.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250311.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250312.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250313.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250314.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250317.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,539 - DEBUG - Indexed DBN: 'xnas-itch-20250318.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,540 - DEBUG - Indexed DBN: 'xnas-itch-20250319.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,540 - DEBUG - Indexed DBN: 'xnas-itch-20250320.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,540 - DEBUG - Indexed DBN: 'xnas-itch-20250321.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,540 - DEBUG - Indexed DBN: 'xnas-itch-20250324.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,540 - DEBUG - Indexed DBN: 'xnas-itch-20250325.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250326.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250327.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250328.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250331.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250401.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250402.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250403.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250404.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250407.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250408.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250409.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,541 - DEBUG - Indexed DBN: 'xnas-itch-20250410.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250411.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250414.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250415.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250416.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250417.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250421.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250422.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250423.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250424.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250425.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250428.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - DEBUG - Indexed DBN: 'xnas-itch-20250429.status.dbn.zst' for symbols ['MLGO'], schema 'status'
+2025-05-12 17:21:54,542 - INFO - Scanning finished in ./dnb/mlgo. Found 6 scheme directories, indexed 183 DBN file entries.
+2025-05-12 17:21:54,543 - INFO - Initializing simulator for MLGO on 2025-03-27
+2025-05-12 17:21:54,544 - INFO - Loading data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:21:54,544 - INFO - Loading data for MLGO from 2025-03-27 to 2025-03-27 - types: ['bars_1s', 'bars_1m', 'bars_5m', 'bars_1d', 'trades', 'quotes', 'status']
+2025-05-12 17:21:54,544 - DEBUG - Loading bars_1s data for MLGO...
+2025-05-12 17:21:54,545 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-VPHTC8SUKM\equs-mini-20250201-20250429.ohlcv-1s.dbn.zst
+2025-05-12 17:21:55,637 - INFO - Loaded 6466 1s bars for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:21:55,637 - DEBUG - Loaded 6466 rows of bars_1s data for MLGO
+2025-05-12 17:21:55,637 - DEBUG - Loading bars_1m data for MLGO...
+2025-05-12 17:21:55,637 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-CD45FE9XTL\equs-mini-20250201-20250429.ohlcv-1m.dbn.zst
+2025-05-12 17:21:55,787 - INFO - Loaded 571 1m bars for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:21:55,787 - DEBUG - Loaded 571 rows of bars_1m data for MLGO
+2025-05-12 17:21:55,787 - DEBUG - Loading bars_5m data for MLGO...
+2025-05-12 17:21:55,788 - DEBUG - No DBN files found in index for: MLGO@ohlcv-5m between 2025-03-27 00:00:00+00:00 and 2025-03-27 23:59:59.999999999+00:00
+2025-05-12 17:21:55,788 - DEBUG - No direct 5m bars found for MLGO. Trying to create from 1m bars.
+2025-05-12 17:21:55,788 - DEBUG - Attempting to fetch 1m bars for MLGO (2025-03-27 00:00:00+00:00 to 2025-03-27 23:59:59.999999999+00:00) to resample into 5m bars.
+2025-05-12 17:21:55,794 - DEBUG - Successfully created 159 5m bars from 1m data for MLGO.
+2025-05-12 17:21:55,794 - INFO - Loaded 159 5m bars for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:21:55,794 - DEBUG - Loaded 159 rows of bars_5m data for MLGO
+2025-05-12 17:21:55,794 - DEBUG - Loading bars_1d data for MLGO...
+2025-05-12 17:21:55,794 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-8HNQV6J7YY\equs-mini-20230328-20250509.ohlcv-1d.dbn.zst
+2025-05-12 17:21:55,803 - INFO - Loaded 1 1d bars for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:21:55,803 - DEBUG - Loaded 1 rows of bars_1d data for MLGO
+2025-05-12 17:21:55,803 - DEBUG - Loading trades data for MLGO...
+2025-05-12 17:21:55,803 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250203.trades.dbn.zst
+2025-05-12 17:21:55,811 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250204.trades.dbn.zst
+2025-05-12 17:21:55,820 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250205.trades.dbn.zst
+2025-05-12 17:21:55,826 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250206.trades.dbn.zst
+2025-05-12 17:21:55,832 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250207.trades.dbn.zst
+2025-05-12 17:21:55,839 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250210.trades.dbn.zst
+2025-05-12 17:21:55,848 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250211.trades.dbn.zst
+2025-05-12 17:21:55,858 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250212.trades.dbn.zst
+2025-05-12 17:21:55,866 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250213.trades.dbn.zst
+2025-05-12 17:21:55,877 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250214.trades.dbn.zst
+2025-05-12 17:21:55,885 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250218.trades.dbn.zst
+2025-05-12 17:21:55,892 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250219.trades.dbn.zst
+2025-05-12 17:21:55,900 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250220.trades.dbn.zst
+2025-05-12 17:21:55,940 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250221.trades.dbn.zst
+2025-05-12 17:21:56,870 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250224.trades.dbn.zst
+2025-05-12 17:21:56,980 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250225.trades.dbn.zst
+2025-05-12 17:21:57,031 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250226.trades.dbn.zst
+2025-05-12 17:21:57,057 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250227.trades.dbn.zst
+2025-05-12 17:21:57,118 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250228.trades.dbn.zst
+2025-05-12 17:21:57,132 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250303.trades.dbn.zst
+2025-05-12 17:21:57,146 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250304.trades.dbn.zst
+2025-05-12 17:21:57,159 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250305.trades.dbn.zst
+2025-05-12 17:21:57,191 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250306.trades.dbn.zst
+2025-05-12 17:21:57,202 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250307.trades.dbn.zst
+2025-05-12 17:21:57,212 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250310.trades.dbn.zst
+2025-05-12 17:21:57,220 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250311.trades.dbn.zst
+2025-05-12 17:21:57,253 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250312.trades.dbn.zst
+2025-05-12 17:21:57,265 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250313.trades.dbn.zst
+2025-05-12 17:21:57,279 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250314.trades.dbn.zst
+2025-05-12 17:21:57,303 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250317.trades.dbn.zst
+2025-05-12 17:21:57,317 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250318.trades.dbn.zst
+2025-05-12 17:21:57,330 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250319.trades.dbn.zst
+2025-05-12 17:21:57,343 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250320.trades.dbn.zst
+2025-05-12 17:21:57,356 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250321.trades.dbn.zst
+2025-05-12 17:21:57,373 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250324.trades.dbn.zst
+2025-05-12 17:21:57,997 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250325.trades.dbn.zst
+2025-05-12 17:21:58,234 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250326.trades.dbn.zst
+2025-05-12 17:21:58,333 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250327.trades.dbn.zst
+2025-05-12 17:21:58,550 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250328.trades.dbn.zst
+2025-05-12 17:21:58,672 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250331.trades.dbn.zst
+2025-05-12 17:21:58,822 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250401.trades.dbn.zst
+2025-05-12 17:21:58,946 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250402.trades.dbn.zst
+2025-05-12 17:21:58,985 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250403.trades.dbn.zst
+2025-05-12 17:21:59,039 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250404.trades.dbn.zst
+2025-05-12 17:21:59,090 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250407.trades.dbn.zst
+2025-05-12 17:21:59,115 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250408.trades.dbn.zst
+2025-05-12 17:21:59,137 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250409.trades.dbn.zst
+2025-05-12 17:21:59,149 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250410.trades.dbn.zst
+2025-05-12 17:21:59,163 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250411.trades.dbn.zst
+2025-05-12 17:21:59,176 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250414.trades.dbn.zst
+2025-05-12 17:21:59,189 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250415.trades.dbn.zst
+2025-05-12 17:21:59,206 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250416.trades.dbn.zst
+2025-05-12 17:21:59,224 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250417.trades.dbn.zst
+2025-05-12 17:21:59,242 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250421.trades.dbn.zst
+2025-05-12 17:21:59,509 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250422.trades.dbn.zst
+2025-05-12 17:21:59,570 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250423.trades.dbn.zst
+2025-05-12 17:21:59,612 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250424.trades.dbn.zst
+2025-05-12 17:21:59,639 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250425.trades.dbn.zst
+2025-05-12 17:21:59,656 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250428.trades.dbn.zst
+2025-05-12 17:21:59,746 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-TQXL5MBVE4\equs-mini-20250429.trades.dbn.zst
+2025-05-12 17:21:59,786 - INFO - Loaded 22383 trades data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:21:59,786 - DEBUG - Loaded 22383 rows of trades data for MLGO
+2025-05-12 17:21:59,786 - DEBUG - Loading quotes data for MLGO...
+2025-05-12 17:21:59,786 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250203.mbp-1.dbn.zst
+2025-05-12 17:21:59,919 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250204.mbp-1.dbn.zst
+2025-05-12 17:22:00,106 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250205.mbp-1.dbn.zst
+2025-05-12 17:22:00,340 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250206.mbp-1.dbn.zst
+2025-05-12 17:22:00,473 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250207.mbp-1.dbn.zst
+2025-05-12 17:22:00,649 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250210.mbp-1.dbn.zst
+2025-05-12 17:22:00,807 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250211.mbp-1.dbn.zst
+2025-05-12 17:22:00,958 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250212.mbp-1.dbn.zst
+2025-05-12 17:22:01,115 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250213.mbp-1.dbn.zst
+2025-05-12 17:22:01,249 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250214.mbp-1.dbn.zst
+2025-05-12 17:22:01,385 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250218.mbp-1.dbn.zst
+2025-05-12 17:22:01,434 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250219.mbp-1.dbn.zst
+2025-05-12 17:22:01,596 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250220.mbp-1.dbn.zst
+2025-05-12 17:22:01,776 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250221.mbp-1.dbn.zst
+2025-05-12 17:22:19,177 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250224.mbp-1.dbn.zst
+2025-05-12 17:22:20,671 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250225.mbp-1.dbn.zst
+2025-05-12 17:22:22,089 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250226.mbp-1.dbn.zst
+2025-05-12 17:22:23,092 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250227.mbp-1.dbn.zst
+2025-05-12 17:22:25,841 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250228.mbp-1.dbn.zst
+2025-05-12 17:22:26,837 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250303.mbp-1.dbn.zst
+2025-05-12 17:22:27,341 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250304.mbp-1.dbn.zst
+2025-05-12 17:22:27,762 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250305.mbp-1.dbn.zst
+2025-05-12 17:22:28,538 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250306.mbp-1.dbn.zst
+2025-05-12 17:22:28,834 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250307.mbp-1.dbn.zst
+2025-05-12 17:22:29,130 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250310.mbp-1.dbn.zst
+2025-05-12 17:22:29,300 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250311.mbp-1.dbn.zst
+2025-05-12 17:22:29,841 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250312.mbp-1.dbn.zst
+2025-05-12 17:22:30,117 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250313.mbp-1.dbn.zst
+2025-05-12 17:22:30,532 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250314.mbp-1.dbn.zst
+2025-05-12 17:22:31,159 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250317.mbp-1.dbn.zst
+2025-05-12 17:22:31,418 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250318.mbp-1.dbn.zst
+2025-05-12 17:22:31,662 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250319.mbp-1.dbn.zst
+2025-05-12 17:22:31,861 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250320.mbp-1.dbn.zst
+2025-05-12 17:22:31,972 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250321.mbp-1.dbn.zst
+2025-05-12 17:22:32,208 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250324.mbp-1.dbn.zst
+2025-05-12 17:22:43,129 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250325.mbp-1.dbn.zst
+2025-05-12 17:22:44,363 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250326.mbp-1.dbn.zst
+2025-05-12 17:22:45,531 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250327.mbp-1.dbn.zst
+2025-05-12 17:22:47,423 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250328.mbp-1.dbn.zst
+2025-05-12 17:22:48,073 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250331.mbp-1.dbn.zst
+2025-05-12 17:22:51,769 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250401.mbp-1.dbn.zst
+2025-05-12 17:22:52,479 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250402.mbp-1.dbn.zst
+2025-05-12 17:22:53,007 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250403.mbp-1.dbn.zst
+2025-05-12 17:22:54,343 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250404.mbp-1.dbn.zst
+2025-05-12 17:22:55,217 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250407.mbp-1.dbn.zst
+2025-05-12 17:22:55,648 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250408.mbp-1.dbn.zst
+2025-05-12 17:22:56,105 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250409.mbp-1.dbn.zst
+2025-05-12 17:22:56,328 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250410.mbp-1.dbn.zst
+2025-05-12 17:22:56,528 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250411.mbp-1.dbn.zst
+2025-05-12 17:22:56,727 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250414.mbp-1.dbn.zst
+2025-05-12 17:22:56,904 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250415.mbp-1.dbn.zst
+2025-05-12 17:22:57,179 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250416.mbp-1.dbn.zst
+2025-05-12 17:22:57,465 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250417.mbp-1.dbn.zst
+2025-05-12 17:22:57,687 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250421.mbp-1.dbn.zst
+2025-05-12 17:23:01,624 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250422.mbp-1.dbn.zst
+2025-05-12 17:23:02,337 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250423.mbp-1.dbn.zst
+2025-05-12 17:23:02,984 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250424.mbp-1.dbn.zst
+2025-05-12 17:23:03,388 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250425.mbp-1.dbn.zst
+2025-05-12 17:23:03,581 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250428.mbp-1.dbn.zst
+2025-05-12 17:23:04,873 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\EQUS-20250511-MY5V6RNNGT\equs-mini-20250429.mbp-1.dbn.zst
+2025-05-12 17:23:05,411 - INFO - Loaded 195422 quotes data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:23:05,411 - DEBUG - Loaded 195422 rows of quotes data for MLGO
+2025-05-12 17:23:05,411 - DEBUG - Loading status data for MLGO...
+2025-05-12 17:23:05,411 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250203.status.dbn.zst
+2025-05-12 17:23:05,418 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250204.status.dbn.zst
+2025-05-12 17:23:05,423 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250205.status.dbn.zst
+2025-05-12 17:23:05,428 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250206.status.dbn.zst
+2025-05-12 17:23:05,432 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250207.status.dbn.zst
+2025-05-12 17:23:05,437 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250210.status.dbn.zst
+2025-05-12 17:23:05,441 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250211.status.dbn.zst
+2025-05-12 17:23:05,471 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250212.status.dbn.zst
+2025-05-12 17:23:05,479 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250213.status.dbn.zst
+2025-05-12 17:23:05,487 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250214.status.dbn.zst
+2025-05-12 17:23:05,494 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250218.status.dbn.zst
+2025-05-12 17:23:05,500 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250219.status.dbn.zst
+2025-05-12 17:23:05,513 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250220.status.dbn.zst
+2025-05-12 17:23:05,518 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250221.status.dbn.zst
+2025-05-12 17:23:05,523 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250224.status.dbn.zst
+2025-05-12 17:23:05,530 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250225.status.dbn.zst
+2025-05-12 17:23:05,537 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250226.status.dbn.zst
+2025-05-12 17:23:05,544 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250227.status.dbn.zst
+2025-05-12 17:23:05,550 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250228.status.dbn.zst
+2025-05-12 17:23:05,555 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250303.status.dbn.zst
+2025-05-12 17:23:05,561 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250304.status.dbn.zst
+2025-05-12 17:23:05,567 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250305.status.dbn.zst
+2025-05-12 17:23:05,573 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250306.status.dbn.zst
+2025-05-12 17:23:05,579 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250307.status.dbn.zst
+2025-05-12 17:23:05,584 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250310.status.dbn.zst
+2025-05-12 17:23:05,588 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250311.status.dbn.zst
+2025-05-12 17:23:05,602 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250312.status.dbn.zst
+2025-05-12 17:23:05,611 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250313.status.dbn.zst
+2025-05-12 17:23:05,617 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250314.status.dbn.zst
+2025-05-12 17:23:05,624 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250317.status.dbn.zst
+2025-05-12 17:23:05,629 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250318.status.dbn.zst
+2025-05-12 17:23:05,638 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250319.status.dbn.zst
+2025-05-12 17:23:05,645 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250320.status.dbn.zst
+2025-05-12 17:23:05,650 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250321.status.dbn.zst
+2025-05-12 17:23:05,654 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250324.status.dbn.zst
+2025-05-12 17:23:05,659 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250325.status.dbn.zst
+2025-05-12 17:23:05,664 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250326.status.dbn.zst
+2025-05-12 17:23:05,668 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250327.status.dbn.zst
+2025-05-12 17:23:05,674 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250328.status.dbn.zst
+2025-05-12 17:23:05,678 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250331.status.dbn.zst
+2025-05-12 17:23:05,684 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250401.status.dbn.zst
+2025-05-12 17:23:05,688 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250402.status.dbn.zst
+2025-05-12 17:23:05,694 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250403.status.dbn.zst
+2025-05-12 17:23:05,699 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250404.status.dbn.zst
+2025-05-12 17:23:05,703 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250407.status.dbn.zst
+2025-05-12 17:23:05,708 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250408.status.dbn.zst
+2025-05-12 17:23:05,712 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250409.status.dbn.zst
+2025-05-12 17:23:05,717 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250410.status.dbn.zst
+2025-05-12 17:23:05,720 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250411.status.dbn.zst
+2025-05-12 17:23:05,725 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250414.status.dbn.zst
+2025-05-12 17:23:05,729 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250415.status.dbn.zst
+2025-05-12 17:23:05,733 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250416.status.dbn.zst
+2025-05-12 17:23:05,738 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250417.status.dbn.zst
+2025-05-12 17:23:05,742 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250421.status.dbn.zst
+2025-05-12 17:23:05,746 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250422.status.dbn.zst
+2025-05-12 17:23:05,751 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250423.status.dbn.zst
+2025-05-12 17:23:05,756 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250424.status.dbn.zst
+2025-05-12 17:23:05,760 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250425.status.dbn.zst
+2025-05-12 17:23:05,765 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250428.status.dbn.zst
+2025-05-12 17:23:05,770 - DEBUG - CACHE MISS: Reading DBN file: ./dnb/mlgo\XNAS-20250511-SR77YDTATU\xnas-itch-20250429.status.dbn.zst
+2025-05-12 17:23:05,775 - INFO - Loaded 6 status data for MLGO from 2025-03-27 to 2025-03-27
+2025-05-12 17:23:05,775 - DEBUG - Loaded 6 rows of status data for MLGO
+2025-05-12 17:23:05,775 - INFO - Loaded data for MLGO from 2025-03-27 to 2025-03-27: bars_1s, bars_1m, bars_5m, bars_1d, trades, quotes, status
+2025-05-12 17:23:05,776 - INFO - Initialized market from trades: Price=$11.0000
+2025-05-12 17:23:05,777 - INFO - Market initialized: Price=$11.0000, Bid=$10.9945, Ask=$11.0055, Spread=$0.0110
+2025-05-12 17:23:05,778 - INFO - Extracting features for MLGO
+2025-05-12 17:23:07,426 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,426 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,426 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,426 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,426 - DEBUG - State update: Position=0.00, PnL=0.00%
+2025-05-12 17:23:07,426 - INFO - Loaded 6466 rows of bars_1s data
+2025-05-12 17:23:07,434 - DEBUG - First 3 rows of bars_1s data:
+                           rtype  publisher_id  ...  volume  symbol
+ts_event                                        ...                
+2025-03-27 08:18:04+00:00     32            95  ...      79    MLGO
+2025-03-27 08:18:41+00:00     32            95  ...      21    MLGO
+2025-03-27 08:19:24+00:00     32            95  ...       5    MLGO
+
+[3 rows x 9 columns]
+2025-05-12 17:23:07,434 - INFO - Loaded 571 rows of bars_1m data
+2025-05-12 17:23:07,440 - DEBUG - First 3 rows of bars_1m data:
+                           rtype  publisher_id  ...  volume  symbol
+ts_event                                        ...                
+2025-03-27 08:18:00+00:00     33            95  ...     100    MLGO
+2025-03-27 08:19:00+00:00     33            95  ...     105    MLGO
+2025-03-27 08:20:00+00:00     33            95  ...      95    MLGO
+
+[3 rows x 9 columns]
+2025-05-12 17:23:07,440 - INFO - Loaded 159 rows of bars_5m data
+2025-05-12 17:23:07,444 - DEBUG - First 3 rows of bars_5m data:
+                            open   high    low  close  volume
+ts_event                                                     
+2025-03-27 08:15:00+00:00  11.00  11.05  11.00  11.00     205
+2025-03-27 08:20:00+00:00  11.05  11.05  11.05  11.05      95
+2025-03-27 08:25:00+00:00  11.30  11.30  11.30  11.30     100
+2025-05-12 17:23:07,444 - INFO - Loaded 1 rows of bars_1d data
+2025-05-12 17:23:07,449 - DEBUG - First 3 rows of bars_1d data:
+                           rtype  publisher_id  ...   volume  symbol
+ts_event                                        ...                 
+2025-03-27 00:00:00+00:00     35            95  ...  2425942    MLGO
+
+[1 rows x 9 columns]
+2025-05-12 17:23:07,449 - INFO - Loaded 22383 rows of trades data
+2025-05-12 17:23:07,457 - DEBUG - First 3 rows of trades data:
+                                                               ts_event  ...  symbol
+ts_recv                                                                  ...        
+2025-03-27 08:18:04.092316340+00:00 2025-03-27 08:18:04.092285163+00:00  ...    MLGO
+2025-03-27 08:18:04.092549859+00:00 2025-03-27 08:18:04.092528197+00:00  ...    MLGO
+2025-03-27 08:18:41.199583169+00:00 2025-03-27 08:18:41.199550392+00:00  ...    MLGO
+
+[3 rows x 13 columns]
+2025-05-12 17:23:07,457 - INFO - Loaded 195422 rows of quotes data
+2025-05-12 17:23:07,467 - DEBUG - First 3 rows of quotes data:
+                                                               ts_event  ...  symbol
+ts_recv                                                                  ...        
+2025-03-27 05:55:36.567452314+00:00 2025-03-27 05:55:36.567420104+00:00  ...    MLGO
+2025-03-27 08:00:18.839815194+00:00 2025-03-27 08:00:18.839789706+00:00  ...    MLGO
+2025-03-27 08:00:30.827528392+00:00 2025-03-27 08:00:30.827502006+00:00  ...    MLGO
+
+[3 rows x 19 columns]
+2025-05-12 17:23:07,467 - INFO - Loaded 6 rows of status data
+2025-05-12 17:23:07,473 - DEBUG - First 3 rows of status data:
+                                                               ts_event  ...  symbol
+ts_recv                                                                  ...        
+2025-03-27 07:05:36.681770951+00:00 2025-03-27 07:05:36.681605195+00:00  ...    MLGO
+2025-03-27 07:05:36.681782106+00:00 2025-03-27 07:05:36.681616429+00:00  ...    MLGO
+2025-03-27 08:00:00.000307037+00:00 2025-03-27 08:00:00.000137303+00:00  ...    MLGO
+
+[3 rows x 11 columns]
+2025-05-12 17:23:07,473 - INFO - Extracted 65048 feature rows with 235 columns
+2025-05-12 17:23:07,474 - DEBUG - First 5 feature timestamps: [Timestamp('2025-03-27 05:55:36+0000', tz='UTC'), Timestamp('2025-03-27 05:55:37+0000', tz='UTC'), Timestamp('2025-03-27 05:55:38+0000', tz='UTC'), Timestamp('2025-03-27 05:55:39+0000', tz='UTC'), Timestamp('2025-03-27 05:55:40+0000', tz='UTC')]
+2025-05-12 17:23:07,474 - DEBUG - Last 5 feature timestamps: [Timestamp('2025-03-27 23:59:39+0000', tz='UTC'), Timestamp('2025-03-27 23:59:40+0000', tz='UTC'), Timestamp('2025-03-27 23:59:41+0000', tz='UTC'), Timestamp('2025-03-27 23:59:42+0000', tz='UTC'), Timestamp('2025-03-27 23:59:43+0000', tz='UTC')]
+2025-05-12 17:23:07,474 - DEBUG - Features include: ['1s_price_return_5', '1s_price_return_10', '1s_price_return_20', '1s_price_return_50', '1s_price_hlc_ratio', '1s_price_pct_off_high_5', '1s_price_pct_off_low_5', '1s_price_pct_off_high_10', '1s_price_pct_off_low_10', '1s_price_pct_off_high_20']
+2025-05-12 17:23:07,474 - INFO - Running momentum strategy test
+2025-05-12 17:23:07,474 - INFO - Starting episode 1/3
+2025-05-12 17:23:07,475 - INFO - Initialized market from trades: Price=$11.0000
+2025-05-12 17:23:07,476 - INFO - Market initialized: Price=$11.0000, Bid=$10.9945, Ask=$11.0055, Spread=$0.0110
+2025-05-12 17:23:07,476 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,476 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,476 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,477 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,484 - DEBUG - State update: Position=0.00, PnL=0.00%
+2025-05-12 17:23:07,485 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,485 - DEBUG - Looking for next timestamp after 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,485 - DEBUG - Features index contains 65048 timestamps
+2025-05-12 17:23:07,485 - DEBUG - First few timestamps: [Timestamp('2025-03-27 05:55:36+0000', tz='UTC'), Timestamp('2025-03-27 05:55:37+0000', tz='UTC'), Timestamp('2025-03-27 05:55:38+0000', tz='UTC'), Timestamp('2025-03-27 05:55:39+0000', tz='UTC'), Timestamp('2025-03-27 05:55:40+0000', tz='UTC')]
+2025-05-12 17:23:07,486 - DEBUG - Current index: 0, timestamp: 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,486 - DEBUG - Next timestamp found: 2025-03-27 05:55:37+00:00
+2025-05-12 17:23:07,486 - DEBUG - State update: Position=0.00, PnL=0.00%
+2025-05-12 17:23:07,486 - DEBUG - Portfolio update: Cash=$100000.00, Value=$100000.00
+2025-05-12 17:23:07,486 - INFO - Episode 1 finished: 1 steps, reward: 0.00, PnL: $0.00
+2025-05-12 17:23:07,487 - INFO - Episode 1 finished: Steps=1, Total Reward=0.0000
+2025-05-12 17:23:07,487 - INFO - Episode metrics: PnL=$0.00, Win Rate=0.0%, Trade Count=0
+2025-05-12 17:23:07,487 - INFO - Starting episode 2/3
+2025-05-12 17:23:07,488 - INFO - Initialized market from trades: Price=$11.0000
+2025-05-12 17:23:07,489 - INFO - Market initialized: Price=$11.0000, Bid=$10.9945, Ask=$11.0055, Spread=$0.0110
+2025-05-12 17:23:07,489 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,489 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,489 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,489 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,496 - DEBUG - State update: Position=0.00, PnL=0.00%
+2025-05-12 17:23:07,497 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,497 - DEBUG - Looking for next timestamp after 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,497 - DEBUG - Features index contains 65048 timestamps
+2025-05-12 17:23:07,498 - DEBUG - First few timestamps: [Timestamp('2025-03-27 05:55:36+0000', tz='UTC'), Timestamp('2025-03-27 05:55:37+0000', tz='UTC'), Timestamp('2025-03-27 05:55:38+0000', tz='UTC'), Timestamp('2025-03-27 05:55:39+0000', tz='UTC'), Timestamp('2025-03-27 05:55:40+0000', tz='UTC')]
+2025-05-12 17:23:07,498 - DEBUG - Current index: 0, timestamp: 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,498 - DEBUG - Next timestamp found: 2025-03-27 05:55:37+00:00
+2025-05-12 17:23:07,498 - DEBUG - State update: Position=0.00, PnL=0.00%
+2025-05-12 17:23:07,498 - DEBUG - Portfolio update: Cash=$100000.00, Value=$100000.00
+2025-05-12 17:23:07,499 - INFO - Episode 2 finished: 1 steps, reward: 0.00, PnL: $0.00
+2025-05-12 17:23:07,499 - INFO - Episode 2 finished: Steps=1, Total Reward=0.0000
+2025-05-12 17:23:07,499 - INFO - Episode metrics: PnL=$0.00, Win Rate=0.0%, Trade Count=0
+2025-05-12 17:23:07,499 - INFO - Starting episode 3/3
+2025-05-12 17:23:07,499 - INFO - Initialized market from trades: Price=$11.0000
+2025-05-12 17:23:07,502 - INFO - Market initialized: Price=$11.0000, Bid=$10.9945, Ask=$11.0055, Spread=$0.0110
+2025-05-12 17:23:07,502 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,502 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,502 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,502 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,509 - DEBUG - State update: Position=0.00, PnL=0.00%
+2025-05-12 17:23:07,510 - WARNING - Cannot move market backwards from 2025-03-27 08:18:04.092316340+00:00 to 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,510 - DEBUG - Looking for next timestamp after 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,510 - DEBUG - Features index contains 65048 timestamps
+2025-05-12 17:23:07,511 - DEBUG - First few timestamps: [Timestamp('2025-03-27 05:55:36+0000', tz='UTC'), Timestamp('2025-03-27 05:55:37+0000', tz='UTC'), Timestamp('2025-03-27 05:55:38+0000', tz='UTC'), Timestamp('2025-03-27 05:55:39+0000', tz='UTC'), Timestamp('2025-03-27 05:55:40+0000', tz='UTC')]
+2025-05-12 17:23:07,511 - DEBUG - Current index: 0, timestamp: 2025-03-27 05:55:36+00:00
+2025-05-12 17:23:07,511 - DEBUG - Next timestamp found: 2025-03-27 05:55:37+00:00
+2025-05-12 17:23:07,511 - DEBUG - State update: Position=0.00, PnL=0.00%
+2025-05-12 17:23:07,512 - DEBUG - Portfolio update: Cash=$100000.00, Value=$100000.00
+2025-05-12 17:23:07,512 - INFO - Episode 3 finished: 1 steps, reward: 0.00, PnL: $0.00
+2025-05-12 17:23:07,512 - INFO - Episode 3 finished: Steps=1, Total Reward=0.0000
+2025-05-12 17:23:07,512 - INFO - Episode metrics: PnL=$0.00, Win Rate=0.0%, Trade Count=0
+2025-05-12 17:23:07,513 - INFO - Results Summary:
+2025-05-12 17:23:07,513 - INFO - Episode 1: Reward=0.00, PnL=$0.00, Win Rate=0.0%, Trades=0
+2025-05-12 17:23:07,513 - INFO - Episode 2: Reward=0.00, PnL=$0.00, Win Rate=0.0%, Trades=0
+2025-05-12 17:23:07,513 - INFO - Episode 3: Reward=0.00, PnL=$0.00, Win Rate=0.0%, Trades=0
+2025-05-12 17:23:07,513 - INFO - Average PnL: $0.00
+2025-05-12 17:23:07,513 - INFO - Average Win Rate: 0.0%
+2025-05-12 17:23:07,513 - INFO - Average Trades per Episode: 0.0
+2025-05-12 17:23:07,513 - INFO - Test completed successfully
