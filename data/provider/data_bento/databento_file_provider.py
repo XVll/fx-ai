@@ -117,7 +117,7 @@ class DabentoFileProvider(HistoricalDataProvider):
 
     def _scan_and_build_metadata_index(self):
         self.metadata_index = []
-        self.logger.info(f"Scanning for metadata in '{self.data_dir}'...")
+        self.logger.debug(f"Scanning for metadata in '{self.data_dir}'...")
         found_scheme_dir = 0
         for root, dirs, files in os.walk(self.data_dir, topdown=True):
             if "metadata.json" in files and "manifest.json" in files:
@@ -139,8 +139,7 @@ class DabentoFileProvider(HistoricalDataProvider):
                     end_ns = query_info.get("end")
 
                     if not all([schema, symbols_list, start_ns is not None, end_ns is not None]):
-                        self._log(f"Skipping '{job_id_dir}': missing essential fields in metadata.json's query.",
-                                  logging.WARNING)
+                        self._log(f"Skipping '{job_id_dir}': missing essential fields in metadata.json's query.", logging.WARNING)
                         continue
 
                     start_utc = pd.Timestamp(start_ns, unit='ns', tz='UTC')
@@ -169,7 +168,7 @@ class DabentoFileProvider(HistoricalDataProvider):
                 except Exception as e:  # Catch broader exceptions during file processing
                     self._log(f"Error processing directory '{job_id_dir}': {e}", logging.ERROR)
         self.logger.info(
-            f"Scanning finished. Found {found_scheme_dir} scheme directories, indexed {len(self.metadata_index)} DBN file entries.")
+            f"Scanning finished in {self.data_dir}. Found {found_scheme_dir} scheme directories, indexed {len(self.metadata_index)} DBN file entries.")
         if not self.metadata_index:
             self.logger.warning(
                 f"No DBN files were indexed. Check 'data_dir' ('{self.data_dir}') and Databento download structure.")
@@ -266,7 +265,6 @@ class DabentoFileProvider(HistoricalDataProvider):
         start_utc = ensure_timezone_aware(start_time, is_end_time=False)
         end_utc = ensure_timezone_aware(end_time, is_end_time=True)
         df_trades = self._load_data_for_request("trades", symbol, start_utc, end_utc)
-        self._log(f"Loaded {len(df_trades)} trades for {symbol} in range {start_utc}-{end_utc}.", logging.INFO)
         return df_trades
 
     def get_quotes(self, symbol: str, start_time: Union[datetime, str],
@@ -274,7 +272,6 @@ class DabentoFileProvider(HistoricalDataProvider):
         start_utc = ensure_timezone_aware(start_time, is_end_time=False)
         end_utc = ensure_timezone_aware(end_time, is_end_time=True)
         df_quotes = self._load_data_for_request(self._TIMEFRAME_TO_SCHEMA_MAP["quotes"], symbol, start_utc, end_utc)
-        self._log(f"Loaded {len(df_quotes)} quotes for {symbol} in range {start_utc}-{end_utc}.", logging.INFO)
         return df_quotes
 
     def get_bars(self, symbol: str, timeframe: str, start_time: Union[datetime, str],
@@ -291,10 +288,9 @@ class DabentoFileProvider(HistoricalDataProvider):
         df_bars = self._load_data_for_request(databento_schema, symbol, start_utc, end_utc)
 
         if timeframe.lower() == "5m" and df_bars.empty:
-            self._log(f"No direct 5m bars found for {symbol}. Trying to create from 1m bars.")
+            self._log(f"No direct 5m bars found for {symbol}. Trying to create from 1m bars.",logging.DEBUG)
             df_bars = self._create_5m_bars_from_1m(symbol, start_utc, end_utc)
 
-        self._log(f"Loaded {len(df_bars)} {timeframe} bars for {symbol} in range {start_utc}-{end_utc}.", logging.INFO)
         return df_bars
 
     def _create_5m_bars_from_1m(self, symbol: str,
@@ -323,7 +319,7 @@ class DabentoFileProvider(HistoricalDataProvider):
                 'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
             })
             resampled_df.dropna(subset=['open'], inplace=True)
-            self._log(f"Successfully created {len(resampled_df)} 5m bars from 1m data for {symbol}.")
+            self._log(f"Successfully created {len(resampled_df)} 5m bars from 1m data for {symbol}.", logging.DEBUG)
             return resampled_df
         except Exception as e:
             self.logger.error(f"Error resampling 1m to 5m bars for {symbol}: {e}")
@@ -334,5 +330,4 @@ class DabentoFileProvider(HistoricalDataProvider):
         start_utc = ensure_timezone_aware(start_time, is_end_time=False)
         end_utc = ensure_timezone_aware(end_time, is_end_time=True)
         df_status = self._load_data_for_request(self._TIMEFRAME_TO_SCHEMA_MAP["status"], symbol, start_utc, end_utc)
-        self._log(f"Loaded {len(df_status)} status updates for {symbol} in range {start_utc}-{end_utc}.", logging.INFO)
         return df_status

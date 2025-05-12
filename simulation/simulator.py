@@ -1,16 +1,16 @@
-# data/data_processor.py
-from typing import Dict, List, Union, Tuple, Optional, Any, Callable
+# data/simulator.py
+from typing import Dict, List, Union, Any, Callable
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
 from data.data_manager import DataManager
-from data.feature.feature_extractor import FeatureExtractor
-from data.feature.state_manager import StateManager
+from feature.feature_extractor import FeatureExtractor
+from feature.state_manager import StateManager
 
 
-class DataProcessor:
+class Simulator:
     """
     Coordinates data, feature extraction, and state management.
     Acts as the central component for training and live trading.

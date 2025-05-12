@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from functools import lru_cache
 import logging
-from ..utils.indicators import calculate_ema, calculate_macd, calculate_vwap
+from data.utils.indicators import calculate_ema, calculate_macd, calculate_vwap
 
 
 class FeatureExtractor:
@@ -575,7 +575,7 @@ class FeatureExtractor:
             combined_features = combined_features.join(reindexed)
 
         # Handle NaN values
-        combined_features = combined_features.fillna(method='ffill').fillna(0)
+        combined_features = combined_features.ffill().fillna(0)
 
         # Cache if a cache key is provided
         if cache_key:
