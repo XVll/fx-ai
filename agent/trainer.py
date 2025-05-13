@@ -9,7 +9,7 @@ from datetime import datetime
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
 from feature.feature_extractor import FeatureExtractor
-from simulation.simulator import Simulator
+from simulation.trading_simulator import Simulator
 from envs.trading_env import TradingEnv
 from models.transformer import MultiBranchTransformer
 from agent.ppo_agent import PPOTrainer

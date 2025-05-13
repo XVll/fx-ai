@@ -1,57 +1,37 @@
-# envs/trading_env.py (updated for Hydra)
+from dataclasses import dataclass
+
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from typing import Dict, List, Union, Tuple, Optional, Any
-import pandas as pd
+from typing import Dict, Union, Optional
 import logging
+
+from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig
 
-from simulation.simulator import Simulator
+from config.config import Config
+from envs.trading_simulator import TradingSimulator
 
 
 class TradingEnv(gym.Env):
-    """
-    OpenAI Gym-compatible environment for financial trading.
-    """
-
     metadata = {'render_modes': ['human']}
 
     def __init__(
             self,
-            simulator: Simulator,
-            config: Union[Dict, DictConfig] = None,
+            trading_simulator: TradingSimulator,
+            cfg: Config,
             reward_function: Optional[callable] = None,
             logger: logging.Logger = None
     ):
-        """
-        Initialize the trading environment.
-
-        Args:
-            simulator: Configured Simulator instance
-            config: Environment configuration (Hydra DictConfig or regular dict)
-            reward_function: Custom reward function (optional)
-            logger: Optional logger
-        """
-        self.simulator = simulator
-        self.config = config or {}
         self.logger = logger or logging.getLogger(__name__)
 
-        # In the TradingEnv.__init__ method:
-
-        # Support for Hydra config - convert to dict if needed
-        cfg = self.config
-        if hasattr(cfg, "_to_dict"):
-            cfg = cfg._to_dict()
-
-        # In the TradingEnv.__init__ method:
         if reward_function is None:
-            # Create momentum reward function from config
             reward_config = cfg if not hasattr(cfg, 'reward') else cfg.reward
             reward_type = cfg.get('reward_type', 'momentum')
 
+
             if reward_type == 'momentum':
-                self.reward_fn = MomentumTradingReward(reward_config)
+                self.reward_fn = TradingReward(reward_config)
             else:
                 # Default simple reward function
                 self.reward_fn = lambda env, action, change, pct, traded, info: change
@@ -268,43 +248,3 @@ class TradingEnv(gym.Env):
     def close(self):
         """Clean up resources."""
         pass
-
-
-class MomentumTradingReward:
-    """
-    Minimal reward function for momentum trading.
-    """
-
-    def __init__(self, config: Dict = None):
-        """
-        Initialize the reward function.
-
-        Args:
-            config: Configuration dictionary
-        """
-        self.config = config or {}
-
-    def __call__(self, env: TradingEnv, action: float, portfolio_change: float,
-                 portfolio_change_pct: float, trade_executed: bool, info: Dict[str, Any]) -> float:
-        """
-        Calculate reward for momentum trading.
-
-        Args:
-            env: Trading environment
-            action: Executed action value
-            portfolio_change: Absolute change in portfolio value
-            portfolio_change_pct: Percentage change in portfolio value
-            trade_executed: Whether a trade was executed
-            info: Information dictionary
-
-        Returns:
-            Calculated reward
-        """
-        # Simplified reward - just use portfolio change
-        reward = portfolio_change
-
-        # Small penalty for trading
-        if trade_executed:
-            reward -= 0.1
-
-        return reward

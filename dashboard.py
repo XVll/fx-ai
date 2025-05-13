@@ -7,7 +7,7 @@ from visualization.dashboard import TradingDashboard
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Launch the AI Trading Dashboard")
-    parser.add_argument("--project", type=str, default=os.environ.get("WANDB_PROJECT", "ai-trading"),
+    parser.add_argument("--project", type=str, default=os.environ.get("WANDB_PROJECT", "fx-ai"),
                         help="W&B project name")
     parser.add_argument("--entity", type=str, default=os.environ.get("WANDB_ENTITY", None),
                         help="W&B entity/username")
