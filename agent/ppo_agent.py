@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 import gymnasium as gym
 from typing import Dict, List, Tuple, Optional, Any, Union
 import logging
-
+import torch.nn.functional as F
 from models.transformer import MultiBranchTransformer
 from envs.trading_env import TradingEnv
 from agent.utils import ReplayBuffer, normalize_state_dict, preprocess_state_to_dict
