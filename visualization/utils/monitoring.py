@@ -1,3 +1,0 @@
-'''
-Live Monitoring Interface: When we move to live trading, monitoring becomes even more critical (to avoid the agent making uncontrolled losses). We will likely develop (or integrate) a small dashboard that shows the agent’s current positions, recent trades, and P&L in real-time. This could simply be logging to console or a simple web dashboard using something like Plotly Dash or Streamlit for a quick interface. For simulation, this is optional, but building it early means we can trust the agent by the time it goes live.
-'''
