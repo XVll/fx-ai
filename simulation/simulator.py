@@ -179,22 +179,40 @@ class Simulator:
 
         # Print data stats
         for key, df in data_dict.items():
-            if not df.empty:
-                self._log(f"Loaded {len(df)} rows of {key} data")
+            if isinstance(df, pd.DataFrame):
+                if not df.empty:
+                    self._log(f"Loaded {len(df)} rows of {key} data")
+                else:
+                    self._log(f"No data loaded for {key}")
             else:
-                self._log(f"No data loaded for {key}")
+                self._log(f"Data for {key} is not a DataFrame type: {type(df)}")
 
         # Initialize components
         # First the market simulator
         quotes_df = data_dict.get('quotes', pd.DataFrame())
         trades_df = data_dict.get('trades', pd.DataFrame())
 
-        # Get the appropriate bar data
         bars_df = None
         for tf in ['bars_1m', 'bars_5m', 'bars_1d']:
-            if tf in data_dict and not data_dict[tf].empty:
+            if tf in data_dict and isinstance(data_dict[tf], pd.DataFrame) and not data_dict[tf].empty:
                 bars_df = data_dict[tf]
                 break
+
+        # Ensure we have valid DataFrames for all inputs
+        quotes_df = data_dict.get('quotes', pd.DataFrame())
+        if not isinstance(quotes_df, pd.DataFrame):
+            quotes_df = pd.DataFrame()
+
+        trades_df = data_dict.get('trades', pd.DataFrame())
+        if not isinstance(trades_df, pd.DataFrame):
+            trades_df = pd.DataFrame()
+
+        status_df = data_dict.get('status', pd.DataFrame())
+        if not isinstance(status_df, pd.DataFrame):
+            status_df = pd.DataFrame()
+
+        # Now initialize simulators with proper DataFrame objects
+        self.market_simulator.initialize_from_data(quotes_df, trades_df, bars_df, status_df)
 
         status_df = data_dict.get('status', pd.DataFrame())
 
