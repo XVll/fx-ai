@@ -1,21 +1,19 @@
-# conf/feature/default.yaml
-# Default feature extractor configuration
+# Feature extraction configuration
 
 # Feature dimensions
-hf_seq_len: 60
-hf_feat_dim: 20
-mf_seq_len: 30
-mf_feat_dim: 15
-lf_seq_len: 30
-lf_feat_dim: 10
-static_feat_dim: 15
+hf_seq_len: 60  # High-frequency sequence length (1s data)
+hf_feat_dim: 20  # High-frequency feature dimension
+mf_seq_len: 30  # Medium-frequency sequence length (1m data)
+mf_feat_dim: 15  # Medium-frequency feature dimension
+lf_seq_len: 30  # Low-frequency sequence length (5m data)
+lf_feat_dim: 10  # Low-frequency feature dimension
+static_feat_dim: 15  # Static feature dimension
 
-# Feature processing options
-feature_normalization: "standardize"  # Options: "standardize", "minmax", "robust", "none"
+# Feature normalization
+feature_normalization: "standardize"
 moving_avg_window: 20
-use_technical_indicators: true
 
-# Feature types to extract
+# Feature groups
 use_volume_profile: true
 use_tape_features: true
 use_level2_features: true
@@ -38,9 +36,3 @@ indicators:
   bollinger:
     period: 20
     std_dev: 2.0
-
-# Window sizes for different features
-price_window: 60
-volume_window: 30
-tape_window: 20
-level2_window: 15

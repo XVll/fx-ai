@@ -1,5 +1,5 @@
-# conf/model/default.yaml
-# Default model configuration
+# config/model/transformer.yaml
+# Transformer model configuration
 
 # Feature dimensions
 hf_seq_len: 60

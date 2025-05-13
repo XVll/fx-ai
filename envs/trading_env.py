@@ -35,24 +35,46 @@ class TradingEnv(gym.Env):
         """
         self.simulator = simulator
         self.config = config or {}
-        self.custom_reward_fn = reward_function
         self.logger = logger or logging.getLogger(__name__)
+
+        # In the TradingEnv.__init__ method:
 
         # Support for Hydra config - convert to dict if needed
         cfg = self.config
         if hasattr(cfg, "_to_dict"):
             cfg = cfg._to_dict()
 
+        # In the TradingEnv.__init__ method:
+        if reward_function is None:
+            # Create momentum reward function from config
+            reward_config = cfg if not hasattr(cfg, 'reward') else cfg.reward
+            reward_type = cfg.get('reward_type', 'momentum')
+
+            if reward_type == 'momentum':
+                self.reward_fn = MomentumTradingReward(reward_config)
+            else:
+                # Default simple reward function
+                self.reward_fn = lambda env, action, change, pct, traded, info: change
+        else:
+            self.reward_fn = reward_function
+
+        # Look for parameters in either top-level or nested format
+        general = cfg.get('general', cfg)  # Try general section, fallback to top-level
+        reward = cfg.get('reward', cfg)  # Try reward section, fallback to top-level
+
         # Environment configuration
         self.state_dim = cfg.get('state_dim', 20)  # Dimension of state vector
         self.max_steps = cfg.get('max_steps', 1000)  # Maximum steps per episode
         self.normalize_state = cfg.get('normalize_state', True)
+        self.random_reset = cfg.get('random_reset', True)
 
-        # New reward parameters from config
-        self.reward_type = cfg.get('reward_type', 'momentum')
-        self.reward_scaling = cfg.get('reward_scaling', 1.0)
-        self.trade_penalty = cfg.get('trade_penalty', 0.1)
-        self.hold_penalty = cfg.get('hold_penalty', 0.0)
+        # Reward parameters from config
+        self.reward_type = reward.get('type', reward.get('reward_type', 'momentum'))
+        self.reward_scaling = reward.get('scaling', reward.get('reward_scaling', 1.0))
+        self.trade_penalty = reward.get('trade_penalty', 0.1)
+        self.hold_penalty = reward.get('hold_penalty', 0.0)
+        self.early_exit_bonus = reward.get('early_exit_bonus', 0.5)
+        self.flush_prediction_bonus = reward.get('flush_prediction_bonus', 2.0)
 
         # Define action and observation space
         # Action space: continuous value between -1 and 1
@@ -149,22 +171,38 @@ class TradingEnv(gym.Env):
     def step(self, action):
         """
         Take a step in the environment by executing an action.
-
-        Args:
-            action: Action to take (normalized -1.0 to 1.0)
-
-        Returns:
-            Tuple of (next_state, reward, terminated, truncated, info)
         """
-        # Ensure action is in correct format
-        action_value = float(action[0].item() if hasattr(action[0], "item") else action[0]) if hasattr(action, "__len__") else float(action)
+        # Convert action if needed
+        action_value = float(action[0].item() if hasattr(action[0], "item") else action[0]) if hasattr(action,
+                                                                                                       "__len__") else float(
+            action)
 
         # Execute in simulator
         simulator_result = self.simulator.step(action_value)
-        next_state, reward, done, info = simulator_result
+        next_state, raw_reward, done, info = simulator_result
 
-        # Update step count
+        # Calculate portfolio metrics for reward
+        portfolio_value = self.simulator.get_portfolio_state().get('total_value', 0)
+        prev_portfolio_value = info.get('prev_portfolio_value', portfolio_value)
+        portfolio_change = portfolio_value - prev_portfolio_value
+        portfolio_change_pct = portfolio_change / prev_portfolio_value if prev_portfolio_value > 0 else 0
+
+        # Use custom reward function
+        reward = self.reward_fn(
+            self,
+            action_value,
+            portfolio_change,
+            portfolio_change_pct,
+            info.get('action_result', {}).get('action', '') != 'hold',  # True if trade executed
+            info
+        )
+
+        # Update step count and info
         self.current_step += 1
+
+        # Record portfolio value for next step
+        info['prev_portfolio_value'] = portfolio_value
+        info['total_reward'] = self.total_reward + reward
         self.total_reward += reward
 
         # Check for maximum steps
@@ -175,17 +213,6 @@ class TradingEnv(gym.Env):
 
         # Get normalized state
         norm_state = self._get_normalized_state()
-
-        # Update info with step information
-        info.update({
-            'step': self.current_step,
-            'total_reward': self.total_reward,
-        })
-
-        self.logger.info(f"Step {self.current_step}: Reward={reward:.4f}, Total={self.total_reward:.4f}")
-
-        if done:
-            self.logger.info(f"Episode finished: Steps={self.current_step}, Total Reward={self.total_reward:.4f}")
 
         return norm_state, reward, done, truncated, info
 

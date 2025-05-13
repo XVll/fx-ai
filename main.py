@@ -77,6 +77,45 @@ def run_training(cfg: DictConfig):
     log.info("Creating multi-branch transformer model")
     model = MultiBranchTransformer(**cfg.model, device=device)
 
+
+
+
+
+    # In your training.py or main.py, after creating the model:
+    model_config_str = str(cfg.model)
+    model_str = str(model)
+    log.info(f"Model config: {model_config_str}")
+    log.info(f"Model structure: {model_str}")
+
+    # Test a forward pass with dummy input to catch dimension issues:
+    try:
+        # Create dummy input matching your expected dimensions
+        dummy_input = {
+            'hf_features': torch.zeros((1, model.hf_seq_len, model.hf_feat_dim)),
+            'mf_features': torch.zeros((1, model.mf_seq_len, model.mf_feat_dim)),
+            'lf_features': torch.zeros((1, model.lf_seq_len, model.lf_feat_dim)),
+            'static_features': torch.zeros((1, model.static_feat_dim))
+        }
+        dummy_input = {k: v.to(device) for k, v in dummy_input.items()}
+
+        # Test forward pass
+        with torch.no_grad():
+            output = model(dummy_input)
+        log.info(f"Model forward pass successful! Output shape: {[o.shape for o in output]}")
+    except Exception as e:
+        log.error(f"Error during model forward pass: {str(e)}")
+
+
+
+
+
+
+
+
+
+
+
+
     # 7. Set up training callbacks
     callbacks = [
         ModelCheckpointCallback(

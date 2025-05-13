@@ -25,16 +25,26 @@ class Simulator:
         self.logger = logger or logging.getLogger(__name__)
 
         # Convert OmegaConf to dict if needed for backward compatibility
+        # Convert OmegaConf to dict if needed for backward compatibility
         if hasattr(self.config, "_to_dict"):
             config_dict = self.config._to_dict()
         else:
             config_dict = self.config
 
+        # Extract feature config - try multiple ways to find it
+        feature_config = config_dict.get('feature_config', config_dict.get('feature', {}))
+        if not feature_config and 'feature' in config_dict:
+            # Try to get from top-level config
+            feature_config = config_dict['feature']
+            if hasattr(feature_config, "_to_dict"):
+                feature_config = feature_config._to_dict()
+
         # Component configs - extract from Hydra structure if available
-        self.feature_config = config_dict.get('feature_config', {})
+        self.feature_config = feature_config
         self.market_config = config_dict.get('market_config', {})
         self.execution_config = config_dict.get('execution_config', {})
         self.portfolio_config = config_dict.get('portfolio_config', {})
+        self.strategy_config = config_dict.get('strategy', {})
 
         # Initialize components
         self.feature_extractor = FeatureExtractor(self.feature_config, logger=logger)
@@ -281,11 +291,6 @@ class Simulator:
 
     def step(self, action: float) -> Tuple[Dict[str, Any], float, bool, Dict[str, Any]]:
         """Take a step in the environment by executing an action"""
-        # Check if we have a current timestamp
-        if self.current_timestamp is None:
-            self._log("Cannot step: no current timestamp", logging.ERROR)
-            return {}, 0.0, True, {"error": "no_timestamp"}
-
         # Record state before action
         prev_portfolio_value = self.portfolio_simulator.get_portfolio_value()
 
@@ -295,6 +300,40 @@ class Simulator:
             action,
             timestamp=self.current_timestamp
         )
+
+        # Enhance info dictionary with data for reward function
+        info = {
+            'timestamp': self.current_timestamp,
+            'action_result': result,
+            'portfolio_value': self.portfolio_simulator.get_portfolio_value(),
+            'portfolio_change': self.portfolio_simulator.get_portfolio_value() - prev_portfolio_value,
+            'step_count': self.step_count,
+            'prev_portfolio_value': prev_portfolio_value
+        }
+
+        # Add market state information for reward calculation
+        market_state = self.market_simulator.get_current_market_state()
+        info['price'] = market_state.get('price', 0)
+
+        # Add feature-based signals for reward calculation
+        if self.current_symbol in self.features_cache:
+            features = self.features_cache[self.current_symbol]
+            current_features = features[features.index <= self.current_timestamp]
+
+            if not current_features.empty:
+                latest_features = current_features.iloc[-1]
+
+                # Extract momentum and volume signals for reward calculation
+                for col in latest_features.index:
+                    if 'momentum' in col:
+                        info['momentum_strength'] = latest_features[col]
+                    if 'rel_volume' in col:
+                        info['relative_volume'] = latest_features[col]
+                    if 'tape_speed' in col:
+                        info['tape_speed'] = latest_features[col]
+                    if 'tape_imbalance' in col:
+                        info['tape_imbalance'] = latest_features[col]
+
 
         # Record trade if executed
         if result['success'] and result.get('action') != 'hold' and self.trade_callbacks:

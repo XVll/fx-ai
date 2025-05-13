@@ -22,21 +22,28 @@ class FeatureExtractor:
         if hasattr(cfg, "_to_dict"):
             cfg = cfg._to_dict()
 
+        # Look for dimensions in either top-level or nested format
+        dimensions = cfg.get('dimensions', cfg)  # Try dimensions section, fallback to top-level
+
         # Feature dimension configurations - use config values or defaults
-        self.hf_seq_len = cfg.get('hf_seq_len', 60)
-        self.hf_feat_dim = cfg.get('hf_feat_dim', 20)
-        self.mf_seq_len = cfg.get('mf_seq_len', 30)
-        self.mf_feat_dim = cfg.get('mf_feat_dim', 15)
-        self.lf_seq_len = cfg.get('lf_seq_len', 30)
-        self.lf_feat_dim = cfg.get('lf_feat_dim', 10)
-        self.static_feat_dim = cfg.get('static_feat_dim', 15)
+        self.hf_seq_len = dimensions.get('hf_seq_len', 60)
+        self.hf_feat_dim = dimensions.get('hf_feat_dim', 20)
+        self.mf_seq_len = dimensions.get('mf_seq_len', 30)
+        self.mf_feat_dim = dimensions.get('mf_feat_dim', 15)
+        self.lf_seq_len = dimensions.get('lf_seq_len', 30)
+        self.lf_feat_dim = dimensions.get('lf_feat_dim', 10)
+        self.static_feat_dim = dimensions.get('static_feat_dim', 15)
 
         # Feature extraction configuration
+        feature_groups = cfg.get('feature_groups', cfg)  # Try feature_groups section, fallback to top-level
         self.use_volume_profile = cfg.get('use_volume_profile', True)
         self.use_tape_features = cfg.get('use_tape_features', True)
         self.use_level2_features = cfg.get('use_level2_features', True)
-        self.feature_normalization = cfg.get('feature_normalization', 'standardize')
+        self.feature_normalization = cfg.get('normalization', cfg.get('feature_normalization', 'standardize'))
         self.moving_avg_window = cfg.get('moving_avg_window', 20)
+
+        # Technical indicators configuration
+        self.indicators = cfg.get('indicators', {})
 
         # Simplified parameters
         self.feature_groups = {

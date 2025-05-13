@@ -14,8 +14,18 @@ class PortfolioSimulator:
         self.config = config or {}
         self.logger = logger or logging.getLogger(__name__)
 
+        # Handle Hydra config
+        if hasattr(self.config, "_to_dict"):
+            config = self.config._to_dict()
+        else:
+            config = self.config
+
         # Configuration
-        self.initial_cash = self.config.get('initial_cash', 100000.0)
+        self.initial_cash = config.get('initial_cash', 100000.0)
+        self.max_position = config.get('max_position', 1.0)
+        self.position_sizing_method = config.get('position_sizing_method', 'fixed')
+        self.scale_in_levels = config.get('scale_in_levels', [0.25, 0.5, 0.75, 1.0])
+        self.scale_out_levels = config.get('scale_out_levels', [0.25, 0.5, 1.0])
 
         # Portfolio state
         self.cash = self.initial_cash
