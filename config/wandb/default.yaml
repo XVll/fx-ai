@@ -1,0 +1,26 @@
+# W&B configuration
+
+# General settings
+enabled: true
+project_name: "onur03-fx"  # W&B project name
+entity: null  # Your username or team name (null = default user)
+log_code: true  # Whether to track code
+log_model: true  # Whether to save model checkpoints to W&B
+
+# Logging frequency
+log_frequency:
+  steps: 1  # Log every N steps
+  gradients: 100  # Log gradients every N steps
+  model_checkpoints: 5  # Save model to W&B every N updates
+  custom_charts: 5  # Create custom charts every N episodes
+
+# Advanced settings
+watch_model: true  # Whether to watch gradients, parameters
+log_batch_metrics: false  # Whether to log batch-level metrics (can be noisy)
+
+# Custom visualizations
+visualizations:
+  position_charts: true  # Position sizing visualization
+  trade_analysis: true  # Trade performance analysis
+  market_indicators: true  # Indicator value tracking
+  action_distributions: true  # Distribution of model actions of model actions

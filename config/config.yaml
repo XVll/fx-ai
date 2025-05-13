@@ -1,65 +1,28 @@
-# conf/config.yaml
-# Root configuration file for AI Trading
+# config/config.yaml
 
-# Basic parameters
 defaults:
-  - model: default
-  - env: default
-  - callbacks: default
-  - override hydra/job_logging: colorlog
-  - override hydra/hydra_logging: colorlog
   - _self_
+  - model: transformer
+  - env: momentum_trading
+  - data: databento
+  - training: ppo
+  - wandb: default  # Include W&B configuration
 
-# Hydra configuration
 hydra:
   run:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   sweep:
     dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    subdir: ${hydra.job.num}
-  job:
-    chdir: True
+    subdir: ${hydra.job.override_dirname}
 
-# Data configuration
-data:
-  dir: ${hydra:runtime.cwd}/dnb/mlgo
-  symbol: MLGO
-  start_date: "2025-03-27"
-  end_date: "2025-03-27"
-  timeframes: ["1m", "5m"]
+# Quick test mode for debugging
+quick_test: false
 
-# Simulation configuration
-simulation:
-  market_config:
-    slippage_factor: 0.001
-  execution_config:
-    commission_per_share: 0.0
-  portfolio_config:
-    initial_cash: 100000.0
-  feature_config: {}
-
-# Training configuration
-training:
-  device: auto  # "auto", "cuda", "cpu", or "mps"
-  total_updates: 5  # Number of PPO updates
-  lr: 3.0e-4
-  gamma: 0.99
-  gae_lambda: 0.95
-  clip_eps: 0.2
-  critic_coef: 0.5
-  entropy_coef: 0.01
-  max_grad_norm: 0.5
-  n_epochs: 10
-  batch_size: 64
-  buffer_size: 2048
-  n_episodes_per_update: 8
-  eval_freq: 5
-
-# Quick test mode settings (toggle for faster testing)
-quick_test:
-  enabled: false  # Set to true for faster testing
-  total_updates: 1
-  n_episodes_per_update: 2
-  batch_size: 32
-  n_epochs: 3
-  buffer_size: 1024
+# Callbacks configuration
+callbacks:
+  save_freq: 5  # Save frequency in update iterations
+  log_freq: 10  # TensorBoard logging frequency in steps
+  early_stopping:
+    enabled: true
+    patience: 10
+    min_delta: 0.0
