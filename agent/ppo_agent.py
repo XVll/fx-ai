@@ -244,7 +244,6 @@ class PPOTrainer:
     def compute_advantages(self) -> None:
         """
         Compute advantages and returns using Generalized Advantage Estimation (GAE).
-        Simplified version to avoid gradient and shape issues.
         """
         # Make sure buffer data is prepared
         if isinstance(self.buffer.rewards, list):
@@ -255,43 +254,41 @@ class PPOTrainer:
         values = self.buffer.values
         dones = self.buffer.dones
 
-        # Make sure all tensors are on CPU and detached from computation graph
-        rewards = rewards.detach().cpu()
-        values = values.detach().cpu()
-        dones = dones.detach().cpu()
-
-        # Ensure consistent shapes for all tensors
-        if len(rewards.shape) == 1:
-            rewards = rewards.unsqueeze(1)
-        if len(values.shape) == 1:
-            values = values.unsqueeze(1)
-        if len(dones.shape) == 1:
-            dones = dones.unsqueeze(1)
-
-        # Create tensors for advantages and returns with correct shape
-        advantages = torch.zeros_like(rewards)
-        returns = torch.zeros_like(rewards)
-
         # Log shapes for debugging
         self.logger.info(
             f"Computing advantages - rewards: {rewards.shape}, values: {values.shape}, dones: {dones.shape}")
 
-        # Compute GAE using numpy to avoid building computation graph
-        rewards_np = rewards.numpy()
-        values_np = values.numpy()
-        dones_np = dones.numpy()
+        # Ensure consistent shapes - reshape if needed
+        if len(rewards.shape) == 1:
+            rewards = rewards.unsqueeze(1)  # Convert [batch_size] to [batch_size, 1]
+        if len(dones.shape) == 1:
+            dones = dones.unsqueeze(1)  # Convert [batch_size] to [batch_size, 1]
+        if len(values.shape) == 1:
+            values = values.unsqueeze(1)  # Convert [batch_size] to [batch_size, 1]
 
-        # Compute advantages
+        # Convert to NumPy arrays for easier processing
+        rewards_np = rewards.detach().cpu().numpy()
+        values_np = values.detach().cpu().numpy()
+        dones_np = dones.detach().cpu().numpy()
+
+        # Create NumPy array for advantages
+        advantages_np = np.zeros_like(rewards_np)
+
+        # Log after reshaping
+        self.logger.info(
+            f"After reshaping - rewards: {rewards_np.shape}, values: {values_np.shape}, dones: {dones_np.shape}")
+
+        # Compute GAE
         last_gae = 0
         for t in reversed(range(len(rewards_np))):
             # End of episode or end of buffer
             if t == len(rewards_np) - 1:
                 # For the last step, use 0 as the next value
                 next_value = 0
-                next_non_terminal = 1.0 - float(dones_np[t])
+                next_non_terminal = 1.0 - float(dones_np[t, 0])
             else:
                 next_value = values_np[t + 1, 0]
-                next_non_terminal = 1.0 - float(dones_np[t])
+                next_non_terminal = 1.0 - float(dones_np[t, 0])
 
             # TD error
             delta = rewards_np[t, 0] + self.gamma * next_value * next_non_terminal - values_np[t, 0]
@@ -299,15 +296,12 @@ class PPOTrainer:
             # Recursive GAE formula
             last_gae = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae
 
-            # Store advantage
-            advantages[t, 0] = last_gae
+            # Store advantage in NumPy array
+            advantages_np[t, 0] = last_gae
 
-        # Returns = advantages + values
+        # Convert back to PyTorch tensors
+        advantages = torch.FloatTensor(advantages_np).to(self.device)
         returns = advantages + values
-
-        # Convert back to same device as model
-        advantages = advantages.to(self.device)
-        returns = returns.to(self.device)
 
         # Store in buffer
         self.buffer.advantages = advantages

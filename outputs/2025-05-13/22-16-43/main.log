@@ -1,0 +1,26 @@
+[2025-05-13 22:16:43,697][__main__][INFO] - Initializing data provider
+[2025-05-13 22:16:43,698][data.provider.data_bento.databento_file_provider][INFO] - Scanning for metadata in '/Users/fx/Repositories/FxAIv2/dnb/mlgo'...
+[2025-05-13 22:16:43,703][data.provider.data_bento.databento_file_provider][INFO] - Found 6 directories, indexed 183 files
+[2025-05-13 22:16:43,703][__main__][INFO] - Setting up simulator
+[2025-05-13 22:16:43,704][__main__][INFO] - Loading data for MLGO from 2025-03-27 to 2025-03-27
+[2025-05-13 22:16:43,704][__main__][INFO] - Initializing market from 2025-03-27 00:00:00 to 2025-03-27 23:59:59
+[2025-05-13 22:16:43,704][__main__][INFO] - Loading data for MLGO from 2025-03-27 00:00:00+00:00 to 2025-03-27 23:59:59.999999+00:00
+[2025-05-13 22:16:43,704][__main__][INFO] - Loading bars_1s from provider for MLGO
+[2025-05-13 22:16:44,278][data.provider.data_bento.databento_file_provider][INFO] - Loaded 6466 1s bars for MLGO
+[2025-05-13 22:16:44,278][__main__][INFO] - Loaded 6466 rows of bars_1s data for MLGO
+[2025-05-13 22:16:44,278][__main__][INFO] - Loading bars_1m from provider for MLGO
+[2025-05-13 22:16:44,422][data.provider.data_bento.databento_file_provider][INFO] - Loaded 571 1m bars for MLGO
+[2025-05-13 22:16:44,422][__main__][INFO] - Loaded 571 rows of bars_1m data for MLGO
+[2025-05-13 22:16:44,422][__main__][INFO] - Loading bars_5m from provider for MLGO
+[2025-05-13 22:16:44,422][data.provider.data_bento.databento_file_provider][INFO] - No 5m bar files found for MLGO
+[2025-05-13 22:16:44,422][data.provider.data_bento.databento_file_provider][INFO] - No direct 5m bars found for MLGO, building from 1m bars
+[2025-05-13 22:16:44,428][data.provider.data_bento.databento_file_provider][INFO] - Loaded 571 1m bars for MLGO
+[2025-05-13 22:16:44,430][data.provider.data_bento.databento_file_provider][INFO] - Built 159 5m bars from 1m bars for MLGO
+[2025-05-13 22:16:44,431][__main__][INFO] - Loaded 159 rows of bars_5m data for MLGO
+[2025-05-13 22:16:44,431][__main__][INFO] - Loading bars_1d from provider for MLGO
+[2025-05-13 22:16:44,439][data.provider.data_bento.databento_file_provider][INFO] - Loaded 1 1d bars for MLGO
+[2025-05-13 22:16:44,439][__main__][INFO] - Loaded 1 rows of bars_1d data for MLGO
+[2025-05-13 22:16:44,439][__main__][INFO] - Loading trades from provider for MLGO
+[2025-05-13 22:16:47,071][data.provider.data_bento.databento_file_provider][INFO] - Loaded 21111 trades for MLGO
+[2025-05-13 22:16:47,071][__main__][INFO] - Loaded 21111 rows of trades data for MLGO
+[2025-05-13 22:16:47,071][__main__][INFO] - Loading quotes from provider for MLGO
