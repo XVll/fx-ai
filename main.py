@@ -1,12 +1,12 @@
 # main.py
 import sys
-
+import os
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import logging
 import torch
-import os
 from datetime import datetime
+import wandb
 
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
@@ -14,12 +14,12 @@ from simulation.simulator import Simulator
 from envs.trading_env import TradingEnv
 from models.transformer import MultiBranchTransformer
 from agent.ppo_agent import PPOTrainer
-from agent.callbacks import ModelCheckpointCallback, TensorboardCallback
+from agent.callbacks import ModelCheckpointCallback, TensorboardCallback, EarlyStoppingCallback
+from agent.wandb_callback import WandbCallback
 
 # Setup logging
 log = logging.getLogger(__name__)
 
-sys.argv.extend(["quick_test=true"])
 
 @hydra.main(version_base=None, config_path="config", config_name="config")
 def run_training(cfg: DictConfig):
@@ -87,6 +87,30 @@ def run_training(cfg: DictConfig):
         TensorboardCallback(log_freq=cfg.callbacks.log_freq)
     ]
 
+    # Add early stopping if enabled
+    if cfg.callbacks.early_stopping.enabled:
+        callbacks.append(
+            EarlyStoppingCallback(
+                patience=cfg.callbacks.early_stopping.patience,
+                min_delta=cfg.callbacks.early_stopping.min_delta
+            )
+        )
+
+    # Add W&B callback if enabled
+    if cfg.wandb.enabled:
+        # Prepare combined config for W&B
+        flat_config = OmegaConf.to_container(cfg, resolve=True)
+
+        wandb_callback = WandbCallback(
+            project_name=cfg.wandb.project_name,
+            entity=cfg.wandb.entity,
+            log_freq=cfg.wandb.log_frequency.steps,
+            config=flat_config,
+            log_model=cfg.wandb.log_model,
+            log_code=cfg.wandb.log_code
+        )
+        callbacks.append(wandb_callback)
+
     # 8. Create trainer
     log.info("Setting up PPO trainer")
     trainer = PPOTrainer(
@@ -124,4 +148,7 @@ def run_training(cfg: DictConfig):
 
 
 if __name__ == "__main__":
+    # For quick testing, add default arg
+    if len(sys.argv) == 1 and "quick_test" not in sys.argv:
+        sys.argv.extend(["quick_test=true"])
     run_training()
