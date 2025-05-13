@@ -1,0 +1,196 @@
+[2025-05-13 17:28:22,937][__main__][INFO] - Configuration:
+quick_test: false
+callbacks:
+  save_freq: 5
+  log_freq: 10
+  early_stopping:
+    enabled: true
+    patience: 10
+    min_delta: 0.0
+simulation:
+  feature_config:
+    hf_seq_len: 60
+    hf_feat_dim: 20
+    mf_seq_len: 30
+    mf_feat_dim: 15
+    lf_seq_len: 30
+    lf_feat_dim: 10
+    static_feat_dim: 15
+    use_volume_profile: true
+    use_tape_features: true
+    use_level2_features: true
+  market_config:
+    slippage_factor: 0.001
+  execution_config:
+    commission_per_share: 0.0
+  portfolio_config:
+    initial_cash: 100000.0
+model:
+  hf_seq_len: 60
+  hf_feat_dim: 20
+  mf_seq_len: 30
+  mf_feat_dim: 15
+  lf_seq_len: 30
+  lf_feat_dim: 10
+  static_feat_dim: 15
+  d_model: 64
+  d_fused: 256
+  hf_layers: 2
+  mf_layers: 2
+  lf_layers: 2
+  hf_heads: 4
+  mf_heads: 4
+  lf_heads: 4
+  action_dim: 1
+  continuous_action: true
+  dropout: 0.1
+env:
+  state_dim: 1000
+  max_steps: 500
+  normalize_state: true
+  random_reset: true
+  max_position: 1.0
+  reward:
+    type: momentum
+    scaling: 2.0
+    trade_penalty: 0.1
+    hold_penalty: 0.0
+    early_exit_bonus: 0.5
+    flush_prediction_bonus: 2.0
+    momentum_threshold: 0.5
+    volume_surge_threshold: 5.0
+    tape_speed_threshold: 3.0
+    tape_imbalance_threshold: 0.7
+data:
+  dir: ./data
+  symbol: MLGO
+  start_date: '2025-01-01'
+  end_date: '2025-03-31'
+  timeframes:
+  - 1s
+  - 10s
+  - 1m
+  - 5m
+  - 1d
+  data_types:
+  - quotes
+  - trades
+  - bars
+  - status
+  api:
+    key: ${oc.env:DATABENTO_API_KEY,}
+    dataset: XNAS.ITCH
+    use_cache: true
+training:
+  lr: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_eps: 0.2
+  critic_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  n_epochs: 10
+  batch_size: 64
+  buffer_size: 2048
+  n_episodes_per_update: 8
+  total_updates: 100
+  device: auto
+wandb:
+  enabled: true
+  project_name: fx-ai
+  entity: null
+  log_code: true
+  log_model: true
+  log_frequency:
+    steps: 1
+    gradients: 100
+    model_checkpoints: 5
+    custom_charts: 5
+  watch_model: true
+  log_batch_metrics: false
+  visualizations:
+    position_charts: true
+    trade_analysis: true
+    market_indicators: true
+    action_distributions: true
+
+[2025-05-13 17:28:22,938][__main__][INFO] - Initializing data provider
+[2025-05-13 17:28:22,939][data.provider.data_bento.databento_file_provider][INFO] - Scanning finished in ./data. Found 0 scheme directories, indexed 0 DBN file entries.
+[2025-05-13 17:28:22,939][data.provider.data_bento.databento_file_provider][WARNING] - No DBN files were indexed. Check 'data_dir' ('./data') and Databento download structure.
+[2025-05-13 17:28:22,939][__main__][INFO] - Setting up simulator
+[2025-05-13 17:28:22,941][__main__][INFO] - Loading data for MLGO from 2025-01-01 to 2025-03-31
+[2025-05-13 17:28:22,941][__main__][INFO] - Initializing market from 2025-01-01 00:00:00 to 2025-03-31 23:59:59
+[2025-05-13 17:28:22,941][__main__][INFO] - Loading data for MLGO from 2025-01-01 to 2025-03-31 - types: ['bars_1s', 'bars_10s', 'bars_1m', 'bars_5m', 'bars_1d', 'trades', 'quotes', 'status']
+[2025-05-13 17:28:22,943][data.provider.data_bento.databento_file_provider][WARNING] - No 1s bars loaded for MLGO in range 2025-01-01 00:00:00+00:00 to 2025-03-31 23:59:59.999999999+00:00
+[2025-05-13 17:28:22,943][__main__][WARNING] - No bars_1s data found for MLGO
+[2025-05-13 17:28:22,944][data.provider.data_bento.databento_file_provider][ERROR] - Unsupported timeframe: 10s. Supported: ['trades', 'quotes', 'status', '1s', '1m', '5m', '1h', '1d']
+[2025-05-13 17:28:22,944][__main__][ERROR] - Error loading data for MLGO: Unsupported timeframe: 10s. Supported: ['trades', 'quotes', 'status', '1s', '1m', '5m', '1h', '1d']
+[2025-05-13 17:28:22,945][__main__][ERROR] - Failed to load data for MLGO
+[2025-05-13 17:28:22,945][__main__][INFO] - Creating trading environment
+[2025-05-13 17:28:22,946][__main__][INFO] - Using device: cpu
+[2025-05-13 17:28:22,946][__main__][INFO] - Creating multi-branch transformer model
+[2025-05-13 17:28:22,958][__main__][INFO] - Setting up PPO trainer
+[2025-05-13 17:28:24,469][__main__][INFO] - PPO Trainer initialized on device: cpu
+[2025-05-13 17:28:24,469][__main__][INFO] - Model: MultiBranchTransformer
+[2025-05-13 17:28:24,469][__main__][INFO] - Learning rate: 0.0003
+[2025-05-13 17:28:24,469][__main__][INFO] - Starting training for 100 updates
+[2025-05-13 17:28:24,469][__main__][INFO] - Starting training for 100 updates
+[2025-05-13 17:28:26,660][__main__][INFO] - Update 1/100
+[2025-05-13 17:28:26,661][__main__][INFO] - Collecting 8 episodes...
+[2025-05-13 17:28:26,662][__main__][INFO] - Resetting to timestamp: None
+[2025-05-13 17:28:26,675][__main__][INFO] - SELL order filled: 21 shares @ $9.9500
+[2025-05-13 17:28:26,675][__main__][INFO] - Market order 1000 (sell) filled: 21 shares @ $9.9500
+[2025-05-13 17:28:26,675][__main__][INFO] - Reached end of data
+[2025-05-13 17:28:26,675][__main__][INFO] - Episode 1 finished: 1 steps, reward: 417.90, PnL: $417.90
+[2025-05-13 17:28:26,676][__main__][INFO] - Episode finished - PnL: $417.90 (0.42%), Win Rate: 0.0%, Trades: 0
+[2025-05-13 17:28:26,677][__main__][INFO] - Episode 1: reward=-0.10, length=1
+[2025-05-13 17:28:26,678][__main__][INFO] - Resetting to timestamp: None
+[2025-05-13 17:28:26,686][__main__][INFO] - BUY order filled: 31 shares @ $10.0500
+[2025-05-13 17:28:26,687][__main__][INFO] - Market order 1000 (buy) filled: 31 shares @ $10.0500
+[2025-05-13 17:28:26,687][__main__][INFO] - Reached end of data
+[2025-05-13 17:28:26,687][__main__][INFO] - Episode 2 finished: 1 steps, reward: 0.00, PnL: $0.00
+[2025-05-13 17:28:26,687][__main__][INFO] - Episode finished - PnL: $0.00 (0.00%), Win Rate: 0.0%, Trades: 0
+[2025-05-13 17:28:26,688][__main__][INFO] - Episode 2: reward=-0.10, length=1
+[2025-05-13 17:28:26,689][__main__][INFO] - Resetting to timestamp: None
+[2025-05-13 17:28:26,696][__main__][INFO] - SELL order filled: 56 shares @ $9.9500
+[2025-05-13 17:28:26,697][__main__][INFO] - Market order 1000 (sell) filled: 56 shares @ $9.9500
+[2025-05-13 17:28:26,697][__main__][INFO] - Reached end of data
+[2025-05-13 17:28:26,697][__main__][INFO] - Episode 3 finished: 1 steps, reward: 1114.40, PnL: $1114.40
+[2025-05-13 17:28:26,697][__main__][INFO] - Episode finished - PnL: $1114.40 (1.11%), Win Rate: 0.0%, Trades: 0
+[2025-05-13 17:28:26,698][__main__][INFO] - Episode 3: reward=-0.10, length=1
+[2025-05-13 17:28:26,699][__main__][INFO] - Resetting to timestamp: None
+[2025-05-13 17:28:26,707][__main__][INFO] - BUY order filled: 92 shares @ $10.0500
+[2025-05-13 17:28:26,707][__main__][INFO] - Market order 1000 (buy) filled: 92 shares @ $10.0500
+[2025-05-13 17:28:26,707][__main__][INFO] - Reached end of data
+[2025-05-13 17:28:26,707][__main__][INFO] - Episode 4 finished: 1 steps, reward: 0.00, PnL: $0.00
+[2025-05-13 17:28:26,708][__main__][INFO] - Episode finished - PnL: $0.00 (0.00%), Win Rate: 0.0%, Trades: 0
+[2025-05-13 17:28:26,708][__main__][INFO] - Episode 4: reward=-0.10, length=1
+[2025-05-13 17:28:26,709][__main__][INFO] - Resetting to timestamp: None
+[2025-05-13 17:28:26,718][__main__][INFO] - BUY order filled: 68 shares @ $10.0500
+[2025-05-13 17:28:26,718][__main__][INFO] - Market order 1000 (buy) filled: 68 shares @ $10.0500
+[2025-05-13 17:28:26,718][__main__][INFO] - Reached end of data
+[2025-05-13 17:28:26,718][__main__][INFO] - Episode 5 finished: 1 steps, reward: 0.00, PnL: $0.00
+[2025-05-13 17:28:26,719][__main__][INFO] - Episode finished - PnL: $0.00 (0.00%), Win Rate: 0.0%, Trades: 0
+[2025-05-13 17:28:26,719][__main__][INFO] - Episode 5: reward=-0.10, length=1
+[2025-05-13 17:28:27,650][__main__][INFO] - Resetting to timestamp: None
+[2025-05-13 17:28:27,658][__main__][INFO] - SELL order filled: 76 shares @ $9.9500
+[2025-05-13 17:28:27,659][__main__][INFO] - Market order 1000 (sell) filled: 76 shares @ $9.9500
+[2025-05-13 17:28:27,659][__main__][INFO] - Reached end of data
+[2025-05-13 17:28:27,659][__main__][INFO] - Episode 6 finished: 1 steps, reward: 1512.40, PnL: $1512.40
+[2025-05-13 17:28:27,660][__main__][INFO] - Episode finished - PnL: $1512.40 (1.51%), Win Rate: 0.0%, Trades: 0
+[2025-05-13 17:28:27,661][__main__][INFO] - Episode 6: reward=-0.10, length=1
+[2025-05-13 17:28:27,662][__main__][INFO] - Resetting to timestamp: None
+[2025-05-13 17:28:27,672][__main__][INFO] - SELL order filled: 21 shares @ $9.9500
+[2025-05-13 17:28:27,673][__main__][INFO] - Market order 1000 (sell) filled: 21 shares @ $9.9500
+[2025-05-13 17:28:27,674][__main__][INFO] - Reached end of data
+[2025-05-13 17:28:27,674][__main__][INFO] - Episode 7 finished: 1 steps, reward: 417.90, PnL: $417.90
+[2025-05-13 17:28:27,674][__main__][INFO] - Episode finished - PnL: $417.90 (0.42%), Win Rate: 0.0%, Trades: 0
+[2025-05-13 17:28:27,675][__main__][INFO] - Episode 7: reward=-0.10, length=1
+[2025-05-13 17:28:27,677][__main__][INFO] - Resetting to timestamp: None
+[2025-05-13 17:28:27,687][__main__][INFO] - BUY order filled: 77 shares @ $10.0500
+[2025-05-13 17:28:27,688][__main__][INFO] - Market order 1000 (buy) filled: 77 shares @ $10.0500
+[2025-05-13 17:28:27,688][__main__][INFO] - Reached end of data
+[2025-05-13 17:28:27,688][__main__][INFO] - Episode 8 finished: 1 steps, reward: 0.00, PnL: $0.00
+[2025-05-13 17:28:27,688][__main__][INFO] - Episode finished - PnL: $0.00 (0.00%), Win Rate: 0.0%, Trades: 0
+[2025-05-13 17:28:27,690][__main__][INFO] - Episode 8: reward=-0.10, length=1
+[2025-05-13 17:28:27,691][__main__][INFO] - Computing advantages - rewards: torch.Size([8, 1]), values: torch.Size([8, 1]), dones: torch.Size([8, 1])

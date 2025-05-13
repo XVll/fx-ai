@@ -1,0 +1,26 @@
+# config/data/databento.yaml
+# Configuration for Databento data provider
+
+# Data directory
+dir: "./data"
+
+# Data parameters
+symbol: "MLGO"  # Default trading symbol
+start_date: "2025-01-01"
+end_date: "2025-03-31"
+
+# Timeframes to load
+timeframes: ["1s", "10s", "1m", "5m", "1d"]
+
+# Data types
+data_types:
+  - "quotes"
+  - "trades"
+  - "bars"
+  - "status"
+
+# API parameters (if using API instead of files)
+api:
+  key: ${oc.env:DATABENTO_API_KEY,}
+  dataset: "XNAS.ITCH"
+  use_cache: true

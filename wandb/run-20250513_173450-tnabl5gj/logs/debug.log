@@ -1,0 +1,24 @@
+2025-05-13 17:34:50,222 INFO    MainThread:1440 [wandb_setup.py:_flush():70] Current SDK version is 0.19.11
+2025-05-13 17:34:50,222 INFO    MainThread:1440 [wandb_setup.py:_flush():70] Configure stats pid to 1440
+2025-05-13 17:34:50,222 INFO    MainThread:1440 [wandb_setup.py:_flush():70] Loading settings from C:\Users\Fx\.config\wandb\settings
+2025-05-13 17:34:50,222 INFO    MainThread:1440 [wandb_setup.py:_flush():70] Loading settings from C:\Users\Fx\PycharmProjects\fx-ai\wandb\settings
+2025-05-13 17:34:50,223 INFO    MainThread:1440 [wandb_setup.py:_flush():70] Loading settings from environment variables
+2025-05-13 17:34:50,223 INFO    MainThread:1440 [wandb_init.py:setup_run_log_directory():724] Logging user logs to C:\Users\Fx\PycharmProjects\fx-ai\wandb\run-20250513_173450-tnabl5gj\logs\debug.log
+2025-05-13 17:34:50,243 INFO    MainThread:1440 [wandb_init.py:setup_run_log_directory():725] Logging internal logs to C:\Users\Fx\PycharmProjects\fx-ai\wandb\run-20250513_173450-tnabl5gj\logs\debug-internal.log
+2025-05-13 17:34:50,243 INFO    MainThread:1440 [wandb_init.py:init():852] calling init triggers
+2025-05-13 17:34:50,243 INFO    MainThread:1440 [wandb_init.py:init():857] wandb.init called with sweep_config: {}
+config: {'quick_test': False, 'callbacks': {'save_freq': 5, 'log_freq': 10, 'early_stopping': {'enabled': True, 'patience': 10, 'min_delta': 0.0}}, 'simulation': {'feature_config': {'hf_seq_len': 60, 'hf_feat_dim': 20, 'mf_seq_len': 30, 'mf_feat_dim': 15, 'lf_seq_len': 30, 'lf_feat_dim': 10, 'static_feat_dim': 15, 'use_volume_profile': True, 'use_tape_features': True, 'use_level2_features': True}, 'market_config': {'slippage_factor': 0.001}, 'execution_config': {'commission_per_share': 0.0}, 'portfolio_config': {'initial_cash': 100000.0}}, 'model': {'hf_seq_len': 60, 'hf_feat_dim': 20, 'mf_seq_len': 30, 'mf_feat_dim': 15, 'lf_seq_len': 30, 'lf_feat_dim': 10, 'static_feat_dim': 15, 'd_model': 64, 'd_fused': 256, 'hf_layers': 2, 'mf_layers': 2, 'lf_layers': 2, 'hf_heads': 4, 'mf_heads': 4, 'lf_heads': 4, 'action_dim': 1, 'continuous_action': True, 'dropout': 0.1}, 'env': {'state_dim': 1000, 'max_steps': 500, 'normalize_state': True, 'random_reset': True, 'max_position': 1.0, 'reward': {'type': 'momentum', 'scaling': 2.0, 'trade_penalty': 0.1, 'hold_penalty': 0.0, 'early_exit_bonus': 0.5, 'flush_prediction_bonus': 2.0, 'momentum_threshold': 0.5, 'volume_surge_threshold': 5.0, 'tape_speed_threshold': 3.0, 'tape_imbalance_threshold': 0.7}}, 'data': {'dir': './data', 'symbol': 'MLGO', 'start_date': '2025-01-01', 'end_date': '2025-03-31', 'timeframes': ['1s', '10s', '1m', '5m', '1d'], 'data_types': ['quotes', 'trades', 'bars', 'status'], 'api': {'key': '', 'dataset': 'XNAS.ITCH', 'use_cache': True}}, 'training': {'lr': 0.0003, 'gamma': 0.99, 'gae_lambda': 0.95, 'clip_eps': 0.2, 'critic_coef': 0.5, 'entropy_coef': 0.01, 'max_grad_norm': 0.5, 'n_epochs': 10, 'batch_size': 64, 'buffer_size': 2048, 'n_episodes_per_update': 8, 'total_updates': 100, 'device': 'auto'}, 'wandb': {'enabled': True, 'project_name': 'fx-ai', 'entity': None, 'log_code': True, 'log_model': True, 'log_frequency': {'steps': 1, 'gradients': 100, 'model_checkpoints': 5, 'custom_charts': 5}, 'watch_model': True, 'log_batch_metrics': False, 'visualizations': {'position_charts': True, 'trade_analysis': True, 'market_indicators': True, 'action_distributions': True}}, '_wandb': {'code_path': 'code/main.py'}}
+2025-05-13 17:34:50,243 INFO    MainThread:1440 [wandb_init.py:init():893] starting backend
+2025-05-13 17:34:50,243 INFO    MainThread:1440 [wandb_init.py:init():897] sending inform_init request
+2025-05-13 17:34:50,260 INFO    MainThread:1440 [backend.py:_multiprocessing_setup():101] multiprocessing start_methods=spawn, using: spawn
+2025-05-13 17:34:50,260 INFO    MainThread:1440 [wandb_init.py:init():907] backend started and connected
+2025-05-13 17:34:50,263 INFO    MainThread:1440 [wandb_init.py:init():1005] updated telemetry
+2025-05-13 17:34:50,316 INFO    MainThread:1440 [wandb_init.py:init():1029] communicating run to backend with 90.0 second timeout
+2025-05-13 17:34:51,105 INFO    MainThread:1440 [wandb_init.py:init():1104] starting run threads in backend
+2025-05-13 17:34:51,466 INFO    MainThread:1440 [wandb_run.py:_console_start():2573] atexit reg
+2025-05-13 17:34:51,467 INFO    MainThread:1440 [wandb_run.py:_redirect():2421] redirect: wrap_raw
+2025-05-13 17:34:51,467 INFO    MainThread:1440 [wandb_run.py:_redirect():2490] Wrapping output streams.
+2025-05-13 17:34:51,467 INFO    MainThread:1440 [wandb_run.py:_redirect():2513] Redirects installed.
+2025-05-13 17:34:51,470 INFO    MainThread:1440 [wandb_init.py:init():1150] run started, returning control to user process
+2025-05-13 17:34:51,472 INFO    MainThread:1440 [wandb_watch.py:_watch():71] Watching
+2025-05-13 17:34:52,755 INFO    MsgRouterThr:1440 [mailbox.py:close():129] [no run ID] Closing mailbox, abandoning 1 handles.
