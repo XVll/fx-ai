@@ -1,16 +1,17 @@
 import sys
 import os
+from dataclasses import dataclass
+
 import hydra
+from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig, OmegaConf
 import logging
 import torch
-from datetime import datetime
-import wandb
 
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
-from simulation.simulator import Simulator
 from envs.trading_env import TradingEnv
+from envs.trading_simulator import TradingSimulator
 from models.transformer import MultiBranchTransformer
 from agent.ppo_agent import PPOTrainer
 from agent.callbacks import ModelCheckpointCallback, TensorboardCallback, EarlyStoppingCallback
@@ -29,6 +30,7 @@ def run_training(cfg: DictConfig):
         cfg: Hydra configuration object containing all parameters
     """
 
+    print(OmegaConf.to_yaml(cfg))
     # Get output directory
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     model_dir = os.path.join(output_dir, "models")
@@ -41,7 +43,7 @@ def run_training(cfg: DictConfig):
 
     # 2. Set up simulator
     log.info("Setting up simulator")
-    simulator = Simulator(data_manager, cfg.simulation, logger=log)
+    simulator = TradingSimulator(data_manager, cfg.simulation, logger=log)
 
     # 3. Initialize simulator with data
     log.info(f"Loading data for {cfg.data.symbol} from {cfg.data.start_date} to {cfg.data.end_date}")
