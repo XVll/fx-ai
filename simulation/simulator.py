@@ -1,11 +1,13 @@
-# simulation/simulator.py
+# simulation/simulator.py (updated for Hydra)
+
+# Import section remains the same
 from typing import Dict, List, Union, Tuple, Any, Callable
 import pandas as pd
 import numpy as np
 from datetime import datetime
 import logging
-
 import torch
+from omegaconf import DictConfig
 
 from feature.feature_extractor import FeatureExtractor
 from feature.state_manager import StateManager
@@ -17,22 +19,32 @@ from simulation.portfolio_simulator import PortfolioSimulator
 class Simulator:
     """Minimal central simulator that coordinates all components"""
 
-    def __init__(self, data_manager, config: Dict = None, logger: logging.Logger = None):
+    def __init__(self, data_manager, config: Union[Dict, DictConfig] = None, logger: logging.Logger = None):
         self.data_manager = data_manager
         self.config = config or {}
         self.logger = logger or logging.getLogger(__name__)
 
-        # Component configs
-        self.feature_config = self.config.get('feature_config', {})
-        self.market_config = self.config.get('market_config', {})
-        self.execution_config = self.config.get('execution_config', {})
-        self.portfolio_config = self.config.get('portfolio_config', {})
+        # Convert OmegaConf to dict if needed for backward compatibility
+        if hasattr(self.config, "_to_dict"):
+            config_dict = self.config._to_dict()
+        else:
+            config_dict = self.config
+
+        # Component configs - extract from Hydra structure if available
+        self.feature_config = config_dict.get('feature_config', {})
+        self.market_config = config_dict.get('market_config', {})
+        self.execution_config = config_dict.get('execution_config', {})
+        self.portfolio_config = config_dict.get('portfolio_config', {})
 
         # Initialize components
         self.feature_extractor = FeatureExtractor(self.feature_config, logger=logger)
         self.state_manager = StateManager({}, {}, logger=logger)
         self.market_simulator = MarketSimulator(self.market_config, logger=logger)
-        self.execution_simulator = ExecutionSimulator(self.market_simulator, self.execution_config, logger=logger)
+        self.execution_simulator = ExecutionSimulator(
+            self.market_simulator,
+            self.execution_config,
+            logger=logger
+        )
         self.portfolio_simulator = PortfolioSimulator(
             self.market_simulator,
             self.execution_simulator,
@@ -58,6 +70,9 @@ class Simulator:
         self.state_update_callbacks = []
         self.trade_callbacks = []
         self.portfolio_update_callbacks = []
+
+    # Rest of the class remains the same
+    # ...
 
     def _log(self, message: str, level: int = logging.INFO):
         if self.logger:

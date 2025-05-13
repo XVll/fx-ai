@@ -1,0 +1,15 @@
+# conf/callbacks/default.yaml
+# Default callback configuration
+
+# Model checkpoint callback
+save_freq: 5  # Save model every N updates
+save_best_only: false  # If true, only save models that improve mean reward
+
+# Tensorboard callback
+log_freq: 100  # Log every N steps
+
+# Early stopping callback
+early_stopping:
+  enabled: false  # Enable early stopping
+  patience: 10  # Number of updates with no improvement before stopping
+  min_delta: 0.0  # Minimum change to qualify as improvement
