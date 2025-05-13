@@ -1,6 +1,3 @@
-# simulation/simulator.py (updated for Hydra)
-
-# Import section remains the same
 from typing import Dict, List, Union, Tuple, Any, Callable
 import pandas as pd
 import numpy as np
@@ -11,12 +8,9 @@ from omegaconf import DictConfig
 
 from feature.feature_extractor import FeatureExtractor
 from feature.state_manager import StateManager
-from simulation.market_simulator import MarketSimulator
-from simulation.execution_simulator import ExecutionSimulator
-from simulation.portfolio_simulator import PortfolioSimulator
 
 
-class Simulator:
+class TradingSimulator:
     """Minimal central simulator that coordinates all components"""
 
     def __init__(self, data_manager, config: Union[Dict, DictConfig] = None, logger: logging.Logger = None):
@@ -126,6 +120,7 @@ class Simulator:
                 state_dict['static_features'][0, 3] = pos_info.get('last_price', 0)
 
         return state_dict
+
     def initialize_for_symbol(self, symbol: str,
                               mode: str = 'backtesting',
                               start_time: Union[datetime, str] = None,
@@ -246,7 +241,7 @@ class Simulator:
         self.execution_simulator.update_to_timestamp(timestamp)
         self.portfolio_simulator.update_to_timestamp(timestamp)
 
-    # Fixed reset() method for simulator.py
+    # Fixed reset() method for trading_simulator.py
     def reset(self, random_day: bool = False) -> Dict[str, Any]:
         """Reset the simulator for a new episode"""
         # Reset counters
@@ -352,7 +347,6 @@ class Simulator:
                     if 'tape_imbalance' in col:
                         info['tape_imbalance'] = latest_features[col]
 
-
         # Record trade if executed
         if result['success'] and result.get('action') != 'hold' and self.trade_callbacks:
             for callback in self.trade_callbacks:
@@ -451,6 +445,7 @@ class Simulator:
 
         # Return the next timestamp
         return future_timestamps[0]
+
     def add_state_update_callback(self, callback_fn: Callable):
         """Add a callback for state updates"""
         self.state_update_callbacks.append(callback_fn)

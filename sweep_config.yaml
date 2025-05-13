@@ -9,7 +9,7 @@ parameters:
   training.lr:
     min: 0.00001
     max: 0.001
-    distribution: log_uniform
+    distribution: log_uniform_values
 
   training.gamma:
     min: 0.9
@@ -49,7 +49,7 @@ parameters:
   env.reward_scaling:
     min: 0.1
     max: 10.0
-    distribution: log_uniform
+    distribution: log_uniform_values
 
   env.trade_penalty:
     min: 0.0

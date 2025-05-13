@@ -1,7 +1,7 @@
 from typing import Dict
 
 
-class MomentumTradingReward:
+class TradingReward:
     """
     Reward function for momentum trading strategy.
     """
