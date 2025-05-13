@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 import logging
 
-from data.provider.data_provider import DataProvider, HistoricalDataProvider
+from data.provider.data_provider import DataProvider, HistoricalDataProvider, LiveDataProvider
 from data.utils.helpers import ensure_timezone_aware
 
 

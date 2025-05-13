@@ -1,0 +1,160 @@
+_wandb:
+    value:
+        cli_version: 0.19.11
+        code_path: code/main.py
+        m: []
+        python_version: 3.10.11
+        t:
+            "1":
+                - 1
+                - 50
+                - 55
+            "2":
+                - 1
+                - 50
+                - 55
+            "3":
+                - 1
+                - 16
+                - 23
+                - 55
+                - 61
+                - 62
+            "4": 3.10.11
+            "5": 0.19.11
+            "8":
+                - 5
+            "12": 0.19.11
+            "13": darwin-arm64
+callbacks:
+    value:
+        early_stopping:
+            enabled: true
+            min_delta: 0
+            patience: 10
+        log_freq: 10
+        save_freq: 5
+data:
+    value:
+        api:
+            dataset: XNAS.ITCH
+            key: ""
+        data_dir: /Users/fx/Repositories/FxAIv2/dnb/mlgo
+        data_types:
+            - trades
+            - quotes
+            - bars_1s
+            - bars_1m
+            - bars_5m
+            - bars_1d
+            - status
+        dbn_cache_size: 32
+        end_date: "2025-03-27"
+        live:
+            api_key: ""
+            dataset: XNAS.ITCH
+            heartbeat_interval: 5
+        provider_type: file
+        start_date: "2025-03-27"
+        symbol: MLGO
+        symbol_info_file: null
+        timeframes:
+            - 1s
+            - 1m
+            - 5m
+            - 1d
+        use_cache: true
+        verbose: false
+env:
+    value:
+        max_position: 1
+        max_steps: 500
+        normalize_state: true
+        random_reset: true
+        reward:
+            early_exit_bonus: 0.5
+            flush_prediction_bonus: 2
+            hold_penalty: 0
+            momentum_threshold: 0.5
+            scaling: 2
+            tape_imbalance_threshold: 0.7
+            tape_speed_threshold: 3
+            trade_penalty: 0.1
+            type: momentum
+            volume_surge_threshold: 5
+        state_dim: 1000
+model:
+    value:
+        action_dim: 1
+        continuous_action: true
+        d_fused: 256
+        d_model: 64
+        dropout: 0.1
+        hf_feat_dim: 20
+        hf_heads: 4
+        hf_layers: 2
+        hf_seq_len: 60
+        lf_feat_dim: 10
+        lf_heads: 4
+        lf_layers: 2
+        lf_seq_len: 30
+        mf_feat_dim: 15
+        mf_heads: 4
+        mf_layers: 2
+        mf_seq_len: 30
+        static_feat_dim: 15
+quick_test:
+    value: false
+simulation:
+    value:
+        execution_config:
+            commission_per_share: 0
+        feature_config:
+            hf_feat_dim: 20
+            hf_seq_len: 60
+            lf_feat_dim: 10
+            lf_seq_len: 30
+            mf_feat_dim: 15
+            mf_seq_len: 30
+            static_feat_dim: 15
+            use_level2_features: true
+            use_tape_features: true
+            use_volume_profile: true
+        market_config:
+            slippage_factor: 0.001
+        portfolio_config:
+            initial_cash: 100000
+training:
+    value:
+        batch_size: 64
+        buffer_size: 2048
+        clip_eps: 0.2
+        critic_coef: 0.5
+        device: auto
+        entropy_coef: 0.01
+        gae_lambda: 0.95
+        gamma: 0.99
+        lr: 0.0003
+        max_grad_norm: 0.5
+        n_episodes_per_update: 8
+        n_epochs: 10
+        total_updates: 100
+wandb:
+    value:
+        enabled: true
+        entity: null
+        log_batch_metrics: false
+        log_code: true
+        log_frequency:
+            custom_charts: 5
+            gradients: 100
+            model_checkpoints: 5
+            steps: 1
+        log_model: true
+        project_name: fx-ai
+        visualizations:
+            action_distributions: true
+            market_indicators: true
+            position_charts: true
+            trade_analysis: true
+        watch_model: true

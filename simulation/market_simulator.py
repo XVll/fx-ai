@@ -83,7 +83,7 @@ class MarketSimulator:
                     break
 
         # If still not initialized, try bars
-        if not valid_price_found and not bars_df.empty:
+        if not valid_price_found and bars_df is not None and not bars_df.empty:
             for i, row in bars_df.iterrows():
                 if 'open' in row and pd.notna(row['open']) and row['open'] > 0:
                     self.current_price = row['open']

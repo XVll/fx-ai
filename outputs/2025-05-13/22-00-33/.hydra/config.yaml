@@ -1,0 +1,124 @@
+quick_test: false
+callbacks:
+  save_freq: 5
+  log_freq: 10
+  early_stopping:
+    enabled: true
+    patience: 10
+    min_delta: 0.0
+simulation:
+  feature_config:
+    hf_seq_len: 60
+    hf_feat_dim: 20
+    mf_seq_len: 30
+    mf_feat_dim: 15
+    lf_seq_len: 30
+    lf_feat_dim: 10
+    static_feat_dim: 15
+    use_volume_profile: true
+    use_tape_features: true
+    use_level2_features: true
+  market_config:
+    slippage_factor: 0.001
+  execution_config:
+    commission_per_share: 0.0
+  portfolio_config:
+    initial_cash: 100000.0
+model:
+  hf_seq_len: 60
+  hf_feat_dim: 20
+  mf_seq_len: 30
+  mf_feat_dim: 15
+  lf_seq_len: 30
+  lf_feat_dim: 10
+  static_feat_dim: 15
+  d_model: 64
+  d_fused: 256
+  hf_layers: 2
+  mf_layers: 2
+  lf_layers: 2
+  hf_heads: 4
+  mf_heads: 4
+  lf_heads: 4
+  action_dim: 1
+  continuous_action: true
+  dropout: 0.1
+env:
+  state_dim: 1000
+  max_steps: 500
+  normalize_state: true
+  random_reset: true
+  max_position: 1.0
+  reward:
+    type: momentum
+    scaling: 2.0
+    trade_penalty: 0.1
+    hold_penalty: 0.0
+    early_exit_bonus: 0.5
+    flush_prediction_bonus: 2.0
+    momentum_threshold: 0.5
+    volume_surge_threshold: 5.0
+    tape_speed_threshold: 3.0
+    tape_imbalance_threshold: 0.7
+data:
+  provider_type: file
+  data_dir: ${hydra:runtime.cwd}/dnb/mlgo
+  symbol_info_file: null
+  verbose: false
+  dbn_cache_size: 32
+  use_cache: true
+  symbol: MLGO
+  start_date: '2025-03-27'
+  end_date: '2025-03-27'
+  timeframes:
+  - 1s
+  - 1m
+  - 5m
+  - 1d
+  data_types:
+  - trades
+  - quotes
+  - bars_1s
+  - bars_1m
+  - bars_5m
+  - bars_1d
+  - status
+  api:
+    key: ${oc.env:DATABENTO_API_KEY,}
+    dataset: XNAS.ITCH
+  live:
+    api_key: ${oc.env:DATABENTO_API_KEY,}
+    dataset: XNAS.ITCH
+    heartbeat_interval: 5
+training:
+  lr: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_eps: 0.2
+  critic_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  n_epochs: 10
+  batch_size: 64
+  buffer_size: 2048
+  n_episodes_per_update: 8
+  total_updates: 100
+  device: auto
+wandb:
+  enabled: true
+  project_name: fx-ai
+  entity: null
+  log_code: true
+  log_model: true
+  log_frequency:
+    steps: 1
+    gradients: 100
+    model_checkpoints: 5
+    custom_charts: 5
+  watch_model: true
+  log_batch_metrics: false
+  visualizations:
+    position_charts: true
+    trade_analysis: true
+    market_indicators: true
+    action_distributions: true
