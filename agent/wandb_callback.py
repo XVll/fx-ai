@@ -1,368 +1,568 @@
 # agent/wandb_callback.py
+import os
 import wandb
 import numpy as np
 import pandas as pd
-from typing import Dict, Any
 import matplotlib.pyplot as plt
+import torch
+from typing import Dict, List, Any, Optional
+from datetime import datetime
 import io
 from PIL import Image
-import torch
 
 from agent.callbacks import TrainingCallback
 
 
 class WandbCallback(TrainingCallback):
-    """Callback for tracking experiments with Weights & Biases."""
+    """
+    Callback for tracking training with Weights & Biases.
 
-    def __init__(self,
-                 project_name="ai-trading",
-                 entity=None,
-                 log_freq=1,
-                 config=None,
-                 log_model=True,
-                 log_code=True):
+    This callback handles all WandB logging, visualization creation,
+    and model saving throughout the training process.
+    """
+
+    def __init__(
+            self,
+            project_name: str = "ai-trading",
+            entity: Optional[str] = None,
+            log_freq: int = 10,
+            config: Optional[Dict[str, Any]] = None,
+            log_model: bool = True,
+            log_code: bool = True,
+    ):
         """
-        Initialize W&B tracking.
+        Initialize WandB callback.
 
         Args:
-            project_name: W&B project name
-            entity: W&B entity name (username or team)
-            log_freq: Logging frequency in steps
-            config: Configuration dict to track
-            log_model: Whether to log model checkpoints
-            log_code: Whether to track code changes
+            project_name: WandB project name
+            entity: WandB team or username
+            log_freq: Frequency for logging step metrics
+            config: Configuration dict to log to WandB
+            log_model: Whether to save model checkpoints to WandB
+            log_code: Whether to track code with WandB
         """
+        # Basic settings
         self.project_name = project_name
         self.entity = entity
         self.log_freq = log_freq
         self.config = config or {}
         self.log_model = log_model
         self.log_code = log_code
-        self.step_count = 0
+
+        # Initialize WandB run
         self.run = None
+
+        # Step tracking - single source of truth for step counts
+        self.global_step = 0
+        self.step_count = 0
+        self.last_logged_step = 0
+
+        # Metric tracking
         self.best_reward = -float('inf')
+        self.best_model_path = None
 
-        # Trade analytics tracking
+        # Data for visualizations
         self.trade_history = []
-        self.profit_factor = 0
-        self.accuracy = 0
-        self.avg_win = 0
-        self.avg_loss = 0
-
-        # Training analytics
-        self.reward_history = []
-        self.action_history = []
         self.price_history = []
         self.position_history = []
-
-        # Market state snapshots
-        self.marked_snapshots = []
-
-    def _create_custom_charts(self, trainer):
-        """Create custom charts for W&B."""
-        # Trade analysis chart
-        if self.trade_history:
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10))
-
-            # Chart 1: Cumulative PnL
-            pnl_df = pd.DataFrame(self.trade_history)
-            if 'realized_pnl' in pnl_df.columns:
-                cumulative_pnl = pnl_df['realized_pnl'].cumsum()
-                ax1.plot(cumulative_pnl.values)
-                ax1.set_title('Cumulative PnL')
-                ax1.set_xlabel('Trade #')
-                ax1.set_ylabel('Cumulative PnL ($)')
-                ax1.grid(True)
-
-            # Chart 2: Win/Loss Distribution
-            if 'realized_pnl' in pnl_df.columns:
-                ax2.hist(pnl_df['realized_pnl'].values, bins=20)
-                ax2.set_title('PnL Distribution')
-                ax2.set_xlabel('PnL per Trade ($)')
-                ax2.set_ylabel('Frequency')
-                ax2.grid(True)
-
-            plt.tight_layout()
-
-            # Convert plot to image
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png')
-            buf.seek(0)
-            img = Image.open(buf)
-
-            # Log to W&B
-            wandb.log({"trade_analysis": wandb.Image(img)})
-            plt.close(fig)
-
-        # Market analysis
-        if len(self.price_history) > 0 and len(self.position_history) > 0:
-            fig, ax = plt.subplots(figsize=(12, 6))
-
-            # Price chart with position overlay
-            ax.plot(self.price_history, label='Price')
-            ax.set_title('Price with Position Sizing')
-            ax.set_xlabel('Step')
-            ax.set_ylabel('Price ($)')
-
-            # Create a twin axis for position
-            ax2 = ax.twinx()
-            ax2.plot(self.position_history, 'r-', alpha=0.5, label='Position')
-            ax2.set_ylabel('Position Size')
-
-            # Add legend
-            lines1, labels1 = ax.get_legend_handles_labels()
-            lines2, labels2 = ax2.get_legend_handles_labels()
-            ax.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
-
-            plt.grid(True)
-            plt.tight_layout()
-
-            # Convert to image
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png')
-            buf.seek(0)
-            img = Image.open(buf)
-
-            # Log to W&B
-            wandb.log({"market_position_analysis": wandb.Image(img)})
-            plt.close(fig)
-
-    def _log_model_gradients(self, trainer):
-        """Log model parameter gradients to W&B."""
-        gradients = {}
-        for name, param in trainer.model.named_parameters():
-            if param.requires_grad and param.grad is not None:
-                gradients[f"gradients/{name}"] = wandb.Histogram(param.grad.detach().cpu().numpy())
-        wandb.log(gradients)
+        self.action_history = []
+        self.reward_history = []
 
     def on_training_start(self, trainer):
         """Called when training starts."""
-        # Initialize W&B run
+        # Create WandB directory in the output directory
+        wandb_dir = os.path.join(trainer.output_dir, "wandb")
+        os.makedirs(wandb_dir, exist_ok=True)
+
+        # Initialize the WandB run
         self.run = wandb.init(
+            dir=wandb_dir,  # Use the created directory for WandB files
             project=self.project_name,
             entity=self.entity,
             config=self.config,
             save_code=self.log_code,
-            job_type="training"
+            job_type="training",
+            reinit=True  # Ensure we create a new run
         )
 
-        # Log model architecture as a summary
-        wandb.run.summary["model_summary"] = str(trainer.model)
+        # Log model architecture
+        if hasattr(trainer, 'model'):
+            wandb.run.summary["model_architecture"] = str(trainer.model)
 
-        # Create a table for tracking detailed trade information
+            # Set up model watching if available
+            if hasattr(wandb, 'watch') and self.config.get('watch_model', True):
+                wandb.watch(
+                    trainer.model,
+                    log="all",
+                    log_freq=max(100, self.log_freq * 10)
+                )
+
+        # Create tables for tracking
         self.trade_table = wandb.Table(columns=[
             "trade_id", "entry_time", "exit_time", "entry_price",
             "exit_price", "position_size", "realized_pnl",
-            "trade_duration", "entry_signal", "exit_signal"
+            "duration_seconds", "trade_type"
         ])
 
-        # Log model graph (architecture)
-        try:
-            # Sample input for forward pass
-            sample_batch = {
-                'hf_features': torch.zeros((1, trainer.model.hf_seq_len, trainer.model.hf_feat_dim)).to(trainer.device),
-                'mf_features': torch.zeros((1, trainer.model.mf_seq_len, trainer.model.mf_feat_dim)).to(trainer.device),
-                'lf_features': torch.zeros((1, trainer.model.lf_seq_len, trainer.model.lf_feat_dim)).to(trainer.device),
-                'static_features': torch.zeros((1, trainer.model.static_feat_dim)).to(trainer.device)
-            }
-            wandb.watch(trainer.model, log="all", log_freq=100)
-        except Exception as e:
-            trainer.logger.warning(f"Failed to log model graph: {str(e)}")
+        # Log initial message
+        print(f"WandB initialized: {wandb.run.name} ({wandb.run.id})")
 
     def on_training_end(self, trainer, stats):
         """Called when training ends."""
-        # Log final performance metrics
-        wandb.log({
-            "final/episodes": stats["total_episodes"],
-            "final/steps": stats["total_steps"],
-            "final/best_reward": stats["best_mean_reward"],
-            "final/training_time": stats["elapsed_time"]
-        })
+        # Log final statistics
+        final_metrics = {
+            "final/total_episodes": stats.get("total_episodes", 0),
+            "final/total_steps": stats.get("total_steps", 0),
+            "final/best_reward": stats.get("best_mean_reward", 0),
+            "final/training_time_seconds": stats.get("elapsed_time", 0),
+        }
 
-        # Create and log final custom visualizations
-        self._create_custom_charts(trainer)
-
-        # Log the best model if requested
-        if self.log_model and stats.get("best_model_path"):
-            wandb.save(stats["best_model_path"])
-
-        # Compute and log final trade statistics
-        if self.trade_history:
-            trade_df = pd.DataFrame(self.trade_history)
-            if 'realized_pnl' in trade_df.columns:
-                wins = trade_df[trade_df['realized_pnl'] > 0]
-                losses = trade_df[trade_df['realized_pnl'] <= 0]
-
-                accuracy = len(wins) / len(trade_df) if len(trade_df) > 0 else 0
-                avg_win = wins['realized_pnl'].mean() if len(wins) > 0 else 0
-                avg_loss = losses['realized_pnl'].mean() if len(losses) > 0 else 0
-                profit_factor = abs(wins['realized_pnl'].sum() / losses['realized_pnl'].sum()) if len(losses) > 0 and \
-                                                                                                  losses[
-                                                                                                      'realized_pnl'].sum() != 0 else 0
-
-                wandb.run.summary.update({
-                    "final_accuracy": accuracy,
-                    "final_profit_factor": profit_factor,
-                    "final_avg_win": avg_win,
-                    "final_avg_loss": avg_loss,
-                    "total_trades": len(trade_df),
-                    "total_pnl": trade_df['realized_pnl'].sum()
+        # Add trade statistics if available
+        if hasattr(trainer.env.simulator, "portfolio_simulator"):
+            trade_stats = trainer.env.simulator.portfolio_simulator.get_statistics()
+            if trade_stats:
+                final_metrics.update({
+                    "final/trade_count": trade_stats.get("total_trades", 0),
+                    "final/win_rate": trade_stats.get("win_rate", 0),
+                    "final/total_pnl": trade_stats.get("total_pnl", 0),
                 })
 
-        # Close the W&B run
+        # Log final metrics
+        self._safe_wandb_log(final_metrics)
+
+        # Log trade table if we have trades
+        if len(self.trade_table.data) > 0:
+            wandb.log({"final_trades": self.trade_table})
+
+        # Create final visualizations
+        self._create_final_visualizations()
+
+        # Upload best model if we have one and log_model is enabled
+        if self.log_model and self.best_model_path and os.path.exists(self.best_model_path):
+            wandb.save(self.best_model_path, base_path=trainer.output_dir)
+            wandb.run.summary["best_model_path"] = self.best_model_path
+
+        # Finish the run
         wandb.finish()
 
     def on_rollout_start(self, trainer):
         """Called before collecting rollouts."""
-        wandb.log({"rollout/start_time": wandb.run.start_time})
+        # We don't need to do anything here
+        pass
 
     def on_rollout_end(self, trainer):
         """Called after collecting rollouts."""
+        # We don't need to do anything here
         pass
 
     def on_step(self, trainer, state, action, reward, next_state, info):
         """Called after each environment step."""
+        # Update our step counter
         self.step_count += 1
 
-        # Record data for later visualization
-        if hasattr(trainer.env.simulator, 'market_simulator'):
-            market_state = trainer.env.simulator.market_simulator.get_current_market_state()
-            if market_state:
-                self.price_history.append(market_state.get('price', 0))
+        # Track data for visualizations
+        self.reward_history.append(reward)
 
-        # Record position for visualization
-        position = 0
-        if hasattr(trainer.env.simulator, 'portfolio_simulator'):
-            portfolio_state = trainer.env.simulator.portfolio_simulator.get_portfolio_state()
-            if portfolio_state and 'positions' in portfolio_state:
-                for symbol, pos in portfolio_state['positions'].items():
-                    position = pos.get('quantity', 0)
-        self.position_history.append(position)
-
-        # Record action
+        # Track action
         if isinstance(action, torch.Tensor):
-            action_value = action.item() if action.numel() == 1 else action.cpu().numpy()
+            action_value = action.item() if action.numel() == 1 else action.cpu().numpy().tolist()
         else:
             action_value = action
         self.action_history.append(action_value)
 
+        # Track market data if available
+        if hasattr(trainer.env.simulator, 'market_simulator'):
+            market_state = trainer.env.simulator.market_simulator.get_current_market_state()
+            if market_state and 'price' in market_state:
+                self.price_history.append(market_state['price'])
+
+        # Track position if available
+        if hasattr(trainer.env.simulator, 'portfolio_simulator'):
+            portfolio_state = trainer.env.simulator.portfolio_simulator.get_portfolio_state()
+            if portfolio_state and 'positions' in portfolio_state:
+                # Get position for current symbol
+                position = 0
+                for symbol, pos in portfolio_state['positions'].items():
+                    position = pos.get('quantity', 0)
+                    break  # Just get the first position
+                self.position_history.append(position)
+
         # Log metrics at specified frequency
         if self.step_count % self.log_freq == 0:
+            # Increment global step to ensure monotonicity
+            self.global_step += 1
+
+            # Create metrics dict
             metrics = {
                 "step/reward": reward,
                 "step/action": action_value,
-                "step/total_steps": trainer.total_steps
+                "step/step_count": self.step_count,
+                "step/global_step": self.global_step,
             }
 
-            # Add info metrics if available
+            # Add market data if available
+            if hasattr(trainer.env.simulator, 'market_simulator'):
+                market_state = trainer.env.simulator.market_simulator.get_current_market_state()
+                if market_state:
+                    for k, v in market_state.items():
+                        if isinstance(v, (int, float)) and k not in ['timestamp']:
+                            metrics[f"market/{k}"] = v
+
+            # Add position data if available
+            if hasattr(trainer.env.simulator, 'portfolio_simulator'):
+                portfolio_state = trainer.env.simulator.portfolio_simulator.get_portfolio_state()
+                if portfolio_state:
+                    metrics["portfolio/cash"] = portfolio_state.get('cash', 0)
+                    metrics["portfolio/total_value"] = portfolio_state.get('total_value', 0)
+
+            # Add info metrics
             if isinstance(info, dict):
                 for k, v in info.items():
-                    if isinstance(v, (int, float)):
-                        metrics[f"step/info_{k}"] = v
+                    if isinstance(v, (int, float)) and k not in ['timestamp', 'action_result']:
+                        metrics[f"info/{k}"] = v
 
-            wandb.log(metrics, step=trainer.total_steps)
-
-            # Log gradients periodically
-            if self.step_count % (self.log_freq * 10) == 0:
-                self._log_model_gradients(trainer)
+            # Log metrics
+            self._safe_wandb_log(metrics)
 
     def on_episode_end(self, trainer, episode_reward, episode_length, info):
         """Called at the end of an episode."""
-        # Record reward for later analysis
-        self.reward_history.append(episode_reward)
+        # Increment global step
+        self.global_step += 1
 
-        # Log episode metrics
+        # Create base metrics
         metrics = {
             "episode/reward": episode_reward,
             "episode/length": episode_length,
-            "episode/total_episodes": trainer.total_episodes
+            "episode/number": trainer.total_episodes,
         }
 
-        # Log trade information if available
-        if info and "episode" in info:
-            episode_info = info["episode"]
+        # Add episode info if available
+        if isinstance(info, dict) and 'episode' in info:
+            episode_info = info['episode']
             for k, v in episode_info.items():
                 if isinstance(v, (int, float)):
                     metrics[f"episode/{k}"] = v
 
-        # Track best performance
-        if episode_reward > self.best_reward:
-            self.best_reward = episode_reward
-            metrics["episode/best_reward"] = self.best_reward
-
-        # Process trade data if available
+        # Process trades
         if hasattr(trainer.env.simulator, 'portfolio_simulator'):
+            # Get trade history
             trades = trainer.env.simulator.portfolio_simulator.get_trade_history()
-            if trades:
-                # Add new trades to history
-                for trade in trades:
-                    if trade not in self.trade_history:
-                        self.trade_history.append(trade)
 
-                        # Add to W&B table
-                        self.trade_table.add_data(
-                            len(self.trade_history),
-                            str(trade.get('open_time', '')),
-                            str(trade.get('close_time', '')),
-                            trade.get('entry_price', 0),
-                            trade.get('exit_price', 0),
-                            trade.get('quantity', 0),
-                            trade.get('realized_pnl', 0),
-                            str(trade.get('close_time', '') - trade.get('open_time', '')) if trade.get(
-                                'close_time') and trade.get('open_time') else '',
-                            trade.get('entry_signal', 'unknown'),
-                            trade.get('exit_signal', 'unknown')
-                        )
+            # Add new trades to our trade records
+            for trade in trades:
+                # Check if we've already recorded this trade
+                if trade not in self.trade_history:
+                    self.trade_history.append(trade)
 
-                # Update trade metrics
-                win_trades = [t for t in trades if t.get('realized_pnl', 0) > 0]
-                loss_trades = [t for t in trades if t.get('realized_pnl', 0) <= 0]
+                    # Add to WandB table
+                    trade_row = [
+                        len(self.trade_history),  # trade_id
+                        str(trade.get('open_time', '')),  # entry_time
+                        str(trade.get('close_time', '')),  # exit_time
+                        trade.get('entry_price', 0),  # entry_price
+                        trade.get('exit_price', 0),  # exit_price
+                        trade.get('quantity', 0),  # position_size
+                        trade.get('realized_pnl', 0),  # realized_pnl
+                        (trade.get('close_time', 0) - trade.get('open_time', 0)).total_seconds()
+                        if trade.get('close_time') and trade.get('open_time') else 0,  # duration
+                        'buy' if trade.get('quantity', 0) > 0 else 'sell'  # trade_type
+                    ]
+                    self.trade_table.add_data(*trade_row)
 
-                self.accuracy = len(win_trades) / len(trades) if len(trades) > 0 else 0
-                self.avg_win = sum(t.get('realized_pnl', 0) for t in win_trades) / len(win_trades) if len(
-                    win_trades) > 0 else 0
-                self.avg_loss = sum(t.get('realized_pnl', 0) for t in loss_trades) / len(loss_trades) if len(
-                    loss_trades) > 0 else 0
+            # Calculate trade statistics
+            if self.trade_history:
+                # Split into wins and losses
+                win_trades = [t for t in self.trade_history if t.get('realized_pnl', 0) > 0]
+                loss_trades = [t for t in self.trade_history if t.get('realized_pnl', 0) <= 0]
 
+                # Calculate metrics
+                win_rate = len(win_trades) / len(self.trade_history) if self.trade_history else 0
+                avg_win = sum(t.get('realized_pnl', 0) for t in win_trades) / len(win_trades) if win_trades else 0
+                avg_loss = sum(t.get('realized_pnl', 0) for t in loss_trades) / len(loss_trades) if loss_trades else 0
+
+                # Calculate profit factor (avoid division by zero)
                 win_sum = sum(t.get('realized_pnl', 0) for t in win_trades)
                 loss_sum = abs(sum(t.get('realized_pnl', 0) for t in loss_trades))
-                self.profit_factor = win_sum / loss_sum if loss_sum > 0 else float('inf')
+                profit_factor = win_sum / loss_sum if loss_sum > 0 else float('inf')
 
+                # Add to metrics
                 metrics.update({
-                    "trades/accuracy": self.accuracy,
-                    "trades/profit_factor": self.profit_factor,
-                    "trades/avg_win": self.avg_win,
-                    "trades/avg_loss": self.avg_loss,
-                    "trades/total": len(trades)
+                    "trades/count": len(self.trade_history),
+                    "trades/win_rate": win_rate,
+                    "trades/avg_win": avg_win,
+                    "trades/avg_loss": avg_loss,
+                    "trades/profit_factor": profit_factor,
+                    "trades/total_pnl": sum(t.get('realized_pnl', 0) for t in self.trade_history)
                 })
 
                 # Log trade table periodically
                 if len(self.trade_history) % 10 == 0:
-                    wandb.log({"trades_table": self.trade_table})
+                    self._safe_wandb_log({"trades_table": self.trade_table})
 
-        wandb.log(metrics)
+        # Log metrics
+        self._safe_wandb_log(metrics)
 
-        # Create custom charts every 5 episodes
+        # Create visualizations periodically
         if trainer.total_episodes % 5 == 0:
-            self._create_custom_charts(trainer)
+            self._create_episode_visualizations()
 
     def on_update_start(self, trainer):
         """Called before policy update."""
+        # We don't need to do anything here
         pass
 
     def on_update_end(self, trainer, metrics):
         """Called after policy update."""
+        # Increment global step
+        self.global_step += 1
+
         # Log update metrics
         update_metrics = {f"update/{k}": v for k, v in metrics.items()}
-        update_metrics["update/updates"] = trainer.updates
-        wandb.log(update_metrics)
+        update_metrics["update/count"] = trainer.updates
+
+        # Log with our global step
+        self._safe_wandb_log(update_metrics)
+
+        # Log parameter histograms periodically
+        if trainer.updates % 10 == 0:
+            self._log_model_gradients(trainer)
 
     def on_update_iteration_end(self, trainer, update_iter, update_metrics, rollout_stats):
         """Called at the end of each update iteration (rollout + update)."""
-        combined_metrics = {}
-        combined_metrics.update({f"update_iter/{k}": v for k, v in update_metrics.items()})
-        combined_metrics.update({f"rollout_iter/{k}": v for k, v in rollout_stats.items()
-                                 if k not in ["episode_rewards", "episode_lengths"]})
-        combined_metrics["iteration"] = update_iter
+        # Increment global step
+        self.global_step += 1
 
-        wandb.log(combined_metrics)
+        # Combine metrics
+        combined_metrics = {
+            "iteration/number": update_iter,
+            "iteration/mean_reward": rollout_stats.get("mean_reward", 0),
+            "iteration/episodes": rollout_stats.get("episodes", 0),
+            "iteration/steps": rollout_stats.get("total_steps", 0),
+        }
+
+        # Add update metrics
+        for k, v in update_metrics.items():
+            combined_metrics[f"iteration/update_{k}"] = v
+
+        # Log the metrics
+        self._safe_wandb_log(combined_metrics)
+
+        # Check if this is the best model so far
+        mean_reward = rollout_stats.get("mean_reward", -float('inf'))
+        if mean_reward > self.best_reward:
+            self.best_reward = mean_reward
+
+            # If we have a new best model, mark it
+            if hasattr(trainer, 'model_dir'):
+                self.best_model_path = os.path.join(
+                    trainer.model_dir,
+                    f"best_model_reward{mean_reward:.2f}_iter{update_iter}.pt"
+                )
+
+                # Log a message
+                self._safe_wandb_log({
+                    "best_model/reward": mean_reward,
+                    "best_model/iteration": update_iter
+                })
+
+    def _safe_wandb_log(self, metrics_dict, step=None):
+        """Safely log to WandB with the current global step."""
+        # Make sure we're initialized
+        if not wandb.run:
+            return
+
+        # Use provided step or global_step
+        current_step = step if step is not None else self.global_step
+
+        # Ensure step is monotonically increasing
+        if current_step <= self.last_logged_step:
+            current_step = self.last_logged_step + 1
+
+        try:
+            # Log the metrics
+            wandb.log(metrics_dict, step=current_step)
+            self.last_logged_step = current_step
+        except Exception as e:
+            print(f"WandB logging failed: {e}")
+
+    def _log_model_gradients(self, trainer):
+        """Log model parameter gradients to WandB."""
+        if not hasattr(trainer, 'model'):
+            return
+
+        try:
+            gradient_dict = {}
+
+            # Log parameter histograms
+            for name, param in trainer.model.named_parameters():
+                if param.requires_grad:
+                    # Log the parameter values
+                    gradient_dict[f"params/{name}"] = wandb.Histogram(param.detach().cpu().numpy())
+
+                    # Log the gradients if they exist
+                    if param.grad is not None:
+                        gradient_dict[f"grads/{name}"] = wandb.Histogram(param.grad.detach().cpu().numpy())
+
+            # Log everything at once
+            self._safe_wandb_log(gradient_dict)
+        except Exception as e:
+            print(f"Error logging gradients: {e}")
+
+    def _create_episode_visualizations(self):
+        """Create visualizations after episodes."""
+        try:
+            # Skip if we don't have enough data
+            if len(self.price_history) < 10:
+                return
+
+            # 1. Create price & position chart
+            if len(self.price_history) > 0 and len(self.position_history) > 0:
+                fig, ax = plt.subplots(figsize=(10, 6))
+
+                # Plot price
+                ax.plot(range(len(self.price_history)), self.price_history,
+                        color='blue', label='Price', linewidth=1.5)
+                ax.set_ylabel('Price', color='blue')
+                ax.set_title('Price and Position Over Time')
+
+                # Create twin axis for position
+                ax2 = ax.twinx()
+                ax2.plot(range(len(self.position_history)), self.position_history,
+                         color='red', label='Position', alpha=0.7)
+                ax2.set_ylabel('Position', color='red')
+
+                # Create legend
+                lines1, labels1 = ax.get_legend_handles_labels()
+                lines2, labels2 = ax2.get_legend_handles_labels()
+                ax.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+
+                # Save as image and log to WandB
+                buf = io.BytesIO()
+                plt.tight_layout()
+                plt.savefig(buf, format='png', dpi=100)
+                buf.seek(0)
+
+                # Convert BytesIO to PIL Image before passing to wandb.Image
+                img = Image.open(buf)
+
+                # Log to WandB
+                self._safe_wandb_log({"chart/price_position": wandb.Image(img)})
+
+                # Close both the figure and the buffer
+                plt.close(fig)
+                buf.close()
+
+            # 2. Create reward chart
+            if len(self.reward_history) > 0:
+                fig, ax = plt.subplots(figsize=(10, 4))
+
+                # Plot rewards
+                ax.plot(range(len(self.reward_history)), self.reward_history, color='green')
+                ax.set_title('Reward History')
+                ax.set_ylabel('Reward')
+                ax.set_xlabel('Step')
+
+                # Add moving average
+                window = min(100, len(self.reward_history))
+                if window > 10:
+                    rewards_ma = pd.Series(self.reward_history).rolling(window).mean().iloc[window - 1:].values
+                    ax.plot(range(window - 1, len(self.reward_history)),
+                            rewards_ma, color='red', linewidth=2, label=f'MA-{window}')
+                    ax.legend()
+
+                # Save and log
+                buf = io.BytesIO()
+                plt.tight_layout()
+                plt.savefig(buf, format='png', dpi=100)
+                buf.seek(0)
+
+                # Convert BytesIO to PIL Image
+                img = Image.open(buf)
+
+                # Log to WandB
+                self._safe_wandb_log({"chart/reward": wandb.Image(img)})
+
+                # Close figure and buffer
+                plt.close(fig)
+                buf.close()
+
+        except Exception as e:
+            print(f"Error creating episode visualizations: {e}")
+
+    def _create_final_visualizations(self):
+        """Create final visualizations at the end of training."""
+        try:
+            # Only create if we have trade data
+            if not self.trade_history:
+                return
+
+            # Create trade analysis visualization
+            fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+
+            # Convert to DataFrame for easier analysis
+            trades_df = pd.DataFrame(self.trade_history)
+
+            # 1. Win/Loss pie chart
+            if 'realized_pnl' in trades_df.columns:
+                win_count = (trades_df['realized_pnl'] > 0).sum()
+                loss_count = len(trades_df) - win_count
+
+                axs[0, 0].pie([win_count, loss_count],
+                              labels=[f'Wins ({win_count})', f'Losses ({loss_count})'],
+                              autopct='%1.1f%%',
+                              colors=['green', 'red'],
+                              startangle=90)
+
+                axs[0, 0].set_title(f'Win/Loss Ratio: {win_count / max(1, len(trades_df)):.1%}')
+
+            # 2. PnL Distribution
+            if 'realized_pnl' in trades_df.columns:
+                axs[0, 1].hist(trades_df['realized_pnl'], bins=20, color='skyblue')
+                axs[0, 1].axvline(x=0, color='black', linestyle='--')
+                axs[0, 1].set_title('P&L Distribution')
+                axs[0, 1].set_xlabel('P&L')
+
+                # Add mean line
+                mean_pnl = trades_df['realized_pnl'].mean()
+                axs[0, 1].axvline(x=mean_pnl, color='red', linestyle='-',
+                                  label=f'Mean: ${mean_pnl:.2f}')
+                axs[0, 1].legend()
+
+            # 3. Trade Duration
+            if 'duration_seconds' in trades_df.columns:
+                axs[1, 0].hist(trades_df['duration_seconds'], bins=20, color='skyblue')
+                axs[1, 0].set_title('Trade Duration')
+                axs[1, 0].set_xlabel('Seconds')
+
+                # Add mean line
+                mean_duration = trades_df['duration_seconds'].mean()
+                axs[1, 0].axvline(x=mean_duration, color='red', linestyle='-',
+                                  label=f'Mean: {mean_duration:.1f}s')
+                axs[1, 0].legend()
+
+            # 4. Cumulative P&L
+            if 'realized_pnl' in trades_df.columns:
+                cumulative_pnl = trades_df['realized_pnl'].cumsum()
+                axs[1, 1].plot(range(len(cumulative_pnl)), cumulative_pnl, color='blue')
+                axs[1, 1].set_title('Cumulative P&L')
+                axs[1, 1].set_xlabel('Trade Number')
+                axs[1, 1].set_ylabel('Cumulative P&L ($)')
+
+            # Save and log
+            plt.tight_layout()
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=120)
+            buf.seek(0)
+
+            # Convert BytesIO to PIL Image
+            img = Image.open(buf)
+
+            # Log to WandB
+            self._safe_wandb_log({"final/trade_analysis": wandb.Image(img)})
+
+            # Close both figure and buffer
+            plt.close(fig)
+            buf.close()
+
+        except Exception as e:
+            print(f"Error creating final visualizations: {e}")
