@@ -1,4 +1,4 @@
-# training/ppo_trainer.py
+# agent/ppo_agent.py (updated for Hydra)
 import os
 import time
 import numpy as np
@@ -10,6 +10,8 @@ import gymnasium as gym
 from typing import Dict, List, Tuple, Optional, Any, Union
 import logging
 import torch.nn.functional as F
+from omegaconf import DictConfig
+
 from models.transformer import MultiBranchTransformer
 from envs.trading_env import TradingEnv
 from agent.utils import ReplayBuffer, normalize_state_dict, preprocess_state_to_dict
@@ -27,7 +29,7 @@ class PPOTrainer:
             self,
             env: TradingEnv,
             model: MultiBranchTransformer,
-            model_config: Dict[str, Any] = None,
+            model_config: Union[Dict[str, Any], DictConfig] = None,
             # Training hyperparameters
             lr: float = 3e-4,
             gamma: float = 0.99,
@@ -53,7 +55,7 @@ class PPOTrainer:
         Args:
             env: Trading environment instance
             model: Multi-Branch Transformer model instance
-            model_config: Configuration dictionary for model architecture
+            model_config: Configuration dictionary for model architecture (can be Hydra DictConfig)
             lr: Learning rate
             gamma: Discount factor
             gae_lambda: GAE lambda parameter
@@ -73,7 +75,12 @@ class PPOTrainer:
         # Environment and model
         self.env = env
         self.model = model
-        self.model_config = model_config or {}
+
+        # Handle Hydra config
+        if model_config is not None and hasattr(model_config, "_to_dict"):
+            self.model_config = model_config._to_dict()
+        else:
+            self.model_config = model_config or {}
 
         # Training parameters
         self.lr = lr
@@ -93,8 +100,10 @@ class PPOTrainer:
         # Set device
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        else:
+        elif isinstance(device, str):
             self.device = torch.device(device)
+        else:
+            self.device = device
 
         # Optimizer
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
@@ -223,58 +232,94 @@ class PPOTrainer:
         stats = {
             "episodes": n_episodes,
             "total_steps": total_steps,
-            "mean_reward": total_reward / n_episodes,
+            "mean_reward": total_reward / max(1, n_episodes),
             "episode_rewards": episode_rewards,
             "episode_lengths": episode_lengths,
         }
 
         return stats
 
+    # Simplified compute_advantages method for agent/ppo_agent.py
+
     def compute_advantages(self) -> None:
         """
         Compute advantages and returns using Generalized Advantage Estimation (GAE).
+        Simplified version to avoid gradient and shape issues.
         """
         # Make sure buffer data is prepared
         if isinstance(self.buffer.rewards, list):
             self.buffer.prepare_data()
+
         # Get data from buffer
         rewards = self.buffer.rewards
         values = self.buffer.values
         dones = self.buffer.dones
 
-        # Initialize advantages and returns
+        # Make sure all tensors are on CPU and detached from computation graph
+        rewards = rewards.detach().cpu()
+        values = values.detach().cpu()
+        dones = dones.detach().cpu()
+
+        # Ensure consistent shapes for all tensors
+        if len(rewards.shape) == 1:
+            rewards = rewards.unsqueeze(1)
+        if len(values.shape) == 1:
+            values = values.unsqueeze(1)
+        if len(dones.shape) == 1:
+            dones = dones.unsqueeze(1)
+
+        # Create tensors for advantages and returns with correct shape
         advantages = torch.zeros_like(rewards)
         returns = torch.zeros_like(rewards)
 
-        # Compute GAE
+        # Log shapes for debugging
+        self.logger.info(
+            f"Computing advantages - rewards: {rewards.shape}, values: {values.shape}, dones: {dones.shape}")
+
+        # Compute GAE using numpy to avoid building computation graph
+        rewards_np = rewards.numpy()
+        values_np = values.numpy()
+        dones_np = dones.numpy()
+
+        # Compute advantages
         last_gae = 0
-        for t in reversed(range(len(rewards))):
-            if t == len(rewards) - 1:
-                # For the last step, use 0 as next value (episode boundary)
+        for t in reversed(range(len(rewards_np))):
+            # End of episode or end of buffer
+            if t == len(rewards_np) - 1:
+                # For the last step, use 0 as the next value
                 next_value = 0
-                # Only consider actual episode boundaries
-                next_non_terminal = 1.0 - dones[t].float()
+                next_non_terminal = 1.0 - float(dones_np[t])
             else:
-                next_value = values[t + 1]
-                next_non_terminal = 1.0 - dones[t].float()
+                next_value = values_np[t + 1, 0]
+                next_non_terminal = 1.0 - float(dones_np[t])
 
-            # Compute delta (TD error)
-            delta = rewards[t] + self.gamma * next_value * next_non_terminal - values[t]
+            # TD error
+            delta = rewards_np[t, 0] + self.gamma * next_value * next_non_terminal - values_np[t, 0]
 
-            # Compute GAE recursively
+            # Recursive GAE formula
             last_gae = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae
-            advantages[t] = last_gae
 
-        # Compute returns as advantages + values
+            # Store advantage
+            advantages[t, 0] = last_gae
+
+        # Returns = advantages + values
         returns = advantages + values
 
-        # Save advantages and returns to buffer
+        # Convert back to same device as model
+        advantages = advantages.to(self.device)
+        returns = returns.to(self.device)
+
+        # Store in buffer
         self.buffer.advantages = advantages
         self.buffer.returns = returns
 
+        # Log output shapes
+        self.logger.info(f"Computed - advantages: {advantages.shape}, returns: {returns.shape}")
+
     def update_policy(self) -> Dict[str, float]:
         """
-        Update the policy using PPO.
+        Update the policy using PPO with a safer implementation that avoids
+        backward graph issues.
 
         Returns:
             Dictionary with training metrics
@@ -282,138 +327,154 @@ class PPOTrainer:
         # Compute advantages and returns
         self.compute_advantages()
 
-        # Get data from buffer
-        states = self.buffer.states
-        actions = self.buffer.actions
-        old_log_probs = self.buffer.log_probs
-        advantages = self.buffer.advantages
-        returns = self.buffer.returns
-        old_values = self.buffer.values
+        # Get data from buffer and convert to CPU numpy arrays to reset any computation history
+        states_np = {k: v.detach().cpu().numpy() for k, v in self.buffer.states.items()}
+        actions_np = self.buffer.actions.detach().cpu().numpy()
+        old_log_probs_np = self.buffer.log_probs.detach().cpu().numpy()
+        advantages_np = self.buffer.advantages.detach().cpu().numpy()
+        returns_np = self.buffer.returns.detach().cpu().numpy()
 
-        # Normalize advantages (reduces variance)
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        # Get total buffer size
+        buffer_size = advantages_np.shape[0]
 
-        # Call on_update_start for callbacks
-        for callback in self.callbacks:
-            callback.on_update_start(self)
+        # Log buffer sizes for debugging
+        self.logger.info(f"Buffer sizes - buffer: {buffer_size}, advantages: {advantages_np.shape}")
 
-        # Optimization loop
-        total_loss = 0
-        actor_loss_total = 0
-        critic_loss_total = 0
-        entropy_total = 0
-        clip_fraction_total = 0
-        approx_kl_total = 0
-
-        # Track the number of updates
+        # Tracking metrics
+        total_actor_loss = 0
+        total_critic_loss = 0
+        total_entropy = 0
+        total_kl = 0
+        total_clip_fraction = 0
         n_updates = 0
 
+        # Main training loop
         for epoch in range(self.n_epochs):
-            # Generate random indices for each batch
-            indices = torch.randperm(len(states))
+            # Shuffle data for each epoch
+            indices = np.random.permutation(buffer_size)
 
             # Process in batches
-            for start_idx in range(0, len(indices), self.batch_size):
-                end_idx = min(start_idx + self.batch_size, len(indices))
+            for start_idx in range(0, buffer_size, self.batch_size):
+                # Get batch indices
+                end_idx = min(start_idx + self.batch_size, buffer_size)
                 batch_indices = indices[start_idx:end_idx]
 
-                # Get batch data
-                batch_states = {k: v[batch_indices] for k, v in states.items()}
-                batch_actions = actions[batch_indices]
-                batch_old_log_probs = old_log_probs[batch_indices]
-                batch_advantages = advantages[batch_indices]
-                batch_returns = returns[batch_indices]
-                batch_old_values = old_values[batch_indices]
+                if len(batch_indices) == 0:
+                    continue
 
-                # Forward pass through model
+                # Explicitly convert numpy arrays back to fresh PyTorch tensors
+                # This ensures no gradient history is carried over
+                batch_states = {k: torch.FloatTensor(v[batch_indices]).to(self.device)
+                                for k, v in states_np.items()}
+                batch_actions = torch.FloatTensor(actions_np[batch_indices]).to(self.device)
+                batch_old_log_probs = torch.FloatTensor(old_log_probs_np[batch_indices]).to(self.device)
+                batch_advantages = torch.FloatTensor(advantages_np[batch_indices]).to(self.device)
+                batch_returns = torch.FloatTensor(returns_np[batch_indices]).to(self.device)
+
+                # Ensure consistent shapes
+                if len(batch_actions.shape) == 1:
+                    batch_actions = batch_actions.unsqueeze(1)
+                if len(batch_old_log_probs.shape) == 1:
+                    batch_old_log_probs = batch_old_log_probs.unsqueeze(1)
+                if len(batch_advantages.shape) == 1:
+                    batch_advantages = batch_advantages.unsqueeze(1)
+                if len(batch_returns.shape) == 1:
+                    batch_returns = batch_returns.unsqueeze(1)
+
+                # Normalize advantages (just for this batch)
+                batch_advantages = (batch_advantages - batch_advantages.mean()) / (batch_advantages.std() + 1e-8)
+
+                # STEP 1: UPDATE ACTOR (POLICY)
+                # =============================
+                # Zero gradients for actor update
+                self.optimizer.zero_grad()
+
+                # Get action distribution parameters and values
                 action_params, values = self.model(batch_states)
 
-                # Compute log probabilities and entropy
+                # Compute log probabilities of actions
                 if self.model.continuous_action:
                     mean, log_std = action_params
                     std = torch.exp(log_std)
                     normal_dist = torch.distributions.Normal(mean, std)
 
-                    # Reparameterization trick for actions
-                    # Transform tanh-squashed actions back to gaussian space
-                    # We need to compute log_prob in the non-squashed space
+                    # Handle squashed actions (tanh)
                     action_unsquashed = torch.atanh(torch.clamp(batch_actions, -0.999, 0.999))
                     log_probs = normal_dist.log_prob(action_unsquashed).sum(1, keepdim=True)
                     entropy = normal_dist.entropy().sum(1, keepdim=True)
                 else:
                     logits = action_params
                     dist = torch.distributions.Categorical(logits=logits)
-                    log_probs = dist.log_prob(batch_actions).unsqueeze(1)
+                    log_probs = dist.log_prob(batch_actions.squeeze()).unsqueeze(1)
                     entropy = dist.entropy().unsqueeze(1)
 
-                # Calculate ratio for PPO
+                # Calculate PPO ratio
                 ratio = torch.exp(log_probs - batch_old_log_probs)
 
-                # Compute surrogate losses
+                # Clipped surrogate objective
                 surrogate1 = ratio * batch_advantages
                 surrogate2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * batch_advantages
 
-                # Actor loss (negative since we want to maximize)
+                # Actor loss
                 actor_loss = -torch.min(surrogate1, surrogate2).mean()
 
-                # Critic loss (MSE)
-                critic_loss = F.mse_loss(values, batch_returns)
-
-                # Entropy bonus
+                # Entropy loss (encouraged exploration)
                 entropy_loss = -entropy.mean()
 
-                # Total loss
+                # STEP 2: UPDATE CRITIC (VALUE FUNCTION)
+                # ======================================
+                # Compute critic loss
+                critic_loss = F.mse_loss(values, batch_returns)
+
+                # STEP 3: COMBINED LOSS
+                # ====================
+                # Combine losses with coefficients
                 loss = actor_loss + self.critic_coef * critic_loss + self.entropy_coef * entropy_loss
 
-                # Perform optimization step
-                self.optimizer.zero_grad()
+                # Backward pass and optimize
                 loss.backward()
 
-                # Clip gradients
-                nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                # Optional gradient clipping
+                if self.max_grad_norm > 0:
+                    nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
 
-                # Update parameters
+                # Update model parameters
                 self.optimizer.step()
 
-                # Compute KL divergence (approximate)
+                # Compute metrics with no gradients
                 with torch.no_grad():
+                    # Approximate KL divergence
                     approx_kl = ((batch_old_log_probs - log_probs) ** 2).mean().item()
+
+                    # Clip fraction
                     clip_fraction = ((ratio - 1.0).abs() > self.clip_eps).float().mean().item()
 
-                # Accumulate metrics
-                total_loss += loss.item()
-                actor_loss_total += actor_loss.item()
-                critic_loss_total += critic_loss.item()
-                entropy_total += entropy_loss.item()
-                clip_fraction_total += clip_fraction
-                approx_kl_total += approx_kl
-
+                # Update tracking metrics
+                total_actor_loss += actor_loss.item()
+                total_critic_loss += critic_loss.item()
+                total_entropy += entropy_loss.item()
+                total_kl += approx_kl
+                total_clip_fraction += clip_fraction
                 n_updates += 1
 
-        # Compute averages
-        avg_loss = total_loss / n_updates
-        avg_actor_loss = actor_loss_total / n_updates
-        avg_critic_loss = critic_loss_total / n_updates
-        avg_entropy = entropy_total / n_updates
-        avg_clip_fraction = clip_fraction_total / n_updates
-        avg_approx_kl = approx_kl_total / n_updates
+        # Compute average metrics
+        metrics = {
+            "actor_loss": total_actor_loss / max(1, n_updates),
+            "critic_loss": total_critic_loss / max(1, n_updates),
+            "entropy": total_entropy / max(1, n_updates),
+            "approx_kl": total_kl / max(1, n_updates),
+            "clip_fraction": total_clip_fraction / max(1, n_updates),
+            "loss": (total_actor_loss + self.critic_coef * total_critic_loss +
+                     self.entropy_coef * total_entropy) / max(1, n_updates)
+        }
 
         # Clear buffer after update
         self.buffer.clear()
 
-        # Call on_update_end for callbacks
-        metrics = {
-            "loss": avg_loss,
-            "actor_loss": avg_actor_loss,
-            "critic_loss": avg_critic_loss,
-            "entropy": avg_entropy,
-            "clip_fraction": avg_clip_fraction,
-            "approx_kl": avg_approx_kl
-        }
+        # Call callbacks
         for callback in self.callbacks:
             callback.on_update_end(self, metrics)
 
-        # Return metrics
         return metrics
 
     def train(self, total_updates: int, eval_freq: int = 5) -> Dict[str, Any]:

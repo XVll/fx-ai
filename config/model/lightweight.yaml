@@ -1,0 +1,30 @@
+# conf/model/lightweight.yaml
+# Lightweight model configuration for faster testing
+
+# Feature dimensions - reduced
+hf_seq_len: 20
+hf_feat_dim: 10
+mf_seq_len: 10
+mf_feat_dim: 8
+lf_seq_len: 10
+lf_feat_dim: 5
+static_feat_dim: 10
+
+# Model dimensions - smaller
+d_model: 32
+d_fused: 128
+
+# Transformer parameters - simplified
+hf_layers: 1
+mf_layers: 1
+lf_layers: 1
+hf_heads: 2
+mf_heads: 2
+lf_heads: 2
+
+# Output parameters
+action_dim: 1
+continuous_action: true
+
+# Other parameters
+dropout: 0.1
