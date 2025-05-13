@@ -1,32 +1,35 @@
-# envs/trading_env.py
+# envs/trading_env.py (updated for Hydra)
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from typing import Dict, List, Union, Tuple, Optional, Any
 import pandas as pd
 import logging
+from omegaconf import DictConfig
 
 from simulation.simulator import Simulator
 
 
 class TradingEnv(gym.Env):
     """
-    Simplified OpenAI Gym-compatible environment for financial trading.
+    OpenAI Gym-compatible environment for financial trading.
     """
 
     metadata = {'render_modes': ['human']}
 
-    def __init__(self,
-                 simulator: Simulator,
-                 config: Dict = None,
-                 reward_function: Optional[callable] = None,
-                 logger: logging.Logger = None):
+    def __init__(
+            self,
+            simulator: Simulator,
+            config: Union[Dict, DictConfig] = None,
+            reward_function: Optional[callable] = None,
+            logger: logging.Logger = None
+    ):
         """
         Initialize the trading environment.
 
         Args:
             simulator: Configured Simulator instance
-            config: Environment configuration
+            config: Environment configuration (Hydra DictConfig or regular dict)
             reward_function: Custom reward function (optional)
             logger: Optional logger
         """
@@ -35,10 +38,21 @@ class TradingEnv(gym.Env):
         self.custom_reward_fn = reward_function
         self.logger = logger or logging.getLogger(__name__)
 
+        # Support for Hydra config - convert to dict if needed
+        cfg = self.config
+        if hasattr(cfg, "_to_dict"):
+            cfg = cfg._to_dict()
+
         # Environment configuration
-        self.state_dim = self.config.get('state_dim', 20)  # Dimension of state vector
-        self.max_steps = self.config.get('max_steps', 1000)  # Maximum steps per episode
-        self.normalize_state = self.config.get('normalize_state', True)
+        self.state_dim = cfg.get('state_dim', 20)  # Dimension of state vector
+        self.max_steps = cfg.get('max_steps', 1000)  # Maximum steps per episode
+        self.normalize_state = cfg.get('normalize_state', True)
+
+        # New reward parameters from config
+        self.reward_type = cfg.get('reward_type', 'momentum')
+        self.reward_scaling = cfg.get('reward_scaling', 1.0)
+        self.trade_penalty = cfg.get('trade_penalty', 0.1)
+        self.hold_penalty = cfg.get('hold_penalty', 0.0)
 
         # Define action and observation space
         # Action space: continuous value between -1 and 1

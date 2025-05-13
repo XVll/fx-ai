@@ -1,0 +1,46 @@
+# conf/feature/default.yaml
+# Default feature extractor configuration
+
+# Feature dimensions
+hf_seq_len: 60
+hf_feat_dim: 20
+mf_seq_len: 30
+mf_feat_dim: 15
+lf_seq_len: 30
+lf_feat_dim: 10
+static_feat_dim: 15
+
+# Feature processing options
+feature_normalization: "standardize"  # Options: "standardize", "minmax", "robust", "none"
+moving_avg_window: 20
+use_technical_indicators: true
+
+# Feature types to extract
+use_volume_profile: true
+use_tape_features: true
+use_level2_features: true
+use_support_resistance: true
+use_vwap: true
+use_momentum: true
+
+# Technical indicators
+indicators:
+  ema:
+    - 9
+    - 20
+    - 200
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  rsi:
+    period: 14
+  bollinger:
+    period: 20
+    std_dev: 2.0
+
+# Window sizes for different features
+price_window: 60
+volume_window: 30
+tape_window: 20
+level2_window: 15

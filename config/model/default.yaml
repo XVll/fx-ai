@@ -1,0 +1,30 @@
+# conf/model/default.yaml
+# Default model configuration
+
+# Feature dimensions
+hf_seq_len: 60
+hf_feat_dim: 20
+mf_seq_len: 30
+mf_feat_dim: 15
+lf_seq_len: 30
+lf_feat_dim: 10
+static_feat_dim: 15
+
+# Model dimensions
+d_model: 64
+d_fused: 256
+
+# Transformer parameters
+hf_layers: 2
+mf_layers: 2
+lf_layers: 2
+hf_heads: 4
+mf_heads: 4
+lf_heads: 4
+
+# Output parameters
+action_dim: 1
+continuous_action: true
+
+# Other parameters
+dropout: 0.1

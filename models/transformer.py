@@ -1,8 +1,9 @@
-# models/multi_branch_transformer.py
+# models/transformer.py (updated for Hydra)
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Tuple, List, Optional, Union
+from omegaconf import DictConfig
 
 from models.layers import (
     PositionalEncoding,
@@ -51,11 +52,22 @@ class MultiBranchTransformer(nn.Module):
 
             # Other parameters
             dropout: float = 0.1,
-            device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            device: Union[str, torch.device] = None,
+
+            # For Hydra compatibility
+            _target_: Optional[str] = None,  # Hydra instantiation target
+            **kwargs  # Capture any additional Hydra parameters
     ):
         super().__init__()
 
-        self.device = device
+        # Set device
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        elif isinstance(device, str):
+            self.device = torch.device(device)
+        else:
+            self.device = device
+
         self.continuous_action = continuous_action
         self.action_dim = action_dim
 
@@ -105,7 +117,10 @@ class MultiBranchTransformer(nn.Module):
         self.actor = ActorNetwork(d_fused, action_dim, continuous_action)
         self.critic = CriticNetwork(d_fused)
 
-        self.to(device)
+        self.to(self.device)
+
+    # Rest of the class remains the same
+    # ...
 
     def forward(
             self,

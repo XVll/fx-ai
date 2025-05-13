@@ -1,35 +1,55 @@
-# feature/feature_extractor.py (modified)
+# feature/feature_extractor.py (updated for Hydra)
 from typing import Dict, List, Union, Tuple, Optional, Any
 import pandas as pd
 import numpy as np
 import logging
 import torch
+from omegaconf import DictConfig
 
 
 class FeatureExtractor:
     """
-    Simplified feature extractor that provides minimal multi-timeframe features
+    Feature extractor that provides multi-timeframe features
     compatible with the Multi-Branch Transformer model.
     """
 
-    def __init__(self, config: Dict = None, logger: logging.Logger = None):
+    def __init__(self, config: Union[Dict, DictConfig] = None, logger: logging.Logger = None):
         self.config = config or {}
         self.logger = logger or logging.getLogger(__name__)
 
-        # Feature dimension configurations
-        self.hf_seq_len = self.config.get('hf_seq_len', 60)
-        self.hf_feat_dim = self.config.get('hf_feat_dim', 20)
-        self.mf_seq_len = self.config.get('mf_seq_len', 30)
-        self.mf_feat_dim = self.config.get('mf_feat_dim', 15)
-        self.lf_seq_len = self.config.get('lf_seq_len', 30)
-        self.lf_feat_dim = self.config.get('lf_feat_dim', 10)
-        self.static_feat_dim = self.config.get('static_feat_dim', 15)
+        # Support for Hydra config - convert to dict if needed
+        cfg = self.config
+        if hasattr(cfg, "_to_dict"):
+            cfg = cfg._to_dict()
+
+        # Feature dimension configurations - use config values or defaults
+        self.hf_seq_len = cfg.get('hf_seq_len', 60)
+        self.hf_feat_dim = cfg.get('hf_feat_dim', 20)
+        self.mf_seq_len = cfg.get('mf_seq_len', 30)
+        self.mf_feat_dim = cfg.get('mf_feat_dim', 15)
+        self.lf_seq_len = cfg.get('lf_seq_len', 30)
+        self.lf_feat_dim = cfg.get('lf_feat_dim', 10)
+        self.static_feat_dim = cfg.get('static_feat_dim', 15)
+
+        # Feature extraction configuration
+        self.use_volume_profile = cfg.get('use_volume_profile', True)
+        self.use_tape_features = cfg.get('use_tape_features', True)
+        self.use_level2_features = cfg.get('use_level2_features', True)
+        self.feature_normalization = cfg.get('feature_normalization', 'standardize')
+        self.moving_avg_window = cfg.get('moving_avg_window', 20)
 
         # Simplified parameters
         self.feature_groups = {
             'price': self._extract_price_features,
             'volume': self._extract_volume_features,
         }
+
+        # Add optional feature groups based on config
+        if self.use_tape_features:
+            self.feature_groups['tape'] = self._extract_tape_features
+        if self.use_level2_features:
+            self.feature_groups['level2'] = self._extract_level2_features
+
         self.feature_cache = {}
 
     def _extract_price_features(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
@@ -39,18 +59,55 @@ class FeatureExtractor:
         features = pd.DataFrame(index=bars_df.index)
 
         # Simple price features
-        features[f"{timeframe}_price_change"] = bars_df['close'].pct_change()
-        features[f"{timeframe}_sma_10"] = bars_df['close'].rolling(10).mean()
-        features[f"{timeframe}_rel_sma"] = bars_df['close'] / features[f"{timeframe}_sma_10"].replace(0, np.nan)
+        if 'close' in bars_df.columns:
+            features[f"{timeframe}_price_change"] = bars_df['close'].pct_change()
+            features[f"{timeframe}_sma_10"] = bars_df['close'].rolling(10).mean()
+            features[f"{timeframe}_rel_sma"] = bars_df['close'] / features[f"{timeframe}_sma_10"].replace(0, np.nan)
 
-        # Add some trend features
-        features[f"{timeframe}_roc_5"] = bars_df['close'].pct_change(5)
-        features[f"{timeframe}_roc_10"] = bars_df['close'].pct_change(10)
+            # Add some trend features
+            features[f"{timeframe}_roc_5"] = bars_df['close'].pct_change(5)
+            features[f"{timeframe}_roc_10"] = bars_df['close'].pct_change(10)
 
-        # Simple volatility feature
-        features[f"{timeframe}_volatility"] = bars_df['close'].pct_change().rolling(10).std()
+            # Simple volatility feature
+            features[f"{timeframe}_volatility"] = bars_df['close'].pct_change().rolling(10).std()
 
         return features
+
+    # Add a new method for tape features based on config
+    def _extract_tape_features(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+        if bars_df.empty:
+            return pd.DataFrame(index=bars_df.index)
+
+        features = pd.DataFrame(index=bars_df.index)
+
+        # Simple tape speed simulation (would use actual tape data in production)
+        if 'volume' in bars_df.columns:
+            # Calculate tape speed (trades per second proxy)
+            features[f"{timeframe}_tape_speed"] = bars_df['volume'] / bars_df['volume'].rolling(5).mean()
+
+            # Tape imbalance proxy
+            if 'close' in bars_df.columns and 'open' in bars_df.columns:
+                price_change = bars_df['close'] - bars_df['open']
+                features[f"{timeframe}_tape_imbalance"] = np.sign(price_change) * bars_df['volume']
+
+        return features
+
+    # Add a new method for L2 features based on config
+    def _extract_level2_features(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+        if bars_df.empty:
+            return pd.DataFrame(index=bars_df.index)
+
+        features = pd.DataFrame(index=bars_df.index)
+
+        # This would use actual L2 data in production
+        # Here we're just creating placeholder features
+        if all(col in bars_df.columns for col in ['high', 'low', 'close']):
+            # Approximate bid-ask spread
+            features[f"{timeframe}_spread_proxy"] = (bars_df['high'] - bars_df['low']) / bars_df['close']
+
+        return features
+
+    # Fix for the volume features extraction method in feature_extractor.py
 
     def _extract_volume_features(self, bars_df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         if bars_df.empty:
@@ -59,18 +116,36 @@ class FeatureExtractor:
         features = pd.DataFrame(index=bars_df.index)
 
         # Volume features
-        features[f"{timeframe}_volume_change"] = bars_df['volume'].pct_change()
-        vol_avg = bars_df['volume'].rolling(10).mean()
-        features[f"{timeframe}_rel_volume"] = bars_df['volume'] / vol_avg.replace(0, np.nan)
+        if 'volume' in bars_df.columns:
+            features[f"{timeframe}_volume_change"] = bars_df['volume'].pct_change()
+            vol_avg = bars_df['volume'].rolling(10).mean()
+            features[f"{timeframe}_rel_volume"] = bars_df['volume'] / vol_avg.replace(0, np.nan)
 
-        # Volume momentum
-        features[f"{timeframe}_vol_momentum"] = bars_df['volume'].diff(3)
+            # Volume momentum
+            features[f"{timeframe}_vol_momentum"] = bars_df['volume'].diff(3)
 
-        # Volume and price interaction
-        features[f"{timeframe}_volume_price_corr"] = (
-            bars_df['close'].pct_change().rolling(10)
-            .corr(bars_df['volume'].pct_change().rolling(10))
-        )
+            # Volume and price interaction - FIX CORRELATION ERROR
+            if 'close' in bars_df.columns:
+                # Create separate series for correlation to avoid the DataFrame/Series error
+                close_pct = bars_df['close'].pct_change()
+                vol_pct = bars_df['volume'].pct_change()
+
+                # Only attempt correlation if we have enough non-NaN values
+                if len(close_pct.dropna()) > 10 and len(vol_pct.dropna()) > 10:
+                    # Compute rolling correlation correctly
+                    rolling_corr = pd.Series(index=bars_df.index)
+                    window_size = 10
+
+                    for i in range(window_size, len(bars_df)):
+                        window_close = close_pct.iloc[i - window_size:i]
+                        window_vol = vol_pct.iloc[i - window_size:i]
+                        if window_close.notna().all() and window_vol.notna().all():
+                            rolling_corr.iloc[i] = window_close.corr(window_vol)
+
+                    features[f"{timeframe}_volume_price_corr"] = rolling_corr
+                else:
+                    # Not enough data for correlation
+                    features[f"{timeframe}_volume_price_corr"] = np.nan
 
         return features
 
