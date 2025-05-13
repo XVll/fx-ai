@@ -1,12 +1,11 @@
 # config/config.yaml
-
 defaults:
   - _self_
-  - model: transformer
-  - env: momentum_trading
-  - data: databento
-  - training: ppo
-  - wandb: default  # Include W&B configuration
+  - model: transformer  # Main model configuration
+  - env: momentum_trading  # Environment configuration
+  - data: databento  # Data source configuration
+  - training: ppo  # PPO algorithm parameters
+  - wandb: default  # Weights & Biases integration
 
 hydra:
   run:
@@ -26,3 +25,23 @@ callbacks:
     enabled: true
     patience: 10
     min_delta: 0.0
+
+# Simulation configuration
+simulation:
+  feature_config:
+    hf_seq_len: 60
+    hf_feat_dim: 20
+    mf_seq_len: 30
+    mf_feat_dim: 15
+    lf_seq_len: 30
+    lf_feat_dim: 10
+    static_feat_dim: 15
+    use_volume_profile: true
+    use_tape_features: true
+    use_level2_features: true
+  market_config:
+    slippage_factor: 0.001
+  execution_config:
+    commission_per_share: 0.0
+  portfolio_config:
+    initial_cash: 100000.0

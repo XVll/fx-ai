@@ -2,7 +2,7 @@
 
 # General settings
 enabled: true
-project_name: "onur03-fx"  # W&B project name
+project_name: "fx-ai"  # W&B project name
 entity: null  # Your username or team name (null = default user)
 log_code: true  # Whether to track code
 log_model: true  # Whether to save model checkpoints to W&B

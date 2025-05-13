@@ -1,0 +1,801 @@
+diff --git a/config/callbacks/default.yaml b/config/callbacks/default.yaml
+index 2ef17e5..5a2c4cd 100644
+--- a/config/callbacks/default.yaml
++++ b/config/callbacks/default.yaml
+@@ -1,4 +1,4 @@
+-# conf/callbacks/default.yaml
++# conf/callbacks/momentum_trading.yaml
+ # Default callback configuration
+ 
+ # Model checkpoint callback
+diff --git a/config/config.yaml b/config/config.yaml
+index 0782e20..626c2b8 100644
+--- a/config/config.yaml
++++ b/config/config.yaml
+@@ -1,12 +1,11 @@
+ # config/config.yaml
+-
+ defaults:
+   - _self_
+-  - model: transformer
+-  - env: momentum_trading
+-  - data: databento
+-  - training: ppo
+-  - wandb: default  # Include W&B configuration
++  - model: transformer  # Main model configuration
++  - env: momentum_trading  # Environment configuration
++  - data: databento  # Data source configuration
++  - training: ppo  # PPO algorithm parameters
++  - wandb: default  # Weights & Biases integration
+ 
+ hydra:
+   run:
+@@ -25,4 +24,24 @@ callbacks:
+   early_stopping:
+     enabled: true
+     patience: 10
+-    min_delta: 0.0
+\ No newline at end of file
++    min_delta: 0.0
++
++# Simulation configuration
++simulation:
++  feature_config:
++    hf_seq_len: 60
++    hf_feat_dim: 20
++    mf_seq_len: 30
++    mf_feat_dim: 15
++    lf_seq_len: 30
++    lf_feat_dim: 10
++    static_feat_dim: 15
++    use_volume_profile: true
++    use_tape_features: true
++    use_level2_features: true
++  market_config:
++    slippage_factor: 0.001
++  execution_config:
++    commission_per_share: 0.0
++  portfolio_config:
++    initial_cash: 100000.0
+\ No newline at end of file
+diff --git a/config/data/databento.yaml b/config/data/databento.yaml
+new file mode 100644
+index 0000000..3227ed6
+--- /dev/null
++++ b/config/data/databento.yaml
+@@ -0,0 +1,26 @@
++# config/data/databento.yaml
++# Configuration for Databento data provider
++
++# Data directory
++dir: "./data"
++
++# Data parameters
++symbol: "MLGO"  # Default trading symbol
++start_date: "2025-01-01"
++end_date: "2025-03-31"
++
++# Timeframes to load
++timeframes: ["1s", "10s", "1m", "5m", "1d"]
++
++# Data types
++data_types:
++  - "quotes"
++  - "trades"
++  - "bars"
++  - "status"
++
++# API parameters (if using API instead of files)
++api:
++  key: ${oc.env:DATABENTO_API_KEY,}
++  dataset: "XNAS.ITCH"
++  use_cache: true
+\ No newline at end of file
+diff --git a/config/env/default.yaml b/config/env/default.yaml
+deleted file mode 100644
+index ada06b9..0000000
+--- a/config/env/default.yaml
++++ /dev/null
+@@ -1,16 +0,0 @@
+-# conf/env/default.yaml
+-# Default environment configuration
+-
+-# Basic environment parameters
+-random_reset: true
+-state_dim: 1000
+-max_steps: 500
+-
+-# Reward parameters
+-reward_type: "momentum"  # Options: "momentum", "sharpe", "sortino", "custom"
+-reward_scaling: 1.0
+-
+-# Trading parameters
+-trade_penalty: 0.1
+-hold_penalty: 0.0
+-max_position: 1.0  # Maximum position size (1.0 = 100% of available capital)
+\ No newline at end of file
+diff --git a/config/env/momentum_trading.yaml b/config/env/momentum_trading.yaml
+new file mode 100644
+index 0000000..c1d2123
+--- /dev/null
++++ b/config/env/momentum_trading.yaml
+@@ -0,0 +1,24 @@
++# Environment configuration for momentum trading
++
++# General parameters
++state_dim: 1000
++max_steps: 500
++normalize_state: true
++random_reset: true
++
++# Action space parameters
++max_position: 1.0
++
++reward:
++  type: "momentum"
++  scaling: 2.0
++  trade_penalty: 0.1
++  hold_penalty: 0.0
++  early_exit_bonus: 0.5
++  flush_prediction_bonus: 2.0
++
++  # Additional strategy-specific reward parameters
++  momentum_threshold: 0.5
++  volume_surge_threshold: 5.0
++  tape_speed_threshold: 3.0
++  tape_imbalance_threshold: 0.7
+\ No newline at end of file
+diff --git a/config/feature/default.yaml b/config/feature/default.yaml
+index ad72bfe..df34472 100644
+--- a/config/feature/default.yaml
++++ b/config/feature/default.yaml
+@@ -1,21 +1,19 @@
+-# conf/feature/default.yaml
+-# Default feature extractor configuration
++# Feature extraction configuration
+ 
+ # Feature dimensions
+-hf_seq_len: 60
+-hf_feat_dim: 20
+-mf_seq_len: 30
+-mf_feat_dim: 15
+-lf_seq_len: 30
+-lf_feat_dim: 10
+-static_feat_dim: 15
++hf_seq_len: 60  # High-frequency sequence length (1s data)
++hf_feat_dim: 20  # High-frequency feature dimension
++mf_seq_len: 30  # Medium-frequency sequence length (1m data)
++mf_feat_dim: 15  # Medium-frequency feature dimension
++lf_seq_len: 30  # Low-frequency sequence length (5m data)
++lf_feat_dim: 10  # Low-frequency feature dimension
++static_feat_dim: 15  # Static feature dimension
+ 
+-# Feature processing options
+-feature_normalization: "standardize"  # Options: "standardize", "minmax", "robust", "none"
++# Feature normalization
++feature_normalization: "standardize"
+ moving_avg_window: 20
+-use_technical_indicators: true
+ 
+-# Feature types to extract
++# Feature groups
+ use_volume_profile: true
+ use_tape_features: true
+ use_level2_features: true
+@@ -37,10 +35,4 @@ indicators:
+     period: 14
+   bollinger:
+     period: 20
+-    std_dev: 2.0
+-
+-# Window sizes for different features
+-price_window: 60
+-volume_window: 30
+-tape_window: 20
+-level2_window: 15
+\ No newline at end of file
++    std_dev: 2.0
+\ No newline at end of file
+diff --git a/config/model/default.yaml b/config/model/transformer.yaml
+similarity index 84%
+rename from config/model/default.yaml
+rename to config/model/transformer.yaml
+index 0409413..35d2716 100644
+--- a/config/model/default.yaml
++++ b/config/model/transformer.yaml
+@@ -1,5 +1,5 @@
+-# conf/model/default.yaml
+-# Default model configuration
++# config/model/transformer.yaml
++# Transformer model configuration
+ 
+ # Feature dimensions
+ hf_seq_len: 60
+diff --git a/config/strategy/momentum.yaml b/config/strategy/momentum.yaml
+index f0c97d7..b125b73 100644
+--- a/config/strategy/momentum.yaml
++++ b/config/strategy/momentum.yaml
+@@ -1,6 +1,4 @@
+-# conf/strategy/momentum.yaml
+-# Momentum trading strategy configuration
+-
++# Trading strategy parameters for momentum trading
+ defaults:
+   - /model@_here_: default
+ 
+@@ -9,44 +7,61 @@ d_model: 96
+ d_fused: 384
+ dropout: 0.15
+ 
+-# Environment configuration
+-env:
+-  reward_type: "momentum"
+-  reward_scaling: 2.0
+-  trade_penalty: 0.05
+-  hold_penalty: 0.01
+-
+-# Feature adjustments
+-feature:
+-  use_momentum: true
+-  use_tape_features: true
+-  use_volume_profile: true
+-  indicators:
+-    ema:
+-      - 9
+-      - 20
+-    macd:
+-      fast: 9
+-      slow: 21
+-      signal: 7
+-    rsi:
+-      period: 10
+-
+-# Trading parameters
+-simulation:
+-  portfolio_config:
+-    initial_cash: 100000.0
+-  market_config:
+-    slippage_factor: 0.0015  # Higher slippage for momentum stocks
+-  execution_config:
+-    commission_per_share: 0.0
+-
+-# Strategy-specific parameters
+-momentum:
+-  entry_threshold: 0.5  # Momentum strength required for entry
+-  exit_threshold: -0.2  # Momentum weakness for exit
+-  scale_in_levels: [0.25, 0.5, 0.75, 1.0]  # Position scaling
+-  take_profit_targets: [0.5, 1.0, 2.0]  # Percentage targets for profits
+-  stop_loss: 0.5  # Percentage for stop loss
+-  volume_surge_threshold: 3.0  # Relative volume threshold
+-  breakout_zones: ["whole_dollar", "half_dollar", "previous_high"]
+\ No newline at end of file
++# Entry conditions
++entry:
++  criteria:
++    - whole_dollar_breakout
++    - half_dollar_breakout
++    - micro_pullback
++  thresholds:
++    momentum_strength: 0.5
++    volume_surge: 5.0
++    tape_speed: 3.0
++    tape_imbalance: 0.7
++
++# Exit conditions
++exit:
++  criteria:
++    - take_profit
++    - momentum_pause
++    - decreased_volume
++    - big_seller
++  thresholds:
++    profit_target: 0.02
++    max_loss: 0.01
++    volume_decrease: 0.5
++
++# Position scaling parameters
++scaling:
++  in:
++    levels: [0.25, 0.5, 0.75, 1.0]
++  out:
++    levels: [0.25, 0.5, 1.0]
++
++# Technical indicators
++indicators:
++  ema: [9, 20, 200]
++  vwap: true
++  macd:
++    fast: 12
++    slow: 26
++    signal: 9
++
++# Support/resistance levels
++support_resistance:
++  use_whole_dollars: true
++  use_half_dollars: true
++  use_previous_highs_lows: true
++  use_vwap: true
++
++# Tape analysis parameters
++tape_analysis:
++  speed_threshold: 3.0
++  imbalance_threshold: 0.7
++  big_print_threshold: 5000
++
++# Level 2 analysis parameters
++l2_analysis:
++  spread_tightening: true
++  big_buyer_threshold: 10000
++  big_seller_threshold: 10000
+\ No newline at end of file
+diff --git a/config/training/ppo.yaml b/config/training/ppo.yaml
+index 35f85d9..08715d8 100644
+--- a/config/training/ppo.yaml
++++ b/config/training/ppo.yaml
+@@ -1,20 +1,21 @@
+-# Training parameters for PPO algorithm
++# config/training/ppo.yaml
++# PPO training configuration
+ 
+ # Learning parameters
+-lr: 3e-4                # Learning rate
+-gamma: 0.99             # Discount factor
+-gae_lambda: 0.95        # Lambda for Generalized Advantage Estimation
+-clip_eps: 0.2           # PPO clipping parameter
+-critic_coef: 0.5        # Value function coefficient
+-entropy_coef: 0.01      # Entropy coefficient
+-max_grad_norm: 0.5      # Maximum gradient norm
++lr: 3e-4
++gamma: 0.99
++gae_lambda: 0.95
++clip_eps: 0.2
++critic_coef: 0.5
++entropy_coef: 0.01
++max_grad_norm: 0.5
+ 
+ # Training process
+-n_epochs: 10            # Number of optimization epochs per update
+-batch_size: 64          # Minibatch size for optimization
+-buffer_size: 2048       # Size of replay buffer
+-n_episodes_per_update: 8  # Number of episodes to collect before updating
+-total_updates: 100      # Total number of updates
++n_epochs: 10
++batch_size: 64
++buffer_size: 2048
++n_episodes_per_update: 8
++total_updates: 100
+ 
+ # Device and performance
+-device: "auto"          # "auto", "cuda", "cpu", or "mps"
+\ No newline at end of file
++device: "auto"  # "auto", "cuda", "cpu", or "mps"
+\ No newline at end of file
+diff --git a/config/wandb/default.yaml b/config/wandb/default.yaml
+index 4658650..1052dbf 100644
+--- a/config/wandb/default.yaml
++++ b/config/wandb/default.yaml
+@@ -2,7 +2,7 @@
+ 
+ # General settings
+ enabled: true
+-project_name: "onur03-fx"  # W&B project name
++project_name: "fx-ai"  # W&B project name
+ entity: null  # Your username or team name (null = default user)
+ log_code: true  # Whether to track code
+ log_model: true  # Whether to save model checkpoints to W&B
+diff --git a/data/__pycache__/data_processor.cpython-310.pyc b/data/__pycache__/data_processor.cpython-310.pyc
+deleted file mode 100644
+index 317b64d..0000000
+Binary files a/data/__pycache__/data_processor.cpython-310.pyc and /dev/null differ
+diff --git a/data/feature/__pycache__/feature_extractor.cpython-310.pyc b/data/feature/__pycache__/feature_extractor.cpython-310.pyc
+deleted file mode 100644
+index 51bee78..0000000
+Binary files a/data/feature/__pycache__/feature_extractor.cpython-310.pyc and /dev/null differ
+diff --git a/data/feature/__pycache__/state_manager.cpython-310.pyc b/data/feature/__pycache__/state_manager.cpython-310.pyc
+deleted file mode 100644
+index af5807a..0000000
+Binary files a/data/feature/__pycache__/state_manager.cpython-310.pyc and /dev/null differ
+diff --git a/data/provider/__pycache__/data_provider.cpython-310.pyc b/data/provider/__pycache__/data_provider.cpython-310.pyc
+index 27b7b42..caeed72 100644
+Binary files a/data/provider/__pycache__/data_provider.cpython-310.pyc and b/data/provider/__pycache__/data_provider.cpython-310.pyc differ
+diff --git a/data/provider/data_bento/__pycache__/databento_file_provider.cpython-310.pyc b/data/provider/data_bento/__pycache__/databento_file_provider.cpython-310.pyc
+index eb7cb6b..4f07c8d 100644
+Binary files a/data/provider/data_bento/__pycache__/databento_file_provider.cpython-310.pyc and b/data/provider/data_bento/__pycache__/databento_file_provider.cpython-310.pyc differ
+diff --git a/envs/__init__.py b/envs/__init__.py
+index 0e69931..f45c63d 100644
+--- a/envs/__init__.py
++++ b/envs/__init__.py
+@@ -1 +1,2 @@
+-from envs.trading_env import TradingEnv, MomentumTradingReward
+\ No newline at end of file
++from envs.trading_env import TradingEnv, MomentumTradingReward
++from envs.reward import MomentumTradingReward
+\ No newline at end of file
+diff --git a/envs/__pycache__/trading_env.cpython-310.pyc b/envs/__pycache__/trading_env.cpython-310.pyc
+index ff5e2c4..ede4185 100644
+Binary files a/envs/__pycache__/trading_env.cpython-310.pyc and b/envs/__pycache__/trading_env.cpython-310.pyc differ
+diff --git a/envs/reward.py b/envs/reward.py
+new file mode 100644
+index 0000000..82226af
+--- /dev/null
++++ b/envs/reward.py
+@@ -0,0 +1,72 @@
++from typing import Dict
++
++
++class MomentumTradingReward:
++    """
++    Reward function for momentum trading strategy.
++    """
++
++    def __init__(self, config: Dict = None):
++        """
++        Initialize the reward function with configuration.
++        """
++        self.config = config or {}
++
++        # Extract config with fallback to defaults
++        if hasattr(self.config, "_to_dict"):
++            config = self.config._to_dict()
++        else:
++            config = self.config
++
++        # Reward scaling
++        self.reward_scaling = config.get('reward_scaling', 1.0)
++        self.trade_penalty = config.get('trade_penalty', 0.1)
++        self.hold_penalty = config.get('hold_penalty', 0.0)
++        self.early_exit_bonus = config.get('early_exit_bonus', 0.5)
++        self.flush_prediction_bonus = config.get('flush_prediction_bonus', 2.0)
++
++        # Strategy parameters
++        strategy = config.get('strategy', {})
++        self.momentum_threshold = strategy.get('momentum_threshold', 0.5)
++        self.volume_surge_threshold = strategy.get('volume_surge_threshold', 3.0)
++
++        # Tape analysis parameters
++        tape = strategy.get('tape_analysis', {})
++        self.tape_speed_threshold = tape.get('speed_threshold', 3.0)
++        self.tape_imbalance_threshold = tape.get('imbalance_threshold', 0.7)
++
++    def __call__(self, env, action, portfolio_change, portfolio_change_pct,
++                 trade_executed, info):
++        """
++        Calculate reward based on momentum trading strategy.
++        """
++        # Base reward is portfolio change
++        reward = portfolio_change * self.reward_scaling
++
++        # Apply trading penalties
++        if trade_executed:
++            reward -= self.trade_penalty
++        else:
++            reward -= self.hold_penalty
++
++        # Bonus for predicting a flush
++        if info.get('predicted_flush', False) and info.get('actual_flush', False):
++            reward += self.flush_prediction_bonus
++
++        # Bonus for early exit before a flush
++        if info.get('early_exit', False) and info.get('subsequent_flush', False):
++            reward += self.early_exit_bonus
++
++        # Bonus for capturing momentum with high volume
++        if (trade_executed and
++                info.get('momentum_strength', 0) > self.momentum_threshold and
++                info.get('relative_volume', 0) > self.volume_surge_threshold):
++            reward *= 1.5  # 50% boost for capturing strong momentum
++
++        # Penalty for missing obvious momentum
++        if (not trade_executed and
++                info.get('momentum_strength', 0) > self.momentum_threshold * 2 and
++                info.get('relative_volume', 0) > self.volume_surge_threshold * 2):
++            reward -= self.trade_penalty * 2
++
++        return reward
+\ No newline at end of file
+diff --git a/envs/trading_env.py b/envs/trading_env.py
+index 15efb34..59e3d84 100644
+--- a/envs/trading_env.py
++++ b/envs/trading_env.py
+@@ -35,24 +35,46 @@ class TradingEnv(gym.Env):
+         """
+         self.simulator = simulator
+         self.config = config or {}
+-        self.custom_reward_fn = reward_function
+         self.logger = logger or logging.getLogger(__name__)
+ 
++        # In the TradingEnv.__init__ method:
++
+         # Support for Hydra config - convert to dict if needed
+         cfg = self.config
+         if hasattr(cfg, "_to_dict"):
+             cfg = cfg._to_dict()
+ 
++        # In the TradingEnv.__init__ method:
++        if reward_function is None:
++            # Create momentum reward function from config
++            reward_config = cfg if not hasattr(cfg, 'reward') else cfg.reward
++            reward_type = cfg.get('reward_type', 'momentum')
++
++            if reward_type == 'momentum':
++                self.reward_fn = MomentumTradingReward(reward_config)
++            else:
++                # Default simple reward function
++                self.reward_fn = lambda env, action, change, pct, traded, info: change
++        else:
++            self.reward_fn = reward_function
++
++        # Look for parameters in either top-level or nested format
++        general = cfg.get('general', cfg)  # Try general section, fallback to top-level
++        reward = cfg.get('reward', cfg)  # Try reward section, fallback to top-level
++
+         # Environment configuration
+         self.state_dim = cfg.get('state_dim', 20)  # Dimension of state vector
+         self.max_steps = cfg.get('max_steps', 1000)  # Maximum steps per episode
+         self.normalize_state = cfg.get('normalize_state', True)
++        self.random_reset = cfg.get('random_reset', True)
+ 
+-        # New reward parameters from config
+-        self.reward_type = cfg.get('reward_type', 'momentum')
+-        self.reward_scaling = cfg.get('reward_scaling', 1.0)
+-        self.trade_penalty = cfg.get('trade_penalty', 0.1)
+-        self.hold_penalty = cfg.get('hold_penalty', 0.0)
++        # Reward parameters from config
++        self.reward_type = reward.get('type', reward.get('reward_type', 'momentum'))
++        self.reward_scaling = reward.get('scaling', reward.get('reward_scaling', 1.0))
++        self.trade_penalty = reward.get('trade_penalty', 0.1)
++        self.hold_penalty = reward.get('hold_penalty', 0.0)
++        self.early_exit_bonus = reward.get('early_exit_bonus', 0.5)
++        self.flush_prediction_bonus = reward.get('flush_prediction_bonus', 2.0)
+ 
+         # Define action and observation space
+         # Action space: continuous value between -1 and 1
+@@ -149,22 +171,38 @@ class TradingEnv(gym.Env):
+     def step(self, action):
+         """
+         Take a step in the environment by executing an action.
+-
+-        Args:
+-            action: Action to take (normalized -1.0 to 1.0)
+-
+-        Returns:
+-            Tuple of (next_state, reward, terminated, truncated, info)
+         """
+-        # Ensure action is in correct format
+-        action_value = float(action[0].item() if hasattr(action[0], "item") else action[0]) if hasattr(action, "__len__") else float(action)
++        # Convert action if needed
++        action_value = float(action[0].item() if hasattr(action[0], "item") else action[0]) if hasattr(action,
++                                                                                                       "__len__") else float(
++            action)
+ 
+         # Execute in simulator
+         simulator_result = self.simulator.step(action_value)
+-        next_state, reward, done, info = simulator_result
++        next_state, raw_reward, done, info = simulator_result
+ 
+-        # Update step count
++        # Calculate portfolio metrics for reward
++        portfolio_value = self.simulator.get_portfolio_state().get('total_value', 0)
++        prev_portfolio_value = info.get('prev_portfolio_value', portfolio_value)
++        portfolio_change = portfolio_value - prev_portfolio_value
++        portfolio_change_pct = portfolio_change / prev_portfolio_value if prev_portfolio_value > 0 else 0
++
++        # Use custom reward function
++        reward = self.reward_fn(
++            self,
++            action_value,
++            portfolio_change,
++            portfolio_change_pct,
++            info.get('action_result', {}).get('action', '') != 'hold',  # True if trade executed
++            info
++        )
++
++        # Update step count and info
+         self.current_step += 1
++
++        # Record portfolio value for next step
++        info['prev_portfolio_value'] = portfolio_value
++        info['total_reward'] = self.total_reward + reward
+         self.total_reward += reward
+ 
+         # Check for maximum steps
+@@ -176,17 +214,6 @@ class TradingEnv(gym.Env):
+         # Get normalized state
+         norm_state = self._get_normalized_state()
+ 
+-        # Update info with step information
+-        info.update({
+-            'step': self.current_step,
+-            'total_reward': self.total_reward,
+-        })
+-
+-        self.logger.info(f"Step {self.current_step}: Reward={reward:.4f}, Total={self.total_reward:.4f}")
+-
+-        if done:
+-            self.logger.info(f"Episode finished: Steps={self.current_step}, Total Reward={self.total_reward:.4f}")
+-
+         return norm_state, reward, done, truncated, info
+ 
+     def _get_normalized_state(self) -> np.ndarray:
+diff --git a/feature/feature_extractor.py b/feature/feature_extractor.py
+index e401a2d..de9e1b5 100644
+--- a/feature/feature_extractor.py
++++ b/feature/feature_extractor.py
+@@ -22,22 +22,29 @@ class FeatureExtractor:
+         if hasattr(cfg, "_to_dict"):
+             cfg = cfg._to_dict()
+ 
++        # Look for dimensions in either top-level or nested format
++        dimensions = cfg.get('dimensions', cfg)  # Try dimensions section, fallback to top-level
++
+         # Feature dimension configurations - use config values or defaults
+-        self.hf_seq_len = cfg.get('hf_seq_len', 60)
+-        self.hf_feat_dim = cfg.get('hf_feat_dim', 20)
+-        self.mf_seq_len = cfg.get('mf_seq_len', 30)
+-        self.mf_feat_dim = cfg.get('mf_feat_dim', 15)
+-        self.lf_seq_len = cfg.get('lf_seq_len', 30)
+-        self.lf_feat_dim = cfg.get('lf_feat_dim', 10)
+-        self.static_feat_dim = cfg.get('static_feat_dim', 15)
++        self.hf_seq_len = dimensions.get('hf_seq_len', 60)
++        self.hf_feat_dim = dimensions.get('hf_feat_dim', 20)
++        self.mf_seq_len = dimensions.get('mf_seq_len', 30)
++        self.mf_feat_dim = dimensions.get('mf_feat_dim', 15)
++        self.lf_seq_len = dimensions.get('lf_seq_len', 30)
++        self.lf_feat_dim = dimensions.get('lf_feat_dim', 10)
++        self.static_feat_dim = dimensions.get('static_feat_dim', 15)
+ 
+         # Feature extraction configuration
++        feature_groups = cfg.get('feature_groups', cfg)  # Try feature_groups section, fallback to top-level
+         self.use_volume_profile = cfg.get('use_volume_profile', True)
+         self.use_tape_features = cfg.get('use_tape_features', True)
+         self.use_level2_features = cfg.get('use_level2_features', True)
+-        self.feature_normalization = cfg.get('feature_normalization', 'standardize')
++        self.feature_normalization = cfg.get('normalization', cfg.get('feature_normalization', 'standardize'))
+         self.moving_avg_window = cfg.get('moving_avg_window', 20)
+ 
++        # Technical indicators configuration
++        self.indicators = cfg.get('indicators', {})
++
+         # Simplified parameters
+         self.feature_groups = {
+             'price': self._extract_price_features,
+diff --git a/simulation/market_simulator.py b/simulation/market_simulator.py
+index 22b6314..199f860 100644
+--- a/simulation/market_simulator.py
++++ b/simulation/market_simulator.py
+@@ -13,8 +13,19 @@ class MarketSimulator:
+         self.config = config or {}
+         self.logger = logger or logging.getLogger(__name__)
+ 
+-        # Minimal state
+-        self.current_price = 10.0
++        # Initialize from config
++        if hasattr(self.config, "_to_dict"):
++            config = self.config._to_dict()
++        else:
++            config = self.config
++
++        # Extract configuration parameters with fallbacks
++        self.slippage_factor = config.get('slippage_factor', 0.001)
++        self.price_impact_factor = config.get('price_impact_factor', 0.0001)
++        self.random_seed = config.get('random_seed', 42)
++
++        # Initialize state
++        self.current_price = 10.0  # Default price
+         self.current_bid = 9.95
+         self.current_ask = 10.05
+         self.current_spread = 0.10
+diff --git a/simulation/portfolio_simulator.py b/simulation/portfolio_simulator.py
+index 8a9a684..f01d073 100644
+--- a/simulation/portfolio_simulator.py
++++ b/simulation/portfolio_simulator.py
+@@ -14,8 +14,18 @@ class PortfolioSimulator:
+         self.config = config or {}
+         self.logger = logger or logging.getLogger(__name__)
+ 
++        # Handle Hydra config
++        if hasattr(self.config, "_to_dict"):
++            config = self.config._to_dict()
++        else:
++            config = self.config
++
+         # Configuration
+-        self.initial_cash = self.config.get('initial_cash', 100000.0)
++        self.initial_cash = config.get('initial_cash', 100000.0)
++        self.max_position = config.get('max_position', 1.0)
++        self.position_sizing_method = config.get('position_sizing_method', 'fixed')
++        self.scale_in_levels = config.get('scale_in_levels', [0.25, 0.5, 0.75, 1.0])
++        self.scale_out_levels = config.get('scale_out_levels', [0.25, 0.5, 1.0])
+ 
+         # Portfolio state
+         self.cash = self.initial_cash
+diff --git a/simulation/simulator.py b/simulation/simulator.py
+index 563b827..5d76074 100644
+--- a/simulation/simulator.py
++++ b/simulation/simulator.py
+@@ -24,17 +24,27 @@ class Simulator:
+         self.config = config or {}
+         self.logger = logger or logging.getLogger(__name__)
+ 
++        # Convert OmegaConf to dict if needed for backward compatibility
+         # Convert OmegaConf to dict if needed for backward compatibility
+         if hasattr(self.config, "_to_dict"):
+             config_dict = self.config._to_dict()
+         else:
+             config_dict = self.config
+ 
++        # Extract feature config - try multiple ways to find it
++        feature_config = config_dict.get('feature_config', config_dict.get('feature', {}))
++        if not feature_config and 'feature' in config_dict:
++            # Try to get from top-level config
++            feature_config = config_dict['feature']
++            if hasattr(feature_config, "_to_dict"):
++                feature_config = feature_config._to_dict()
++
+         # Component configs - extract from Hydra structure if available
+-        self.feature_config = config_dict.get('feature_config', {})
++        self.feature_config = feature_config
+         self.market_config = config_dict.get('market_config', {})
+         self.execution_config = config_dict.get('execution_config', {})
+         self.portfolio_config = config_dict.get('portfolio_config', {})
++        self.strategy_config = config_dict.get('strategy', {})
+ 
+         # Initialize components
+         self.feature_extractor = FeatureExtractor(self.feature_config, logger=logger)
+@@ -281,11 +291,6 @@ class Simulator:
+ 
+     def step(self, action: float) -> Tuple[Dict[str, Any], float, bool, Dict[str, Any]]:
+         """Take a step in the environment by executing an action"""
+-        # Check if we have a current timestamp
+-        if self.current_timestamp is None:
+-            self._log("Cannot step: no current timestamp", logging.ERROR)
+-            return {}, 0.0, True, {"error": "no_timestamp"}
+-
+         # Record state before action
+         prev_portfolio_value = self.portfolio_simulator.get_portfolio_value()
+ 
+@@ -296,6 +301,40 @@ class Simulator:
+             timestamp=self.current_timestamp
+         )
+ 
++        # Enhance info dictionary with data for reward function
++        info = {
++            'timestamp': self.current_timestamp,
++            'action_result': result,
++            'portfolio_value': self.portfolio_simulator.get_portfolio_value(),
++            'portfolio_change': self.portfolio_simulator.get_portfolio_value() - prev_portfolio_value,
++            'step_count': self.step_count,
++            'prev_portfolio_value': prev_portfolio_value
++        }
++
++        # Add market state information for reward calculation
++        market_state = self.market_simulator.get_current_market_state()
++        info['price'] = market_state.get('price', 0)
++
++        # Add feature-based signals for reward calculation
++        if self.current_symbol in self.features_cache:
++            features = self.features_cache[self.current_symbol]
++            current_features = features[features.index <= self.current_timestamp]
++
++            if not current_features.empty:
++                latest_features = current_features.iloc[-1]
++
++                # Extract momentum and volume signals for reward calculation
++                for col in latest_features.index:
++                    if 'momentum' in col:
++                        info['momentum_strength'] = latest_features[col]
++                    if 'rel_volume' in col:
++                        info['relative_volume'] = latest_features[col]
++                    if 'tape_speed' in col:
++                        info['tape_speed'] = latest_features[col]
++                    if 'tape_imbalance' in col:
++                        info['tape_imbalance'] = latest_features[col]
++
++
+         # Record trade if executed
+         if result['success'] and result.get('action') != 'hold' and self.trade_callbacks:
+             for callback in self.trade_callbacks:
+diff --git a/strategies/__pycache__/sma_crossover.cpython-310.pyc b/strategies/__pycache__/sma_crossover.cpython-310.pyc
+deleted file mode 100644
+index 0a91107..0000000
+Binary files a/strategies/__pycache__/sma_crossover.cpython-310.pyc and /dev/null differ

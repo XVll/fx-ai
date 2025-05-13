@@ -13,8 +13,19 @@ class MarketSimulator:
         self.config = config or {}
         self.logger = logger or logging.getLogger(__name__)
 
-        # Minimal state
-        self.current_price = 10.0
+        # Initialize from config
+        if hasattr(self.config, "_to_dict"):
+            config = self.config._to_dict()
+        else:
+            config = self.config
+
+        # Extract configuration parameters with fallbacks
+        self.slippage_factor = config.get('slippage_factor', 0.001)
+        self.price_impact_factor = config.get('price_impact_factor', 0.0001)
+        self.random_seed = config.get('random_seed', 42)
+
+        # Initialize state
+        self.current_price = 10.0  # Default price
         self.current_bid = 9.95
         self.current_ask = 10.05
         self.current_spread = 0.10

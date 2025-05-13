@@ -1,4 +1,4 @@
-# conf/callbacks/default.yaml
+# conf/callbacks/momentum_trading.yaml
 # Default callback configuration
 
 # Model checkpoint callback
