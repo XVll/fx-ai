@@ -85,40 +85,6 @@ class ModelCheckpointCallback(TrainingCallback):
                 trainer.save_model(os.path.join(self.save_dir, filename))
 
 
-class TensorboardCallback(TrainingCallback):
-    """
-    Callback to log detailed metrics to TensorBoard.
-    """
-
-    def __init__(self, log_freq=1):
-        """
-        Initialize the callback.
-
-        Args:
-            log_freq: Logging frequency in environment steps
-        """
-        self.log_freq = log_freq
-        self.step_count = 0
-
-    def on_step(self, trainer, state, action, reward, next_state, info):
-        """Log detailed metrics every log_freq steps."""
-        self.step_count += 1
-
-        if self.step_count % self.log_freq == 0:
-            # Log action values
-            if hasattr(action, 'shape') and action.shape:
-                trainer.writer.add_scalar("action/value", action.item(), trainer.total_steps)
-
-            # Log reward
-            trainer.writer.add_scalar("step/reward", reward, trainer.total_steps)
-
-            # Log other info if available
-            if isinstance(info, dict):
-                for k, v in info.items():
-                    if isinstance(v, (int, float)):
-                        trainer.writer.add_scalar(f"info/{k}", v, trainer.total_steps)
-
-
 class EarlyStoppingCallback(TrainingCallback):
     """
     Early stopping callback to prevent overfitting.
