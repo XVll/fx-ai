@@ -147,6 +147,12 @@ class TradingEnv(gym.Env):
         if self.portfolio_simulator:
             self.portfolio_simulator.reset()
 
+        if self.feature_extractor:
+            self.feature_extractor.reset()
+
+        if self.reward_calculator:
+            self.reward_calculator.reset()
+
         # Get initial state
         self.current_state, self.current_state_dict = self._get_observation()
 
