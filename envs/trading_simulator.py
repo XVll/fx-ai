@@ -6,6 +6,10 @@ import logging
 import torch
 from omegaconf import DictConfig
 
+from config.config import SimulationConfig
+from envs.execution_simulator import ExecutionSimulator
+from envs.market_simulator import MarketSimulator
+from envs.portfolio_simulator import PortfolioSimulator
 from feature.feature_extractor import FeatureExtractor
 from feature.state_manager import StateManager
 
@@ -13,7 +17,7 @@ from feature.state_manager import StateManager
 class TradingSimulator:
     """Minimal central simulator that coordinates all components"""
 
-    def __init__(self, data_manager, config: Union[Dict, DictConfig] = None, logger: logging.Logger = None):
+    def __init__(self, data_manager, config: SimulationConfig = None, logger: logging.Logger = None):
         self.data_manager = data_manager
         self.config = config or {}
         self.logger = logger or logging.getLogger(__name__)

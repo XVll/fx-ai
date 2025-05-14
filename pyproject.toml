@@ -7,7 +7,7 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-train = "python3 main.py wandb.enabled=true -v"
+train = "python main.py wandb.enabled=true"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"

@@ -1,13 +1,13 @@
-# agent/ppo_agent.py (updated for Hydra)
 import os
 import time
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from typing import Dict, List, Tuple, Optional, Any, Union
+from typing import Dict, List, Union, Any
 import logging
 import torch.nn.functional as F
+import wandb
 from omegaconf import DictConfig
 
 from models.transformer import MultiBranchTransformer
@@ -500,7 +500,7 @@ class PPOTrainer:
             # Log rollout statistics
             for k, v in rollout_stats.items():
                 if k != "episode_rewards" and k != "episode_lengths":
-                    self.writer.add_scalar(f"rollout/{k}", v, self.updates)
+                    wandb.log({f"rollout/{k}":v},step=self.updates)
 
             # Update policy
             update_metrics = self.update_policy()
@@ -508,11 +508,11 @@ class PPOTrainer:
 
             # Log update metrics
             for k, v in update_metrics.items():
-                self.writer.add_scalar(f"train/{k}", v, self.updates)
+                wandb.log({f"train/{k}":v},step=self.updates)
 
             # Log mean episode reward
             mean_reward = rollout_stats["mean_reward"]
-            self.writer.add_scalar("rollout/mean_reward", mean_reward, self.updates)
+            wandb.log({"rollout/mean_reward": mean_reward}, step=self.updates)
 
             # Save model
             if update % eval_freq == 0:
@@ -523,7 +523,7 @@ class PPOTrainer:
                 # Log evaluation statistics
                 for k, v in eval_stats.items():
                     if k != "episode_rewards" and k != "episode_lengths":
-                        self.writer.add_scalar(f"eval/{k}", v, self.updates)
+                        wandb.log({f"eval/{k}": v},step=self.updates)
 
                 # Save model if it's the best so far
                 if eval_mean_reward > best_mean_reward:
