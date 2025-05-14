@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import logging
 
 
-class FeatureExtractorV2:
+class FeatureExtractor:
     """
     Extracts features with efficient rolling calculations for HF, MF, and LF bands.
     It processes a rolling window of 1-second data events provided by the market simulator.
