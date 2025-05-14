@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "fx-ai"
+version = "0.1.0"
+description = ""
+authors = ["XVll <onur@onurx.com>"] # Poetry uses this string format for authors
+readme = "README.md"
+package-mode = false
+
+[tool.poe.tasks]
+train = "python3 main.py wandb.enabled=true -v"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+hydra-core = "^1.3.2"
+numpy = "^2.2.5"
+pandas = "^2.2.3"
+wandb = "^0.19.11"
+gymnasium = "^1.1.1"
+matplotlib = "^3.10.3"
+databento = "^0.54.0"
+poetry-core = ">=1.0.0"
+
+[tool.poetry.group.dev.dependencies] # For development-only dependencies
+# pytest = "^7.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"] # This is the more standard requirement for poetry-core
+build-backend = "poetry.core.masonry.api"

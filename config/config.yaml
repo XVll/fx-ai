@@ -1,6 +1,5 @@
 # config/config.yaml
 defaults:
-  - base_config
   - model: transformer  # Main model configuration
   - env: trading  # Environment configuration
   - data: databento  # Data source configuration
@@ -46,3 +45,6 @@ simulation:
     commission_per_share: 0.0
   portfolio_config:
     initial_cash: 100000.0
+
+# Project name
+project_name: "Fx AI"
