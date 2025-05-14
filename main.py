@@ -14,7 +14,6 @@ from config.config import Config, EnvConfig, DataConfig, SimulationConfig, Rewar
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
 from envs.trading_env import TradingEnv
-from envs.trading_simulator import TradingSimulator
 from models.transformer import MultiBranchTransformer
 from agent.ppo_agent import PPOTrainer
 from agent.callbacks import ModelCheckpointCallback, EarlyStoppingCallback
@@ -32,28 +31,18 @@ def run_training(cfg: Config):
     model_dir = os.path.join(output_dir, "models")
     os.makedirs(model_dir, exist_ok=True)
 
-    # 1. Initialize data provider and manager
-    log.info("Initializing data provider")
-    data_dir = cfg.data.data_dir
-    log.info(f"Data directory: {data_dir}")
+    # Create simplified environment directly
+    log.info("Creating simplified trading environment")
+    env = TradingEnv(cfg=cfg.env, logger=log)
 
-    provider = DabentoFileProvider(data_dir)
-    data_manager = DataManager(provider, logger=log)
-
-    # 2. Set up simulator
-    log.info("Setting up simulator")
-    simulator = TradingSimulator(data_manager, cfg.simulation, logger=log)
-
-    # 3. Initialize simulator with data
+    # Initialize environment for symbol
     symbol = cfg.data.symbol
     start_date = cfg.data.start_date
     end_date = cfg.data.end_date
     timeframes = cfg.data.timeframes
 
-    log.info(f"Loading data for {symbol} from {start_date} to {end_date}")
-    log.info(f"Using timeframes: {timeframes}")
-
-    success = simulator.initialize_for_symbol(
+    log.info(f"Initializing environment for {symbol} from {start_date} to {end_date}")
+    success = env.initialize_for_symbol(
         symbol,
         mode='backtesting',
         start_time=start_date,
@@ -62,15 +51,10 @@ def run_training(cfg: Config):
     )
 
     if not success:
-        log.error(f"Failed to initialize simulator for {symbol}")
-        return {'error': 'Failed to initialize simulator'}
+        log.error(f"Failed to initialize environment for {symbol}")
+        return {'error': 'Failed to initialize environment'}
 
-    # 4. Create environment
-    log.info("Creating trading environment")
-    # Create a proper reward config
-    env = TradingEnv(simulator, cfg.env, logger=log)
-
-    # 5. Select device
+    # Select device (unchanged)
     if cfg.training.device == "auto":
         if torch.cuda.is_available():
             device = torch.device("cuda")
@@ -85,7 +69,7 @@ def run_training(cfg: Config):
         device = torch.device(cfg.training.device)
         log.info(f"Using specified device: {device}")
 
-    # 6. Create model
+    # Create model (unchanged)
     log.info("Creating multi-branch transformer model")
     model_config = OmegaConf.to_container(cfg.model, resolve=True)
     log.info(f"Model config: {model_config}")
