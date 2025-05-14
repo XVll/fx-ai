@@ -17,7 +17,11 @@ start_date: "2025-03-27"
 end_date: "2025-03-27"
 
 # Timeframes - explicitly supported
-timeframes: ["1s", "1m", "5m", "1d"]
+timeframes:
+  - "1s"
+  - "1m"
+  - "5m"
+  - "1d"
 
 # Data types to load
 data_types:

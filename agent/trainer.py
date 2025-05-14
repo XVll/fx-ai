@@ -1,4 +1,3 @@
-# train.py
 import os
 import argparse
 import logging
@@ -8,8 +7,8 @@ from datetime import datetime
 
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
+from envs.trading_simulator import TradingSimulator
 from feature.feature_extractor import FeatureExtractor
-from simulation.trading_simulator import Simulator
 from envs.trading_env import TradingEnv
 from models.transformer import MultiBranchTransformer
 from agent.ppo_agent import PPOTrainer
@@ -103,7 +102,7 @@ def main():
         'execution_config': {'commission_per_share': 0.0},
         'portfolio_config': {'initial_cash': 100000.0}
     }
-    simulator = Simulator(data_manager, sim_config, logger=logger)
+    simulator = TradingSimulator(data_manager, sim_config, logger=logger)
 
     # 3. Initialize simulator with data
     logger.info(f"Loading data for {args.symbol} from {args.start_date} to {args.end_date}")
