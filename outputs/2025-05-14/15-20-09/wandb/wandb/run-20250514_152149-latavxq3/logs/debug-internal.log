@@ -1,0 +1,26 @@
+{"time":"2025-05-14T15:21:49.8110502+03:00","level":"INFO","msg":"stream: starting","core version":"0.19.11","symlink path":"C:\\Users\\Fx\\PycharmProjects\\fx-ai\\outputs\\2025-05-14\\15-20-09\\wandb\\wandb\\run-20250514_152149-latavxq3\\logs\\debug-core.log"}
+{"time":"2025-05-14T15:21:50.2877169+03:00","level":"INFO","msg":"created new stream","id":"latavxq3"}
+{"time":"2025-05-14T15:21:50.2877169+03:00","level":"INFO","msg":"stream: started","id":"latavxq3"}
+{"time":"2025-05-14T15:21:50.2877169+03:00","level":"INFO","msg":"writer: Do: started","stream_id":"latavxq3"}
+{"time":"2025-05-14T15:21:50.2877169+03:00","level":"INFO","msg":"handler: started","stream_id":"latavxq3"}
+{"time":"2025-05-14T15:21:50.2877169+03:00","level":"INFO","msg":"sender: started","stream_id":"latavxq3"}
+{"time":"2025-05-14T15:21:50.7973437+03:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-14T15:21:50.7989544+03:00","level":"ERROR","msg":"git repo not found","error":"repository does not exist"}
+{"time":"2025-05-14T15:21:51.3676353+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":0,"current":16}
+{"time":"2025-05-14T15:21:51.3676353+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":0,"current":16}
+{"time":"2025-05-14T15:21:51.3676353+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":0,"current":16}
+{"time":"2025-05-14T15:21:51.5938055+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":1,"current":17}
+{"time":"2025-05-14T15:21:51.5938055+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":1,"current":17}
+{"time":"2025-05-14T15:21:51.5938055+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":1,"current":17}
+{"time":"2025-05-14T15:21:51.5938055+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":1,"current":17}
+{"time":"2025-05-14T15:21:51.5938055+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":1,"current":17}
+{"time":"2025-05-14T15:21:51.5943266+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":1,"current":17}
+{"time":"2025-05-14T15:21:51.5943266+03:00","level":"WARN","msg":"handler: ignoring partial history record","step":1,"current":17}
+{"time":"2025-05-14T15:21:52.1375863+03:00","level":"INFO","msg":"stream: closing","id":"latavxq3"}
+{"time":"2025-05-14T15:21:52.1375863+03:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-14T15:21:52.1375863+03:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-05-14T15:21:52.9665831+03:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-05-14T15:21:53.4731937+03:00","level":"INFO","msg":"handler: closed","stream_id":"latavxq3"}
+{"time":"2025-05-14T15:21:53.4731937+03:00","level":"INFO","msg":"writer: Close: closed","stream_id":"latavxq3"}
+{"time":"2025-05-14T15:21:53.4731937+03:00","level":"INFO","msg":"sender: closed","stream_id":"latavxq3"}
+{"time":"2025-05-14T15:21:53.4731937+03:00","level":"INFO","msg":"stream: closed","id":"latavxq3"}
