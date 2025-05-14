@@ -9,7 +9,7 @@ import numpy as np
 from datetime import datetime, timedelta
 
 # Import typed config directly
-from config.config import Config, EnvConfig, DataConfig, SimulationConfig
+from config.config import Config, EnvConfig, DataConfig, SimulationConfig, RewardConfig
 
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
@@ -67,9 +67,8 @@ def run_training(cfg: Config):
 
     # 4. Create environment
     log.info("Creating trading environment")
-    # Convert DictConfig to our strongly-typed EnvConfig
-    env_config = OmegaConf.to_object(cfg.env)
-    env = TradingEnv(simulator, env_config, logger=log)
+    # Create a proper reward config
+    env = TradingEnv(simulator, cfg.env, logger=log)
 
     # 5. Select device
     if cfg.training.device == "auto":
