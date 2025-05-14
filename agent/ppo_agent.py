@@ -5,8 +5,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.tensorboard import SummaryWriter
-import gymnasium as gym
 from typing import Dict, List, Tuple, Optional, Any, Union
 import logging
 import torch.nn.functional as F
@@ -120,7 +118,6 @@ class PPOTrainer:
 
         # Setup logging
         self.logger = logger or logging.getLogger(__name__)
-        self.writer = SummaryWriter(self.log_dir)
 
         # Callbacks
         self.callbacks = callbacks or []

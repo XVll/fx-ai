@@ -1,3 +1,4 @@
+# config/env/trading.yaml
 # Environment configuration for momentum trading
 
 # General parameters
@@ -5,10 +6,9 @@ state_dim: 1000
 max_steps: 500
 normalize_state: true
 random_reset: true
-
-# Action space parameters
 max_position: 1.0
 
+# Reward configuration
 reward:
   type: "momentum"
   scaling: 2.0
@@ -16,6 +16,8 @@ reward:
   hold_penalty: 0.0
   early_exit_bonus: 0.5
   flush_prediction_bonus: 2.0
+
+  # Strategy thresholds
   momentum_threshold: 0.5
   volume_surge_threshold: 5.0
   tape_speed_threshold: 3.0

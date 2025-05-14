@@ -1,4 +1,4 @@
-from typing import Dict
+from config.config import RewardConfig
 
 
 class TradingReward:
@@ -6,39 +6,39 @@ class TradingReward:
     Reward function for momentum trading strategy.
     """
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: RewardConfig):
         """
-        Initialize the reward function with configuration.
+        Initialize the reward function with a strongly-typed configuration.
+
+        Args:
+            config: Typed RewardConfig object
         """
-        self.config = config or {}
-
-        # Extract config with fallback to defaults
-        if hasattr(self.config, "_to_dict"):
-            config = self.config._to_dict()
-        else:
-            config = self.config
-
-        # Reward scaling
-        self.reward_scaling = config.get('reward_scaling', 1.0)
-        self.trade_penalty = config.get('trade_penalty', 0.1)
-        self.hold_penalty = config.get('hold_penalty', 0.0)
-        self.early_exit_bonus = config.get('early_exit_bonus', 0.5)
-        self.flush_prediction_bonus = config.get('flush_prediction_bonus', 2.0)
-
-        # Strategy parameters
-        strategy = config.get('strategy', {})
-        self.momentum_threshold = strategy.get('momentum_threshold', 0.5)
-        self.volume_surge_threshold = strategy.get('volume_surge_threshold', 3.0)
-
-        # Tape analysis parameters
-        tape = strategy.get('tape_analysis', {})
-        self.tape_speed_threshold = tape.get('speed_threshold', 3.0)
-        self.tape_imbalance_threshold = tape.get('imbalance_threshold', 0.7)
+        # Direct attribute access from the typed config
+        self.reward_scaling = config.scaling
+        self.trade_penalty = config.trade_penalty
+        self.hold_penalty = config.hold_penalty
+        self.early_exit_bonus = config.early_exit_bonus
+        self.flush_prediction_bonus = config.flush_prediction_bonus
+        self.momentum_threshold = config.momentum_threshold
+        self.volume_surge_threshold = config.volume_surge_threshold
+        self.tape_speed_threshold = config.tape_speed_threshold
+        self.tape_imbalance_threshold = config.tape_imbalance_threshold
 
     def __call__(self, env, action, portfolio_change, portfolio_change_pct,
                  trade_executed, info):
         """
         Calculate reward based on momentum trading strategy.
+
+        Args:
+            env: Trading environment
+            action: Action value taken
+            portfolio_change: Absolute portfolio change in value
+            portfolio_change_pct: Percentage portfolio change
+            trade_executed: Whether a trade was executed (vs. hold)
+            info: Additional information dict
+
+        Returns:
+            float: Calculated reward value
         """
         # Base reward is portfolio change
         reward = portfolio_change * self.reward_scaling

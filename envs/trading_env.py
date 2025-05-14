@@ -1,15 +1,11 @@
-from dataclasses import dataclass
-
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from typing import Dict, Union, Optional
+from typing import Optional
 import logging
 
-from hydra.core.config_store import ConfigStore
-from omegaconf import DictConfig
-
-from config.config import Config
+# Import typed Config classes directly
+from config.config import Config, EnvConfig
 from envs.trading_reward import TradingReward
 from envs.trading_simulator import TradingSimulator
 
@@ -20,43 +16,32 @@ class TradingEnv(gym.Env):
     def __init__(
             self,
             trading_simulator: TradingSimulator,
-            cfg: Config,
+            cfg: EnvConfig,  # Use the typed EnvConfig directly
             reward_function: Optional[callable] = None,
             logger: logging.Logger = None
     ):
         self.logger = logger or logging.getLogger(__name__)
         self.simulator = trading_simulator
 
+        # Initialize reward function
         if reward_function is None:
-            reward_config = cfg if not hasattr(cfg, 'reward') else cfg.reward
-            reward_type = cfg.get('reward_type', 'momentum')
-
-
-            if reward_type == 'momentum':
-                self.reward_fn = TradingReward(reward_config)
-            else:
-                # Default simple reward function
-                self.reward_fn = lambda env, action, change, pct, traded, info: change
+            self.reward_fn = TradingReward(cfg.reward)
         else:
             self.reward_fn = reward_function
 
-        # Look for parameters in either top-level or nested format
-        general = cfg.get('general', cfg)  # Try general section, fallback to top-level
-        reward = cfg.get('reward', cfg)  # Try reward section, fallback to top-level
+        # Environment configuration - direct access to typed fields
+        self.state_dim = cfg.state_dim
+        self.max_steps = cfg.max_steps
+        self.normalize_state = cfg.normalize_state
+        self.random_reset = cfg.random_reset
 
-        # Environment configuration
-        self.state_dim = cfg.get('state_dim', 20)  # Dimension of state vector
-        self.max_steps = cfg.get('max_steps', 1000)  # Maximum steps per episode
-        self.normalize_state = cfg.get('normalize_state', True)
-        self.random_reset = cfg.get('random_reset', True)
-
-        # Reward parameters from config
-        self.reward_type = reward.get('type', reward.get('reward_type', 'momentum'))
-        self.reward_scaling = reward.get('scaling', reward.get('reward_scaling', 1.0))
-        self.trade_penalty = reward.get('trade_penalty', 0.1)
-        self.hold_penalty = reward.get('hold_penalty', 0.0)
-        self.early_exit_bonus = reward.get('early_exit_bonus', 0.5)
-        self.flush_prediction_bonus = reward.get('flush_prediction_bonus', 2.0)
+        # Get reward config parameters
+        self.reward_type = cfg.reward.type
+        self.reward_scaling = cfg.reward.scaling
+        self.trade_penalty = cfg.reward.trade_penalty
+        self.hold_penalty = cfg.reward.hold_penalty
+        self.early_exit_bonus = cfg.reward.early_exit_bonus
+        self.flush_prediction_bonus = cfg.reward.flush_prediction_bonus
 
         # Define action and observation space
         # Action space: continuous value between -1 and 1
@@ -73,8 +58,6 @@ class TradingEnv(gym.Env):
         # Environment state
         self.current_step = 0
         self.total_reward = 0.0
-
-    # envs/trading_env.py (modify the _get_normalized_state method)
 
     def _get_normalized_state(self) -> np.ndarray:
         """
@@ -197,32 +180,6 @@ class TradingEnv(gym.Env):
         norm_state = self._get_normalized_state()
 
         return norm_state, reward, done, truncated, info
-
-    def _get_normalized_state(self) -> np.ndarray:
-        """
-        Get normalized state representation for RL model.
-
-        Returns:
-            NumPy array with normalized state
-        """
-        # Get state from simulator
-        raw_state = self.simulator.get_current_state_array()
-
-        # If state is empty, return zeros
-        if raw_state is None or len(raw_state) == 0:
-            return np.zeros(self.state_dim, dtype=np.float32)
-
-        # Simple normalization - just ensure right length
-        if len(raw_state) > self.state_dim:
-            # Truncate if too long
-            norm_state = raw_state[:self.state_dim]
-        elif len(raw_state) < self.state_dim:
-            # Pad with zeros if too short
-            norm_state = np.pad(raw_state, (0, self.state_dim - len(raw_state)))
-        else:
-            norm_state = raw_state
-
-        return norm_state.astype(np.float32)
 
     def render(self, mode='human'):
         """

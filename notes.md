@@ -6,9 +6,6 @@
 ### Initial setup
 
 ```bash
-# Install required packages
-pip install -r requirements.txt
-
 # Log in to W&B
 wandb login
 ```
