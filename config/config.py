@@ -21,11 +21,14 @@ class RewardConfig:
 
 @dataclass
 class EnvConfig:
-    state_dim: int = 1000
+    # State dimensions, size of feature vectors
+    state_dimension: int = 1000
+    # Maximum number of steps in an episode
     max_steps: int = 500
+    # Should feature vectors be normalized?
     normalize_state: bool = True
+    # Should the environment be reset randomly?
     random_reset: bool = True
-    max_position: float = 1.0
     reward: RewardConfig = field(default_factory=RewardConfig)
 
 
