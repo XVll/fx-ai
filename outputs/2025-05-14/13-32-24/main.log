@@ -1,0 +1,4 @@
+[2025-05-14 13:32:24,700][__main__][INFO] - Initializing data provider
+[2025-05-14 13:32:24,703][__main__][INFO] - Data directory: C:\Users\Fx\PycharmProjects\fx-ai/dnb/mlgo
+[2025-05-14 13:32:24,704][__main__][WARNING] - Missing data files: ['bars_1m.csv', 'bars_5m.csv']
+[2025-05-14 13:32:24,704][__main__][ERROR] - Data preparation failed. Cannot continue.

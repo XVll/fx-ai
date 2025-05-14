@@ -1,0 +1,5 @@
+[2025-05-14 13:42:11,973][__main__][INFO] - Initializing data provider
+[2025-05-14 13:42:11,975][__main__][INFO] - Data directory: C:\Users\Fx\PycharmProjects\fx-ai/dnb/mlgo
+[2025-05-14 13:42:11,975][data.provider.data_bento.databento_file_provider][INFO] - Scanning for metadata in 'C:\Users\Fx\PycharmProjects\fx-ai/dnb/mlgo'...
+[2025-05-14 13:42:11,988][data.provider.data_bento.databento_file_provider][INFO] - Found 6 directories, indexed 183 files
+[2025-05-14 13:42:11,988][__main__][INFO] - Setting up simulator
