@@ -195,7 +195,7 @@ class FeatureExtractor:
         return np.nan_to_num(feature_vector)  # Replace NaNs with 0, or handle as per model req.
 
     def _vectorize_hf_features(self, hf_event: Dict[str, Any], feature_size: int) -> np.ndarray:
-        if hf_event is None or hf_event.get('bar') is None:
+        if hf_event is None or 'bar' not in hf_event or hf_event['bar'] is None:
             return np.zeros(feature_size)
 
         bar = hf_event['bar']
@@ -281,6 +281,7 @@ class FeatureExtractor:
         output_features_matrix = np.zeros((num_periods, feature_size))
 
         # 1. Current, in-progress period
+        # Ensure current_period_slot_start_ts calculation is correct
         current_period_slot_start_ts = current_ts.replace(
             minute=(current_ts.minute // (period_seconds // 60)) * (period_seconds // 60),
             second=0, microsecond=0
@@ -327,35 +328,42 @@ class FeatureExtractor:
         return output_features_matrix
 
     def extract_features(self, market_state: Dict[str, Any], portfolio_state: Optional[Dict[str, Any]] = None) -> Dict[
-        str, np.ndarray]:
+        str, Any]:
         """
         Extracts features based on the provided market state.
         market_state is expected from MarketSimulatorV2.
         portfolio_state can be used for static features like current position.
         """
-        all_1s_events: List[Dict[str, Any]] = market_state.get('rolling_1s_data_window', [])
-        current_ts: Optional[datetime] = market_state.get('timestamp')
+        # Get timestamp and 1-second event data
+        all_1s_events = market_state.get('rolling_1s_data_window', [])
+        current_ts = market_state.get('timestamp')
 
+        # Handle empty data
         if not all_1s_events or not current_ts:
-            self.logger.warning("Not enough data in market_state to extract features.")
+            self.logger.warning("Insufficient data in market state for feature extraction")
+            # Return placeholder features with the right shapes
             return {
+                'timestamp': current_ts or datetime.now(),
                 'hf_features': np.zeros((self.hf_steps, self.hf_feature_size)),
                 'mf_features': np.zeros((self.mf_periods, self.mf_feature_size)),
                 'lf_features': np.zeros((self.lf_periods, self.lf_feature_size)),
                 'static_features': np.zeros(self.static_feature_size)
             }
 
+        # Initialize state if needed
         if not self.is_initialized:
             self._initialize_completed_periods(all_1s_events, current_ts)
 
-        # --- HF Features --- (Most recent N seconds)
+        # --- Extract HF features ---
         hf_feature_matrix = np.zeros((self.hf_steps, self.hf_feature_size))
-        # Iterate from most recent backwards
         for i in range(min(self.hf_steps, len(all_1s_events))):
-            hf_event = all_1s_events[-(i + 1)]
-            hf_feature_matrix[i, :] = self._vectorize_hf_features(hf_event, self.hf_feature_size)
+            # Safe indexing with bounds checking
+            idx = len(all_1s_events) - i - 1
+            if idx >= 0:
+                hf_event = all_1s_events[idx]
+                hf_feature_matrix[i] = self._vectorize_hf_features(hf_event, self.hf_feature_size)
 
-        # --- MF Features ---
+        # --- Process MF features ---
         mf_feature_matrix = self._update_and_get_frequency_features(
             all_1s_events=all_1s_events,
             current_ts=current_ts,
@@ -368,7 +376,7 @@ class FeatureExtractor:
             period_type_str='mf'
         )
 
-        # --- LF Features ---
+        # --- Process LF features ---
         lf_feature_matrix = self._update_and_get_frequency_features(
             all_1s_events=all_1s_events,
             current_ts=current_ts,
@@ -381,20 +389,78 @@ class FeatureExtractor:
             period_type_str='lf'
         )
 
-        # --- Static Features ---
-        # Example: current position, P&L, S/R levels (from market_state)
+        # --- Process static features ---
         static_feature_vector = np.zeros(self.static_feature_size)
+
+        # Position data from portfolio state
         if portfolio_state:
-            static_feature_vector[0] = portfolio_state.get('position', 0)
-            static_feature_vector[1] = portfolio_state.get('total_pnl', 0)
-        # Add S/R features based on market_state['historical_5m_for_sr'] etc.
-        # For example: distance to nearest support/resistance
-        # This part needs more specific logic based on how S/R levels are defined and used.
-        # static_feature_vector[2] = ... 
+            if 0 < self.static_feature_size:
+                static_feature_vector[0] = portfolio_state.get('position', 0.0)
+            if 1 < self.static_feature_size:
+                static_feature_vector[1] = portfolio_state.get('total_pnl', 0.0)
+            if 2 < self.static_feature_size:
+                static_feature_vector[2] = portfolio_state.get('unrealized_pnl', 0.0)
+
+        # Current price from market state (for convenience)
+        if 3 < self.static_feature_size:
+            static_feature_vector[3] = market_state.get('current_price', 0.0)
+
+        # Distance to nearest whole/half dollar level if available
+        if 4 < self.static_feature_size and market_state.get('current_price'):
+            current_price = market_state.get('current_price')
+            nearest_half_dollar = round(current_price * 2) / 2
+            static_feature_vector[4] = abs(current_price - nearest_half_dollar)
+
+        # Return all features with timestamp for easier testing
+        return {
+            'timestamp': current_ts,
+            'hf_features': hf_feature_matrix,
+            'mf_features': mf_feature_matrix,
+            'lf_features': lf_feature_matrix,
+            'static_features': static_feature_vector
+        }
+
+    def _calculate_support_resistance(self, market_state: Dict[str, Any]) -> Dict[str, float]:
+        """Calculate support and resistance levels from historical data."""
+        # Get current price
+        current_price = market_state.get('current_price', 0)
+        if current_price <= 0:
+            return {}
+
+        # Get historical 5m bars for S/R
+        historical_5m = market_state.get('historical_5m_for_sr')
+        if historical_5m is None or historical_5m.empty:
+            return {}
+
+        # Find recent pivots (simplified approach)
+        highs = historical_5m['high'].values
+        lows = historical_5m['low'].values
+
+        # Find potential support levels (recent lows)
+        supports = []
+        for i in range(1, len(lows) - 1):
+            if lows[i] < lows[i - 1] and lows[i] < lows[i + 1]:
+                supports.append(lows[i])
+
+        # Find potential resistance levels (recent highs)
+        resistances = []
+        for i in range(1, len(highs) - 1):
+            if highs[i] > highs[i - 1] and highs[i] > highs[i + 1]:
+                resistances.append(highs[i])
+
+        # Filter levels below current price for support
+        supports = [s for s in supports if s < current_price]
+
+        # Filter levels above current price for resistance
+        resistances = [r for r in resistances if r > current_price]
+
+        # Get nearest levels
+        nearest_support = max(supports) if supports else 0
+        nearest_resistance = min(resistances) if resistances else 0
 
         return {
-            'hf_features': hf_feature_matrix,  # Shape: (hf_steps, hf_feature_size)
-            'mf_features': mf_feature_matrix,  # Shape: (mf_periods, mf_feature_size)
-            'lf_features': lf_feature_matrix,  # Shape: (lf_periods, lf_feature_size)
-            'static_features': static_feature_vector  # Shape: (static_feature_size,)
+            'nearest_support': nearest_support,
+            'nearest_resistance': nearest_resistance,
+            'distance_to_support': current_price - nearest_support if nearest_support > 0 else 0,
+            'distance_to_resistance': nearest_resistance - current_price if nearest_resistance > 0 else 0
         }
