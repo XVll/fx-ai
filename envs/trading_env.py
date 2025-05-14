@@ -10,6 +10,7 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig
 
 from config.config import Config
+from envs.trading_reward import TradingReward
 from envs.trading_simulator import TradingSimulator
 
 
@@ -24,6 +25,7 @@ class TradingEnv(gym.Env):
             logger: logging.Logger = None
     ):
         self.logger = logger or logging.getLogger(__name__)
+        self.simulator = trading_simulator
 
         if reward_function is None:
             reward_config = cfg if not hasattr(cfg, 'reward') else cfg.reward

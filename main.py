@@ -95,7 +95,7 @@ def run_training(cfg: DictConfig):
             )
         )
 
-    # Add W&B callback if enabled
+        # Add W&B callback if enabled - Enhanced integration
     if cfg.wandb.enabled:
         # Prepare combined config for W&B
         flat_config = OmegaConf.to_container(cfg, resolve=True)
