@@ -1,0 +1,38 @@
+WandB initialized: swift-moon-24 (ovwv5bz1)
+[2025-05-14 17:25:40,263][__main__][INFO] - Update 1/100
+[2025-05-14 17:25:40,263][__main__][INFO] - Collecting 8 episodes...
+[2025-05-14 17:25:47,465][__main__][INFO] - Initialized event queue with 190080 events
+[2025-05-14 17:25:47,466][__main__][INFO] - Environment reset to 2025-03-27 00:00:00
+C:\Users\Fx\PycharmProjects\fx-ai\envs\trading_env.py:500: DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated, and will error in future. Ensure you extract a single element from your array before performing this operation. (Deprecated NumPy 1.25.)
+  action_value = float(action[0]) if hasattr(action, "__len__") else float(action)
+Error executing job with overrides: ['wandb.enabled=true']
+Traceback (most recent call last):
+  File "C:\Users\Fx\PycharmProjects\fx-ai\main.py", line 174, in <module>
+    run_training()
+  File "C:\Users\Fx\AppData\Local\pypoetry\Cache\virtualenvs\fx-ai-yUieqIVe-py3.10\lib\site-packages\hydra\main.py", line 94, in decorated_main
+    _run_hydra(
+  File "C:\Users\Fx\AppData\Local\pypoetry\Cache\virtualenvs\fx-ai-yUieqIVe-py3.10\lib\site-packages\hydra\_internal\utils.py", line 394, in _run_hydra
+    _run_app(
+  File "C:\Users\Fx\AppData\Local\pypoetry\Cache\virtualenvs\fx-ai-yUieqIVe-py3.10\lib\site-packages\hydra\_internal\utils.py", line 457, in _run_app
+    run_and_report(
+  File "C:\Users\Fx\AppData\Local\pypoetry\Cache\virtualenvs\fx-ai-yUieqIVe-py3.10\lib\site-packages\hydra\_internal\utils.py", line 223, in run_and_report
+    raise ex
+  File "C:\Users\Fx\AppData\Local\pypoetry\Cache\virtualenvs\fx-ai-yUieqIVe-py3.10\lib\site-packages\hydra\_internal\utils.py", line 220, in run_and_report
+    return func()
+  File "C:\Users\Fx\AppData\Local\pypoetry\Cache\virtualenvs\fx-ai-yUieqIVe-py3.10\lib\site-packages\hydra\_internal\utils.py", line 458, in <lambda>
+    lambda: hydra.run(
+  File "C:\Users\Fx\AppData\Local\pypoetry\Cache\virtualenvs\fx-ai-yUieqIVe-py3.10\lib\site-packages\hydra\_internal\hydra.py", line 132, in run
+    _ = ret.return_value
+  File "C:\Users\Fx\AppData\Local\pypoetry\Cache\virtualenvs\fx-ai-yUieqIVe-py3.10\lib\site-packages\hydra\core\utils.py", line 260, in return_value
+    raise self._return_value
+  File "C:\Users\Fx\AppData\Local\pypoetry\Cache\virtualenvs\fx-ai-yUieqIVe-py3.10\lib\site-packages\hydra\core\utils.py", line 186, in run_job
+    ret.return_value = task_function(task_cfg)
+  File "C:\Users\Fx\PycharmProjects\fx-ai\main.py", line 155, in run_training
+    training_stats = trainer.train(cfg.training.total_updates)
+  File "C:\Users\Fx\PycharmProjects\fx-ai\agent\ppo_agent.py", line 498, in train
+    rollout_stats = self.collect_rollouts()
+  File "C:\Users\Fx\PycharmProjects\fx-ai\agent\ppo_agent.py", line 204, in collect_rollouts
+    callback.on_step(self, state_dict, action, reward, next_state_dict, info)
+  File "C:\Users\Fx\PycharmProjects\fx-ai\agent\wandb_callback.py", line 174, in on_step
+    if hasattr(trainer.env.simulator, 'market_simulator'):
+AttributeError: 'TradingEnv' object has no attribute 'simulator'

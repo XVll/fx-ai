@@ -376,7 +376,9 @@ class WandbCallback(TrainingCallback):
 
         # Ensure step is monotonically increasing
         if current_step <= self.last_logged_step:
+            # Instead of using a smaller step, use the last step + 1
             current_step = self.last_logged_step + 1
+            self.logger.warning(f"Adjusted step from {step} to {current_step} to maintain monotonicity")
 
         try:
             # Log the metrics
