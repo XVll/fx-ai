@@ -18,7 +18,7 @@ DEFAULT_MARKET_HOURS = {
 }
 
 
-class MarketSimulatorV2:
+class MarketSimulator:
     def __init__(self,
                  symbol: str,
                  data_manager: Any,  # Should be a DataManager-like object

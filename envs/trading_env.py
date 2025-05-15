@@ -1,15 +1,15 @@
 # trading_env.py
 import gymnasium as gym
 import numpy as np
-import pandas as pd
 import torch
-from typing import Dict, List, Tuple, Any, Optional, Union
 import logging
-import os
-from datetime import datetime, timedelta
 
+from data.data_manager import DataManager
 from envs.RewardCalculator import RewardCalculator
 from feature.feature_extractor import FeatureExtractor
+from simulators.execution_simulator import ExecutionSimulator
+from simulators.market_simulator import MarketSimulator
+from simulators.portfolio_simulator import PortfolioSimulator
 
 
 class TradingEnv(gym.Env):
@@ -22,7 +22,7 @@ class TradingEnv(gym.Env):
     Implements the standard gymnasium (gym) interface with custom trading components.
     """
 
-    def __init__(self, cfg=None, logger=None):
+    def __init__(self, data_manager: DataManager, cfg=None, logger=None):
         """
         Initialize the trading environment.
 
@@ -33,6 +33,8 @@ class TradingEnv(gym.Env):
         self.logger = logger or logging.getLogger(__name__)
         self.cfg = cfg or {}
 
+        # Data manager for historical data
+        self.data_manager = data_manager
         # Extract configuration parameters
         if hasattr(cfg, 'state_dim'):
             self.state_dim = cfg.state_dim
@@ -280,7 +282,8 @@ class TradingEnv(gym.Env):
             'hf_features': normalized_features.get('hf_features'),  # Shape: [batch, seq_len, feat_dim]
             'mf_features': normalized_features.get('mf_features'),
             'lf_features': normalized_features.get('lf_features'),
-            'static_features': normalized_features.get('static_features')
+            'static_features': normalized_features.get('static_features'),
+            # Todo : Add position and cash features
         }
 
         # For compatibility with simple models, also return flattened state
@@ -475,13 +478,15 @@ class TradingEnv(gym.Env):
             timeframes = ['1s', '1m', '5m', '1d']
 
         try:
-            # 1. Initialize market simulator
-            from market_simulator import MarketSimulator
+            # 1. Initialize market simulator with updated parameters
+            # Todo: Reset market from random point every episode
             self.market_simulator = MarketSimulator(
                 symbol=symbol,
+                data_manager=self.data_manager,
                 mode=mode,
                 start_time=start_time,
                 end_time=end_time,
+                config=self.cfg.get('market_config', {}),
                 logger=self.logger
             )
 
@@ -503,6 +508,7 @@ class TradingEnv(gym.Env):
             # 4. Initialize feature extractor
             feature_config = getattr(self.cfg, 'feature_config', {})
             self.feature_extractor = FeatureExtractor(
+                symbol=symbol,
                 config=feature_config,
                 logger=self.logger
             )
