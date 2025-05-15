@@ -12,6 +12,8 @@ import wandb
 
 # Import typed config directly
 from config.config import Config
+from data.data_manager import DataManager
+from data.provider.data_bento.databento_file_provider import DabentoFileProvider
 from envs.trading_env import TradingEnv
 
 from models.transformer import MultiBranchTransformer
@@ -45,8 +47,10 @@ def run_training(cfg: Config):
 
     # Create environment
     log.info("Creating trading environment")
+    db_provider = DabentoFileProvider(cfg.data.data_dir, "MLGO")
+    dm = DataManager(provider=db_provider, logger=log)
 
-    env = TradingEnv(cfg=cfg.env, logger=log)
+    env = TradingEnv(dm, cfg=cfg.env, logger=log)
 
     # Initialize environment for symbol
     symbol = cfg.data.symbol
