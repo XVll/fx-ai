@@ -462,3 +462,22 @@ class FeatureExtractor:
             "mf": self.mf_feature_names,
             "lf": self.lf_feature_names,
         }
+
+    def reset(self):
+        """Reset the feature extractor state between episodes."""
+        # Reset the history deques
+        self.hf_history.clear()
+        self.mf_history.clear()
+        self.lf_history.clear()
+
+        # Reset latest features
+        self.latest_static_features = None
+        self.latest_timestamp = None
+
+        # Reset session VWAP accumulators if needed
+        self.session_vwap_sum_price_volume = 0.0
+        self.session_vwap_sum_volume = 0.0
+        self.current_session_vwap = None
+        self._current_market_session_for_vwap = None
+
+        self.logger.info(f"FeatureExtractor for {self.symbol} reset")
