@@ -74,18 +74,6 @@ class DabentoFileProvider(HistoricalDataProvider):
                 store = db.DBNStore.from_file(file_path)
                 df = store.to_df()
 
-                # Create timestamp column from ts_event
-                if 'ts_event' in df.columns:
-                    df['timestamp'] = pd.to_datetime(df['ts_event'], unit='ns')
-                    df = df.set_index('timestamp')
-                elif not isinstance(df.index, pd.DatetimeIndex):
-                    self.logger.warning(f"No ts_event column found in {file_path}")
-                    return pd.DataFrame()
-
-                # Ensure timezone is UTC
-                if df.index.tzinfo is None:
-                    df.index = df.index.tz_localize('UTC')
-
                 return df
             except Exception as e:
                 self.logger.error(f"Error reading DBN file: {e}")
@@ -206,8 +194,18 @@ class DabentoFileProvider(HistoricalDataProvider):
 
             # Filter to the requested time range
             if not df.empty:
-                # First sort if needed
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    df.index = pd.to_datetime(df.index)
+                if df.index.tz is None:
+                    self.logger.warning("Input DataFrame index is timezone-naive. Localizing to UTC.")
+                    df.index = df.index.tz_localize('UTC')
+                elif str(df.index.tz).upper() != 'UTC':  # Check if it's aware but not UTC
+                    self.logger.info(f"Input DataFrame index is timezone-aware ({df.index.tz}). Converting to UTC.")
+                    df.index = df.index.tz_convert('UTC')
+
+                # If it's already a UTC DatetimeIndex, nothing happens here for timezone.
                 if not df.index.is_monotonic_increasing:
+                    # First sort if needed
                     df = df.sort_index()
 
                 # Then filter

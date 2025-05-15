@@ -6,7 +6,6 @@ from typing import List, Optional
 @dataclass
 class TradeData:
     """Standardized trade data model."""
-    timestamp: datetime  # From ts_event
     price: float
     size: float
     side: str  # 'B', 'S', or 'N'
@@ -17,7 +16,6 @@ class TradeData:
 @dataclass
 class QuoteData:
     """Standardized quote data model."""
-    timestamp: datetime  # From ts_event
     bid_price: float
     ask_price: float
     bid_size: float
@@ -29,7 +27,6 @@ class QuoteData:
 @dataclass
 class BarData:
     """Standardized OHLCV bar data model."""
-    timestamp: datetime  # From ts_event
     open: float
     high: float
     low: float
@@ -40,7 +37,6 @@ class BarData:
 @dataclass
 class StatusData:
     """Standardized trading status data model."""
-    timestamp: datetime  # From ts_event
     status: str  # 'TRADING', 'HALTED', etc.
     reason: str  # No longer optional
     is_trading: bool
