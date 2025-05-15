@@ -1,83 +1,98 @@
-# market_simulator_v2.py
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
 import logging
 from collections import deque
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
+import numpy as np
+import pandas as pd
+
+DEFAULT_MARKET_HOURS = {
+    "PREMARKET_START": "04:00:00",
+    "PREMARKET_END": "09:29:59",
+    "REGULAR_START": "09:30:00",
+    "REGULAR_END": "15:59:59",
+    "POSTMARKET_START": "16:00:00",
+    "POSTMARKET_END": "20:00:00",
+    "TIMEZONE": "America/New_York"
+}
 
 
-class MarketSimulatorV2:
-    """
-    Enhanced Market Simulator for 1-second granularity, handling historical and live data,
-    and providing robust state for rolling feature calculations.
-    """
-
+class MarketSimulator:
+    # Dataframes has cleaned and sorted data with UTC index
     def __init__(self, symbol: str,
                  historical_1s_data: Optional[pd.DataFrame] = None,
-                 historical_trades_data: Optional[pd.DataFrame] = None,
-                 historical_quotes_data: Optional[pd.DataFrame] = None,
-                 historical_5m_bars: Optional[pd.DataFrame] = None,  # For S/R levels
-                 historical_1d_bars: Optional[pd.DataFrame] = None,  # For S/R levels
+                 historical_trades_data: Optional[pd.DataFrame] = None,  # For future use with FeatureExtractor
+                 historical_quotes_data: Optional[pd.DataFrame] = None,  # For future use with FeatureExtractor
+                 historical_1d_bars: Optional[pd.DataFrame] = None,
                  config: Optional[Dict] = None,
                  logger: Optional[logging.Logger] = None):
         """
-        Initialize the market simulator.
-
         Args:
-            symbol: Trading symbol.
-            historical_1s_data: DataFrame with 1-second OHLCV bars. Expected index: DateTimeIndex.
-                                Columns: ['open', 'high', 'low', 'close', 'volume'].
-            historical_trades_data: DataFrame with individual trades. Expected index: DateTimeIndex.
-                                   Columns: ['price', 'size', 'side', ...].
-            historical_quotes_data: DataFrame with quotes. Expected index: DateTimeIndex.
-                                   Columns: ['bid_price', 'bid_size', 'ask_price', 'ask_size', ...].
-            historical_5m_bars: DataFrame with 5-minute bars (for S/R). Index: DateTimeIndex.
-            historical_1d_bars: DataFrame with daily bars (for S/R). Index: DateTimeIndex.
             config: Configuration dictionary. Relevant keys:
                 - 'mode': 'backtesting' or 'live'.
-                - 'start_time_str': ISO format string for backtesting start.
-                - 'end_time_str': ISO format string for backtesting end.
-                - 'max_1s_data_window_size': Max number of 1-second data events to keep for features (e.g., 3600 for 1 hour).
-                - 'initial_buffer_seconds': Seconds of data to pre-fill in buffers (e.g., 600 for 10 mins).
+                - 'start_time_str': ISO format UTC string for backtesting start.
+                - 'end_time_str': ISO format UTC string for backtesting end.
+                - 'max_1s_data_window_size': Max 1s data events (default 3600 for 1 hour).
+                - 'initial_buffer_seconds': Seconds of data to pre-fill (default 600 for 10 mins).
+                - 'market_hours': Dict for session timings (see example below).
+                - 'completed_1m_bars_maxlen': Max length for completed 1m bars deque (default 60).
+                - 'completed_5m_bars_maxlen': Max length for completed 5m bars deque (default 24).
             logger: Optional logger.
+
         """
         self.logger = logger or logging.getLogger(__name__)
         self.symbol = symbol
         self.config = config or {}
 
         self.mode = self.config.get('mode', 'backtesting')
-        self.start_time = pd.to_datetime(self.config.get('start_time_str')) if self.config.get(
-            'start_time_str') else None
-        self.end_time = pd.to_datetime(self.config.get('end_time_str')) if self.config.get('end_time_str') else None
 
-        # --- Data Storage ---
+        # --- Timezone and Market Hours Setup ---
+        # Timestamps are handled as UTC internally for data processing, converted for session logic
+        self.start_time_utc = pd.to_datetime(self.config.get('start_time_str'), utc=True) if self.config.get('start_time_str') else None
+        self.end_time_utc = pd.to_datetime(self.config.get('end_time_str'), utc=True) if self.config.get('end_time_str') else None
+        self.exchange_timezone = None
+        self.market_hours = {
+            key: datetime.strptime(value, "%H:%M:%S").time()
+            for key, value in DEFAULT_MARKET_HOURS.items() if key.endswith(("_START", "_END"))
+        }
+
+        # --- Data Storage (Timestamps are UTC) ---
         self.all_1s_data: Optional[pd.DataFrame] = self._prepare_historical_data(historical_1s_data)
         self.all_trades_data: Optional[pd.DataFrame] = self._prepare_historical_data(historical_trades_data)
         self.all_quotes_data: Optional[pd.DataFrame] = self._prepare_historical_data(historical_quotes_data)
+        self.historical_1d_bars_full: Optional[pd.DataFrame] = self._prepare_historical_data(historical_1d_bars)
 
-        # Data for S/R levels (typically less frequent updates needed for buffers)
-        self.historical_5m_bars_for_sr: Optional[pd.DataFrame] = self._prepare_historical_data(historical_5m_bars)
-        self.historical_1d_bars_for_sr: Optional[pd.DataFrame] = self._prepare_historical_data(historical_1d_bars)
-
-        # --- Current Time and Index ---
-        self.current_timestamp: Optional[datetime] = None
-        self._current_1s_data_idx: int = 0  # Index for self.all_1s_data
+        # --- Current Time and Index (UTC) ---
+        self.current_timestamp_utc: Optional[datetime] = None
+        self._current_1s_data_idx: int = 0
 
         # --- Rolling Data Windows for Features ---
-        # This window holds combined 1s data events (bar, trades in that sec, quotes in that sec)
-        # Each element could be a dict: {'timestamp': ..., 'bar': ..., 'trades': [...], 'quotes': [...]}
-        self.max_1s_data_window_size = self.config.get('max_1s_data_window_size', 60 * 60)  # Default: 1 hour of 1s data
+        self.max_1s_data_window_size = self.config.get('max_1s_data_window_size', 60 * 60)
         self.current_1s_data_window: deque = deque(maxlen=self.max_1s_data_window_size)
 
-        # Buffers for S/R calculation (can be simpler, e.g., just the DFs sliced up to current_timestamp)
-        # Or deques if rolling S/R calculation is needed over many days/weeks.
-        # For simplicity, we'll assume S/R calculations can use slices of the DFs.
+        # --- Session and Level Tracking State ---
+        self.current_market_session: Optional[str] = "CLOSED"
+        self.premarket_high: Optional[float] = None
+        self.premarket_low: Optional[float] = None
+        self.session_open_price: Optional[float] = None
+        self.session_high: Optional[float] = None
+        self.session_low: Optional[float] = None
+        self._last_processed_session_type: Optional[str] = None  # Tracks PREMARKET, REGULAR etc.
+        self._current_day_for_session_tracking: Optional[datetime.date] = None
 
-        # --- Live Data Ingestion Buffers (processed each second) ---
+        # --- Bar Aggregation State ---
+        self.completed_1m_bars_maxlen = self.config.get('completed_1m_bars_maxlen', 60)
+        self.completed_5m_bars_maxlen = self.config.get('completed_5m_bars_maxlen', 24)
+
+        self._current_1m_bar_agg: Optional[Dict] = None
+        self._current_5m_bar_agg: Optional[Dict] = None
+        self.completed_1m_bars: deque = deque(maxlen=self.completed_1m_bars_maxlen)
+        self.completed_5m_bars: deque = deque(maxlen=self.completed_5m_bars_maxlen)
+
+        # --- Live Data Buffers ---
         self._live_trades_buffer: List[Dict] = []
         self._live_quotes_buffer: List[Dict] = []
-        self._live_1s_bar_events: List[Dict] = []  # If 1s bars also come via WS
+        self._live_1s_bar_events: List[Dict] = []
 
         # --- Initialization ---
         if self.mode == 'backtesting':
@@ -85,356 +100,422 @@ class MarketSimulatorV2:
                 raise ValueError("Historical 1s data is required for backtesting mode.")
             self._initialize_for_backtesting()
         elif self.mode == 'live':
-            self.current_timestamp = datetime.now().replace(microsecond=0)  # Or from an external time source
-            # Live mode might require pre-loading some recent historical data to fill buffers
-            self.logger.info(f"MarketSimulatorV2 initialized for LIVE trading. Current time: {self.current_timestamp}")
+            self.current_timestamp_utc = datetime.now().astimezone(ZoneInfo("UTC")).replace(microsecond=0)
+            self.logger.info(
+                f"MarketSimulatorV3 initialized for LIVE trading. Current UTC time: {self.current_timestamp_utc}")
 
-        self.logger.info(f"MarketSimulatorV2 initialized for {self.symbol}. Mode: {self.mode}")
+        self.logger.info(f"MarketSimulatorV3 initialized for {self.symbol}. Mode: {self.mode}.")
+        if self.exchange_timezone:
+            self.logger.info(f"Exchange timezone set to: {self.exchange_timezone}")
 
     def _prepare_historical_data(self, df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
         if df is not None and not df.empty:
-            if not isinstance(df.index, pd.DatetimeIndex):
-                raise ValueError("DataFrame index must be a DatetimeIndex.")
-            df = df.sort_index()  # Ensure data is chronologically sorted
-            if self.start_time:
-                df = df[df.index >= self.start_time]
-            if self.end_time:
-                df = df[df.index <= self.end_time]
+            if self.start_time_utc:
+                df = df[df.index >= self.start_time_utc]
+            if self.end_time_utc:
+                df = df[df.index <= self.end_time_utc]
             return df
         return None
 
     def _initialize_for_backtesting(self):
-        initial_buffer_seconds = self.config.get('initial_buffer_seconds', 600)  # 10 minutes
+        initial_buffer_seconds = self.config.get('initial_buffer_seconds', 600)
 
-        # Set start index to allow for initial buffer population
-        # Find the timestamp in all_1s_data that is `initial_buffer_seconds` after the first available timestamp
-        first_valid_timestamp = self.all_1s_data.index[0]
-        self.current_timestamp = first_valid_timestamp
+        if self.all_1s_data is None or self.all_1s_data.empty: return  # Should have been caught earlier
 
-        # Find the index corresponding to the initial buffer end time
-        # This ensures we have `initial_buffer_seconds` of data *before* the first `current_timestamp` used by the agent
-        # The agent will effectively start trading at `current_timestamp` after the loop.
+        first_valid_timestamp_utc = self.all_1s_data.index[0]
+        # The actual start for the agent will be after the buffer period
+        effective_start_timestamp_utc = first_valid_timestamp_utc + timedelta(seconds=initial_buffer_seconds)
 
-        temp_start_time_for_buffer = self.all_1s_data.index[0]
-        initial_target_timestamp = temp_start_time_for_buffer + timedelta(seconds=initial_buffer_seconds)
+        try:
+            # Find the index for the data point that starts the simulation for the agent
+            self._current_1s_data_idx = self.all_1s_data.index.searchsorted(effective_start_timestamp_utc)
+        except Exception as e:  # Handle cases where searchsorted might fail with non-unique index or other issues
+            self.logger.warning(f"Could not find exact start index via searchsorted: {e}. Will iterate.")
+            idx = 0
+            for ts_idx, ts_val in enumerate(self.all_1s_data.index):
+                if ts_val >= effective_start_timestamp_utc:
+                    idx = ts_idx
+                    break
+            self._current_1s_data_idx = idx
 
-        # Find the closest index to this target timestamp for starting the simulation
-        # self._current_1s_data_idx will be the index of the *first* data point the agent sees.
-        # The buffer will be filled with data *before* this index.
-
-        potential_start_indices = self.all_1s_data.index.searchsorted(initial_target_timestamp)
-        self._current_1s_data_idx = min(potential_start_indices, len(self.all_1s_data) - 1)
+        if self._current_1s_data_idx >= len(self.all_1s_data):
+            self.logger.warning("Not enough data for the configured start time and buffer. Starting at the end.")
+            self._current_1s_data_idx = len(self.all_1s_data) - 1  # Start with the last point
 
         if self._current_1s_data_idx == 0 and initial_buffer_seconds > 0:
             self.logger.warning(
                 f"Not enough data for full initial_buffer_seconds ({initial_buffer_seconds}). Starting with available data.")
 
-        # Pre-fill the current_1s_data_window
+        # Pre-fill buffers (1s data window, completed 1m/5m bars)
         start_fill_idx = max(0, self._current_1s_data_idx - self.max_1s_data_window_size)
+        self.logger.info(f"Pre-filling data window from index {start_fill_idx} to {self._current_1s_data_idx - 1}")
+
+        # Temporarily set current_timestamp_utc to iterate for pre-filling
+        _temp_current_ts_utc = self.current_timestamp_utc
         for i in range(start_fill_idx, self._current_1s_data_idx):
-            ts = self.all_1s_data.index[i]
-            one_sec_event = self._get_data_for_timestamp(ts, is_initial_fill=True)
+            ts_utc = self.all_1s_data.index[i]
+            self.current_timestamp_utc = ts_utc  # Simulate being at this time for prefill logic
+
+            # Basic session determination for prefill, might not be perfect if prefill crosses day boundaries without full logic
+            current_date_local = ts_utc.astimezone(self.exchange_timezone).date()
+            if self._current_day_for_session_tracking != current_date_local:
+                self._reset_daily_and_session_levels(current_date_local, ts_utc)
+
+            one_sec_event = self._get_data_for_timestamp(ts_utc)
             if one_sec_event:
                 self.current_1s_data_window.append(one_sec_event)
+                if one_sec_event.get('bar'):
+                    # Update aggregators during prefill
+                    self._update_aggregate_bar(one_sec_event['bar'], 60, '_current_1m_bar_agg', self.completed_1m_bars)
+                    self._update_aggregate_bar(one_sec_event['bar'], 300, '_current_5m_bar_agg', self.completed_5m_bars)
 
-        # Set the current_timestamp to the first data point the agent will process
+        # Restore or set the actual starting current_timestamp_utc for the agent
         if self._current_1s_data_idx < len(self.all_1s_data):
-            self.current_timestamp = self.all_1s_data.index[self._current_1s_data_idx]
+            self.current_timestamp_utc = self.all_1s_data.index[self._current_1s_data_idx]
         else:  # Reached end of data during initialization
-            self.current_timestamp = self.all_1s_data.index[-1] if not self.all_1s_data.empty else None
+            self.current_timestamp_utc = self.all_1s_data.index[-1] if not self.all_1s_data.empty else None
             self.logger.warning("Reached end of data during initialization.")
 
+        # Final session update for the actual start time
+        if self.current_timestamp_utc:
+            current_date_local = self.current_timestamp_utc.astimezone(self.exchange_timezone).date()
+            self._reset_daily_and_session_levels(current_date_local,
+                                                 self.current_timestamp_utc)  # Ensures session state is correct at start
+
         self.logger.info(
-            f"Backtesting initialized. Buffer filled with {len(self.current_1s_data_window)} events. Starting at index {self._current_1s_data_idx}, timestamp: {self.current_timestamp}")
+            f"Backtesting initialized. Buffer filled. Starting at index {self._current_1s_data_idx}, "
+            f"UTC timestamp: {self.current_timestamp_utc}, "
+            f"Exchange time: {self.current_timestamp_utc.astimezone(self.exchange_timezone) if self.current_timestamp_utc and self.exchange_timezone else 'N/A'}"
+        )
+        self.current_timestamp_utc = _temp_current_ts_utc  # Restore if it was changed
 
-    def _get_data_for_timestamp(self, timestamp: datetime, is_initial_fill: bool = False) -> Optional[Dict[str, Any]]:
-        """
-        Consolidates all market data for a given 1-second interval.
-        For backtesting, this fetches from historical data.
-        For live, this would incorporate processed live events for this second.
-        """
-        if self.all_1s_data is None:
-            return None
+    def _get_data_for_timestamp(self, timestamp_utc: datetime) -> Optional[Dict[str, Any]]:
+        if self.all_1s_data is None: return None
 
-        # Get 1-second bar
+        current_1s_bar = None
         try:
-            # For initial fill, we iterate using index `i`. For step, `_current_1s_data_idx` points to current bar.
-            # Here we use timestamp to find the bar.
-            bar_data_series = self.all_1s_data.loc[timestamp] if timestamp in self.all_1s_data.index else None
-            current_1s_bar = bar_data_series.to_dict() if bar_data_series is not None else None
-        except KeyError:  # Timestamp might not exist if there are gaps
-            current_1s_bar = None
-
-        if not current_1s_bar and not is_initial_fill and self.mode == 'backtesting':
-            # In backtesting, if a 1s bar is missing at the current step, it's a gap.
-            # We might want to forward-fill or handle it, but for now, log and skip.
-            # self.logger.debug(f"No 1s bar data for {timestamp} at index {self._current_1s_data_idx}")
-            # For robustness, let's try to get the *previous* bar if current is missing
-            # and it's not the very first data point. This helps with feature continuity.
-            if self._current_1s_data_idx > 0:
-                prev_ts = self.all_1s_data.index[self._current_1s_data_idx - 1]
-                bar_data_series = self.all_1s_data.loc[prev_ts] if prev_ts in self.all_1s_data.index else None
-                current_1s_bar = bar_data_series.to_dict() if bar_data_series is not None else None
-                if current_1s_bar: current_1s_bar['timestamp_original_missing'] = True  # Flag it
-            else:
-                return None  # Truly no bar data possible
-
-        # Define the 1-second window for trades and quotes
-        window_start = timestamp
-        window_end = timestamp + timedelta(seconds=1)  # Exclusive end
-
-        # Get trades in this 1-second window
-        trades_in_second = []
-        if self.all_trades_data is not None and not self.all_trades_data.empty:
-            trades_df = self.all_trades_data[(self.all_trades_data.index >= window_start) &
-                                             (self.all_trades_data.index < window_end)]
-            if not trades_df.empty:
-                trades_in_second = [row.to_dict() for _, row in trades_df.iterrows()]
-
-        # Get quotes in this 1-second window
-        quotes_in_second = []
-        if self.all_quotes_data is not None and not self.all_quotes_data.empty:
-            quotes_df = self.all_quotes_data[(self.all_quotes_data.index >= window_start) &
-                                             (self.all_quotes_data.index < window_end)]
-            if not quotes_df.empty:
-                quotes_in_second = [row.to_dict() for _, row in quotes_df.iterrows()]
-
-        # For live mode, you would also integrate from _live_trades_buffer etc. here
-        if self.mode == 'live':
-            # Process and clear relevant items from _live_trades_buffer, _live_quotes_buffer
-            # For simplicity, assuming live data is pushed into all_trades_data equivalent for now
-            pass
-
-        if not current_1s_bar and not trades_in_second and not quotes_in_second and not is_initial_fill:
-            # If there's absolutely no data for this second (no bar, no trades, no quotes)
-            # and it's not part of the initial buffer fill where gaps might be more acceptable
-            # depending on data source.
-            # self.logger.debug(f"No market activity found for timestamp {timestamp}")
-            # To ensure the window keeps advancing, we might need to create a synthetic event
-            # or use the last known bar.
-            if self.current_1s_data_window:  # use last known bar
+            bar_data_series = self.all_1s_data.loc[timestamp_utc]
+            # bar_data_series will have OHLCV. Add the timestamp to the bar dict itself for _update_aggregate_bar
+            current_1s_bar = bar_data_series.to_dict()
+            current_1s_bar['timestamp'] = timestamp_utc  # Crucial for aggregator
+        except KeyError:
+            # Handle gaps - use previous bar if available, flag it
+            if self.current_1s_data_window:
                 last_event = self.current_1s_data_window[-1]
-                current_1s_bar = last_event['bar']  # Forward fill the bar
-                current_1s_bar['ffill_timestamp'] = timestamp  # Mark as forward filled
-            else:  # No prior data, cannot proceed
-                return None
+                if last_event and last_event.get('bar'):
+                    current_1s_bar = last_event['bar'].copy()  # Use a copy
+                    current_1s_bar['ffill_original_timestamp_utc'] = timestamp_utc  # Mark as ffilled
+                    current_1s_bar['timestamp'] = timestamp_utc  # Update its timestamp to current tick
+                    current_1s_bar['volume'] = 0  # Typically, ffilled bars have no new volume
+                    self.logger.debug(f"No 1s bar for {timestamp_utc}, forward-filling from previous.")
+            if not current_1s_bar:
+                self.logger.debug(f"No 1s bar data for {timestamp_utc} and no previous bar to ffill.")
+                return None  # Cannot proceed without any bar data
+
+        # Trades and quotes for this 1-second interval (ending at timestamp_utc)
+        window_start_utc = timestamp_utc - timedelta(seconds=1)  # Data *within* the second leading up to timestamp_utc
+
+        trades_in_second = []
+        if self.all_trades_data is not None:
+            trades_df = self.all_trades_data[(self.all_trades_data.index > window_start_utc) &
+                                             (self.all_trades_data.index <= timestamp_utc)]
+            if not trades_df.empty: trades_in_second = [row.to_dict() for _, row in trades_df.iterrows()]
+
+        quotes_in_second = []
+        if self.all_quotes_data is not None:
+            quotes_df = self.all_quotes_data[(self.all_quotes_data.index > window_start_utc) &
+                                             (self.all_quotes_data.index <= timestamp_utc)]
+            if not quotes_df.empty: quotes_in_second = [row.to_dict() for _, row in quotes_df.iterrows()]
 
         return {
-            'timestamp': timestamp,
-            'bar': current_1s_bar,  # This is the OHLCV for the second ending at 'timestamp'
-            'trades': trades_in_second,  # Trades that occurred during this 1s interval
-            'quotes': quotes_in_second  # Quotes that occurred during this 1s interval
+            'timestamp': timestamp_utc,  # This is the timestamp of the 1s event itself
+            'bar': current_1s_bar,  # OHLCV for the second ending at 'timestamp_utc'
+            'trades': trades_in_second,
+            'quotes': quotes_in_second
         }
 
-    def step(self) -> bool:
-        """
-        Advance the simulator to the next 1-second data point.
+    def _determine_market_session(self, timestamp_utc: datetime) -> str:
+        if not self.exchange_timezone: return "UNKNOWN"  # Should not happen if init is correct
 
-        Returns:
-            bool: True if successful and data is available, False if at the end of data or error.
-        """
+        # Convert UTC timestamp to exchange local time
+        local_time_dt = timestamp_utc.astimezone(self.exchange_timezone)
+        current_time_obj = local_time_dt.time()
+
+        if self.market_hours["PREMARKET_START"] <= current_time_obj <= self.market_hours["PREMARKET_END"]:
+            return "PREMARKET"
+        elif self.market_hours["REGULAR_START"] <= current_time_obj <= self.market_hours["REGULAR_END"]:
+            return "REGULAR"
+        elif self.market_hours["POSTMARKET_START"] <= current_time_obj <= self.market_hours[
+            "POSTMARKET_END"]:
+            return "POSTMARKET"
+        return "CLOSED"
+
+    def _reset_daily_and_session_levels(self, current_date_local: datetime.date,
+                                        timestamp_utc_for_session_calc: datetime):
+        """Resets levels if day changes, and determines initial session state."""
+        if self._current_day_for_session_tracking != current_date_local:
+            self.logger.info(
+                f"New trading day detected in exchange time: {current_date_local}. Resetting daily levels.")
+            self.premarket_high = None
+            self.premarket_low = None
+            self.session_open_price = None
+            self.session_high = None
+            self.session_low = None
+            # Do NOT clear completed_1m/5m_bars here, as they are rolling windows.
+            # Clear forming bars as they are day-specific if not carried over.
+            self._current_1m_bar_agg = None
+            self._current_5m_bar_agg = None
+            self._current_day_for_session_tracking = current_date_local
+            self._last_processed_session_type = None  # Force session re-evaluation
+
+        # Determine current session based on the new day/time
+        self.current_market_session = self._determine_market_session(timestamp_utc_for_session_calc)
+        self.logger.debug(
+            f"Initial session for {current_date_local} at {timestamp_utc_for_session_calc} (UTC) is {self.current_market_session}")
+
+        # Reset specific session levels if entering that session type for the first time today
+        if self.current_market_session == "PREMARKET" and self._last_processed_session_type != "PREMARKET":
+            self.premarket_high = None
+            self.premarket_low = None
+        elif self.current_market_session == "REGULAR" and self._last_processed_session_type != "REGULAR":
+            self.session_open_price = None  # Will be set by first bar of regular session
+            self.session_high = None
+            self.session_low = None
+
+        self._last_processed_session_type = self.current_market_session
+
+    def step(self) -> bool:
         if self.is_done():
-            self.logger.info("MarketSimulatorV2: End of data reached.")
+            self.logger.info("MarketSimulatorV3: End of data reached.")
             return False
 
         if self.mode == 'backtesting':
-            # Advance to the next 1s bar in historical data
             self._current_1s_data_idx += 1
             if self._current_1s_data_idx >= len(self.all_1s_data.index):
-                self.current_timestamp = self.all_1s_data.index[-1] + timedelta(seconds=1)  # Theoretical next second
-                return False  # End of data
-            self.current_timestamp = self.all_1s_data.index[self._current_1s_data_idx]
-
+                return False
+            self.current_timestamp_utc = self.all_1s_data.index[self._current_1s_data_idx]
         elif self.mode == 'live':
-            # For live mode, time advances naturally or via an external clock
-            # We assume self.current_timestamp is updated externally or ticks per second
-            # For this simulation, let's advance it manually for demonstration
-            self.current_timestamp += timedelta(seconds=1)
+            # In live mode, current_timestamp_utc would be updated by an external clock or event trigger
+            self.current_timestamp_utc = datetime.now().astimezone(ZoneInfo("UTC")).replace(microsecond=0)
+            # Process live buffers here (self._live_trades_buffer, etc.) and update main data stores if needed.
+            # For this example, we assume data is already in all_1s_data for live mode too, or handled by add_live_X methods.
 
-            # Process any incoming live data that has accumulated
-            # This is where data from add_live_trade etc. would be sorted and merged
-            # For example, new trades in _live_trades_buffer get appended to self.all_trades_data
-            # or a live-specific deque.
-            # Then, clear the _live_trades_buffer, _live_quotes_buffer.
-            if self._live_1s_bar_events:
-                # Example: process a 1s bar event if it arrived via WS
-                # This would typically involve updating something like self.all_1s_data
-                # or a live-specific structure. For now, just logging.
-                self.logger.debug(
-                    f"Processing {len(self._live_1s_bar_events)} live 1s bar events for {self.current_timestamp}")
-                self._live_1s_bar_events.clear()
-            # Similar processing for trades and quotes
+        # --- Session Management ---
+        if self.current_timestamp_utc is None: return False  # Should not happen after init
 
-        # Get consolidated data for the new current_timestamp
-        one_second_event_data = self._get_data_for_timestamp(self.current_timestamp)
+        current_date_local = self.current_timestamp_utc.astimezone(self.exchange_timezone).date()
+        if self._current_day_for_session_tracking != current_date_local:
+            self._reset_daily_and_session_levels(current_date_local, self.current_timestamp_utc)
 
-        if one_second_event_data:
-            self.current_1s_data_window.append(one_second_event_data)
-            return True
+        new_session_type = self._determine_market_session(self.current_timestamp_utc)
+        if new_session_type != self.current_market_session:  # True session type change
+            self.logger.info(
+                f"Market session changed from {self.current_market_session} to {new_session_type} at {self.current_timestamp_utc.astimezone(self.exchange_timezone)}")
+            self.current_market_session = new_session_type
+            if new_session_type == "PREMARKET":  # Entering Premarket
+                self.premarket_high = None
+                self.premarket_low = None
+            elif new_session_type == "REGULAR":  # Entering Regular
+                self.session_open_price = None  # Will be set by first bar
+                self.session_high = None
+                self.session_low = None
+            # Update _last_processed_session_type to reflect the new state we are in
+            self._last_processed_session_type = new_session_type
+
+        # --- Get current 1s data event ---
+        one_second_event_data = self._get_data_for_timestamp(self.current_timestamp_utc)
+        if not one_second_event_data:
+            self.logger.warning(f"No 1s data event for {self.current_timestamp_utc}. Skipping step.")
+            return True  # Allow time to advance, but no data to process this tick. Or False if critical.
+
+        self.current_1s_data_window.append(one_second_event_data)
+        latest_1s_bar = one_second_event_data.get('bar')
+
+        # --- Update Premarket/Session High/Low ---
+        if latest_1s_bar:
+            # Ensure bar timestamp is UTC for consistency if used later (already should be)
+            # latest_1s_bar['timestamp'] = self.current_timestamp_utc
+
+            bar_high = latest_1s_bar.get('high')
+            bar_low = latest_1s_bar.get('low')
+
+            if self.current_market_session == "PREMARKET":
+                if bar_high is not None: self.premarket_high = max(self.premarket_high,
+                                                                   bar_high) if self.premarket_high is not None else bar_high
+                if bar_low is not None: self.premarket_low = min(self.premarket_low,
+                                                                 bar_low) if self.premarket_low is not None else bar_low
+            elif self.current_market_session == "REGULAR":
+                if self.session_open_price is None:  # First bar of regular session
+                    self.session_open_price = latest_1s_bar.get('open')  # Or close, based on definition
+                    self.logger.info(
+                        f"Regular session open price set: {self.session_open_price} at {self.current_timestamp_utc.astimezone(self.exchange_timezone)}")
+                if bar_high is not None: self.session_high = max(self.session_high,
+                                                                 bar_high) if self.session_high is not None else bar_high
+                if bar_low is not None: self.session_low = min(self.session_low,
+                                                               bar_low) if self.session_low is not None else bar_low
+
+            # --- Bar Aggregation ---
+            self._update_aggregate_bar(latest_1s_bar, 60, '_current_1m_bar_agg', self.completed_1m_bars)
+            self._update_aggregate_bar(latest_1s_bar, 300, '_current_5m_bar_agg', self.completed_5m_bars)
+
+        return True
+
+    def _update_aggregate_bar(self, latest_1s_bar_with_ts: Dict, bar_duration_seconds: int,
+                              current_agg_bar_attr: str, completed_bars_deque: deque):
+        # latest_1s_bar_with_ts is assumed to have a 'timestamp' key (UTC datetime of the 1s bar event)
+        # and OHLCV keys.
+        if not latest_1s_bar_with_ts or 'timestamp' not in latest_1s_bar_with_ts:
+            self.logger.error("Cannot update aggregate bar: latest_1s_bar_with_ts is invalid or missing timestamp.")
+            return
+
+        bar_timestamp_utc = latest_1s_bar_with_ts['timestamp']
+        current_agg_bar = getattr(self, current_agg_bar_attr)
+
+        # Determine the start timestamp of the interval this 1s bar belongs to (in UTC)
+        if bar_duration_seconds == 60:  # 1-minute bar
+            current_interval_start_ts_utc = bar_timestamp_utc.replace(second=0, microsecond=0)
+        elif bar_duration_seconds == 300:  # 5-minute bar
+            current_interval_start_ts_utc = bar_timestamp_utc.replace(second=0, microsecond=0)
+            current_interval_start_ts_utc = current_interval_start_ts_utc.replace(
+                minute=(bar_timestamp_utc.minute // 5) * 5)
         else:
-            # If no data could be constructed (e.g., end of backtest data, or persistent live gap)
-            # We might still want to advance time and append a minimal event to keep features ticking
-            # For now, if _get_data_for_timestamp returns None, it indicates a critical issue or end.
-            self.logger.warning(f"No data event constructed for {self.current_timestamp}. May be end of relevant data.")
-            # If we want to ensure the window always has *something* even for empty seconds:
-            # empty_event = {'timestamp': self.current_timestamp, 'bar': None, 'trades': [], 'quotes': []}
-            # self.current_1s_data_window.append(empty_event)
-            return False  # Or True if we allow empty ticks
+            self.logger.error(f"Unsupported bar_duration_seconds: {bar_duration_seconds}")
+            return
+
+        if current_agg_bar is None or current_agg_bar['timestamp_start_utc'] != current_interval_start_ts_utc:
+            if current_agg_bar is not None:
+                completed_bars_deque.append(current_agg_bar.copy())
+                self.logger.debug(
+                    f"Completed {bar_duration_seconds // 60}m bar (UTC start {current_agg_bar['timestamp_start_utc']}): {current_agg_bar}")
+
+            new_agg_bar = {
+                'timestamp_start_utc': current_interval_start_ts_utc,  # Start of bar interval, UTC
+                'open': latest_1s_bar_with_ts['open'],
+                'high': latest_1s_bar_with_ts['high'],
+                'low': latest_1s_bar_with_ts['low'],
+                'close': latest_1s_bar_with_ts['close'],
+                'volume': latest_1s_bar_with_ts.get('volume', 0)
+                # 'timestamp_end_utc' could be added: current_interval_start_ts_utc + timedelta(seconds=bar_duration_seconds -1)
+            }
+            setattr(self, current_agg_bar_attr, new_agg_bar)
+            self.logger.debug(
+                f"Starting new {bar_duration_seconds // 60}m bar (UTC start {new_agg_bar['timestamp_start_utc']}): {new_agg_bar}")
+        else:
+            current_agg_bar['high'] = max(current_agg_bar['high'], latest_1s_bar_with_ts['high'])
+            current_agg_bar['low'] = min(current_agg_bar['low'], latest_1s_bar_with_ts['low'])
+            current_agg_bar['close'] = latest_1s_bar_with_ts['close']
+            current_agg_bar['volume'] += latest_1s_bar_with_ts.get('volume', 0)
 
     def get_current_market_state(self) -> Optional[Dict[str, Any]]:
-        """
-        Get the current market state for feature extraction and decision making.
-        This state represents the market *as of* self.current_timestamp.
-        """
-        if not self.current_timestamp or not self.current_1s_data_window:
-            # self.logger.warning("Attempted to get market state but simulator not ready or no data in window.")
+        if not self.current_timestamp_utc or not self.current_1s_data_window:
+            self.logger.debug("Cannot get market state: current_timestamp_utc or current_1s_data_window is empty.")
             return None
 
         latest_event_in_window = self.current_1s_data_window[-1]
+        state_timestamp_utc = latest_event_in_window['timestamp']
 
-        # Ensure the latest event corresponds to the current_timestamp
-        # It might not if step() returned False due to end of data or gap
-        if latest_event_in_window['timestamp'] != self.current_timestamp:
-            # This can happen if we just hit the end of data; the window has the last valid data,
-            # but current_timestamp might be one step beyond.
-            # Or, if _get_data_for_timestamp returned None and step() is designed to still advance time.
-            # For robustness, we should provide the state as of the latest *valid* data in the window.
-            # self.logger.debug(f"Current timestamp {self.current_timestamp} differs from latest window event {latest_event_in_window['timestamp']}. Providing state for latest window event.")
+        # Ensure current_timestamp_utc matches the latest event for consistency
+        if state_timestamp_utc != self.current_timestamp_utc:
             if not self.is_done() and self.mode == 'backtesting':  # Only log if not actually done
                 self.logger.debug(
-                    f"Timestamp mismatch: current_ts={self.current_timestamp}, window_ts={latest_event_in_window['timestamp']}")
+                    f"Timestamp mismatch in get_current_market_state: sim_utc_ts={self.current_timestamp_utc}, "
+                    f"window_utc_ts={state_timestamp_utc}. Using window_utc_ts for state."
+                )
 
-        # Data for S/R levels: Slice historical bars up to the current time
-        current_historical_5m_bars = None
-        if self.historical_5m_bars_for_sr is not None:
-            current_historical_5m_bars = self.historical_5m_bars_for_sr[
-                self.historical_5m_bars_for_sr.index <= self.current_timestamp]
+        # For completed bars, we need to ensure their timestamps are also what FeatureExtractor expects.
+        # The FeatureExtractor expects dicts of OHLCV. Add 'timestamp' if it's not 'timestamp_start_utc'.
+        # Let's assume FE can handle 'timestamp_start_utc' or we adapt FeatureExtractor slightly if needed.
+        # For now, we pass the dicts as they are stored.
 
-        current_historical_1d_bars = None
-        if self.historical_1d_bars_for_sr is not None:
-            current_historical_1d_bars = self.historical_1d_bars_for_sr[
-                self.historical_1d_bars_for_sr.index <= self.current_timestamp]
-
-        return {
-            'symbol': self.symbol,
-            'timestamp': latest_event_in_window['timestamp'],  # Timestamp of the data being provided
-
-            # Data for the most recent 1-second interval
+        market_state = {
+            'timestamp': state_timestamp_utc,  # UTC timestamp of the current tick
             'latest_1s_bar': latest_event_in_window.get('bar'),
-            'latest_1s_trades': latest_event_in_window.get('trades'),
-            'latest_1s_quotes': latest_event_in_window.get('quotes'),
+            'rolling_1s_data_window': list(self.current_1s_data_window),
 
-            # Rolling window of 1-second data events (for HF, MF, LF feature calculations)
-            # Each element is a dict: {'timestamp': ..., 'bar': ..., 'trades': [...], 'quotes': [...]}
-            'rolling_1s_data_window': list(self.current_1s_data_window),  # Send a copy
+            'current_market_session': self.current_market_session,
+            'premarket_high': self.premarket_high,
+            'premarket_low': self.premarket_low,
+            'session_open_price': self.session_open_price,
+            'session_high': self.session_high,
+            'session_low': self.session_low,
 
-            # Historical bars for S/R levels (typically longer term)
-            'historical_5m_for_sr': current_historical_5m_bars,
-            'historical_1d_for_sr': current_historical_1d_bars,
+            'current_1m_bar': self._current_1m_bar_agg.copy() if self._current_1m_bar_agg else None,
+            'current_5m_bar': self._current_5m_bar_agg.copy() if self._current_5m_bar_agg else None,
+            'completed_1m_bars_window': list(self.completed_1m_bars),
+            'completed_5m_bars_window': list(self.completed_5m_bars),
 
-            # Direct access to the most recent price for convenience (e.g., for execution simulator)
-            'current_price': latest_event_in_window.get('bar', {}).get('close') if latest_event_in_window.get(
-                'bar') else None,
-            'current_bid': latest_event_in_window.get('quotes', [{}])[-1].get(
-                'bid_price') if latest_event_in_window.get('quotes') else None,
-            'current_ask': latest_event_in_window.get('quotes', [{}])[-1].get(
-                'ask_price') if latest_event_in_window.get('quotes') else None,
+            # Pass the full historical daily DataFrame. FeatureExtractor will handle it.
+            'historical_1d_bars_full': self.historical_1d_bars_full.copy() if self.historical_1d_bars_full is not None else None,
         }
+        return market_state
 
     def is_done(self) -> bool:
-        """Check if we've reached the end of data in backtesting mode."""
         if self.mode == 'backtesting':
-            if self.all_1s_data is None or self.all_1s_data.empty:
-                return True
+            if self.all_1s_data is None or self.all_1s_data.empty: return True
             # Done if current_1s_data_idx is at or beyond the last available index
-            return self._current_1s_data_idx >= len(self.all_1s_data.index) - 1  # -1 because idx is for *next* step
+            is_past_last_index = self._current_1s_data_idx >= len(self.all_1s_data.index)
+            # Also consider if current_timestamp_utc has passed the configured end_time_utc
+            is_past_end_time = self.end_time_utc and self.current_timestamp_utc and self.current_timestamp_utc > self.end_time_utc
+            return is_past_last_index or is_past_end_time
         elif self.mode == 'live':
-            # Live mode typically doesn't "end" unless explicitly stopped
-            # Or if a predefined simulation end time is reached
-            if self.end_time and self.current_timestamp and self.current_timestamp >= self.end_time:
-                return True
-            return False
-        return True  # Default to done if mode is unknown
+            if self.end_time_utc and self.current_timestamp_utc and self.current_timestamp_utc >= self.end_time_utc:
+                return True  # Live simulation with a defined end time
+            return False  # Live mode typically doesn't "end" unless explicitly stopped
+        return True
 
-    def reset(self, start_time_str: Optional[str] = None, end_time_str: Optional[str] = None):
-        """
-        Reset the simulator to an initial state.
-        For backtesting, this means re-initializing based on available data and new times if provided.
-        """
+    def reset(self):
+        """Resets the simulator to its initial state for a new episode."""
+        self.logger.info(f"Resetting MarketSimulatorV3 for {self.symbol}.")
         self.current_1s_data_window.clear()
         self._live_trades_buffer.clear()
         self._live_quotes_buffer.clear()
         self._live_1s_bar_events.clear()
 
         self._current_1s_data_idx = 0
-        self.current_timestamp = None
+        self.current_timestamp_utc = None  # Will be set by _initialize_for_backtesting or live start
 
-        if start_time_str: self.start_time = pd.to_datetime(start_time_str)
-        if end_time_str: self.end_time = pd.to_datetime(end_time_str)
+        # Reset session and level tracking state
+        self.current_market_session = "CLOSED"
+        self.premarket_high = None
+        self.premarket_low = None
+        self.session_open_price = None
+        self.session_high = None
+        self.session_low = None
+        self._last_processed_session_type = None
+        self._current_day_for_session_tracking = None
 
-        # Re-filter data if start/end times changed (conceptually, real data wouldn't be reloaded like this)
-        # For actual episode management (next day, etc.), you'd likely reinstantiate the simulator
-        # or have a more sophisticated data manager that feeds data for specific periods.
-        # For this example, we assume `all_1s_data` might be a larger dataset, and reset adjusts view.
+        # Reset bar aggregation state
+        self._current_1m_bar_agg = None
+        self._current_5m_bar_agg = None
+        self.completed_1m_bars.clear()
+        self.completed_5m_bars.clear()
 
-        # Re-initialize based on the (potentially new) start/end times
         if self.mode == 'backtesting':
-            # The original dataframes are kept, _prepare_historical_data logic needs to be invoked again if data source is external.
-            # For simplicity, assume they are already loaded, and we are resetting pointers and buffers.
-            if self.all_1s_data is None or self.all_1s_data.empty:
-                raise ValueError("Historical 1s data is required for backtesting mode to reset.")
             self._initialize_for_backtesting()
         elif self.mode == 'live':
-            self.current_timestamp = datetime.now().replace(microsecond=0)
-            # Potentially re-fill buffers with recent history for live mode if needed
-            self.logger.info(f"MarketSimulatorV2 reset for LIVE trading. Current time: {self.current_timestamp}")
+            self.current_timestamp_utc = datetime.now().astimezone(ZoneInfo("UTC")).replace(microsecond=0)
+            # Potentially re-fill initial buffers for live mode if necessary from recent history
+            self.logger.info(
+                f"MarketSimulatorV3 reset for LIVE trading. Current UTC time: {self.current_timestamp_utc}")
 
-        self.logger.info(
-            f"MarketSimulatorV2 reset. Mode: {self.mode}, New Start: {self.start_time}, New End: {self.end_time}")
-        return self.get_current_market_state()  # Return initial state
+        return self.get_current_market_state()
 
-    # --- Methods for Live Data Ingestion ---
+    # --- Live Data Ingestion Methods (simplified, from V2) ---
     def add_live_trade(self, trade_event: Dict[str, Any]):
-        """
-        Add a live trade event. Expected to have 'timestamp', 'price', 'size', 'side'.
-        Timestamp should be a datetime object or parsable string.
-        """
-        # In a real system, this would buffer events. They are processed in _get_data_for_timestamp or step().
-        # For robust handling, include precise event timestamp.
-        # trade_event['timestamp'] = pd.to_datetime(trade_event['timestamp'])
-        # self._live_trades_buffer.append(trade_event)
-        # For now, if live, directly add to all_trades_data if it's a DataFrame
+        # Ensure timestamp is UTC datetime
+        if isinstance(trade_event.get('timestamp'), str):
+            trade_event['timestamp'] = pd.to_datetime(trade_event['timestamp'], utc=True)
+        elif isinstance(trade_event.get('timestamp'), datetime) and trade_event['timestamp'].tzinfo is None:
+            trade_event['timestamp'] = trade_event['timestamp'].replace(tzinfo=ZoneInfo("UTC"))
+        elif isinstance(trade_event.get('timestamp'), datetime):
+            trade_event['timestamp'] = trade_event['timestamp'].astimezone(ZoneInfo("UTC"))
+
         if self.mode == 'live' and self.all_trades_data is not None:
-            # This is a simplified way; real live systems use more complex appends or time-series DBs
-            new_trade = pd.DataFrame([trade_event]).set_index(pd.DatetimeIndex([trade_event['timestamp']]))
-            self.all_trades_data = pd.concat([self.all_trades_data, new_trade])
-            self.all_trades_data.sort_index(inplace=True)  # Keep sorted
+            new_trade_df = pd.DataFrame([trade_event]).set_index(pd.DatetimeIndex([trade_event['timestamp']]))
+            self.all_trades_data = pd.concat([self.all_trades_data, new_trade_df]).sort_index()
         self.logger.debug(f"Live trade received: {trade_event}")
 
-    def add_live_quote(self, quote_event: Dict[str, Any]):
-        """
-        Add a live quote event. Expected: 'timestamp', 'bid_price', 'bid_size', 'ask_price', 'ask_size'.
-        """
-        if self.mode == 'live' and self.all_quotes_data is not None:
-            new_quote = pd.DataFrame([quote_event]).set_index(pd.DatetimeIndex([quote_event['timestamp']]))
-            self.all_quotes_data = pd.concat([self.all_quotes_data, new_quote])
-            self.all_quotes_data.sort_index(inplace=True)
-        self.logger.debug(f"Live quote received: {quote_event}")
-
-    def add_live_1s_data_event(self, bar_event: Dict[str, Any]):
-        """
-        Add a live 1-second bar event if it comes through a separate feed.
-        Expected: 'timestamp', 'open', 'high', 'low', 'close', 'volume'.
-        """
-        # This would typically update the primary 1s data source for live mode.
-        # self._live_1s_bar_events.append(bar_event)
-        if self.mode == 'live' and self.all_1s_data is not None:
-            new_bar = pd.DataFrame([bar_event]).set_index(pd.DatetimeIndex([bar_event['timestamp']]))
-            self.all_1s_data = pd.concat([self.all_1s_data, new_bar])
-            self.all_1s_data.sort_index(inplace=True)
-        self.logger.debug(f"Live 1s bar event received: {bar_event}")
+    # Similar UTC timestamp handling for add_live_quote and add_live_1s_data_event needed
 
     def close(self):
-        """Clean up resources if any."""
-        self.logger.info(f"MarketSimulatorV2 for {self.symbol} closing.")
-        # No specific resources to close in this version unless data sources were actual files/connections.
+        self.logger.info(f"MarketSimulatorV3 for {self.symbol} closing.")
