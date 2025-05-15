@@ -31,7 +31,6 @@ class HistoricalDataProvider(DataProvider):
 
         Returns:
             DataFrame with standardized columns:
-                - timestamp (index): UTC timestamp from ts_event
                 - price: Trade price
                 - size: Trade size
                 - side: Trade side ('B', 'S', 'N')
@@ -49,7 +48,6 @@ class HistoricalDataProvider(DataProvider):
 
         Returns:
             DataFrame with standardized columns:
-                - timestamp (index): UTC timestamp from ts_event
                 - bid_price: Best bid price
                 - ask_price: Best ask price
                 - bid_size: Best bid size
@@ -69,7 +67,6 @@ class HistoricalDataProvider(DataProvider):
 
         Returns:
             DataFrame with standardized columns:
-                - timestamp (index): UTC timestamp from ts_event
                 - open: Open price
                 - high: High price
                 - low: Low price
@@ -87,7 +84,6 @@ class HistoricalDataProvider(DataProvider):
 
         Returns:
             DataFrame with standardized columns:
-                - timestamp (index): UTC timestamp from ts_event
                 - status: Trading status code
                 - reason: Reason for status change
                 - is_trading: Whether trading is allowed
