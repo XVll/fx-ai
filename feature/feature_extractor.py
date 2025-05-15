@@ -233,22 +233,26 @@ class FeatureExtractor:
 
     def calculate_features_and_get_model_input(self, market_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         try:
-            current_ts: Optional[datetime] = market_state.get('timestamp_utc')  # MODIFIED KEY
+            # Extract timestamp from market_state - key name changed to 'timestamp_utc'
+            current_ts: Optional[datetime] = market_state.get('timestamp_utc')
             if not current_ts:
                 self.logger.warning("Timestamp (timestamp_utc) missing in market_state.")
                 return None
             self.latest_timestamp = current_ts
 
-            latest_1s_bar: Optional[Dict] = market_state.get('latest_1s_bar')
+            # Get the current 1s bar - key name changed from 'latest_1s_bar' to 'current_1s_bar'
+            latest_1s_bar: Optional[Dict] = market_state.get('current_1s_bar')
             if not latest_1s_bar or 'close' not in latest_1s_bar:
                 self.logger.debug(
-                    f"latest_1s_bar is missing or incomplete at {current_ts}. Skipping feature calculation.")
+                    f"current_1s_bar is missing or incomplete at {current_ts}. Skipping feature calculation.")
                 return None
             current_price: float = latest_1s_bar['close']
 
+            # Other data fields - ensure we use the correct keys
             rolling_1s_data_window: List[Dict] = market_state.get('rolling_1s_data_window', [])
             current_market_session: str = market_state.get('current_market_session', 'UNKNOWN')
 
+            # VWAP session tracking
             if self._current_market_session_for_vwap != current_market_session:
                 self.logger.info(
                     f"Market session changed from {self._current_market_session_for_vwap} to {current_market_session}. Resetting session VWAP.")
@@ -257,6 +261,7 @@ class FeatureExtractor:
                 self.current_session_vwap = None
                 self._current_market_session_for_vwap = current_market_session
 
+            # Update VWAP calculation
             if latest_1s_bar and 'volume' in latest_1s_bar and latest_1s_bar['volume'] > 0:
                 typical_price = (latest_1s_bar.get('high', current_price) + latest_1s_bar.get('low',
                                                                                               current_price) + current_price) / 3
@@ -267,6 +272,7 @@ class FeatureExtractor:
                 else:
                     self.current_session_vwap = current_price
 
+            # Calculate feature vectors
             current_static_vector = self._calculate_static_features_vector(
                 current_ts=current_ts, current_market_session=current_market_session
             )
@@ -275,35 +281,40 @@ class FeatureExtractor:
             current_hf_vector = self._calculate_hf_features_vector(
                 latest_1s_bar=latest_1s_bar, rolling_1s_data_window=rolling_1s_data_window, current_price=current_price
             )
+
+            # Note MarketSimulatorV2 uses 'current_1m_bar_forming' and 'current_5m_bar_forming'
             current_mf_vector = self._calculate_mf_features_vector(
                 current_ts=current_ts, latest_1s_bar=latest_1s_bar,
                 rolling_1s_data_window=rolling_1s_data_window,
-                current_1m_bar=market_state.get('current_1m_bar_forming'),  # MODIFIED KEY
+                current_1m_bar=market_state.get('current_1m_bar_forming'),
                 completed_1m_bars=market_state.get('completed_1m_bars_window', []),
-                current_5m_bar=market_state.get('current_5m_bar_forming'),  # MODIFIED KEY
+                current_5m_bar=market_state.get('current_5m_bar_forming'),
                 completed_5m_bars=market_state.get('completed_5m_bars_window', []),
                 current_price=current_price
             )
+
+            # Using the renamed fields for high/low values
             current_lf_vector = self._calculate_lf_features_vector(
                 current_ts=current_ts, current_price=current_price,
                 prev_day_data=self.prev_day_data,
-                intraday_high=market_state.get('intraday_high'),  # MODIFIED ARG
-                intraday_low=market_state.get('intraday_low'),  # MODIFIED ARG
+                intraday_high=market_state.get('intraday_high'),
+                intraday_low=market_state.get('intraday_low'),
                 current_session_vwap=self.current_session_vwap,
                 long_term_daily_sr=self.long_term_daily_sr
             )
 
+            # Update feature history
             if current_hf_vector is not None: self.hf_history.append(current_hf_vector)
             if current_mf_vector is not None: self.mf_history.append(current_mf_vector)
             if current_lf_vector is not None: self.lf_history.append(current_lf_vector)
 
+            # Check if we have enough data for model input
             if (len(self.hf_history) == self.hf_lookback_length and
                     len(self.mf_history) == self.mf_lookback_length and
                     len(self.lf_history) == self.lf_lookback_length and
                     self.latest_static_features is not None):
                 model_input = {
-                    'timestamp': current_ts,
-                    # Name 'timestamp' kept for output dict for consistency with potential existing model interface
+                    'timestamp': current_ts,  # Keep 'timestamp' in output dict for model interface consistency
                     'static_features': self.latest_static_features,
                     'hf_features': np.array(list(self.hf_history), dtype=np.float32),
                     'mf_features': np.array(list(self.mf_history), dtype=np.float32),
