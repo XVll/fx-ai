@@ -1,20 +1,20 @@
-# config/data/databento.yaml
-# Configuration for Databento data provider
+# Updated configuration for data/databento.yaml
 
 # Provider settings
 provider_type: "file"  # "file", "api", or "live"
-data_dir: "${hydra:runtime.cwd}/dnb/mlgo"
-symbol_info_file: null
-verbose: false
-dbn_cache_size: 32
+data_dir: "${hydra:runtime.cwd}/dnb/mlgo"  # Verify this path is correct
+
+# Enable verbose logging for debugging
+verbose: true
+dbn_cache_size: 64  # Increase cache size
 
 # Cache settings
 use_cache: true
 
-# Data parameters
-symbol: "MLGO"  # Default trading symbol
-start_date: "2025-03-27"
-end_date: "2025-03-27"
+# Data parameters - try a broader date range
+symbol: "MLGO"           # Default trading symbol
+start_date: "2025-03-01" # Try earlier date
+end_date: "2025-03-27"   # Keep end date the same
 
 # Timeframes - explicitly supported
 timeframes:
@@ -23,7 +23,7 @@ timeframes:
   - "5m"
   - "1d"
 
-# Data types to load
+# Data types to load - ensure all are included
 data_types:
   - "trades"
   - "quotes"
