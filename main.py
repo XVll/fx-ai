@@ -15,6 +15,7 @@ import wandb
 from config.config import Config
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
+from data.provider.dummy_data_provider import DummyDataProvider
 from envs.trading_env import TradingEnv
 
 from models.transformer import MultiBranchTransformer
@@ -46,8 +47,16 @@ def run_training(cfg: Config):
 
     # Create environment
     log.info("Creating trading environment")
-    db_provider = DabentoFileProvider(cfg.data.data_dir, "MLGO")
-    dm = DataManager(provider=db_provider, logger=log)
+    # db_provider = DabentoFileProvider(cfg.data.data_dir, "MLGO")
+    dummy_config = {
+        'price_range': (2.0, 15.0),  # Range of generated prices
+        'volatility': 0.02,  # Daily volatility
+        'trend_strength': 0.6,  # Strength of price trends
+        'vol_baseline': 5000,  # Base volume per second
+        'random_seed': 42  # For reproducible results
+    }
+    dummy_provider = DummyDataProvider(dummy_config,logger=log)
+    dm = DataManager(provider=dummy_provider, logger=log)
 
     env = TradingEnv(dm, cfg=cfg.env, logger=log)
 

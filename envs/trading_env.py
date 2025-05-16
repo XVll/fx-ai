@@ -64,10 +64,20 @@ class TradingEnv(gym.Env):
         # Rendering mode (for visualization if needed)
         self.render_mode = 'human'
 
+        # Define explicit action types
+        self.ACTION_HOLD = 0  # Do nothing, maintain current position
+        self.ACTION_ENTER_LONG = 1  # Enter initial long position
+        self.ACTION_SCALE_IN = 2  # Add to existing long position
+        self.ACTION_SCALE_OUT = 3  # Reduce long position (partial take profit)
+        self.ACTION_EXIT = 4  # Close entire long position
+        self.position_sizes = [0.25, 0.50, 0.75, 1.00]
+
         # === REQUIRED BY GYM.ENV - Action and observation spaces ===
-        # Action space: continuous [-1, 1] for position sizing
-        self.action_space = gym.spaces.Box(
-            low=-1.0, high=1.0, shape=(1,), dtype=np.float32
+        self.action_space = gym.spaces.Tuple(
+            (
+                gym.spaces.Discrete(5),
+                gym.spaces.Discrete(len(self.position_sizes)),  # Action space for position size
+            )
         )
 
         # Observation space: continuous state vector
@@ -167,21 +177,23 @@ class TradingEnv(gym.Env):
         return result
 
     # === REQUIRED BY GYM.ENV - Step method ===
+    # In trading_env.py - step method
+
     def step(self, action):
         """
         Take a step in the environment with the given action.
 
         Args:
-            action: Action to take (position size adjustment)
-                - Shape: (1,)
-                - Range: [-1.0, 1.0] where:
-                  * -1.0 = maximum short position
-                  * 0.0 = flat (no position)
-                  * 1.0 = maximum long position
+            action: Action to take (action_type, size_idx)
+                - Can be a tuple, list, or two-element array
 
         Returns:
             tuple: (observation, reward, terminated, truncated, info) as required by Gymnasium API
         """
+        # Ensure action is in the correct format
+        if isinstance(action, (list, np.ndarray)):
+            action = tuple(map(int, action[:2]))  # Convert to tuple of integers
+
         # Validate action
         if not self.action_space.contains(action):
             raise ValueError(f"Invalid action: {action}")
@@ -323,66 +335,117 @@ class TradingEnv(gym.Env):
 
         return flat_state, state_dict
 
+    # In trading_env.py - _process_action method
+
     def _process_action(self, action):
         """
         Process and execute the trading action.
 
         Args:
-            action: Action value from the agent (-1.0 to 1.0)
+            action: Tuple of (action_type, size_idx)
+                - action_type: Integer code for action type (0=HOLD, 1=ENTER, etc.)
+                - size_idx: Index for self.position_sizes
         """
         if not self.market_simulator or not self.portfolio_simulator or not self.execution_simulator:
             self.logger.warning("Cannot process action: simulators not initialized")
             return
 
-        # Convert normalized action (-1 to 1) to a target position size
-        # -1.0 = maximum short, 0.0 = flat, 1.0 = maximum long
-        target_position = float(action[0]) * self.max_position
+        # Unpack action
+        action_type, size_idx = action
 
-        # Get current market data
-        market_state = self.market_simulator.get_current_market_state()
-        current_price = market_state.get('current_price')
-        current_timestamp = market_state.get('timestamp')
+        # Map size_idx to actual position size
+        position_size = self.position_sizes[size_idx]
 
-        if current_price is None:
-            self.logger.warning("No current price available, cannot execute action")
-            return
-
-        # 1. Get current portfolio state
+        # Get current portfolio state
         portfolio_state = self.portfolio_simulator.get_portfolio_state()
         current_position = portfolio_state['position']
 
-        # 2. Calculate position delta
-        delta = target_position - current_position
+        # Get current market data
+        market_state = self.market_simulator.get_current_market_state()
+        current_price = market_state.get('current_price', 0.0)
+        current_timestamp = market_state.get('timestamp')
 
-        # 3. Execute the order through the execution simulator
-        if abs(delta) > 0.0001:  # Only execute if delta is significant
-            order_type = 'buy' if delta > 0 else 'sell'
+        if not current_timestamp:
+            self.logger.warning("Cannot process action: missing timestamp in market state")
+            return
 
+        # Default values - no execution
+        delta = 0.0
+        order_type = None
+
+        # Process based on action type
+        if action_type == self.ACTION_HOLD:
+            # No action needed
+            action_name = "HOLD"
+
+        elif action_type == self.ACTION_ENTER_LONG:
+            if current_position <= 0:  # Only if not already long
+                # Calculate target position
+                target_position = position_size * self.max_position
+                delta = target_position - current_position
+                order_type = 'buy'
+                action_name = f"ENTER_LONG({position_size})"
+
+        elif action_type == self.ACTION_SCALE_IN:
+            if current_position > 0:  # Only if already long
+                # Calculate new target position
+                new_target = min(self.max_position,
+                                 current_position + (position_size * self.max_position))
+                delta = new_target - current_position
+                if delta > 0:
+                    order_type = 'buy'
+                    action_name = f"SCALE_IN({position_size})"
+
+        elif action_type == self.ACTION_SCALE_OUT:
+            if current_position > 0:  # Only if long
+                # Calculate reduction amount
+                reduction = position_size * current_position
+                delta = -reduction  # Negative delta for selling
+                order_type = 'sell'
+                action_name = f"SCALE_OUT({position_size})"
+
+        elif action_type == self.ACTION_EXIT:
+            if current_position > 0:  # Only if long
+                delta = -current_position  # Close entire position
+                order_type = 'sell'
+                action_name = "EXIT"
+
+        else:
+            action_name = f"UNKNOWN({action_type})"
+            self.logger.warning(f"Unknown action type: {action_type}")
+
+        # Execute the order if needed
+        execution_result = None
+        if order_type and abs(delta) > 0.0001:
             execution_result = self.execution_simulator.execute_order(
                 order_type=order_type,
                 size=abs(delta),
                 timestamp=current_timestamp
             )
 
-            # 4. Update portfolio with execution result
+            # Update portfolio with execution result
             if execution_result['status'] == 'executed':
                 self.portfolio_simulator.update_portfolio(execution_result)
 
                 # Update episode stats
                 self.episode_stats['trades_executed'] += 1
                 self.episode_stats['position_changes'] += 1
+
+                self.logger.info(f"Executed {action_name}: {order_type} {abs(delta):.4f} @ {current_price:.4f}")
+
+        # Store result in info
+        if execution_result:
+            execution_result['action_name'] = action_name
+            self.info['action_result'] = execution_result
         else:
-            execution_result = {
+            self.info['action_result'] = {
                 'status': 'no_action',
-                'reason': 'position_delta_too_small',
+                'reason': action_name,
                 'timestamp': current_timestamp
             }
 
-        # 5. Advance the market simulator to the next time step
+        # Advance the market simulator to the next time step
         self.market_simulator.step()
-
-        # 6. Store order result in info
-        self.info['action_result'] = execution_result
 
     def _calculate_reward(self):
         """

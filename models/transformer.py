@@ -1,4 +1,4 @@
-# models/transformer.py (updated for Hydra)
+# models/transformer.py
 import torch
 import torch.nn as nn
 import numpy as np
@@ -11,7 +11,6 @@ from models.layers import (
     TransformerEncoder,
     AttentionFusion
 )
-from models.networks import ActorNetwork, CriticNetwork
 
 
 class MultiBranchTransformer(nn.Module):
@@ -47,7 +46,7 @@ class MultiBranchTransformer(nn.Module):
             lf_heads: int = 4,
 
             # Output parameters
-            action_dim: int = 1,
+            action_dim: Union[int, List[int], Tuple[int, ...]] = 1,
             continuous_action: bool = True,
 
             # Other parameters
@@ -68,8 +67,24 @@ class MultiBranchTransformer(nn.Module):
         else:
             self.device = device
 
+        # Store continuous/discrete action selection
         self.continuous_action = continuous_action
-        self.action_dim = action_dim
+
+        # Handle action dimensions (support both single int and tuple/list)
+        if continuous_action:
+            if isinstance(action_dim, (list, tuple)):
+                # For continuous actions, just use the first dimension
+                self.action_dim = action_dim[0]
+            else:
+                self.action_dim = action_dim
+        else:
+            # For discrete actions, we need to handle tuples
+            if isinstance(action_dim, (list, tuple)):
+                self.action_types = action_dim[0]
+                self.action_sizes = action_dim[1]
+            else:
+                self.action_types = action_dim
+                self.action_sizes = None
 
         # Store dimensions for reference
         self.hf_seq_len = hf_seq_len
@@ -113,19 +128,35 @@ class MultiBranchTransformer(nn.Module):
         # Fusion Layer
         self.fusion = AttentionFusion(d_model, 4, d_fused, 4)
 
-        # Actor-Critic Networks
-        self.actor = ActorNetwork(d_fused, action_dim, continuous_action)
-        self.critic = CriticNetwork(d_fused)
+        # Output layers - different depending on continuous vs discrete
+        if continuous_action:
+            # For continuous actions
+            self.actor_mean = nn.Linear(d_fused, self.action_dim)
+            self.actor_log_std = nn.Parameter(torch.zeros(self.action_dim))
+        else:
+            # For discrete tuple actions
+            if self.action_sizes is not None:
+                # Separate outputs for action type and size
+                self.action_type_head = nn.Linear(d_fused, self.action_types)
+                self.action_size_head = nn.Linear(d_fused, self.action_sizes)
+            else:
+                # Single discrete output
+                self.action_head = nn.Linear(d_fused, self.action_types)
+
+        # Critic Network (value function)
+        self.critic = nn.Sequential(
+            nn.Linear(d_fused, d_fused // 2),
+            nn.LayerNorm(d_fused // 2),
+            nn.GELU(),
+            nn.Linear(d_fused // 2, 1)
+        )
 
         self.to(self.device)
-
-    # Rest of the class remains the same
-    # ...
 
     def forward(
             self,
             state_dict: Dict[str, torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, ...]], torch.Tensor]:
         """
         Forward pass through the model.
 
@@ -138,8 +169,10 @@ class MultiBranchTransformer(nn.Module):
 
         Returns:
             Tuple of (action_distribution_params, value)
-            - For continuous actions: (mean, log_std), value
-            - For discrete actions: (logits), value
+            - For continuous actions: (mean, log_std)
+            - For discrete tuple actions: (action_type_logits, action_size_logits)
+            - For discrete single actions: (logits,)
+            - value: Value estimate tensor
         """
         # Extract features from dict, ensuring they're on the right device
         hf_features = state_dict['hf_features'].to(self.device)
@@ -190,8 +223,27 @@ class MultiBranchTransformer(nn.Module):
         # Shape: (batch_size, d_fused)
         fused = self.fusion(features_to_fuse)
 
-        # Get policy outputs and value estimate
-        action_params = self.actor(fused)
+        # Output action parameters based on action space type
+        if self.continuous_action:
+            # For continuous action space, output mean and log_std
+            mean = self.actor_mean(fused)
+            # Expand log_std to match batch size
+            batch_size = fused.size(0)
+            log_std = self.actor_log_std.expand(batch_size, -1)
+            action_params = (mean, log_std)
+        else:
+            # For discrete action space
+            if self.action_sizes is not None:
+                # Output separate logits for action type and size
+                action_type_logits = self.action_type_head(fused)
+                action_size_logits = self.action_size_head(fused)
+                action_params = (action_type_logits, action_size_logits)
+            else:
+                # Single discrete output
+                logits = self.action_head(fused)
+                action_params = (logits,)
+
+        # Get value estimate
         value = self.critic(fused)
 
         return action_params, value
@@ -238,19 +290,45 @@ class MultiBranchTransformer(nn.Module):
                 }
             else:
                 # For discrete action space
-                logits = action_params
+                if len(action_params) == 2:
+                    # Tuple action space (action_type, action_size)
+                    action_type_logits, action_size_logits = action_params
 
-                if deterministic:
-                    # During evaluation, select the most probable action
-                    action = torch.argmax(logits, dim=-1)
+                    if deterministic:
+                        # During evaluation, select the most probable actions
+                        action_type = torch.argmax(action_type_logits, dim=-1)
+                        action_size = torch.argmax(action_size_logits, dim=-1)
+                    else:
+                        # During training, sample from categorical distributions
+                        action_type_dist = torch.distributions.Categorical(logits=action_type_logits)
+                        action_size_dist = torch.distributions.Categorical(logits=action_size_logits)
+
+                        action_type = action_type_dist.sample()
+                        action_size = action_size_dist.sample()
+
+                    # Combine into a single tensor for easier handling
+                    action = torch.stack([action_type, action_size], dim=-1)
+
+                    action_info = {
+                        'action_type_logits': action_type_logits,
+                        'action_size_logits': action_size_logits,
+                        'value': value
+                    }
                 else:
-                    # During training, sample from the categorical distribution
-                    dist = torch.distributions.Categorical(logits=logits)
-                    action = dist.sample()
+                    # Single discrete action
+                    logits = action_params[0]
 
-                action_info = {
-                    'logits': logits,
-                    'value': value
-                }
+                    if deterministic:
+                        # During evaluation, select the most probable action
+                        action = torch.argmax(logits, dim=-1)
+                    else:
+                        # During training, sample from the categorical distribution
+                        dist = torch.distributions.Categorical(logits=logits)
+                        action = dist.sample()
+
+                    action_info = {
+                        'logits': logits,
+                        'value': value
+                    }
 
             return action, action_info
