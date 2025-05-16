@@ -337,6 +337,8 @@ class TradingEnv(gym.Env):
 
     # In trading_env.py - _process_action method
 
+    # Fix for _process_action method in trading_env.py
+
     def _process_action(self, action):
         """
         Process and execute the trading action.
@@ -362,8 +364,24 @@ class TradingEnv(gym.Env):
 
         # Get current market data
         market_state = self.market_simulator.get_current_market_state()
-        current_price = market_state.get('current_price', 0.0)
-        current_timestamp = market_state.get('timestamp')
+
+        # Check for timestamp in market state and add it if missing
+        if 'timestamp_utc' not in market_state and 'timestamp' not in market_state:
+            # Use current simulator timestamp as fallback
+            if hasattr(self.market_simulator, 'current_timestamp_utc') and self.market_simulator.current_timestamp_utc:
+                market_state['timestamp'] = self.market_simulator.current_timestamp_utc
+                self.logger.debug(
+                    f"Added missing timestamp to market state: {self.market_simulator.current_timestamp_utc}")
+
+        # Get timestamp from market state, using either key (timestamp_utc or timestamp)
+        current_timestamp = market_state.get('timestamp_utc', market_state.get('timestamp'))
+
+        # Get current price from 1s bar if available
+        current_price = 0.0
+        if 'current_1s_bar' in market_state and market_state['current_1s_bar']:
+            current_price = market_state['current_1s_bar'].get('close', 0.0)
+        elif 'current_price' in market_state:
+            current_price = market_state.get('current_price', 0.0)
 
         if not current_timestamp:
             self.logger.warning("Cannot process action: missing timestamp in market state")

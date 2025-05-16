@@ -1,8 +1,9 @@
+
 # config/env/trading.yaml
 # Environment configuration for momentum trading
 
 # General parameters
-state_dim: 1000
+state_dim: 6000  # Increased from 1000 to 6000 to accommodate the actual state size
 max_steps: 500
 normalize_state: true
 random_reset: true
