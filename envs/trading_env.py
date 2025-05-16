@@ -355,6 +355,9 @@ class TradingEnv(gym.Env):
         # Unpack action
         action_type, size_idx = action
 
+        # Initialize action_name with a default value to prevent UnboundLocalError
+        action_name = f"UNKNOWN({action_type})"
+
         # Map size_idx to actual position size
         position_size = self.position_sizes[size_idx]
 
@@ -403,6 +406,9 @@ class TradingEnv(gym.Env):
                 delta = target_position - current_position
                 order_type = 'buy'
                 action_name = f"ENTER_LONG({position_size})"
+            else:
+                # Already in position but tried to enter again
+                action_name = f"ENTER_LONG_IGNORED(already in position)"
 
         elif action_type == self.ACTION_SCALE_IN:
             if current_position > 0:  # Only if already long
@@ -413,6 +419,10 @@ class TradingEnv(gym.Env):
                 if delta > 0:
                     order_type = 'buy'
                     action_name = f"SCALE_IN({position_size})"
+                else:
+                    action_name = f"SCALE_IN_IGNORED(no additional position possible)"
+            else:
+                action_name = f"SCALE_IN_IGNORED(no existing position)"
 
         elif action_type == self.ACTION_SCALE_OUT:
             if current_position > 0:  # Only if long
@@ -421,12 +431,16 @@ class TradingEnv(gym.Env):
                 delta = -reduction  # Negative delta for selling
                 order_type = 'sell'
                 action_name = f"SCALE_OUT({position_size})"
+            else:
+                action_name = f"SCALE_OUT_IGNORED(no position to reduce)"
 
         elif action_type == self.ACTION_EXIT:
             if current_position > 0:  # Only if long
                 delta = -current_position  # Close entire position
                 order_type = 'sell'
                 action_name = "EXIT"
+            else:
+                action_name = f"EXIT_IGNORED(no position to exit)"
 
         else:
             action_name = f"UNKNOWN({action_type})"
