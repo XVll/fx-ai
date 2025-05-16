@@ -372,6 +372,7 @@ class WandbCallback(TrainingCallback):
                     "best_model/iteration": update_iter
                 })
 
+    # In agent/wandb_callback.py - WandbCallback class
     def _safe_wandb_log(self, metrics_dict, step=None):
         """Safely log to WandB with the current global step."""
         # Make sure we're initialized
@@ -381,19 +382,24 @@ class WandbCallback(TrainingCallback):
         # Use provided step or global_step
         current_step = step if step is not None else self.global_step
 
+        # Initialize last_logged_step if not set
+        if not hasattr(self, 'last_logged_step') or self.last_logged_step is None:
+            self.last_logged_step = 0
+
         # Ensure step is monotonically increasing
-        if current_step <= self.last_logged_step:
-            # Instead of using a smaller step, use the last step + 1
+        if current_step is None or current_step <= self.last_logged_step:
+            # Use last step + 1 to maintain monotonicity
             current_step = self.last_logged_step + 1
+            # Only log at debug level to reduce noise
             if self.logger:
-                self.logger.warning(f"Adjusted step from {step} to {current_step} to maintain monotonicity")
-            else:
-                print(f"Adjusted step from {step} to {current_step} to maintain monotonicity")
+                self.logger.debug(f"Adjusted step from {step} to {current_step} to maintain monotonicity")
 
         try:
             # Log the metrics
             wandb.log(metrics_dict, step=current_step)
             self.last_logged_step = current_step
+            # Update global step to at least match the logged step
+            self.global_step = max(self.global_step, current_step + 1)
         except Exception as e:
             print(f"WandB logging failed: {e}")
 

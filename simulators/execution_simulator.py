@@ -43,10 +43,10 @@ class ExecutionSimulator:
         # Execution tracking
         self.execution_history = []
 
+    # In simulators/execution_simulator.py
     def execute_order(self, order_type: str, size: float, timestamp: datetime) -> Dict[str, Any]:
         """
         Execute an order with realistic constraints.
-        Fixed to ensure proper handling of timestamp and latency calculations.
 
         Args:
             order_type: 'buy' or 'sell'
@@ -76,40 +76,46 @@ class ExecutionSimulator:
         order_size = abs(size)  # Ensure size is positive
 
         # 1. Apply latency - determine when the order will execute
-        # Get latency value and ensure it's a Python int, not numpy int
         latency_ms = self._calculate_latency()
-        if not isinstance(latency_ms, (int, float)) or latency_ms is None:
-            self.logger.warning(f"Invalid latency value: {latency_ms}, using default of 100ms")
-            latency_ms = 100.0
-
-        # Ensure latency is a proper Python int/float for timedelta
-        latency_ms = float(latency_ms)  # Convert to Python float
-
-        # Calculate execution timestamp with proper handling
-        try:
-            execution_timestamp = timestamp + timedelta(milliseconds=latency_ms)
-        except (TypeError, ValueError) as e:
-            self.logger.error(f"Error calculating execution timestamp: {e}. Using original timestamp.")
-            execution_timestamp = timestamp
+        execution_timestamp = timestamp + timedelta(milliseconds=latency_ms)
 
         # 2. Get market state at execution time (considering latency)
-        execution_market_state = self._get_market_state_at(execution_timestamp)
+        # This now uses the unified state access method - no need for fallbacks!
+        execution_market_state = self.market_simulator.get_state_at_time(execution_timestamp)
 
-        # If we couldn't get a price (e.g., market closed), reject the order
-        if not execution_market_state or 'price' not in execution_market_state:
+        # Extract price from state
+        if not execution_market_state:
+            self.logger.error(f"No market state available at {execution_timestamp}")
             return {
                 'status': 'rejected',
                 'reason': 'no_market_data',
                 'timestamp': timestamp,
                 'execution_timestamp': execution_timestamp,
-                'latency_ms': latency_ms,
+                'executed_price': None,
+                'executed_size': 0,
+                'commission': 0
+            }
+
+        # Get price from state - try multiple sources in state but all from the same unified calculation
+        base_price = None
+        if 'current_price' in execution_market_state and execution_market_state['current_price']:
+            base_price = execution_market_state['current_price']
+        elif 'current_1s_bar' in execution_market_state and execution_market_state['current_1s_bar']:
+            base_price = execution_market_state['current_1s_bar'].get('close')
+
+        if not base_price or base_price <= 0:
+            self.logger.error(f"No valid price in market state at {execution_timestamp}")
+            return {
+                'status': 'rejected',
+                'reason': 'invalid_price',
+                'timestamp': timestamp,
+                'execution_timestamp': execution_timestamp,
                 'executed_price': None,
                 'executed_size': 0,
                 'commission': 0
             }
 
         # 3. Calculate execution price with slippage
-        base_price = execution_market_state['price']
         slippage = self._calculate_slippage(
             base_price=base_price,
             order_size=order_size,
@@ -121,7 +127,10 @@ class ExecutionSimulator:
         executed_price = base_price + (direction * slippage)
 
         # 4. Determine fill amount (might be partial)
-        available_volume = execution_market_state.get('volume', float('inf'))
+        available_volume = 0
+        if 'current_1s_bar' in execution_market_state and execution_market_state['current_1s_bar']:
+            available_volume = execution_market_state['current_1s_bar'].get('volume', 0)
+
         if available_volume < order_size:
             # Partial fill based on available volume and minimum execution rate
             executed_size = max(
@@ -152,11 +161,9 @@ class ExecutionSimulator:
 
         # 7. Log the execution
         self.execution_history.append(execution_result)
-        self.logger.debug(f"Order executed: {execution_result}")
+        self.logger.info(f"Executed {order_type.upper()}: {executed_size:.4f} @ {executed_price:.4f}")
 
         return execution_result
-
-    # Replace the placeholder methods in execution_simulator.py with proper implementations
 
     def _calculate_latency(self) -> float:
         """
@@ -179,53 +186,55 @@ class ExecutionSimulator:
         latency = max(1.0, base + variation)
         return latency
 
+    # In simulators/execution_simulator.py
     def _get_market_state_at(self, timestamp: datetime) -> Optional[Dict[str, Any]]:
         """
         Get market state at a specific timestamp (considering latency).
-
-        Args:
-            timestamp: Timestamp to get market state for
-
-        Returns:
-            Optional[Dict[str, Any]]: Market state or None if not available
+        Fixed to ensure valid prices are returned.
         """
         if not self.market_simulator:
             self.logger.warning("Cannot get market state: market_simulator is not available")
             return None
-
-        # Store current simulator timestamp
-        original_timestamp = None
-        if hasattr(self.market_simulator, 'current_timestamp_utc'):
-            original_timestamp = self.market_simulator.current_timestamp_utc
 
         # Get the closest available market state
         market_state = self.market_simulator.get_current_market_state()
 
         # Ensure we have a valid price
         if market_state:
-            # Try to get price from current bar
+            price = None
+            volume = 1000  # Default volume
+
+            # Try multiple sources to get a valid price
             if 'current_1s_bar' in market_state and market_state['current_1s_bar']:
                 bar = market_state['current_1s_bar']
-                price = bar.get('close', 0.0)
+                price = bar.get('close')
+                volume = bar.get('volume', volume)
 
-                # Get other data like volume for slippage calculation
-                volume = bar.get('volume', 0)
+            if (price is None or price <= 0) and 'current_price' in market_state:
+                price = market_state.get('current_price')
 
-                return {
-                    'price': price,
-                    'volume': volume,
-                    'timestamp': timestamp
-                }
+            # Additional fallback for price
+            if price is None or price <= 0:
+                if 'rolling_1s_data_window' in market_state and market_state['rolling_1s_data_window']:
+                    for event in reversed(market_state['rolling_1s_data_window']):
+                        if event.get('bar') and event['bar'].get('close', 0) > 0:
+                            price = event['bar']['close']
+                            break
 
-        # If we couldn't get a valid price, return a minimal state
-        # with a default price to prevent errors
-        # In real implementation, we might want to reject the order instead
-        self.logger.warning(f"Could not get market state at {timestamp}, using default values")
-        return {
-            'price': 10.0,  # Default price
-            'volume': 1000,  # Default volume
-            'timestamp': timestamp
-        }
+            # If we still don't have a valid price, use a default value for testing
+            if price is None or price <= 0:
+                self.logger.warning(f"Could not get valid price at {timestamp}, using default test price of 10.0")
+                price = 10.0  # Default test price
+
+            return {
+                'price': price,
+                'volume': volume,
+                'timestamp': timestamp
+            }
+
+        # If market state is not available
+        self.logger.warning(f"Could not get market state at {timestamp}")
+        return None
 
     def _calculate_slippage(self, base_price: float, order_size: float,
                             order_type: str, market_state: Dict[str, Any]) -> float:

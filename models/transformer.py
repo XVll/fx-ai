@@ -248,87 +248,84 @@ class MultiBranchTransformer(nn.Module):
 
         return action_params, value
 
+    # In models/transformer.py - MultiBranchTransformer class
     def get_action(
             self,
             state_dict: Dict[str, torch.Tensor],
             deterministic: bool = False
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
-        Get an action from the policy.
-
-        Args:
-            state_dict: Dictionary of state features
-            deterministic: If True, returns the mean action instead of sampling
-
-        Returns:
-            action: The selected action
-            action_info: Dictionary with action distribution parameters
+        Get an action from the policy with guaranteed log probability calculation.
         """
         with torch.no_grad():
             action_params, value = self.forward(state_dict)
 
             if self.continuous_action:
-                # For continuous action space (e.g., PPO with Gaussian policy)
                 mean, log_std = action_params
+                std = torch.exp(log_std)
+                normal = torch.distributions.Normal(mean, std)
 
                 if deterministic:
-                    # During evaluation, use the mean action
                     action = torch.tanh(mean)
+                    # Still calculate log_prob
+                    x_t = mean
                 else:
-                    # During training, sample from the distribution
-                    std = torch.exp(log_std)
-                    normal = torch.distributions.Normal(mean, std)
-                    # Reparameterization trick
                     x_t = normal.rsample()
-                    # Squash using tanh to bound between -1 and 1
                     action = torch.tanh(x_t)
+
+                # Calculate log_prob including tanh squashing correction
+                log_prob = normal.log_prob(x_t) - torch.log(1 - action.pow(2) + 1e-6)
+                log_prob = log_prob.sum(1, keepdim=True)
 
                 action_info = {
                     'mean': mean,
                     'log_std': log_std,
-                    'value': value
+                    'value': value,
+                    'log_prob': log_prob  # Always include log_prob
                 }
             else:
-                # For discrete action space
+                # For discrete actions (tuple in your case)
                 if len(action_params) == 2:
-                    # Tuple action space (action_type, action_size)
                     action_type_logits, action_size_logits = action_params
 
                     if deterministic:
-                        # During evaluation, select the most probable actions
                         action_type = torch.argmax(action_type_logits, dim=-1)
                         action_size = torch.argmax(action_size_logits, dim=-1)
                     else:
-                        # During training, sample from categorical distributions
                         action_type_dist = torch.distributions.Categorical(logits=action_type_logits)
                         action_size_dist = torch.distributions.Categorical(logits=action_size_logits)
-
                         action_type = action_type_dist.sample()
                         action_size = action_size_dist.sample()
 
-                    # Combine into a single tensor for easier handling
                     action = torch.stack([action_type, action_size], dim=-1)
+
+                    # Calculate combined log probability
+                    type_log_prob = torch.distributions.Categorical(logits=action_type_logits).log_prob(action_type)
+                    size_log_prob = torch.distributions.Categorical(logits=action_size_logits).log_prob(action_size)
+                    log_prob = (type_log_prob + size_log_prob).unsqueeze(1)
 
                     action_info = {
                         'action_type_logits': action_type_logits,
                         'action_size_logits': action_size_logits,
-                        'value': value
+                        'value': value,
+                        'log_prob': log_prob  # Always include log_prob
                     }
                 else:
-                    # Single discrete action
+                    # For single discrete action
                     logits = action_params[0]
+                    dist = torch.distributions.Categorical(logits=logits)
 
                     if deterministic:
-                        # During evaluation, select the most probable action
                         action = torch.argmax(logits, dim=-1)
                     else:
-                        # During training, sample from the categorical distribution
-                        dist = torch.distributions.Categorical(logits=logits)
                         action = dist.sample()
+
+                    log_prob = dist.log_prob(action).unsqueeze(1)
 
                     action_info = {
                         'logits': logits,
-                        'value': value
+                        'value': value,
+                        'log_prob': log_prob  # Always include log_prob
                     }
 
             return action, action_info
