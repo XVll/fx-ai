@@ -26,9 +26,25 @@ class ReplayBuffer:
         reward_tensor = torch.tensor([reward], dtype=torch.float32, device=self.device)
         done_tensor = torch.tensor([done], dtype=torch.bool, device=self.device)
 
+        state_tensors = {}
+        for k, v in state.items():
+            if isinstance(v, np.ndarray):
+                # Add batch dimension if missing
+                if len(v.shape) == 1 and k == 'static_features':
+                    v = v[np.newaxis, :]
+                elif len(v.shape) == 2 and k in ['hf_features', 'mf_features', 'lf_features']:
+                    v = v[np.newaxis, :, :]
+                state_tensors[k] = torch.FloatTensor(v).to(self.device)
+            elif isinstance(v, torch.Tensor):
+                state_tensors[k] = v.to(self.device)
+
         # Initialize state dictionary on first call
         if not self.states:
-            self.states = {k: [] for k in state.keys()}
+            self.states = {k: [] for k in state_tensors.keys()}
+
+        # Add to buffers
+        for k, v in state_tensors.items():
+            self.states[k].append(v)
 
         # Add to buffers
         for k, v in state.items():
