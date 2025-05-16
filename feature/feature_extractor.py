@@ -409,8 +409,9 @@ class FeatureExtractor:
         feature_values_for_tick["S_Days_Since_Catalyst"] = -1  # Example
         feature_values_for_tick["S_Initial_Scan_RelVol"] = np.nan  # Example
         feature_values_for_tick["S_Initial_Scan_Price_ROC"] = np.nan  # Example
-        return np.array([feature_values_for_tick.get(name, np.nan) for name in self.static_feature_names],
-                        dtype=np.float32)
+        raw = np.array([feature_values_for_tick.get(name, np.nan) for name in self.static_feature_names], dtype = np.float32)
+        # replace NaN/Inf with zeros so the network sees valid inputs
+        return np.nan_to_num(raw, nan=0.0, posinf=0.0, neginf=0.0)
 
     def _calculate_hf_features_vector(self, latest_1s_bar: Dict, rolling_1s_data_window: List[Dict],
                                       current_price: float) -> np.array:
@@ -420,8 +421,10 @@ class FeatureExtractor:
         # Example for one feature:
         feature_values_for_tick["HF_1s_ClosePrice"] = latest_1s_bar.get('close', np.nan)
         # ... many more HF features
-        return np.array([feature_values_for_tick.get(name, np.nan) for name in self.hf_feature_names], dtype=np.float32)
-
+        raw = np.array([feature_values_for_tick.get(name, np.nan) for name in self.static_feature_names],
+                       dtype=np.float32)
+        # replace NaN/Inf with zeros so the network sees valid inputs
+        return np.nan_to_num(raw, nan=0.0, posinf=0.0, neginf=0.0)
     def _calculate_mf_features_vector(self, current_ts: datetime, latest_1s_bar: Dict,
                                       rolling_1s_data_window: List[Dict],
                                       current_1m_bar: Optional[Dict], completed_1m_bars: List[Dict],
@@ -434,8 +437,10 @@ class FeatureExtractor:
         if current_1m_bar:
             feature_values_for_tick["MF_1m_Close_0"] = current_1m_bar.get('close', np.nan)
         # ... many more MF features
-        return np.array([feature_values_for_tick.get(name, np.nan) for name in self.mf_feature_names], dtype=np.float32)
-
+        raw = np.array([feature_values_for_tick.get(name, np.nan) for name in self.static_feature_names],
+                       dtype=np.float32)
+        # replace NaN/Inf with zeros so the network sees valid inputs
+        return np.nan_to_num(raw, nan=0.0, posinf=0.0, neginf=0.0)
     def _calculate_lf_features_vector(self, current_ts: datetime, current_price: float,
                                       prev_day_data: Optional[Dict],
                                       intraday_high: Optional[float],  # MODIFIED ARG
@@ -513,8 +518,10 @@ class FeatureExtractor:
                     else:
                         feature_values_for_tick[f"LF_Dist_To_LT_Daily_Support_{i + 1}_Pct"] = np.nan
 
-        return np.array([feature_values_for_tick.get(name, np.nan) for name in self.lf_feature_names], dtype=np.float32)
-
+        raw = np.array([feature_values_for_tick.get(name, np.nan) for name in self.static_feature_names],
+                       dtype=np.float32)
+        # replace NaN/Inf with zeros so the network sees valid inputs
+        return np.nan_to_num(raw, nan=0.0, posinf=0.0, neginf=0.0)
     def get_feature_names_by_category(self) -> Dict[str, List[str]]:
         return {
             "static": self.static_feature_names,
