@@ -12,7 +12,7 @@ class ExecutionSimulator:
     Simulator for realistic order execution including latency, slippage, and partial fills.
     """
 
-    def __init__(self, market_simulator, config=None, logger=None):
+    def __init__(self, market_simulator,rng:np.random.Generator, config=None, logger=None):
         """
         Initialize the execution simulator.
 
@@ -34,11 +34,7 @@ class ExecutionSimulator:
         self.min_execution_rate = self.config.get('min_execution_rate', 0.5)
         self.commission_per_share = self.config.get('commission_per_share', 0.0)
 
-          # ——— Initialize RNG for latency/slippage randomness ———
-          # if you want reproducible runs you can pass a `random_seed` in execution_config
-        seed = self.config.get('random_seed', None)
-          # numpy RandomState will seed from OS entropy if seed is None
-        self.rng = np.random.RandomState(seed)
+        self.rng = rng
 
         # Execution tracking
         self.execution_history = []

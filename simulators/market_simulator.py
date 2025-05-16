@@ -1,12 +1,16 @@
 # market_simulator.py
 import logging
 from collections import deque
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Set
 from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import bisect
+
+from config.config import MarketConfig
+from data.data_manager import DataManager
+from envs.trading_env import TrainingMode
 
 DEFAULT_MARKET_HOURS = {
     "PREMARKET_START": "04:00:00",
@@ -32,11 +36,12 @@ class MarketSimulator:
 
     def __init__(self,
                  symbol: str,
-                 data_manager: Any,
-                 mode: str = 'backtesting',
+                 data_manager: DataManager,
+                 rng: np.random.Generator,
+                 config: MarketConfig,
+                 mode: TrainingMode = TrainingMode.BACKTESTING,
                  start_time: Optional[str | datetime] = None,
                  end_time: Optional[str | datetime] = None,
-                 config: Optional[Dict] = None,
                  logger: Optional[logging.Logger] = None):
         """
         Initialize the market simulator.
