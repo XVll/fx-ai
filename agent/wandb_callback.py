@@ -334,6 +334,36 @@ class WandbCallback(TrainingCallback):
         if trainer.updates % 10 == 0:
             self._log_model_gradients(trainer)
 
+    def _log_model_gradients(self, trainer):
+        """
+        Log model parameter gradients to WandB for visualization.
+
+        Args:
+            trainer: The PPO trainer instance containing the model
+        """
+        if not hasattr(trainer, 'model'):
+            return
+
+        try:
+            gradient_dict = {}
+
+            # Log parameter histograms
+            for name, param in trainer.model.named_parameters():
+                if param.requires_grad:
+                    # Log the parameter values
+                    gradient_dict[f"params/{name}"] = wandb.Histogram(param.detach().cpu().numpy())
+
+                    # Log the gradients if they exist
+                    if param.grad is not None:
+                        gradient_dict[f"grads/{name}"] = wandb.Histogram(param.grad.detach().cpu().numpy())
+
+            # Log everything at once
+            self._safe_wandb_log(gradient_dict)
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error logging gradients: {e}", exc_info=True)
+            else:
+                print(f"Error logging gradients: {e}")
     def on_update_iteration_end(self, trainer, update_iter, update_metrics, rollout_stats):
         """Called at the end of each update iteration (rollout + update)."""
         # Increment global step
@@ -372,9 +402,11 @@ class WandbCallback(TrainingCallback):
                     "best_model/iteration": update_iter
                 })
 
-    # In agent/wandb_callback.py - WandbCallback class
     def _safe_wandb_log(self, metrics_dict, step=None):
-        """Safely log to WandB with the current global step."""
+        """
+        Safely log to WandB with guaranteed monotonically increasing steps.
+        Fixed to prevent step resets and warnings.
+        """
         # Make sure we're initialized
         if not wandb.run:
             return
@@ -382,14 +414,15 @@ class WandbCallback(TrainingCallback):
         # Use provided step or global_step
         current_step = step if step is not None else self.global_step
 
-        # Initialize last_logged_step if not set
-        if not hasattr(self, 'last_logged_step') or self.last_logged_step is None:
-            self.last_logged_step = 0
+        # Use a class variable to track the last logged step
+        if not hasattr(self, '_last_logged_step'):
+            self._last_logged_step = 0
 
         # Ensure step is monotonically increasing
-        if current_step is None or current_step <= self.last_logged_step:
+        if current_step is None or current_step <= self._last_logged_step:
             # Use last step + 1 to maintain monotonicity
-            current_step = self.last_logged_step + 1
+            current_step = self._last_logged_step + 1
+
             # Only log at debug level to reduce noise
             if self.logger:
                 self.logger.debug(f"Adjusted step from {step} to {current_step} to maintain monotonicity")
@@ -397,34 +430,16 @@ class WandbCallback(TrainingCallback):
         try:
             # Log the metrics
             wandb.log(metrics_dict, step=current_step)
-            self.last_logged_step = current_step
+            self._last_logged_step = current_step
+
             # Update global step to at least match the logged step
             self.global_step = max(self.global_step, current_step + 1)
         except Exception as e:
-            print(f"WandB logging failed: {e}")
-
-    def _log_model_gradients(self, trainer):
-        """Log model parameter gradients to WandB."""
-        if not hasattr(trainer, 'model'):
-            return
-
-        try:
-            gradient_dict = {}
-
-            # Log parameter histograms
-            for name, param in trainer.model.named_parameters():
-                if param.requires_grad:
-                    # Log the parameter values
-                    gradient_dict[f"params/{name}"] = wandb.Histogram(param.detach().cpu().numpy())
-
-                    # Log the gradients if they exist
-                    if param.grad is not None:
-                        gradient_dict[f"grads/{name}"] = wandb.Histogram(param.grad.detach().cpu().numpy())
-
-            # Log everything at once
-            self._safe_wandb_log(gradient_dict)
-        except Exception as e:
-            print(f"Error logging gradients: {e}")
+            # Log error but don't crash
+            if self.logger:
+                self.logger.error(f"WandB logging failed: {e}")
+            else:
+                print(f"WandB logging failed: {e}")
 
     def _create_episode_visualizations(self):
         """Create visualizations after episodes."""
