@@ -90,7 +90,13 @@ class WandbCallback(TrainingCallback):
             job_type="training",
             reinit=True  # Ensure we create a new run
         )
+        # CRITICAL: Initialize step tracking to match trainer
+        if hasattr(trainer, 'total_steps'):
+            self.global_step = trainer.total_steps
+        else:
+            self.global_step = 0
 
+        self._last_logged_step = self.global_step - 1  # Ensure next log will use current step
         # Log model architecture
         if hasattr(trainer, 'model'):
             wandb.run.summary["model_architecture"] = str(trainer.model)
