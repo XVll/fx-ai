@@ -492,7 +492,8 @@ class TradingEnv(gym.Env):
                 self.episode_stats['trades_executed'] += 1
                 self.episode_stats['position_changes'] += 1
 
-                self.logger.info(f"Executed {action_name}: {order_type} {abs(delta):.4f} @ {current_price:.4f}")
+             #   self.logger.info(f"Executed {action_name}: {order_type} {abs(delta):.4f} @ {current_price:.4f}")
+                self.logger.info("Action executed: %s, Order type: %s, Size: %.4f, Price: %.4f",)
 
         # Store result in info
         if execution_result:
