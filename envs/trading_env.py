@@ -112,7 +112,6 @@ class TradingEnv(gym.Env):
         Args:
             seed: Optional random seed
             options: Additional options for reset
-                - random_start: Whether to start at a random point (default: value from config)
 
         Returns:
             tuple: (observation, info) as required by Gymnasium API
@@ -161,8 +160,11 @@ class TradingEnv(gym.Env):
         # Reset info dict
         self.info = {}
 
-        # Return initial state and info
-        return self.current_state, self.info
+        # IMPORTANT: Return EXACTLY two values - the observation and info
+        result= self.current_state, self.info
+        print(
+            f"Reset returning: {result}, type: {type(result)}, length: {len(result) if isinstance(result, tuple) else 'not a tuple'}")
+        return result
 
     # === REQUIRED BY GYM.ENV - Step method ===
     def step(self, action):
@@ -277,16 +279,49 @@ class TradingEnv(gym.Env):
         else:
             normalized_features = features
 
-        # For transformer model, return structured state dict
+        # For transformer model, prepare structured state dict
         state_dict = {
             'hf_features': normalized_features.get('hf_features'),  # Shape: [batch, seq_len, feat_dim]
             'mf_features': normalized_features.get('mf_features'),
             'lf_features': normalized_features.get('lf_features'),
             'static_features': normalized_features.get('static_features'),
-            # Todo : Add position and cash features
+            # Todo: Add position and cash features
         }
 
-        return state_dict
+        # ALSO create a flattened version for the gym API
+        # We need to flatten all the features into a single array
+        flat_features = []
+
+        # Flatten and add static features if available
+        if state_dict.get('static_features') is not None:
+            flat_features.append(state_dict['static_features'].flatten())
+
+        # Flatten and add sequence features
+        for key in ['hf_features', 'mf_features', 'lf_features']:
+            if state_dict.get(key) is not None:
+                # Reshape to flatten while preserving batch dim
+                shape = state_dict[key].shape
+                flat_features.append(state_dict[key].reshape(1, -1).flatten())
+
+        # Combine all flattened features
+        if flat_features:
+            flat_state = np.concatenate(flat_features)
+
+            # Ensure it matches the expected observation space size
+            if len(flat_state) > self.observation_space.shape[0]:
+                self.logger.warning(
+                    f"Flattened state size ({len(flat_state)}) exceeds observation_space "
+                    f"({self.observation_space.shape[0]}). Truncating.")
+                flat_state = flat_state[:self.observation_space.shape[0]]
+            elif len(flat_state) < self.observation_space.shape[0]:
+                # Pad with zeros if needed
+                padding = np.zeros(self.observation_space.shape[0] - len(flat_state), dtype=np.float32)
+                flat_state = np.concatenate([flat_state, padding])
+        else:
+            # Fallback to zeros if no features are available
+            flat_state = np.zeros(self.observation_space.shape, dtype=np.float32)
+
+        return flat_state, state_dict
 
     def _process_action(self, action):
         """
