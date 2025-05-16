@@ -15,19 +15,12 @@ class ReplayBuffer:
         self.device = device
         self.clear()
 
+    # In agent/utils.py - ReplayBuffer class
     def add(self, state: Dict[str, torch.Tensor], action: torch.Tensor,
             reward: float, next_state: Dict[str, torch.Tensor],
             done: bool, action_info: Dict[str, torch.Tensor]) -> None:
         """
-        Add a transition to the buffer.
-
-        Args:
-            state: Current state dict
-            action: Action taken
-            reward: Reward received
-            next_state: Next state dict
-            done: Episode termination flag
-            action_info: Additional action information including log_probs and values
+        Add a transition to the buffer with improved log probability handling.
         """
         # Convert scalar to tensor
         reward_tensor = torch.tensor([reward], dtype=torch.float32, device=self.device)
@@ -45,29 +38,38 @@ class ReplayBuffer:
         self.rewards.append(reward_tensor)
         self.dones.append(done_tensor)
 
-        # Extract value and log_prob from action_info
+        # Extract value
         if 'value' in action_info:
             self.values.append(action_info['value'])
 
-        # For continuous actions
-        if 'mean' in action_info and 'log_std' in action_info:
-            mean = action_info['mean']
-            log_std = action_info['log_std']
-            std = torch.exp(log_std)
+        # Extract log probability directly if available
+        if 'log_prob' in action_info:
+            self.log_probs.append(action_info['log_prob'])
+        else:
+            # Fallback calculations if log_prob not provided directly
+            if 'mean' in action_info and 'log_std' in action_info:
+                # For continuous actions
+                mean = action_info['mean']
+                log_std = action_info['log_std']
+                std = torch.exp(log_std)
 
-            # Compute log_prob of the action
-            normal_dist = torch.distributions.Normal(mean, std)
-            # Assuming actions are squashed with tanh
-            action_unsquashed = torch.atanh(torch.clamp(action, -0.999, 0.999))
-            log_prob = normal_dist.log_prob(action_unsquashed).sum(1, keepdim=True)
-            self.log_probs.append(log_prob)
-
-        # For discrete actions
-        elif 'logits' in action_info:
-            logits = action_info['logits']
-            dist = torch.distributions.Categorical(logits=logits)
-            log_prob = dist.log_prob(action).unsqueeze(1)
-            self.log_probs.append(log_prob)
+                # Compute log_prob of the action
+                normal_dist = torch.distributions.Normal(mean, std)
+                # Assuming actions are squashed with tanh
+                action_unsquashed = torch.atanh(torch.clamp(action, -0.999, 0.999))
+                log_prob = normal_dist.log_prob(action_unsquashed).sum(1, keepdim=True)
+                self.log_probs.append(log_prob)
+            elif 'logits' in action_info:
+                # For discrete actions
+                logits = action_info['logits']
+                dist = torch.distributions.Categorical(logits=logits)
+                log_prob = dist.log_prob(action.squeeze()).unsqueeze(1)
+                self.log_probs.append(log_prob)
+            elif len(action.shape) > 1 and action.shape[1] == 2:
+                # For tuple actions, warn but create dummy
+                self.logger.warning("Creating dummy log_prob for tuple action without distribution parameters")
+                dummy_log_prob = torch.zeros((action.shape[0], 1), device=self.device)
+                self.log_probs.append(dummy_log_prob)
 
     def prepare_data(self) -> None:
         """
@@ -78,10 +80,21 @@ class ReplayBuffer:
 
         # Actions, rewards, etc.
         self.actions = torch.cat(self.actions, dim=0)
-        self.rewards = torch.cat(self.rewards, dim=0)  # Make sure this runs
+        self.rewards = torch.cat(self.rewards, dim=0)
         self.dones = torch.cat(self.dones, dim=0)
-        self.values = torch.cat(self.values, dim=0)
-        self.log_probs = torch.cat(self.log_probs, dim=0)
+
+        # Add safety checks for potentially empty lists
+        if self.values:
+            self.values = torch.cat(self.values, dim=0)
+        else:
+            # Create empty values tensor with matching batch size
+            self.values = torch.zeros_like(self.rewards)
+
+        if self.log_probs:
+            self.log_probs = torch.cat(self.log_probs, dim=0)
+        else:
+            # Create empty log_probs tensor with matching batch size
+            self.log_probs = torch.zeros_like(self.rewards)
 
     def get_size(self) -> int:
         """Get current size of buffer."""

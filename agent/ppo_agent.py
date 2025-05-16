@@ -324,11 +324,7 @@ class PPOTrainer:
 
     def update_policy(self) -> Dict[str, float]:
         """
-        Update the policy using PPO with a safer implementation that avoids
-        backward graph issues.
-
-        Returns:
-            Dictionary with training metrics
+        Update the policy using PPO with proper handling of tuple action parameters.
         """
         # Compute advantages and returns
         self.compute_advantages()
@@ -368,8 +364,7 @@ class PPOTrainer:
                 if len(batch_indices) == 0:
                     continue
 
-                # Explicitly convert numpy arrays back to fresh PyTorch tensors
-                # This ensures no gradient history is carried over
+                # Convert numpy arrays back to fresh PyTorch tensors
                 batch_states = {k: torch.FloatTensor(v[batch_indices]).to(self.device)
                                 for k, v in states_np.items()}
                 batch_actions = torch.FloatTensor(actions_np[batch_indices]).to(self.device)
@@ -390,8 +385,6 @@ class PPOTrainer:
                 # Normalize advantages (just for this batch)
                 batch_advantages = (batch_advantages - batch_advantages.mean()) / (batch_advantages.std() + 1e-8)
 
-                # STEP 1: UPDATE ACTOR (POLICY)
-                # =============================
                 # Zero gradients for actor update
                 self.optimizer.zero_grad()
 
@@ -409,10 +402,45 @@ class PPOTrainer:
                     log_probs = normal_dist.log_prob(action_unsquashed).sum(1, keepdim=True)
                     entropy = normal_dist.entropy().sum(1, keepdim=True)
                 else:
-                    logits = action_params
-                    dist = torch.distributions.Categorical(logits=logits)
-                    log_probs = dist.log_prob(batch_actions.squeeze()).unsqueeze(1)
-                    entropy = dist.entropy().unsqueeze(1)
+                    # Check if action_params is a tuple (for multiple discrete actions)
+                    if isinstance(action_params, tuple) and len(action_params) == 2:
+                        # Handle tuple actions (action_type, action_size)
+                        action_type_logits, action_size_logits = action_params
+
+                        # Extract action components
+                        if batch_actions.shape[-1] == 2:
+                            action_type = batch_actions[:, 0].long()
+                            action_size = batch_actions[:, 1].long()
+                        else:
+                            # If actions are already flattened
+                            action_type = batch_actions.long().squeeze()
+                            action_size = torch.zeros_like(action_type)  # Default if not available
+
+                        # Create separate distributions
+                        type_dist = torch.distributions.Categorical(logits=action_type_logits)
+                        size_dist = torch.distributions.Categorical(logits=action_size_logits)
+
+                        # Get log probs for each component
+                        type_log_probs = type_dist.log_prob(action_type).unsqueeze(1)
+                        size_log_probs = size_dist.log_prob(action_size).unsqueeze(1)
+
+                        # Combined log prob
+                        log_probs = type_log_probs + size_log_probs
+
+                        # Combined entropy
+                        entropy = (type_dist.entropy() + size_dist.entropy()).unsqueeze(1)
+                    else:
+                        # Single discrete action
+                        logits = action_params
+                        dist = torch.distributions.Categorical(logits=logits)
+
+                        if len(batch_actions.shape) > 1:
+                            action_indices = batch_actions.long().squeeze(1)
+                        else:
+                            action_indices = batch_actions.long()
+
+                        log_probs = dist.log_prob(action_indices).unsqueeze(1)
+                        entropy = dist.entropy().unsqueeze(1)
 
                 # Calculate PPO ratio
                 ratio = torch.exp(log_probs - batch_old_log_probs)
@@ -427,13 +455,9 @@ class PPOTrainer:
                 # Entropy loss (encouraged exploration)
                 entropy_loss = -entropy.mean()
 
-                # STEP 2: UPDATE CRITIC (VALUE FUNCTION)
-                # ======================================
                 # Compute critic loss
                 critic_loss = F.mse_loss(values, batch_returns)
 
-                # STEP 3: COMBINED LOSS
-                # ====================
                 # Combine losses with coefficients
                 loss = actor_loss + self.critic_coef * critic_loss + self.entropy_coef * entropy_loss
 
