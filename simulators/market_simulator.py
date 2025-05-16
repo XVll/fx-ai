@@ -680,9 +680,14 @@ class MarketSimulator:
     def get_current_market_state(self):
         """
         Get the market state at the agent's current timeline position.
-        This prevents future data leakage.
+        Fixed to properly handle end of data.
         """
-        if not self._all_timestamps or self._current_time_idx >= len(self._all_timestamps):
+        if not self._all_timestamps:
+            self.logger.warning("No timestamps available")
+            return None
+
+        if self._current_time_idx >= len(self._all_timestamps):
+            self.logger.warning("Current time index exceeds available timestamps")
             return None
 
         current_ts = self._all_timestamps[self._current_time_idx]
@@ -707,12 +712,16 @@ class MarketSimulator:
     def is_done(self):
         """Check if the simulation is done."""
         # Check if we're past the last timestamp
-        if not self._all_timestamps or self._current_time_idx >= len(self._all_timestamps):
+        if not self._all_timestamps:
+            return True
+
+        if self._current_time_idx >= len(self._all_timestamps) - 1:  # Changed to -1 for safer boundary check
             return True
 
         # Check if we've reached the configured end time
-        if self.end_time_utc and self.current_timestamp_utc >= self.end_time_utc:
-            return True
+        if self.end_time_utc and self.current_timestamp_utc:
+            if self.current_timestamp_utc >= self.end_time_utc:
+                return True
 
         return False
 

@@ -179,9 +179,11 @@ class TradingEnv(gym.Env):
     # === REQUIRED BY GYM.ENV - Step method ===
     # In trading_env.py - step method
 
+    # envs/trading_env.py - Fixed version for step method
     def step(self, action):
         """
         Take a step in the environment with the given action.
+        Fixed to handle end of data and None market state.
 
         Args:
             action: Action to take (action_type, size_idx)
@@ -206,6 +208,33 @@ class TradingEnv(gym.Env):
 
         # Get the new state
         observation, state_dict = self._get_observation()
+
+        # Check if we've reached the end of data - critical fix!
+        if observation is None or self.market_simulator is None or self.market_simulator.is_done():
+            # Set terminated flag when we've reached end of data
+            self.logger.info("End of data reached, terminating episode")
+            terminated = True
+            truncated = False
+
+            # Use last valid state or zeros as observation
+            if self.current_state is not None:
+                observation = self.current_state
+            else:
+                observation = np.zeros(self.observation_space.shape, dtype=np.float32)
+
+            # Use empty dict for state_dict
+            state_dict = {}
+
+            # Use zero reward at end of data
+            reward = 0.0
+
+            # Set info with reason
+            self.info = self._get_info()
+            self.info['end_reason'] = 'end_of_data'
+
+            return observation, reward, terminated, truncated, self.info
+
+        # Continue with normal flow
         self.current_state = observation
         self.current_state_dict = state_dict
 

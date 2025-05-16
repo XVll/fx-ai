@@ -136,9 +136,10 @@ class PPOTrainer:
         self.logger.info(f"Model: {type(self.model).__name__}")
         self.logger.info(f"Learning rate: {self.lr}")
 
+    # agent/ppo_agent.py - Fixed collect_rollouts method
     def collect_rollouts(self, n_episodes: int = None) -> Dict[str, Any]:
         """
-        Collect rollouts from the environment.
+        Collect rollouts from the environment with improved error handling.
 
         Args:
             n_episodes: Number of episodes to collect (if None, use n_episodes_per_update)
@@ -161,8 +162,12 @@ class PPOTrainer:
 
         for episode in range(n_episodes):
             # Reset environment
-            state, _ = self.env.reset()
-            state_dict = preprocess_state_to_dict(state, self.model_config)
+            try:
+                state, _ = self.env.reset()
+                state_dict = preprocess_state_to_dict(state, self.model_config)
+            except Exception as e:
+                self.logger.error(f"Error resetting environment: {e}")
+                break
 
             # Track episode data
             episode_reward = 0
@@ -170,53 +175,64 @@ class PPOTrainer:
             episode_done = False
 
             while not episode_done:
-                # Get action from policy
-                with torch.no_grad():
-                    action, action_info = self.model.get_action(state_dict)
+                try:
+                    # Get action from policy
+                    with torch.no_grad():
+                        action, action_info = self.model.get_action(state_dict)
 
-                # Convert action to the format expected by the environment
-                if self.model.continuous_action:
-                    # For continuous actions - ensure it's a 1D numpy array
-                    action_np = action.cpu().numpy().squeeze()
-                    if np.isscalar(action_np):
-                        action_np = np.array([action_np], dtype=np.float32)
-                else:
-                    # Discrete actions - could be single or tuple
-                    if isinstance(action, torch.Tensor) and action.shape[-1] == 2:
-                        # We have a tuple action [action_type, action_size]
-                        action_np = tuple(action.cpu().numpy().squeeze().astype(int))
+                    # Convert action to the format expected by the environment
+                    if self.model.continuous_action:
+                        # For continuous actions - ensure it's a 1D numpy array
+                        action_np = action.cpu().numpy().squeeze()
+                        if np.isscalar(action_np):
+                            action_np = np.array([action_np], dtype=np.float32)
                     else:
-                        # Single discrete action
-                        action_np = action.cpu().numpy().item()
+                        # Discrete actions - could be single or tuple
+                        if isinstance(action, torch.Tensor) and action.shape[-1] == 2:
+                            # We have a tuple action [action_type, action_size]
+                            action_np = tuple(action.cpu().numpy().squeeze().astype(int))
+                        else:
+                            # Single discrete action
+                            action_np = action.cpu().numpy().item()
 
-                # Take step in environment
-                next_state, reward, terminated, truncated, info = self.env.step(action_np)
-                episode_done = terminated or truncated
+                    # Take step in environment
+                    next_state, reward, terminated, truncated, info = self.env.step(action_np)
+                    episode_done = terminated or truncated
 
-                # Process next state
-                next_state_dict = preprocess_state_to_dict(next_state, self.model_config)
+                    # Check if we encountered end of data
+                    if 'end_reason' in info and info['end_reason'] == 'end_of_data':
+                        self.logger.warning("Reached end of data, ending collection early")
+                        break
 
-                # Add to buffer
-                self.buffer.add(
-                    state_dict,
-                    action,
-                    reward,
-                    next_state_dict,
-                    episode_done,
-                    action_info
-                )
+                    # Process next state
+                    next_state_dict = preprocess_state_to_dict(next_state, self.model_config)
 
-                # Update state
-                state_dict = next_state_dict
+                    # Add to buffer
+                    self.buffer.add(
+                        state_dict,
+                        action,
+                        reward,
+                        next_state_dict,
+                        episode_done,
+                        action_info
+                    )
 
-                # Update counters
-                episode_reward += reward
-                episode_length += 1
-                total_steps += 1
+                    # Update state
+                    state_dict = next_state_dict
 
-                # Call on_step for callbacks
-                for callback in self.callbacks:
-                    callback.on_step(self, state_dict, action, reward, next_state_dict, info)
+                    # Update counters
+                    episode_reward += reward
+                    episode_length += 1
+                    total_steps += 1
+
+                    # Call on_step for callbacks
+                    for callback in self.callbacks:
+                        callback.on_step(self, state_dict, action, reward, next_state_dict, info)
+
+                except Exception as e:
+                    self.logger.error(f"Error during environment step: {e}", exc_info=True)
+                    episode_done = True
+                    break
 
             # Record episode statistics
             episode_rewards.append(episode_reward)
