@@ -174,8 +174,23 @@ class PPOTrainer:
                 with torch.no_grad():
                     action, action_info = self.model.get_action(state_dict)
 
+                # Convert action to the format expected by the environment
+                if self.model.continuous_action:
+                    # For continuous actions - ensure it's a 1D numpy array
+                    action_np = action.cpu().numpy().squeeze()
+                    if np.isscalar(action_np):
+                        action_np = np.array([action_np], dtype=np.float32)
+                else:
+                    # Discrete actions - could be single or tuple
+                    if isinstance(action, torch.Tensor) and action.shape[-1] == 2:
+                        # We have a tuple action [action_type, action_size]
+                        action_np = tuple(action.cpu().numpy().squeeze().astype(int))
+                    else:
+                        # Single discrete action
+                        action_np = action.cpu().numpy().item()
+
                 # Take step in environment
-                next_state, reward, terminated, truncated, info = self.env.step(action.cpu().numpy())
+                next_state, reward, terminated, truncated, info = self.env.step(action_np)
                 episode_done = terminated or truncated
 
                 # Process next state
