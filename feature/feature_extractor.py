@@ -231,13 +231,28 @@ class FeatureExtractor:
         except Exception as e:
             self.logger.error(f"Error in update_daily_levels: {e}", exc_info=True)
 
-    def extract_features(self, market_state: Dict[str, Any], portfolio_state:Dict[str,Any]) -> Optional[Dict[str, Any]]:
+    # feature/feature_extractor.py - Fixed version
+    def extract_features(self, market_state: Dict[str, Any], portfolio_state: Dict[str, Any]) -> Optional[
+        Dict[str, Any]]:
+        """
+        Extract features from market state and return model input dictionary.
+        Added robust error handling for end of data conditions.
+        """
         try:
+            # Check if market_state is None and return None if so
+            if market_state is None:
+                self.logger.warning("Market state is None. Possibly reached end of data.")
+                return None
+
             # Extract timestamp from market_state - key name changed to 'timestamp_utc'
             current_ts: Optional[datetime] = market_state.get('timestamp_utc')
             if not current_ts:
-                self.logger.warning("Timestamp (timestamp_utc) missing in market_state.")
-                return None
+                # Try fallback to 'timestamp' if 'timestamp_utc' is not available
+                current_ts = market_state.get('timestamp')
+                if not current_ts:
+                    self.logger.warning("No timestamp found in market state.")
+                    return None
+
             self.latest_timestamp = current_ts
 
             # Get the current 1s bar - key name changed from 'latest_1s_bar' to 'current_1s_bar'
@@ -252,10 +267,10 @@ class FeatureExtractor:
             rolling_1s_data_window: List[Dict] = market_state.get('rolling_1s_data_window', [])
             current_market_session: str = market_state.get('current_market_session', 'UNKNOWN')
 
-            # VWAP session tracking
+            # VWAP session tracking - initialize with fallback value if None
             if self._current_market_session_for_vwap != current_market_session:
                 self.logger.info(
-                    f"Market session changed from {self._current_market_session_for_vwap} to {current_market_session}. Resetting session VWAP.")
+                    f"Market session changed from {self._current_market_session_for_vwap or 'None'} to {current_market_session}. Resetting session VWAP.")
                 self.session_vwap_sum_price_volume = 0.0
                 self.session_vwap_sum_volume = 0.0
                 self.current_session_vwap = None
@@ -324,8 +339,13 @@ class FeatureExtractor:
             else:
                 return None
         except Exception as e:
+            # Safe error logging without assuming market_state is valid
+            timestamp_str = "unknown timestamp"
+            if market_state and isinstance(market_state, dict):
+                timestamp_str = str(market_state.get('timestamp_utc', market_state.get('timestamp', 'unknown')))
+
             self.logger.error(
-                f"Error in calculate_features_and_get_model_input at {market_state.get('timestamp_utc')}: {e}",
+                f"Error in calculate_features_and_get_model_input at {timestamp_str}: {e}",
                 exc_info=True)
             return None
 
