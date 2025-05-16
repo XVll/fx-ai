@@ -231,7 +231,7 @@ class FeatureExtractor:
         except Exception as e:
             self.logger.error(f"Error in update_daily_levels: {e}", exc_info=True)
 
-    def calculate_features_and_get_model_input(self, market_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def extract_features(self, market_state: Dict[str, Any], portfolio_state:Dict[str,Any]) -> Optional[Dict[str, Any]]:
         try:
             # Extract timestamp from market_state - key name changed to 'timestamp_utc'
             current_ts: Optional[datetime] = market_state.get('timestamp_utc')
@@ -328,6 +328,66 @@ class FeatureExtractor:
                 f"Error in calculate_features_and_get_model_input at {market_state.get('timestamp_utc')}: {e}",
                 exc_info=True)
             return None
+
+    def normalize_features(self, features):
+        """
+        Normalize features for the model using rolling window approach.
+
+        Args:
+            features: Dict containing feature arrays
+
+        Returns:
+            Dict containing normalized feature arrays
+        """
+        if not features:
+            return {}
+
+        normalized = {}
+
+        # Pass through non-feature items
+        if 'timestamp' in features:
+            normalized['timestamp'] = features['timestamp']
+
+        # Normalize static features - these might just be one value per sample
+        if 'static_features' in features and features['static_features'] is not None:
+            static_feat = features['static_features']
+            # For one-hot encoded features, don't normalize
+            is_binary = np.all(np.logical_or(np.isclose(static_feat, 0), np.isclose(static_feat, 1)))
+            if is_binary:
+                normalized['static_features'] = static_feat
+            else:
+                # For other features, standard normalization
+                mean = np.nanmean(static_feat)
+                std = np.nanstd(static_feat) + 1e-8
+                normalized['static_features'] = (static_feat - mean) / std
+
+        # Handle sequence features (hf, mf, lf)
+        for key in ['hf_features', 'mf_features', 'lf_features']:
+            if key in features and features[key] is not None:
+                seq_feat = features[key]
+
+                # Apply normalization that preserves temporal structure
+                # For each feature dimension, compute stats across just the sequence
+                feat_normalized = np.zeros_like(seq_feat)
+
+                # Normalize each feature independently along the sequence
+                # This respects the temporal structure
+                for i in range(seq_feat.shape[1]):  # For each feature dimension
+                    feature_slice = seq_feat[:, i]
+                    # Skip one-hot or constant features
+                    unique_vals = np.unique(feature_slice[~np.isnan(feature_slice)])
+                    if len(unique_vals) <= 2:
+                        feat_normalized[:, i] = feature_slice
+                    else:
+                        # For robust normalization, use percentiles rather than min/max
+                        # And handle NaN values properly
+                        feat_mean = np.nanmean(feature_slice)
+                        feat_std = np.nanstd(feature_slice) + 1e-8
+                        feat_normalized[:, i] = (feature_slice - feat_mean) / feat_std
+
+                normalized[key] = feat_normalized
+
+        return normalized
 
     def _calculate_static_features_vector(self, current_ts: datetime, current_market_session: str) -> np.array:
         feature_values_for_tick: Dict[str, Any] = {}

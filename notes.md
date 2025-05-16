@@ -1,4 +1,6 @@
 # W&B Tools for AI Trading System: **User Guide**
+Todo: 
+- [ ] Apply proper normalization to features
 ---
 
 ## 2 · Installation & Setup

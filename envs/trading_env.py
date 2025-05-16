@@ -286,11 +286,7 @@ class TradingEnv(gym.Env):
             # Todo : Add position and cash features
         }
 
-        # For compatibility with simple models, also return flattened state
-        # Use the feature extractor to flatten the state to the expected dimension
-        flat_state = self.feature_extractor.flatten_features(normalized_features, self.state_dim)
-
-        return flat_state, state_dict
+        return state_dict
 
     def _process_action(self, action):
         """
@@ -471,7 +467,7 @@ class TradingEnv(gym.Env):
         Returns:
             bool: True if initialization successful, False otherwise
         """
-        self.logger.info(f"Initializing environment for {symbol} in {mode} mode")
+        self.logger.info(f"Initializing environment for {symbol} in {mode} mode, from {start_time} to {end_time}")
 
         # Default timeframes if not provided
         if timeframes is None:
