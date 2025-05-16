@@ -68,11 +68,17 @@ class WandbCallback(TrainingCallback):
         self.action_history = []
         self.reward_history = []
 
+        # Logger
+        self.logger = None
+
     def on_training_start(self, trainer):
         """Called when training starts."""
         # Create WandB directory in the output directory
         wandb_dir = os.path.join(trainer.output_dir, "wandb")
         os.makedirs(wandb_dir, exist_ok=True)
+
+        # Set logger
+        self.logger = trainer.logger
 
         # Initialize the WandB run
         self.run = wandb.init(
@@ -118,8 +124,8 @@ class WandbCallback(TrainingCallback):
         }
 
         # Add trade statistics if available
-        if hasattr(trainer.env.simulator, "portfolio_simulator"):
-            trade_stats = trainer.env.simulator.portfolio_simulator.get_statistics()
+        if hasattr(trainer.env, 'portfolio_simulator'):
+            trade_stats = trainer.env.portfolio_simulator.get_statistics()
             if trade_stats:
                 final_metrics.update({
                     "final/trade_count": trade_stats.get("total_trades", 0),
@@ -171,20 +177,19 @@ class WandbCallback(TrainingCallback):
         self.action_history.append(action_value)
 
         # Track market data if available
-        if hasattr(trainer.env.simulator, 'market_simulator'):
-            market_state = trainer.env.simulator.market_simulator.get_current_market_state()
+        if hasattr(trainer.env, 'market_simulator'):
+            market_state = trainer.env.market_simulator.get_current_market_state()
             if market_state and 'price' in market_state:
                 self.price_history.append(market_state['price'])
+            elif market_state and 'current_1s_bar' in market_state and market_state['current_1s_bar']:
+                # Try to get price from 1s bar
+                self.price_history.append(market_state['current_1s_bar'].get('close', 0))
 
         # Track position if available
-        if hasattr(trainer.env.simulator, 'portfolio_simulator'):
-            portfolio_state = trainer.env.simulator.portfolio_simulator.get_portfolio_state()
-            if portfolio_state and 'positions' in portfolio_state:
-                # Get position for current symbol
-                position = 0
-                for symbol, pos in portfolio_state['positions'].items():
-                    position = pos.get('quantity', 0)
-                    break  # Just get the first position
+        if hasattr(trainer.env, 'portfolio_simulator'):
+            portfolio_state = trainer.env.portfolio_simulator.get_portfolio_state()
+            if portfolio_state:
+                position = portfolio_state.get('position', 0)
                 self.position_history.append(position)
 
         # Log metrics at specified frequency
@@ -201,18 +206,20 @@ class WandbCallback(TrainingCallback):
             }
 
             # Add market data if available
-            if hasattr(trainer.env.simulator, 'market_simulator'):
-                market_state = trainer.env.simulator.market_simulator.get_current_market_state()
+            if hasattr(trainer.env, 'market_simulator'):
+                market_state = trainer.env.market_simulator.get_current_market_state()
                 if market_state:
-                    for k, v in market_state.items():
-                        if isinstance(v, (int, float)) and k not in ['timestamp']:
-                            metrics[f"market/{k}"] = v
+                    if 'current_1s_bar' in market_state and market_state['current_1s_bar']:
+                        bar = market_state['current_1s_bar']
+                        metrics["market/price"] = bar.get('close', 0)
+                        metrics["market/volume"] = bar.get('volume', 0)
 
             # Add position data if available
-            if hasattr(trainer.env.simulator, 'portfolio_simulator'):
-                portfolio_state = trainer.env.simulator.portfolio_simulator.get_portfolio_state()
+            if hasattr(trainer.env, 'portfolio_simulator'):
+                portfolio_state = trainer.env.portfolio_simulator.get_portfolio_state()
                 if portfolio_state:
                     metrics["portfolio/cash"] = portfolio_state.get('cash', 0)
+                    metrics["portfolio/position"] = portfolio_state.get('position', 0)
                     metrics["portfolio/total_value"] = portfolio_state.get('total_value', 0)
 
             # Add info metrics
@@ -244,9 +251,9 @@ class WandbCallback(TrainingCallback):
                     metrics[f"episode/{k}"] = v
 
         # Process trades
-        if hasattr(trainer.env.simulator, 'portfolio_simulator'):
+        if hasattr(trainer.env, 'portfolio_simulator'):
             # Get trade history
-            trades = trainer.env.simulator.portfolio_simulator.get_trade_history()
+            trades = trainer.env.portfolio_simulator.get_trade_history()
 
             # Add new trades to our trade records
             for trade in trades:
@@ -378,7 +385,10 @@ class WandbCallback(TrainingCallback):
         if current_step <= self.last_logged_step:
             # Instead of using a smaller step, use the last step + 1
             current_step = self.last_logged_step + 1
-            self.logger.warning(f"Adjusted step from {step} to {current_step} to maintain monotonicity")
+            if self.logger:
+                self.logger.warning(f"Adjusted step from {step} to {current_step} to maintain monotonicity")
+            else:
+                print(f"Adjusted step from {step} to {current_step} to maintain monotonicity")
 
         try:
             # Log the metrics
