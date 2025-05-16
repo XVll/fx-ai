@@ -88,10 +88,14 @@ class DummyDataProvider(HistoricalDataProvider):
         """Get all available symbols."""
         return self.available_symbols.copy()
 
+    # Fix for the DummyDataProvider to improve numerical stability
+    # To be added to data/provider/dummy_data_provider.py
+
     def _generate_price_series(self, symbol: str, start_time: datetime,
                                end_time: datetime, interval_seconds: int = 1) -> pd.DataFrame:
         """
         Generate a synthetic price series with realistic properties.
+        Fixed to avoid numerical overflow issues.
 
         Args:
             symbol: Symbol to generate data for
@@ -124,11 +128,14 @@ class DummyDataProvider(HistoricalDataProvider):
         # Generate price movements
         n = len(timestamps)
 
-        # Create base random component
+        # Create base random component with controlled magnitude
         daily_volatility = self.volatility * np.sqrt(252)
-        noise = self.rng.normal(0, daily_volatility / np.sqrt(252 * 6.5 * 60 * 60 / interval_seconds), n)
 
-        # Add some trend and mean reversion components
+        # Use a smaller scale to avoid overflow when we exponentiate later
+        # Instead of sqrt(252), use a more conservative scaling factor
+        noise = self.rng.normal(0, self.volatility / 10, n)
+
+        # Add some trend and mean reversion components with controlled magnitude
         t = np.linspace(0, 1, n)
 
         # Create a few trend changes
@@ -137,21 +144,31 @@ class DummyDataProvider(HistoricalDataProvider):
         trend_points.sort()
         trend_points = np.concatenate(([0], trend_points, [n - 1]))
 
-        # Generate trend directions
-        trend_dirs = self.rng.choice([-1, 1], n_trends + 1)
+        # Generate trend directions, but with smaller magnitude
+        trend_dirs = self.rng.choice([-1, 1], n_trends + 1) * (self.trend_strength / 10)
 
         # Apply trends
         trends = np.zeros(n)
         for i in range(len(trend_points) - 1):
             start, end = trend_points[i], trend_points[i + 1]
-            trends[start:end + 1] = np.linspace(0, trend_dirs[i] * self.trend_strength, end - start + 1)
+            trends[start:end + 1] = np.linspace(0, trend_dirs[i] * (self.trend_strength / 10), end - start + 1)
 
-        # Combine components
-        changes = noise + trends * daily_volatility
+        # Combine components with reduced magnitude
+        changes = noise + trends * (daily_volatility / 10)
 
-        # Calculate log prices
-        log_prices = np.cumsum(changes) + np.log(initial_price)
-        prices = np.exp(log_prices)
+        # Calculate prices using a more stable approach
+        # Instead of using log-prices and exponentiating, use direct factor multiplication
+        # which is less prone to numerical instability
+        price_factors = 1.0 + changes
+        prices = np.zeros(n)
+        prices[0] = initial_price
+
+        # Calculate prices iteratively to avoid compounding numerical errors
+        for i in range(1, n):
+            prices[i] = prices[i - 1] * price_factors[i]
+
+        # Ensure prices don't go too low
+        prices = np.maximum(prices, price_min / 10)
 
         # Generate OHLCV data
         df = pd.DataFrame(index=timestamps)
@@ -159,9 +176,9 @@ class DummyDataProvider(HistoricalDataProvider):
         # For each bar, calculate open, high, low, close
         df['open'] = prices
 
-        # Add random high/low within each bar
-        high_multipliers = 1 + np.abs(self.rng.normal(0, self.volatility / 3, n))
-        low_multipliers = 1 - np.abs(self.rng.normal(0, self.volatility / 3, n))
+        # Add random high/low within each bar, with controlled magnitudes
+        high_multipliers = 1 + np.abs(self.rng.normal(0, self.volatility / 5, n))
+        low_multipliers = 1 - np.abs(self.rng.normal(0, self.volatility / 5, n))
 
         df['high'] = prices * high_multipliers
         df['low'] = prices * low_multipliers
@@ -171,7 +188,7 @@ class DummyDataProvider(HistoricalDataProvider):
         df['low'] = np.minimum(df['low'], df['open'])
 
         # Shift to get next bar's open as current close
-        df['close'] = df['open'].shift(-1).fillna(df['open'] * (1 + self.rng.normal(0, self.volatility / 5)))
+        df['close'] = df['open'].shift(-1).fillna(df['open'] * (1 + self.rng.normal(0, self.volatility / 10)))
 
         # Ensure high >= close and low <= close
         df['high'] = np.maximum(df['high'], df['close'])
@@ -263,7 +280,16 @@ class DummyDataProvider(HistoricalDataProvider):
         return trades_df
 
     def _generate_quotes_from_bars(self, bars_df: pd.DataFrame) -> pd.DataFrame:
-        """Generate synthetic quotes from OHLCV bars."""
+        """
+        Generate synthetic quotes from OHLCV bars.
+        Fixed to ensure millisecond offsets are Python integers, not numpy types.
+
+        Args:
+            bars_df: DataFrame with OHLCV bars
+
+        Returns:
+            DataFrame with synthetic quotes
+        """
         if bars_df.empty:
             return pd.DataFrame()
 
@@ -276,8 +302,10 @@ class DummyDataProvider(HistoricalDataProvider):
             # Limit to reasonable number
             n_quotes = min(n_quotes, 200)
 
-            # Generate timestamp offsets
+            # Generate timestamp offsets - convert numpy ints to Python ints
+            # This is where the error was occurring
             offsets = np.sort(self.rng.randint(0, 1000, n_quotes))
+            offsets = [int(offset) for offset in offsets]  # Convert to Python int
 
             # Previous values for continuity
             prev_bid = bar['low'] * 0.999
