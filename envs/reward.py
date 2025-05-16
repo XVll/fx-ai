@@ -1,4 +1,4 @@
-# reward_calculator.py
+# reward.py
 import numpy as np
 from typing import Dict, List, Any, Optional
 import logging
@@ -60,7 +60,7 @@ class RewardCalculator:
         self.position_entry_time = None
         self.price_history = []
 
-    def calculate_reward(self, market_state, portfolio_state, info=None):
+    def calculate(self, market_state, portfolio_state, info=None):
         """
         Calculate the reward based on the current market and portfolio state.
 

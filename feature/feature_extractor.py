@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from config.config import FeatureConfig
+
 
 class FeatureExtractor:
     """
@@ -25,7 +27,7 @@ class FeatureExtractor:
     model to learn from sequences of these states.
     """
 
-    def __init__(self, symbol: str, config: Optional[Dict] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, symbol: str, config: FeatureConfig, logger: Optional[logging.Logger] = None):
         """
         Initialize the FeatureExtractor.
 

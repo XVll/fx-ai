@@ -1,88 +1,90 @@
-# trading_env.py
+from datetime import datetime
+from enum import Enum
+from typing import TypedDict
+
 import gymnasium as gym
 import numpy as np
-import torch
 import logging
 
+from config.config import Config
 from data.data_manager import DataManager
-from envs.RewardCalculator import RewardCalculator
+from envs.reward import RewardCalculator
 from feature.feature_extractor import FeatureExtractor
 from simulators.execution_simulator import ExecutionSimulator
 from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import PortfolioSimulator
 
 
+class EpisodeStats(TypedDict, total=False):
+    total_reward: float
+    total_pnl: float
+    trades_executed: int
+    position_changes: int
+
+
+class StepStats(TypedDict, total=False):
+    step: int
+    position_changes: int
+    position: float
+    cash: float
+    equity: float
+    unrealized_pnl: float
+    realized_pnl: float
+    total_pnl: float
+    timestamp: datetime
+    price: float
+    volume: float
+    action_result: dict
+    end_reason: str
+    episode_stats_at_step: EpisodeStats
+
+
+class EnvironmentStats(TypedDict, total=False):
+    step: StepStats
+    episode: EpisodeStats
+
+
+class ActionType(Enum):
+    HOLD = 0  # Do nothing, maintain current position
+    ENTER_LONG = 1  # Enter the initial long position
+    SCALE_IN = 2  # Add to the existing long position
+    SCALE_OUT = 3  # Reduce long position (partial take profit)
+    EXIT = 4  # Close the entire long position
+
+
+class TrainingMode(Enum):
+    BACKTESTING = 0
+    LIVE = 1
+
+
 class TradingEnv(gym.Env):
-    """
-    Trading environment for reinforcement learning.
-
-    This environment simulates a high-frequency trading scenario for momentum/squeeze
-    trading with 1-second decision frequency on volatile, low-float stocks.
-
-    Implements the standard gymnasium (gym) interface with custom trading components.
-    """
-
-    def __init__(self, data_manager: DataManager, cfg=None, logger=None):
-        """
-        Initialize the trading environment.
-
-        Args:
-            cfg: Configuration object or dictionary
-            logger: Optional logger
-        """
+    def __init__(self, data_manager: DataManager, config: Config, logger=None):
         self.logger = logger or logging.getLogger(__name__)
-        self.cfg = cfg or {}
+        self.config = config
 
-        # Data manager for historical data
         self.data_manager = data_manager
-        # Extract configuration parameters
-        if hasattr(cfg, 'state_dim'):
-            self.state_dim = cfg.state_dim
-        else:
-            self.state_dim = self.cfg.get('state_dim', 1000)
 
-        if hasattr(cfg, 'max_steps'):
-            self.max_steps = cfg.max_steps
-        else:
-            self.max_steps = self.cfg.get('max_steps', 500)
-
-        if hasattr(cfg, 'normalize_state'):
-            self.normalize_state = cfg.normalize_state
-        else:
-            self.normalize_state = self.cfg.get('normalize_state', True)
-
-        if hasattr(cfg, 'random_reset'):
-            self.random_reset = cfg.random_reset
-        else:
-            self.random_reset = self.cfg.get('random_reset', True)
-
-        if hasattr(cfg, 'max_position'):
-            self.max_position = cfg.max_position
-        else:
-            self.max_position = self.cfg.get('max_position', 1.0)
-
-        # Rendering mode (for visualization if needed)
         self.render_mode = 'human'
 
-        # Define explicit action types
-        self.ACTION_HOLD = 0  # Do nothing, maintain current position
-        self.ACTION_ENTER_LONG = 1  # Enter initial long position
-        self.ACTION_SCALE_IN = 2  # Add to existing long position
-        self.ACTION_SCALE_OUT = 3  # Reduce long position (partial take profit)
-        self.ACTION_EXIT = 4  # Close entire long position
+        # Action space: discrete actions
         self.position_sizes = [0.25, 0.50, 0.75, 1.00]
 
-        # === REQUIRED BY GYM.ENV - Action and observation spaces ===
         self.action_space = gym.spaces.Tuple(
             (
-                gym.spaces.Discrete(5),
-                gym.spaces.Discrete(len(self.position_sizes)),  # Action space for position size
+                gym.spaces.Discrete(len(ActionType)),
+                gym.spaces.Discrete(len(self.position_sizes)),
             )
         )
 
         # Observation space: continuous state vector
-        self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=(self.state_dim,), dtype=np.float32
+        # Low and High is the range of the feature values, shape is the dimension of the array (seq_len * feat_dim)
+        self.observation_space = gym.spaces.Dict(
+            {
+                'hf_features': gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.config.model.hf_seq_len, self.config.model.hf_feat_dim), dtype=np.float32),
+                'mf_features': gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.config.model.mf_seq_len, self.config.model.mf_feat_dim), dtype=np.float32),
+                'lf_features': gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.config.model.lf_seq_len, self.config.model.lf_feat_dim), dtype=np.float32),
+                'static_features': gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.config.model.static_feat_dim,), dtype=np.float32),
+            }
         )
 
         # Initialize simulation components
@@ -90,223 +92,83 @@ class TradingEnv(gym.Env):
         self.execution_simulator = None
         self.portfolio_simulator = None
         self.feature_extractor = None
-        self.reward_calculator = None
+        self.reward = None
 
         # Current state tracking
+        self.obs = None
+
         self.current_step = 0
-        self.current_state = None
-        self.current_state_dict = None  # For structured state representation
-        self.done = False
-        self.info = {}
+        self.environment_stats: EnvironmentStats = {}
+        self.episode_stats: EpisodeStats = {}
 
-        # Episode statistics
-        self.episode_stats = {
-            'total_reward': 0.0,
-            'total_pnl': 0.0,
-            'trades_executed': 0,
-            'position_changes': 0,
-        }
+        self.logger.info(f"Trading environment initialized with state_dim={config.env.state_dimension}, max_steps={config.env.max_steps}")
 
-        # Feature normalization
-        self.feature_means = None
-        self.feature_stds = None
+    def _is_terminated(self):
+        # Check if we've reached the end of market data
+        if self.market_simulator.is_done(): return True
 
-        self.logger.info("TradingEnv initialized with state_dim={}, max_steps={}".format(
-            self.state_dim, self.max_steps))
+        # Check for other termination conditions (bankruptcy, etc.)
+        # if self.portfolio_simulator:
+        #     portfolio_state = self.portfolio_simulator.get_portfolio_state()
+        #
+        #     # Terminate if account value drops below threshold
+        #     min_account_value = self.config.get('min_account_value', 0.0)
+        #     if portfolio_state.get('total_value', 0) <= min_account_value:
+        #         self.logger.info(f"Episode terminated due to account value below threshold: "
+        #                          f"${portfolio_state.get('total_value', 0):.2f} <= ${min_account_value:.2f}")
+        #         return True
+        #
+        return False
 
-    # === REQUIRED BY GYM.ENV - Reset method ===
-    def reset(self, seed=None, options=None):
-        """
-        Reset the environment to start a new episode.
+    def _is_truncated(self):
+        if self.current_step >= self.config.env.max_steps:
+            return True
 
-        Args:
-            seed: Optional random seed
-            options: Additional options for reset
+        return False
 
-        Returns:
-            tuple: (observation, info) as required by Gymnasium API
-        """
-        # Set a random seed if provided
-        if seed is not None:
-            np.random.seed(seed)
-            torch.manual_seed(seed)
+    def _calculate_reward(self):
+        """Calculate the reward based on the current step"""
 
-        # Process options
-        options = options or {}
-        random_start = options.get('random_start', self.random_reset)
-
-        # Reset step counter and episode stats
-        self.current_step = 0
-        self.done = False
-        self.episode_stats = {
-            'total_reward': 0.0,
-            'total_pnl': 0.0,
-            'trades_executed': 0,
-            'position_changes': 0,
-        }
-
-        # Reset simulation components
-        if self.market_simulator:
-            self.market_simulator.reset({
-                'random_start': random_start,
-                'max_steps': self.max_steps
-            })
-
-        if self.execution_simulator:
-            self.execution_simulator.reset()
-
-        if self.portfolio_simulator:
-            self.portfolio_simulator.reset()
-
-        if self.feature_extractor:
-            self.feature_extractor.reset()
-
-        if self.reward_calculator:
-            self.reward_calculator.reset()
-
-        # Get initial state
-        self.current_state, self.current_state_dict = self._get_observation()
-
-        # Reset info dict
-        self.info = {}
-
-        # IMPORTANT: Return EXACTLY two values - the observation and info
-        result= self.current_state, self.info
-        print(
-            f"Reset returning: {result}, type: {type(result)}, length: {len(result) if isinstance(result, tuple) else 'not a tuple'}")
-        return result
-
-    # === REQUIRED BY GYM.ENV - Step method ===
-    # In trading_env.py - step method
-
-    # envs/trading_env.py - Fixed version for step method
-    def step(self, action):
-        """
-        Take a step in the environment with the given action.
-        Fixed to handle end of data and None market state.
-
-        Args:
-            action: Action to take (action_type, size_idx)
-                - Can be a tuple, list, or two-element array
-
-        Returns:
-            tuple: (observation, reward, terminated, truncated, info) as required by Gymnasium API
-        """
-        # Ensure action is in the correct format
-        if isinstance(action, (list, np.ndarray)):
-            action = tuple(map(int, action[:2]))  # Convert to tuple of integers
-
-        # Validate action
-        if not self.action_space.contains(action):
-            raise ValueError(f"Invalid action: {action}")
-
-        # Increment step counter
-        self.current_step += 1
-
-        # Process action and update market/portfolio
-        self._process_action(action)
-
-        # Get the new state
-        observation, state_dict = self._get_observation()
-
-        # Check if we've reached the end of data - critical fix!
-        if observation is None or self.market_simulator is None or self.market_simulator.is_done():
-            # Set terminated flag when we've reached end of data
-            self.logger.info("End of data reached, terminating episode")
-            terminated = True
-            truncated = False
-
-            # Use last valid state or zeros as observation
-            if self.current_state is not None:
-                observation = self.current_state
-            else:
-                observation = np.zeros(self.observation_space.shape, dtype=np.float32)
-
-            # Use empty dict for state_dict
-            state_dict = {}
-
-            # Use zero reward at end of data
-            reward = 0.0
-
-            # Set info with reason
-            self.info = self._get_info()
-            self.info['end_reason'] = 'end_of_data'
-
-            return observation, reward, terminated, truncated, self.info
-
-        # Continue with normal flow
-        self.current_state = observation
-        self.current_state_dict = state_dict
-
-        # Calculate reward
-        reward = self._calculate_reward()
-
-        # Update episode statistics
-        self.episode_stats['total_reward'] += reward
-        if self.portfolio_simulator:
-            portfolio_state = self.portfolio_simulator.get_portfolio_state()
-            self.episode_stats['total_pnl'] = portfolio_state.get('total_pnl', 0.0)
-
-        # Check if episode is done
-        terminated = self._is_terminated()
-        truncated = self._is_truncated()
-
-        # Update info dict with current state information
-        self.info = self._get_info()
-
-        # Add episode stats to info if episode is ending
-        if terminated or truncated:
-            self.info['episode'] = self.episode_stats
-
-        return observation, reward, terminated, truncated, self.info
-
-    # === OPTIONAL GYM.ENV METHOD - Render method ===
-    def render(self, mode='human'):
-        """
-        Render the environment.
-
-        Args:
-            mode: Rendering mode (default is 'human')
-        """
-        if self.render_mode == 'human':
-            # Simple text output for now
-            if self.portfolio_simulator:
-                portfolio_state = self.portfolio_simulator.get_portfolio_state()
-                print(f"Step: {self.current_step}, Position: {portfolio_state['position']:.2f}, "
-                      f"Cash: ${portfolio_state['cash']:.2f}, Value: ${portfolio_state['total_value']:.2f}")
-
-    # === OPTIONAL GYM.ENV METHOD - Close method ===
-    def close(self):
-        """
-        Clean up environment resources.
-
-        This method is part of the gym.Env interface.
-        """
-        if self.market_simulator:
-            self.market_simulator.close()
-
-    # === HELPER METHODS ===
-    def _get_observation(self):
-        """
-        Build the state representation (observation) from market data.
-
-        Returns:
-            tuple: (observation, state_dict)
-                - observation: Flattened numpy array with shape (state_dim,)
-                - state_dict: Structured dictionary for model input
-        """
-        if not self.market_simulator or not self.feature_extractor:
-            # Return zeros if components aren't initialized
-            flat_state = np.zeros(self.observation_space.shape, dtype=np.float32)
-            return flat_state, {}
-
-        # Get current market state from simulator
         market_state = self.market_simulator.get_current_market_state()
+        portfolio_state = self.portfolio_simulator.get_portfolio_state()
 
-        # Get current portfolio state
-        portfolio_state = None
-        if self.portfolio_simulator:
-            portfolio_state = self.portfolio_simulator.get_portfolio_state()
+        # Calculate reward using the reward calculator
+        # reward = self.reward.calculate(market_state=market_state, portfolio_state=portfolio_state, info=self.info)
+        # Todo : Implement better reward calculation
+        # Todo : return reward
+        return 0
+
+    def _get_step_stats(self):
+        """ Get diagnostic information about the current state. Especially useful for debugging and w&b."""
+        si: StepStats = {'step': self.current_step}
+
+        market_state = self.market_simulator.get_current_market_state()
+        if market_state:
+            si['timestamp'] = market_state.get('timestamp')
+            si['price'] = market_state.get('current_price')
+            si['volume'] = market_state.get('current_volume', 0)
+
+        portfolio_state = self.portfolio_simulator.get_portfolio_state()
+        if portfolio_state:
+            si['position'] = portfolio_state.get('position', 0)
+            si['cash'] = portfolio_state.get('cash', 0)
+            si['equity'] = portfolio_state.get('total_value', 0)
+            si['unrealized_pnl'] = portfolio_state.get('unrealized_pnl', 0)
+            si['realized_pnl'] = portfolio_state.get('realized_pnl', 0)
+            si['total_pnl'] = portfolio_state.get('total_pnl', 0)
+
+        si['episode_stats_at_step'] = self.episode_stats
+
+        return si
+
+    def _get_observation(self):
+        """Get the current observation from the environment."""
+        if not self.market_simulator or not self.feature_extractor or not self.portfolio_simulator:
+            self.logger.warning("Cannot get observation: simulators not initialized")
+            return None
+
+        market_state = self.market_simulator.get_current_market_state()
+        portfolio_state = self.portfolio_simulator.get_portfolio_state()
 
         # Extract features using the feature extractor
         features = self.feature_extractor.extract_features(
@@ -314,60 +176,139 @@ class TradingEnv(gym.Env):
             portfolio_state=portfolio_state
         )
 
-        # Apply normalization if configured
-        if self.normalize_state:
+        # Apply normalization
+        # Todo : Do we need none normalization?
+        if self.config.env.normalize_state:
             normalized_features = self.feature_extractor.normalize_features(features)
         else:
             normalized_features = features
 
-        # For transformer model, prepare structured state dict
-        state_dict = {
-            'hf_features': normalized_features.get('hf_features'),  # Shape: [batch, seq_len, feat_dim]
+        # For transformer model and gym, prepare a structured state dict
+        # Todo : Implement better normalization
+        obs = {
+            'hf_features': normalized_features.get('hf_features'),  # Shape: [seq_len, feat_dim]
             'mf_features': normalized_features.get('mf_features'),
             'lf_features': normalized_features.get('lf_features'),
             'static_features': normalized_features.get('static_features'),
             # Todo: Add position and cash features
         }
 
-        # ALSO create a flattened version for the gym API
-        # We need to flatten all the features into a single array
-        flat_features = []
+        return obs
 
-        # Flatten and add static features if available
-        if state_dict.get('static_features') is not None:
-            flat_features.append(state_dict['static_features'].flatten())
+    def render(self, mode='human'):
+        """  """
+        # Todo: Learn how to use this
+        if self.render_mode == 'human':
+            # Simple text output for now
+            if self.portfolio_simulator:
+                portfolio_state = self.portfolio_simulator.get_portfolio_state()
+                print(f"Step: {self.current_step}, Position: {portfolio_state['position']:.2f}, "
+                      f"Cash: ${portfolio_state['cash']:.2f}, Value: ${portfolio_state['total_value']:.2f}")
 
-        # Flatten and add sequence features
-        for key in ['hf_features', 'mf_features', 'lf_features']:
-            if state_dict.get(key) is not None:
-                # Reshape to flatten while preserving batch dim
-                shape = state_dict[key].shape
-                flat_features.append(state_dict[key].reshape(1, -1).flatten())
+    def initialize(self, symbol, mode: TrainingMode = TrainingMode.BACKTESTING, start_time=None, end_time=None) -> None:
+        """Initialize the environment with a specific symbol and mode"""
+        self.logger.info(f"Initializing environment for {symbol} in {mode} mode, from {start_time} to {end_time}")
 
-        # Combine all flattened features
-        if flat_features:
-            flat_state = np.concatenate(flat_features)
+        try:
+            self.market_simulator = MarketSimulator(symbol=symbol, data_manager=self.data_manager, rng=self.np_random, mode=mode, start_time=start_time,
+                                                    end_time=end_time, config=self.config.simulation.market_config, logger=self.logger)
+            self.execution_simulator = ExecutionSimulator(market_simulator=self.market_simulator, rng=self.np_random,
+                                                          config=self.config.simulation.execution_config, logger=self.logger)
+            self.portfolio_simulator = PortfolioSimulator(config=self.config.simulation.portfolio_config, logger=self.logger)
+            self.feature_extractor = FeatureExtractor(symbol=symbol, config=self.config.simulation.feature_config, logger=self.logger)
+            self.reward = RewardCalculator(config=self.config.env.reward, logger=self.logger)
 
-            # Ensure it matches the expected observation space size
-            if len(flat_state) > self.observation_space.shape[0]:
-                self.logger.warning(
-                    f"Flattened state size ({len(flat_state)}) exceeds observation_space "
-                    f"({self.observation_space.shape[0]}). Truncating.")
-                flat_state = flat_state[:self.observation_space.shape[0]]
-            elif len(flat_state) < self.observation_space.shape[0]:
-                # Pad with zeros if needed
-                padding = np.zeros(self.observation_space.shape[0] - len(flat_state), dtype=np.float32)
-                flat_state = np.concatenate([flat_state, padding])
-        else:
-            # Fallback to zeros if no features are available
-            flat_state = np.zeros(self.observation_space.shape, dtype=np.float32)
+            self.reset()
 
-        return flat_state, state_dict
+            self.logger.info(f"Environment initialized successfully for {symbol}")
+        except Exception as e:
+            self.logger.error(f"Error initializing environment: {e}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
 
-    # In trading_env.py - _process_action method
+    def close(self):
+        if self.market_simulator:
+            self.market_simulator.close()
 
-    # Fix for _process_action method in trading_env.py
+    def reset(self, seed=None, options=None):
+        """Called by the agent's collect_rollouts method, also provides observation"""
+        super().reset(seed=seed)
 
+        random_start = options.get('random_start', self.config.env.random_reset)
+
+        self.market_simulator.reset({'random_start': random_start, 'max_steps': self.config.env.max_steps})
+        self.execution_simulator.reset()
+        self.portfolio_simulator.reset()
+        self.feature_extractor.reset()
+        self.reward.reset()
+
+        self.environment_stats = {}
+        self.episode_stats = {}
+        self.current_step = 0
+
+        # Get initial state
+        self.obs = self._get_observation()
+
+        print(f"Resetting environment should we keep this.: {self.obs}")
+        return self.obs, self.episode_stats
+
+    def step(self, action):
+        """"""
+
+        # Action is a tuple of (action_type, size)
+        if isinstance(action, (list, np.ndarray)):
+            action = tuple(map(int, action[:2]))
+
+        self.current_step += 1
+
+        # Process action and update
+        self._process_action(action)
+
+        # Get the new state
+        observation = self._get_observation()
+
+        # Check if we've reached the end of the data-critical fix!
+        if observation is None or self.market_simulator.is_done():
+            # Set the terminated flag when we've reached end of data
+            self.logger.info("End of data reached, terminating episode")
+            terminated = True
+            truncated = False
+
+            # Use last valid state or zeros as observation
+            if self.obs is not None:
+                observation = self.obs
+            else:
+                observation = np.zeros(self.observation_space.shape, dtype=np.float32)
+
+            reward = 0.0  # No reward at end of data
+
+            # Set info with reason
+            step_stats = self._get_step_stats()
+            step_stats['end_reason'] = "END_OF_DATA"
+            self.info = step_stats
+
+            return observation, reward, terminated, truncated, self.info
+
+        self.obs = observation
+
+        reward = self._calculate_reward()
+
+        portfolio_state = self.portfolio_simulator.get_portfolio_state()
+
+        self.episode_stats['total_pnl'] = portfolio_state.get('total_pnl', 0.0)
+        self.episode_stats['total_reward'] += reward
+
+        terminated = self._is_terminated()
+        truncated = self._is_truncated()
+
+        self.environment_stats['step'] = self._get_step_stats()
+
+        if terminated or truncated:
+            self.environment_stats['episode'] = self.episode_stats
+
+        return observation, reward, terminated, truncated, self.environment_stats
+
+    # --- o ---
     def _process_action(self, action):
         """
         Process and execute the trading action.
@@ -424,14 +365,14 @@ class TradingEnv(gym.Env):
         order_type = None
 
         # Process based on action type
-        if action_type == self.ACTION_HOLD:
+        if action_type == ActionType.HOLD:
             # No action needed
             action_name = "HOLD"
 
-        elif action_type == self.ACTION_ENTER_LONG:
+        elif action_type == ActionType.ENTER_LONG:
             if current_position <= 0:  # Only if not already long
                 # Calculate target position
-                target_position = position_size * self.max_position
+                target_position = position_size * self.config.env.max_position
                 delta = target_position - current_position
                 order_type = 'buy'
                 action_name = f"ENTER_LONG({position_size})"
@@ -439,11 +380,10 @@ class TradingEnv(gym.Env):
                 # Already in position but tried to enter again
                 action_name = f"ENTER_LONG_IGNORED(already in position)"
 
-        elif action_type == self.ACTION_SCALE_IN:
+        elif action_type == ActionType.SCALE_IN:
             if current_position > 0:  # Only if already long
                 # Calculate new target position
-                new_target = min(self.max_position,
-                                 current_position + (position_size * self.max_position))
+                new_target = min(self.config.env.max_position, current_position + (position_size * self.config.env.max_position))
                 delta = new_target - current_position
                 if delta > 0:
                     order_type = 'buy'
@@ -453,7 +393,7 @@ class TradingEnv(gym.Env):
             else:
                 action_name = f"SCALE_IN_IGNORED(no existing position)"
 
-        elif action_type == self.ACTION_SCALE_OUT:
+        elif action_type == ActionType.SCALE_OUT:
             if current_position > 0:  # Only if long
                 # Calculate reduction amount
                 reduction = position_size * current_position
@@ -463,7 +403,7 @@ class TradingEnv(gym.Env):
             else:
                 action_name = f"SCALE_OUT_IGNORED(no position to reduce)"
 
-        elif action_type == self.ACTION_EXIT:
+        elif action_type == ActionType.EXIT:
             if current_position > 0:  # Only if long
                 delta = -current_position  # Close entire position
                 order_type = 'sell'
@@ -492,8 +432,8 @@ class TradingEnv(gym.Env):
                 self.episode_stats['trades_executed'] += 1
                 self.episode_stats['position_changes'] += 1
 
-             #   self.logger.info(f"Executed {action_name}: {order_type} {abs(delta):.4f} @ {current_price:.4f}")
-                self.logger.info("Action executed: %s, Order type: %s, Size: %.4f, Price: %.4f",)
+                #   self.logger.info(f"Executed {action_name}: {order_type} {abs(delta):.4f} @ {current_price:.4f}")
+                self.logger.info("Action executed: %s, Order type: %s, Size: %.4f, Price: %.4f", )
 
         # Store result in info
         if execution_result:
@@ -508,215 +448,3 @@ class TradingEnv(gym.Env):
 
         # Advance the market simulator to the next time step
         self.market_simulator.step()
-
-    def _calculate_reward(self):
-        """
-        Calculate the reward for the current step.
-
-        Returns:
-            float: Reward value
-        """
-        if not self.reward_calculator:
-            return 0.0
-
-        # Get required states
-        market_state = None
-        portfolio_state = None
-
-        if self.market_simulator:
-            market_state = self.market_simulator.get_current_market_state()
-
-        if self.portfolio_simulator:
-            portfolio_state = self.portfolio_simulator.get_portfolio_state()
-
-        # Calculate reward using the reward calculator
-        reward = self.reward_calculator.calculate_reward(
-            market_state=market_state,
-            portfolio_state=portfolio_state,
-            info=self.info
-        )
-
-        return reward
-
-    def _is_terminated(self):
-        """
-        Check if the episode has terminated (reached a terminal state).
-
-        Returns:
-            bool: True if terminated, False otherwise
-        """
-        # Check if we've reached the end of market data
-        if self.market_simulator and self.market_simulator.is_done():
-            return True
-
-        # Check for other termination conditions (bankruptcy, etc.)
-        if self.portfolio_simulator:
-            portfolio_state = self.portfolio_simulator.get_portfolio_state()
-
-            # Terminate if account value drops below threshold
-            min_account_value = self.cfg.get('min_account_value', 0.0)
-            if portfolio_state.get('total_value', 0) <= min_account_value:
-                self.logger.info(f"Episode terminated due to account value below threshold: "
-                                 f"${portfolio_state.get('total_value', 0):.2f} <= ${min_account_value:.2f}")
-                return True
-
-        return False
-
-    def _is_truncated(self):
-        """
-        Check if the episode should be truncated (e.g., reached max steps).
-
-        Returns:
-            bool: True if truncated, False otherwise
-        """
-        # Check if we've reached max steps
-        if self.current_step >= self.max_steps:
-            return True
-
-        return False
-
-    def _get_info(self):
-        """
-        Get diagnostic information about the current state.
-
-        Returns:
-            dict: Information dictionary
-        """
-        info = {
-            'step': self.current_step,
-        }
-
-        # Add market information
-        if self.market_simulator:
-            market_state = self.market_simulator.get_current_market_state()
-            if market_state:
-                info['timestamp'] = market_state.get('timestamp')
-                info['price'] = market_state.get('current_price')
-                info['volume'] = market_state.get('current_volume', 0)
-
-        # Add portfolio information
-        if self.portfolio_simulator:
-            portfolio_state = self.portfolio_simulator.get_portfolio_state()
-            if portfolio_state:
-                info['position'] = portfolio_state.get('position', 0)
-                info['cash'] = portfolio_state.get('cash', 0)
-                info['equity'] = portfolio_state.get('total_value', 0)
-                info['unrealized_pnl'] = portfolio_state.get('unrealized_pnl', 0)
-                info['realized_pnl'] = portfolio_state.get('realized_pnl', 0)
-                info['total_pnl'] = portfolio_state.get('total_pnl', 0)
-
-        # Add episode stats to info
-        for k, v in self.episode_stats.items():
-            info[f'episode_{k}'] = v
-
-        return info
-
-    # === CUSTOM METHOD - Not part of gym.Env ===
-    def initialize_for_symbol(self, symbol, mode='backtesting',
-                              start_time=None, end_time=None, timeframes=None):
-        """
-        Initialize the environment for trading a specific symbol.
-
-        Args:
-            symbol: Trading symbol
-            mode: 'backtesting' or 'live'
-            start_time: Start time for historical data (backtesting)
-            end_time: End time for historical data (backtesting)
-            timeframes: List of timeframes to load (e.g., ['1s', '1m', '5m'])
-
-        Returns:
-            bool: True if initialization successful, False otherwise
-        """
-        self.logger.info(f"Initializing environment for {symbol} in {mode} mode, from {start_time} to {end_time}")
-
-        # Default timeframes if not provided
-        if timeframes is None:
-            timeframes = ['1s', '1m', '5m', '1d']
-
-        try:
-            # 1. Initialize market simulator with updated parameters
-            # Todo: Reset market from random point every episode
-            self.market_simulator = MarketSimulator(
-                symbol=symbol,
-                data_manager=self.data_manager,
-                mode=mode,
-                start_time=start_time,
-                end_time=end_time,
-                config=self.cfg.get('market_config', {}),
-                logger=self.logger
-            )
-
-            # 2. Initialize execution simulator
-            execution_config = getattr(self.cfg, 'execution_config', {})
-            self.execution_simulator = ExecutionSimulator(
-                market_simulator=self.market_simulator,
-                config=execution_config,
-                logger=self.logger
-            )
-
-            # 3. Initialize portfolio simulator
-            portfolio_config = getattr(self.cfg, 'portfolio_config', {})
-            self.portfolio_simulator = PortfolioSimulator(
-                config=portfolio_config,
-                logger=self.logger
-            )
-
-            # 4. Initialize feature extractor
-            feature_config = getattr(self.cfg, 'feature_config', {})
-            self.feature_extractor = FeatureExtractor(
-                symbol=symbol,
-                config=feature_config,
-                logger=self.logger
-            )
-
-            # 5. Initialize reward calculator
-            reward_config = getattr(self.cfg, 'reward_config', {})
-            self.reward_calculator = RewardCalculator(
-                config=reward_config,
-                logger=self.logger
-            )
-
-            # Reset the environment
-            self.reset()
-
-            self.logger.info(f"Environment initialized successfully for {symbol}")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Error initializing environment: {e}")
-            import traceback
-            self.logger.debug(traceback.format_exc())
-            return False
-
-    def get_portfolio_state(self):
-        """
-        Get the current portfolio state.
-
-        Returns:
-            dict: Portfolio state or None if not available
-        """
-        if self.portfolio_simulator:
-            return self.portfolio_simulator.get_portfolio_state()
-        return None
-
-    def get_trade_history(self):
-        """
-        Get the trade history.
-
-        Returns:
-            list: List of trade dictionaries or empty list if not available
-        """
-        if self.portfolio_simulator:
-            return self.portfolio_simulator.get_trade_history()
-        return []
-
-    def get_model_state_dict(self):
-        """
-        Get the current state in the format expected by the model.
-
-        This is useful for external model inference without stepping the environment.
-
-        Returns:
-            dict: State dictionary for model input
-        """
-        return self.current_state_dict

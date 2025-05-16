@@ -163,8 +163,7 @@ class PPOTrainer:
         for episode in range(n_episodes):
             # Reset environment
             try:
-                state, _ = self.env.reset()
-                state_dict = preprocess_state_to_dict(state, self.model_config)
+                state_dict, _ = self.env.reset()
             except Exception as e:
                 self.logger.error(f"Error resetting environment: {e}")
                 break
@@ -196,7 +195,7 @@ class PPOTrainer:
                             action_np = action.cpu().numpy().item()
 
                     # Take step in environment
-                    next_state, reward, terminated, truncated, info = self.env.step(action_np)
+                    next_state_dict, reward, terminated, truncated, info = self.env.step(action_np)
                     episode_done = terminated or truncated
 
                     # Check if we encountered end of data
@@ -205,7 +204,7 @@ class PPOTrainer:
                         break
 
                     # Process next state
-                    next_state_dict = preprocess_state_to_dict(next_state, self.model_config)
+                    state_dict = next_state_dict
 
                     # Add to buffer
                     self.buffer.add(

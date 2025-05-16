@@ -16,7 +16,7 @@ from config.config import Config
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
 from data.provider.dummy_data_provider import DummyDataProvider
-from envs.trading_env import TradingEnv
+from envs.trading_env import TradingEnv, TrainingMode
 
 from models.transformer import MultiBranchTransformer
 from agent.ppo_agent import PPOTrainer
@@ -47,40 +47,26 @@ def run_training(cfg: Config):
 
     # Create environment
     log.info("Creating trading environment")
-    db_provider = DabentoFileProvider(cfg.data.data_dir, "MLGO")
+    # db_provider = DabentoFileProvider(cfg.data.data_dir, "MLGO")
     dummy_config = {
-        'price_range': (2.0, 15.0),  # Range of generated prices
-        'volatility': 0.02,  # Daily volatility
-        'trend_strength': 0.6,  # Strength of price trends
-        'vol_baseline': 5000,  # Base volume per second
-        'random_seed': 42  # For reproducible results
+        'debug_window_mins': 300,  # Just 15 minutes of data
+        'data_sparsity': 10,  # Only every 10th second
+        'num_squeezes': 1,  # Just 1 squeeze event
+        'quotes_per_bar': 6,  # Only 2 quotes per bar
+        'trades_per_bar': 4,  # Only 1 trade per bar
     }
-    # db_provider = DummyDataProvider(dummy_config,logger=log)
+    db_provider = DummyDataProvider(dummy_config,logger=log)
     dm = DataManager(provider=db_provider, logger=log)
 
-    env = TradingEnv(dm, cfg=cfg.env, logger=log)
+    env = TradingEnv(dm, config=cfg, logger=log)
 
     # Initialize environment for symbol
     symbol = cfg.data.symbol
     start_date = cfg.data.start_date
     end_date = cfg.data.end_date
 
+    env.initialize(symbol, mode= TrainingMode.BACKTESTING, start_time=start_date, end_time=end_date)
 
-    # Determine timeframes to load
-    timeframes = cfg.data.timeframes
-
-    # Initialize the environment (this creates all required components)
-    success = env.initialize_for_symbol(
-        symbol,
-        mode='backtesting',
-        start_time=start_date,
-        end_time=end_date,
-        timeframes=timeframes
-    )
-
-    if not success:
-        log.error(f"Failed to initialize environment for {symbol}")
-        return {'error': 'Failed to initialize environment'}
 
     # Select device based on config or auto-detect
     if cfg.training.device == "auto":
@@ -101,27 +87,8 @@ def run_training(cfg: Config):
     log.info("Creating multi-branch transformer model")
     model_config = OmegaConf.to_container(cfg.model, resolve=True)
 
-    # Ensure model config is compatible with our state representation
-    # Get a sample observation to determine state dimensions
     obs, info = env.reset()
-    state_dict = env.get_model_state_dict()
 
-    # If observation structure doesn't match model config, adjust model config
-    if state_dict is not None and 'hf_features' in state_dict:
-        hf_features = state_dict['hf_features']
-        mf_features = state_dict['mf_features']
-        lf_features = state_dict['lf_features']
-        static_features = state_dict['static_features']
-
-        # Update model config with actual dimensions if needed
-        if hf_features is not None and 'hf_feat_dim' in model_config:
-            if hf_features.shape[-1] != model_config['hf_feat_dim']:
-                log.warning(f"Adjusting model hf_feat_dim from {model_config['hf_feat_dim']} "
-                            f"to {hf_features.shape[-1]}")
-                model_config['hf_feat_dim'] = hf_features.shape[-1]
-
-        # Similarly, update for other features
-        # (add more checks as needed based on your model requirements)
 
     try:
         model = MultiBranchTransformer(**model_config, device=device)
