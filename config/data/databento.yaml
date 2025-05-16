@@ -35,11 +35,9 @@ data_types:
 
 # API settings (if using API)
 api:
-  key: ${oc.env:DATABENTO_API_KEY,}
   dataset: "XNAS.ITCH"
 
 # Live settings (for simulation and live trading)
 live:
-  api_key: ${oc.env:DATABENTO_API_KEY,}
   dataset: "XNAS.ITCH"
   heartbeat_interval: 5
