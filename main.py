@@ -2,6 +2,7 @@
 import sys
 import os
 import hydra
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 import logging
 import torch
@@ -38,12 +39,10 @@ def run_training(cfg: Config):
         dict: Training statistics
     """
     # Get output directory
-    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    output_dir = HydraConfig.get().runtime.output_dir
     model_dir = os.path.join(output_dir, "models")
     os.makedirs(model_dir, exist_ok=True)
 
-    # Log configuration
-    log.info(f"Loaded configuration: {OmegaConf.to_yaml(cfg)}")
 
     # Create environment
     log.info("Creating trading environment")
@@ -57,7 +56,6 @@ def run_training(cfg: Config):
     start_date = cfg.data.start_date
     end_date = cfg.data.end_date
 
-    log.info(f"Initializing environment for {symbol} from {start_date} to {end_date}")
 
     # Determine timeframes to load
     timeframes = cfg.data.timeframes

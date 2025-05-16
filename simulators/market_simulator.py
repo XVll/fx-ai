@@ -66,16 +66,9 @@ class MarketSimulator:
         self.all_1d_bars_data: Optional[pd.DataFrame] = None
         self.all_1s_bars_data: Optional[pd.DataFrame] = None
 
-        # --- Current Time and Index ---
-        self.current_timestamp_utc: Optional[datetime] = None
-        self._current_bar_idx: int = 0
-
-
-        # --- Intraday State Tracking ---
-        self.current_market_session: str = "CLOSED"
-        self._current_day_for_intraday_tracking: Optional[datetime.date] = None
-        self.intraday_high: Optional[float] = None
-        self.intraday_low: Optional[float] = None
+        # --- Bar Aggregation State ---
+        self._current_1m_bar_agg: Optional[Dict[str, Any]] = None
+        self._current_5m_bar_agg: Optional[Dict[str, Any]] = None
 
         # --- Rolling Data Windows ---
         self.rolling_1s_data_window_size = self.config.get('rolling_1s_data_window_size', 60 * 60)
@@ -85,9 +78,15 @@ class MarketSimulator:
         self.rolling_1m_data_window: Deque[Dict[str, Any]] = deque(maxlen=self.rolling_1m_data_window_size)
         self.rolling_5m_data_window: Deque[Dict[str, Any]] = deque(maxlen=self.rolling_5m_data_window_size)
 
-        # --- Bar Aggregation State ---
-        self._current_1m_bar_agg: Optional[Dict[str, Any]] = None
-        self._current_5m_bar_agg: Optional[Dict[str, Any]] = None
+        # --- Current Time and Index ---
+        self.current_timestamp_utc: Optional[datetime] = None
+        self._current_bar_idx: int = 0
+
+        # --- Intraday State Tracking ---
+        self.current_market_session: str = "CLOSED"
+        self._current_day_for_intraday_tracking: Optional[datetime.date] = None
+        self.intraday_high: Optional[float] = None
+        self.intraday_low: Optional[float] = None
 
         # --- Live Data Buffers ---
         self._live_trades_buffer: List[Dict] = []

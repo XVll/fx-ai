@@ -13,8 +13,8 @@ use_cache: true
 
 # Data parameters - try a broader date range
 symbol: "MLGO"           # Default trading symbol
-start_date: "2025-03-01" # Try earlier date
-end_date: "2025-03-27"   # Keep end date the same
+start_date: "2025-03-27" # Try earlier date
+end_date: "2025-03-28"   # Keep end date the same
 
 # Timeframes - explicitly supported
 timeframes:
