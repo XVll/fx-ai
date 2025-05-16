@@ -47,7 +47,7 @@ def run_training(cfg: Config):
 
     # Create environment
     log.info("Creating trading environment")
-    # db_provider = DabentoFileProvider(cfg.data.data_dir, "MLGO")
+    db_provider = DabentoFileProvider(cfg.data.data_dir, "MLGO")
     dummy_config = {
         'price_range': (2.0, 15.0),  # Range of generated prices
         'volatility': 0.02,  # Daily volatility
@@ -55,8 +55,8 @@ def run_training(cfg: Config):
         'vol_baseline': 5000,  # Base volume per second
         'random_seed': 42  # For reproducible results
     }
-    dummy_provider = DummyDataProvider(dummy_config,logger=log)
-    dm = DataManager(provider=dummy_provider, logger=log)
+    # db_provider = DummyDataProvider(dummy_config,logger=log)
+    dm = DataManager(provider=db_provider, logger=log)
 
     env = TradingEnv(dm, cfg=cfg.env, logger=log)
 
