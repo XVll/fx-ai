@@ -149,6 +149,28 @@ class RewardCalculator:
         self.previous_pnl = total_pnl
         self.previous_position = current_position
         self.previous_price = current_price
+        # Add action-specific rewards
+        if info and 'action_result' in info:
+            action_result = info['action_result']
+            action_name = action_result.get('action_name', '')
+
+            # Bonus/penalty based on action
+            if 'ENTER_LONG' in action_name and self._is_momentum_entry(market_state, current_position):
+                # Bonus for good entry timing
+                entry_quality = self._calculate_entry_quality(market_state, current_position)
+                reward += entry_quality * self.reward_scaling
+
+            elif 'SCALE_IN' in action_name and self._is_momentum_aligned(market_state, current_position):
+                # Bonus for good scale-in timing
+                reward += 0.5 * self.reward_scaling
+
+            elif 'SCALE_OUT' in action_name and not self._is_momentum_aligned(market_state, current_position):
+                # Bonus for scaling out when momentum is fading
+                reward += 0.5 * self.reward_scaling
+
+            elif 'EXIT' in action_name and self._predicted_flush(market_state, current_position):
+                # Bonus for exiting before a flush
+                reward += self.flush_prediction_bonus
 
         return reward
 
