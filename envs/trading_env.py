@@ -1,11 +1,9 @@
 from datetime import datetime
 from enum import Enum
 from typing import TypedDict
-
 import gymnasium as gym
 import numpy as np
 import logging
-
 from config.config import Config
 from data.data_manager import DataManager
 from envs.reward import RewardCalculator
@@ -14,14 +12,11 @@ from simulators.execution_simulator import ExecutionSimulator
 from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import PortfolioSimulator
 
-
 class EpisodeStats(TypedDict, total=False):
     total_reward: float
     total_pnl: float
     trades_executed: int
     position_changes: int
-
-
 class StepStats(TypedDict, total=False):
     step: int
     position_changes: int
@@ -37,25 +32,18 @@ class StepStats(TypedDict, total=False):
     action_result: dict
     end_reason: str
     episode_stats_at_step: EpisodeStats
-
-
 class EnvironmentStats(TypedDict, total=False):
     step: StepStats
     episode: EpisodeStats
-
-
 class ActionType(Enum):
     HOLD = 0  # Do nothing, maintain current position
     ENTER_LONG = 1  # Enter the initial long position
     SCALE_IN = 2  # Add to the existing long position
     SCALE_OUT = 3  # Reduce long position (partial take profit)
     EXIT = 4  # Close the entire long position
-
-
 class TrainingMode(Enum):
     BACKTESTING = 0
     LIVE = 1
-
 
 class TradingEnv(gym.Env):
     def __init__(self, data_manager: DataManager, config: Config, logger=None):
