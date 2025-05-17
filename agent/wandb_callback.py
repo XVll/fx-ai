@@ -118,7 +118,6 @@ class WandbCallback(TrainingCallback):
 
         # Log initial message
         print(f"WandB initialized: {wandb.run.name} ({wandb.run.id})")
-
     def on_training_end(self, trainer, stats):
         """Called when training ends."""
         # Log final statistics
@@ -156,17 +155,14 @@ class WandbCallback(TrainingCallback):
 
         # Finish the run
         wandb.finish()
-
     def on_rollout_start(self, trainer):
         """Called before collecting rollouts."""
         # We don't need to do anything here
         pass
-
     def on_rollout_end(self, trainer):
         """Called after collecting rollouts."""
         # We don't need to do anything here
         pass
-
     def on_step(self, trainer, state, action, reward, next_state, info):
         """Called after each environment step."""
         # Update our step counter
@@ -236,7 +232,6 @@ class WandbCallback(TrainingCallback):
 
             # Log metrics
             self._safe_wandb_log(metrics)
-
     def on_episode_end(self, trainer, episode_reward, episode_length, info):
         """Called at the end of an episode."""
         # Increment global step
@@ -318,12 +313,10 @@ class WandbCallback(TrainingCallback):
         # Create visualizations periodically
         if trainer.total_episodes % 5 == 0:
             self._create_episode_visualizations()
-
     def on_update_start(self, trainer):
         """Called before policy update."""
         # We don't need to do anything here
         pass
-
     def on_update_end(self, trainer, metrics):
         """Called after policy update."""
         # Increment global step
@@ -339,7 +332,6 @@ class WandbCallback(TrainingCallback):
         # Log parameter histograms periodically
         if trainer.updates % 10 == 0:
             self._log_model_gradients(trainer)
-
     def _log_model_gradients(self, trainer):
         """
         Log model parameter gradients to WandB for visualization.
@@ -407,7 +399,6 @@ class WandbCallback(TrainingCallback):
                     "best_model/reward": mean_reward,
                     "best_model/iteration": update_iter
                 })
-
     def _safe_wandb_log(self, metrics_dict, step=None):
         """
         Safely log to WandB with guaranteed monotonically increasing steps.
@@ -446,7 +437,6 @@ class WandbCallback(TrainingCallback):
                 self.logger.error(f"WandB logging failed: {e}")
             else:
                 print(f"WandB logging failed: {e}")
-
     def _create_episode_visualizations(self):
         """Create visualizations after episodes."""
         try:
@@ -527,7 +517,6 @@ class WandbCallback(TrainingCallback):
 
         except Exception as e:
             print(f"Error creating episode visualizations: {e}")
-
     def _create_final_visualizations(self):
         """Create final visualizations at the end of training."""
         try:
