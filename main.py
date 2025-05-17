@@ -6,24 +6,18 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 import logging
 import torch
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import wandb
 
-# Import typed config directly
 from config.config import Config
 from data.data_manager import DataManager
-from data.provider.data_bento.databento_file_provider import DabentoFileProvider
 from data.provider.dummy_data_provider import DummyDataProvider
-from envs.trading_env import TradingEnv, TrainingMode
+from envs.trading_env import TradingEnvironment, TrainingMode
 
 from models.transformer import MultiBranchTransformer
 from agent.ppo_agent import PPOTrainer
 from agent.callbacks import ModelCheckpointCallback, EarlyStoppingCallback
 from agent.wandb_callback import WandbCallback
 
-# Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log = logging.getLogger(__name__)
 
@@ -58,14 +52,13 @@ def run_training(cfg: Config):
     db_provider = DummyDataProvider(dummy_config,logger=log)
     dm = DataManager(provider=db_provider, logger=log)
 
-    env = TradingEnv(dm, config=cfg, logger=log)
+    env = TradingEnvironment(config=cfg, data_manager=dm, logger=log)
 
-    # Initialize environment for symbol
     symbol = cfg.data.symbol
     start_date = cfg.data.start_date
     end_date = cfg.data.end_date
 
-    env.initialize(symbol, mode= TrainingMode.BACKTESTING, start_time=start_date, end_time=end_date)
+    env.setup_session(symbol, mode= TrainingMode.BACKTESTING, start_time=start_date, end_time=end_date)
 
 
     # Select device based on config or auto-detect

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from config.config import FeatureConfig, ModelConfig
+from config.config import  ModelConfig
 
 
 class FeatureExtractor:
@@ -234,7 +234,7 @@ class FeatureExtractor:
             self.logger.error(f"Error in update_daily_levels: {e}", exc_info=True)
 
     # feature/feature_extractor.py - Fixed version
-    def extract_features(self, market_state: Dict[str, Any], portfolio_state: Dict[str, Any]) -> Optional[
+    def extract_features(self, market_state, portfolio_state ) -> Optional[
         Dict[str, Any]]:
         """
         Extract features from market state and return model input dictionary.
@@ -332,10 +332,10 @@ class FeatureExtractor:
                     self.latest_static_features is not None):
                 model_input = {
                     'timestamp': current_ts,  # Keep 'timestamp' in output dict for model interface consistency
-                    'static_features': self.latest_static_features,
-                    'hf_features': np.array(list(self.hf_history), dtype=np.float32),
-                    'mf_features': np.array(list(self.mf_history), dtype=np.float32),
-                    'lf_features': np.array(list(self.lf_history), dtype=np.float32),
+                    'static': self.latest_static_features,
+                    'hf': np.array(list(self.hf_history), dtype=np.float32),
+                    'mf': np.array(list(self.mf_history), dtype=np.float32),
+                    'lf': np.array(list(self.lf_history), dtype=np.float32),
                 }
                 return model_input
             else:
@@ -371,20 +371,20 @@ class FeatureExtractor:
             normalized['timestamp'] = features['timestamp']
 
         # Normalize static features - these might just be one value per sample
-        if 'static_features' in features and features['static_features'] is not None:
-            static_feat = features['static_features']
+        if 'static' in features and features['static'] is not None:
+            static_feat = features['static']
             # For one-hot encoded features, don't normalize
             is_binary = np.all(np.logical_or(np.isclose(static_feat, 0), np.isclose(static_feat, 1)))
             if is_binary:
-                normalized['static_features'] = static_feat
+                normalized['static'] = static_feat
             else:
                 # For other features, standard normalization
                 mean = np.nanmean(static_feat)
                 std = np.nanstd(static_feat) + 1e-8
-                normalized['static_features'] = (static_feat - mean) / std
+                normalized['static'] = (static_feat - mean) / std
 
         # Handle sequence features (hf, mf, lf)
-        for key in ['hf_features', 'mf_features', 'lf_features']:
+        for key in ['hf', 'mf', 'lf']:
             if key in features and features[key] is not None:
                 seq_feat = features[key]
 

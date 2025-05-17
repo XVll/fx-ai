@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import numpy as np
 
+from config.config import ExecutionConfig
 from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import OrderTypeEnum, OrderSideEnum, FillDetails
 
@@ -10,7 +11,7 @@ from simulators.portfolio_simulator import OrderTypeEnum, OrderSideEnum, FillDet
 class ExecutionSimulator:
     def __init__(self,
                  logger: logging.Logger,
-                 config_exec: Dict[str, Any],
+                 config_exec: ExecutionConfig,
                  np_random: np.random.Generator,
                  market_simulator: MarketSimulator):
         self.logger = logger
