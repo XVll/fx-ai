@@ -3,20 +3,43 @@ from dataclasses import dataclass, field
 from typing import Any, List, Optional, Dict
 from hydra.core.config_store import ConfigStore
 
+"""
+  'env': {
+    'tradable_assets': ['AAPL'],
+    'max_steps_per_episode': 2000,  # Example
+    'render_mode': 'logs',  # 'human', 'logs', or 'none'
+    'min_trade_quantity': 0.001,  # Example
+    'bankruptcy_threshold_factor': 0.1,  # Example
+    'max_loss_percentage_session': 0.2  # Example: Max 20% loss of initial capital
+  },
+  'simulation': {
+    'portfolio_config': {
+    },
+  },
+  'model': {  # For Observation Space and Portfolio Features
+    'portfolio_feature_lookback': 5,
+    'portfolio_feature_dim': 3,  # e.g. norm_pos_size, norm_unreal_pnl, norm_cash_pct
+    'hf_feat_dim': 8, 'hf_seq_len': 60,  # Example high-frequency features
+    'mf_feat_dim': 6, 'mf_seq_len': 30,  # Example mid-frequency features
+    'lf_feat_dim': 4, 'lf_seq_len': 10,  # Example low-frequency features
+    'static_feat_dim': 2  # Example static features
+  }
+}
+"""
 
 @dataclass
 class RewardConfig:
-    type: str = "momentum"
-    scaling: float = 2.0
-    trade_penalty: float = 0.1
-    hold_penalty: float = 0.0
-    early_exit_bonus: float = 0.5
-    flush_prediction_bonus: float = 2.0
+    weight_equity_change: float = 1.0 # Primary weight for PnL
+    weight_realized_pnl: float = 0.1 # Small bonus for realized PnL
+    penalty_transaction_fill: float = 0.005 # Small penalty per fill to discourage excessive noise trades
+    penalty_holding_inaction: float = 0.0001 # Tiny penalty for doing nothing while holding a position
+    penalty_drawdown_step: float = 0.2 # If equity drops in a step, penalize 20% of that drop amount
+    penalty_invalid_action: float = 0.05 # Penalty if the environment flags the action as invalid
+    terminal_penalty_bankruptcy: float = 20.0 # Large penalty normalized to potential reward scale
+    terminal_penalty_max_loss: float = 10.0 # Penalty normalized to potential reward scale
+    reward_scaling_factor: float = 0.01 # Example: if PnL is in dollars, scale down for typical RL reward ranges
+    log_reward_components: bool = True # For debugging
 
-    momentum_threshold: float = 0.5
-    volume_surge_threshold: float = 5.0
-    tape_speed_threshold: float = 3.0
-    tape_imbalance_threshold: float = 0.7
 
 
 @dataclass
@@ -26,6 +49,8 @@ class EnvConfig:
     normalize_state: bool = True  # Should feature vectors be normalized?
     random_reset: bool = True  # Should the environment be reset randomly?
     max_position: float = 1.0  # Maximum position size
+    render_mode: str = "human"  # Rendering mode (none, human, rgb_array)
+    position_multipliers: List[float] = field(default_factory=lambda: [0.25, 0.5, 0.75, 1.0])
     reward: RewardConfig = field(default_factory=RewardConfig)
 
 
@@ -39,6 +64,8 @@ class ModelConfig:
     lf_seq_len: int = 30
     lf_feat_dim: int = 10
     static_feat_dim: int = 15
+    portfolio_feat_dim: int = 5
+    portfolio_seq_len: int = 5
 
     # Model dimensions
     d_model: int = 64
@@ -139,37 +166,33 @@ class CallbacksConfig:
 
 
 @dataclass
-class FeatureConfig:
-    hf_seq_len: int = 60
-    hf_feat_dim: int = 20
-    mf_seq_len: int = 30
-    mf_feat_dim: int = 15
-    lf_seq_len: int = 30
-    lf_feat_dim: int = 10
-    static_feat_dim: int = 15
-    use_volume_profile: bool = True
-    use_tape_features: bool = True
-    use_level2_features: bool = True
-
-
-@dataclass
 class MarketConfig:
     slippage_factor: float = 0.001
 
-
 @dataclass
 class ExecutionConfig:
-    commission_per_share: float = 0.0
+    allow_shorting: bool = False # Allow shorting positions
+    mean_latency_ms: float = 250.0 # Average latency in milliseconds
+    latency_std_dev_ms: float = 10.0 # Standard deviation of latency in milliseconds ????????
 
+    base_slippage_bps: float = 1.5 # Base slippage in basis points
+    size_impact_slippage_bps_per_unit: float = 0.03 # Slippage per unit of size in basis points
+    max_total_slippage_bps: float = 50.0 # Maximum total slippage in basis points
+
+    commission_per_share: float = 0.0007 # Commission per share in dollars
+    fee_per_share: float = 0.003 # Fee per share in dollars
+    min_commission_per_order: Optional[float] = 0.1 # Minimum commission per order in dollars
+    max_commission_pct_of_value: Optional[float] = None # Maximum commission as a percentage of trade value
 
 @dataclass
 class PortfolioConfig:
     initial_cash: float = 100000.0
+    max_position_value_ratio:float= 2.0,  # Example: Up to 2x leverage on equity
+    max_position_holding_seconds : int = 300
 
 
 @dataclass
 class SimulationConfig:
-    feature_config: FeatureConfig = field(default_factory=FeatureConfig)
     market_config: MarketConfig = field(default_factory=MarketConfig)
     execution_config: ExecutionConfig = field(default_factory=ExecutionConfig)
     portfolio_config: PortfolioConfig = field(default_factory=PortfolioConfig)
