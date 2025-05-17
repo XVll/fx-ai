@@ -114,7 +114,7 @@ class PortfolioManager:
         self.current_unrealized_pnl: float = 0.0
         self.trade_id_counter: int = 0
 
-        self.reset(datetime.now(timezone.utc))  # Initialize with default values
+        self.reset(datetime.now(timezone.utc))  # Initialize with default.yaml values
 
     def _generate_trade_id(self) -> str:
         self.trade_id_counter += 1

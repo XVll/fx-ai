@@ -58,11 +58,11 @@ def main():
         api = wandb.Api()
         entity = os.environ.get('WANDB_ENTITY') or api.default_entity
         if not entity: # Fallback if API default_entity is also None
-            # Attempt to parse from a previous run or use a known default
+            # Attempt to parse from a previous run or use a known default.yaml
             # For this example, assuming 'onur03-fx' if not found.
             # You might need to set WANDB_ENTITY environment variable
             # or login to wandb CLI for api.default_entity to work reliably.
-            print("Warning: WANDB_ENTITY not found. Trying to use a default or parsed value.")
+            print("Warning: WANDB_ENTITY not found. Trying to use a default.yaml or parsed value.")
             # A common pattern is that the project implies the entity.
             # If args.project is "username/projectname", then entity is "username"
             if '/' in args.project:
@@ -72,7 +72,7 @@ def main():
                 print(f"Falling back to entity: {entity}. Please set WANDB_ENTITY if this is incorrect.")
 
     except wandb.errors.CommError as e:
-        print(f"Error communicating with W&B API to get default entity: {e}")
+        print(f"Error communicating with W&B API to get default.yaml entity: {e}")
         print("Please ensure you are logged in to W&B ('wandb login'). Using 'onur03-fx' as a fallback entity.")
         entity = "onur03-fx" # Fallback entity
 

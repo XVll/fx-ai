@@ -28,7 +28,7 @@ class DabentoLiveSimProvider(LiveDataProvider):
         self.historical_provider = historical_provider
         self.replay_speed = replay_speed
 
-        # Set default start time if not provided
+        # Set default.yaml start time if not provided
         if start_time is None:
             self.start_time = datetime.now() - timedelta(hours=1)
         else:

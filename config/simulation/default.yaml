@@ -1,0 +1,7 @@
+market_config:
+  test: 1
+
+portfolio_config:
+  initial_cash: 100000.0
+  max_position_value_ratio: 2.0
+  max_position_holding_seconds: 300

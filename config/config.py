@@ -5,31 +5,25 @@ from typing import Any, List, Optional, Dict
 from hydra.core.config_store import ConfigStore
 
 
-class TrainingMode(Enum):
-    BACKTESTING = "backtesting"
-    LIVE = "live"
 
-    def __str__(self):
-        return self.value
 
 @dataclass
 class RewardConfig:
-    weight_equity_change: float = 1.0 # Primary weight for PnL
-    weight_realized_pnl: float = 0.1 # Small bonus for realized PnL
-    penalty_transaction_fill: float = 0.005 # Small penalty per fill to discourage excessive noise trades
-    penalty_holding_inaction: float = 0.0001 # Tiny penalty for doing nothing while holding a position
-    penalty_drawdown_step: float = 0.2 # If equity drops in a step, penalize 20% of that drop amount
-    penalty_invalid_action: float = 0.05 # Penalty if the environment flags the action as invalid
-    terminal_penalty_bankruptcy: float = 20.0 # Large penalty normalized to potential reward scale
-    terminal_penalty_max_loss: float = 10.0 # Penalty normalized to potential reward scale
-    reward_scaling_factor: float = 0.01 # Example: if PnL is in dollars, scale down for typical RL reward ranges
-    log_reward_components: bool = True # For debugging
-
+    weight_equity_change: float = 1.0  # Primary weight for PnL
+    weight_realized_pnl: float = 0.1  # Small bonus for realized PnL
+    penalty_transaction_fill: float = 0.005  # Small penalty per fill to discourage excessive noise trades
+    penalty_holding_inaction: float = 0.0001  # Tiny penalty for doing nothing while holding a position
+    penalty_drawdown_step: float = 0.2  # If equity drops in a step, penalize 20% of that drop amount
+    penalty_invalid_action: float = 0.05  # Penalty if the environment flags the action as invalid
+    terminal_penalty_bankruptcy: float = 20.0  # Large penalty normalized to potential reward scale
+    terminal_penalty_max_loss: float = 10.0  # Penalty normalized to potential reward scale
+    reward_scaling_factor: float = 0.01  # Example: if PnL is in dollars, scale down for typical RL reward ranges
+    log_reward_components: bool = True  # For debugging
 
 
 @dataclass
 class EnvConfig:
-    training_mode:TrainingMode = TrainingMode.BACKTESTING  # Training mode (training, validation, testing)
+    training_mode: str= "backtesting"  # Training mode (training, validation, testing)
     render_interval: int = 10  # Interval for rendering (in steps)
     max_episode_loss_percent: float = 0.5  # Maximum loss percentage per episode
     bankruptcy_threshold_factor: float = 0.5  # Bankruptcy threshold as a factor of initial capital
@@ -124,8 +118,8 @@ class WandbConfig:
 @dataclass
 class DataConfig:
     provider_type: str = "file"
-    data_dir: str = "./data"
-    symbol_info_file: Optional[str] = None
+    data_dir: str = "./dnb/mlgo"
+    symbol_info_file: str = "symbols.json"
     symbol: str = "MLGO"
     start_date: str = "2025-03-27"
     end_date: str = "2025-03-27"
@@ -153,6 +147,7 @@ class EarlyStoppingConfig:
 class CallbacksConfig:
     save_freq: int = 5
     log_freq: int = 10
+    save_best_only: bool = False  # If true, only save models that improve mean reward
     early_stopping: EarlyStoppingConfig = field(default_factory=EarlyStoppingConfig)
 
 
@@ -160,26 +155,28 @@ class CallbacksConfig:
 class MarketConfig:
     slippage_factor: float = 0.001
 
+
 @dataclass
 class ExecutionConfig:
-    allow_shorting: bool = False # Allow shorting positions
-    mean_latency_ms: float = 250.0 # Average latency in milliseconds
-    latency_std_dev_ms: float = 10.0 # Standard deviation of latency in milliseconds ????????
+    allow_shorting: bool = False  # Allow shorting positions
+    mean_latency_ms: float = 250.0  # Average latency in milliseconds
+    latency_std_dev_ms: float = 10.0  # Standard deviation of latency in milliseconds ????????
 
-    base_slippage_bps: float = 1.5 # Base slippage in basis points
-    size_impact_slippage_bps_per_unit: float = 0.03 # Slippage per unit of size in basis points
-    max_total_slippage_bps: float = 50.0 # Maximum total slippage in basis points
+    base_slippage_bps: float = 1.5  # Base slippage in basis points
+    size_impact_slippage_bps_per_unit: float = 0.03  # Slippage per unit of size in basis points
+    max_total_slippage_bps: float = 50.0  # Maximum total slippage in basis points
 
-    commission_per_share: float = 0.0007 # Commission per share in dollars
-    fee_per_share: float = 0.003 # Fee per share in dollars
-    min_commission_per_order: Optional[float] = 0.1 # Minimum commission per order in dollars
-    max_commission_pct_of_value: Optional[float] = None # Maximum commission as a percentage of trade value
+    commission_per_share: float = 0.0007  # Commission per share in dollars
+    fee_per_share: float = 0.003  # Fee per share in dollars
+    min_commission_per_order: Optional[float] = 0.1  # Minimum commission per order in dollars
+    max_commission_pct_of_value: Optional[float] = None  # Maximum commission as a percentage of trade value
+
 
 @dataclass
 class PortfolioConfig:
     initial_cash: float = 100000.0
-    max_position_value_ratio:float= 2.0,  # Example: Up to 2x leverage on equity
-    max_position_holding_seconds : int = 300
+    max_position_value_ratio: float = 2.0,  # Example: Up to 2x leverage on equity
+    max_position_holding_seconds: int = 300
 
 
 @dataclass
@@ -213,7 +210,8 @@ cs.store(name="model/transformer", node=ModelConfig)
 cs.store(name="env/trading", node=EnvConfig)
 cs.store(name="training/ppo", node=TrainingConfig)
 cs.store(name="data/databento", node=DataConfig)
-cs.store(name="wandb/default", node=WandbConfig)
+cs.store(name="wandb/default.yaml", node=WandbConfig)
+cs.store(name="simulation/default.yaml", node=SimulationConfig)
 
 # Export the Config class and all config components for direct import
 __all__ = ['Config', 'EnvConfig', 'ModelConfig', 'TrainingConfig', 'DataConfig',

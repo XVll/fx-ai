@@ -1,6 +1,6 @@
 # Trading strategy parameters for momentum trading
 defaults:
-  - /model@_here_: default
+  - /model@_here_: default.yaml
 
 # Model adjustments for momentum strategy
 d_model: 96
