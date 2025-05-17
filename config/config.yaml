@@ -4,7 +4,7 @@ defaults:
   - env: trading  # Environment configuration
   - data: databento  # Data source configuration
   - training: ppo  # PPO algorithm parameters
-  - wandb: default  # Weights & Biases integration
+  - wandb: default.yaml  # Weights & Biases integration
   - _self_
 
 hydra:

@@ -34,11 +34,11 @@ class FeatureExtractor:
         Args:
             symbol (str): The stock symbol.
             config (Optional[Dict]): Configuration dictionary. Expected keys:
-                'hf_lookback_length': int (default 60)
-                'mf_lookback_length': int (default 30)
-                'lf_lookback_length': int (default 30)
-                'sr_num_levels': int (default 5) - for S/R detection
-                'long_term_sr_days': int (default 252) - for long-term S/R levels
+                'hf_lookback_length': int (default.yaml 60)
+                'mf_lookback_length': int (default.yaml 30)
+                'lf_lookback_length': int (default.yaml 30)
+                'sr_num_levels': int (default.yaml 5) - for S/R detection
+                'long_term_sr_days': int (default.yaml 252) - for long-term S/R levels
             logger (Optional[logging.Logger]): Logger instance.
         """
         self.symbol = symbol

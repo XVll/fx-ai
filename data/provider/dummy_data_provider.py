@@ -24,7 +24,7 @@ class DummyDataProvider(HistoricalDataProvider):
         self.config = config or {}
 
         # Configure data generation (minimal defaults)
-        self.debug_window_mins = self.config.get('debug_window_mins', 30)  # Just 30 mins of data by default
+        self.debug_window_mins = self.config.get('debug_window_mins', 30)  # Just 30 mins of data by default.yaml
         self.price_range = self.config.get('price_range', (5.0, 10.0))  # Narrower range
         self.volatility = self.config.get('volatility', 0.02)
         self.random_seed = self.config.get('random_seed', 42)

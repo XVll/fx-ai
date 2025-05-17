@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import bisect
 
-from config.config import MarketConfig, TrainingMode
+from config.config import MarketConfig
 from data.data_manager import DataManager
 
 DEFAULT_MARKET_HOURS = {
@@ -39,7 +39,7 @@ class MarketSimulator:
                  symbol: str,
                  data_manager: DataManager,
                  config: MarketConfig,
-                 mode: TrainingMode = TrainingMode.BACKTESTING,
+                 mode: str= "backtesting",
                  start_time: Optional[str | datetime] = None,
                  end_time: Optional[str | datetime] = None,
                  logger: Optional[logging.Logger] = None):
@@ -611,7 +611,7 @@ class MarketSimulator:
         return state
 
     def _calculate_default_state(self, timestamp):
-        """Create a default state when no data is available."""
+        """Create a default.yaml state when no data is available."""
         return {
             'timestamp_utc': timestamp,
             'current_market_session': self._determine_market_session(timestamp),
