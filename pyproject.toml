@@ -8,6 +8,7 @@ package-mode = false
 
 [tool.poe.tasks]
 train = "python main.py wandb.enabled=true"
+test = "python -m unittest tests.test_portfolio_simulator"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"

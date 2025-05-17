@@ -2,6 +2,7 @@
 import logging
 from collections import deque
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Set
 from zoneinfo import ZoneInfo
 import numpy as np
@@ -10,7 +11,6 @@ import bisect
 
 from config.config import MarketConfig
 from data.data_manager import DataManager
-from envs.trading_env import TrainingMode
 
 DEFAULT_MARKET_HOURS = {
     "PREMARKET_START": "04:00:00",
@@ -21,6 +21,13 @@ DEFAULT_MARKET_HOURS = {
     "POSTMARKET_END": "20:00:00",
     "TIMEZONE": "America/New_York"
 }
+
+class TrainingMode(Enum):
+    BACKTESTING = "backtesting"
+    LIVE = "live"
+
+    def __str__(self):
+        return self.value
 
 
 class MarketSimulator:
@@ -37,7 +44,6 @@ class MarketSimulator:
     def __init__(self,
                  symbol: str,
                  data_manager: DataManager,
-                 rng: np.random.Generator,
                  config: MarketConfig,
                  mode: TrainingMode = TrainingMode.BACKTESTING,
                  start_time: Optional[str | datetime] = None,
@@ -579,8 +585,8 @@ class MarketSimulator:
         """
         # Get current price
         current_price = None
-        if current_1s_bar:
-            current_price = current_1s_bar.get('close')
+        if current_1s_bar: current_price = current_1s_bar.get('close')
+        best_bid_price, best_ask_price, best_bid_size, best_ask_size = self._get_bbo_and_sizes_from_quotes(rolling_1s_data[-1]['quotes'])
 
         # Create the complete state dictionary
         state = {
@@ -588,6 +594,10 @@ class MarketSimulator:
             'current_market_session': market_session,
             'current_time': timestamp,  # Redundant but kept for backward compatibility
             'current_price': current_price,
+            'best_bid_price': best_bid_price,
+            'best_ask_price': best_ask_price,
+            'best_bid_size': best_bid_size,
+            'best_ask_size': best_ask_size,
 
             'intraday_high': day_high,
             'intraday_low': day_low,
@@ -613,6 +623,10 @@ class MarketSimulator:
             'current_market_session': self._determine_market_session(timestamp),
             'current_time': timestamp,
             'current_price': None,
+            'best_bid_price': None,
+            'best_ask_price': None,
+            'best_bid_size': None,
+            'best_ask_size': None,
 
             'intraday_high': None,
             'intraday_low': None,
@@ -776,6 +790,43 @@ class MarketSimulator:
         # Return the current market state
         return self.get_current_market_state()
 
+    def _get_bbo_and_sizes_from_quotes(self, current_second_quotes: List[Dict[str, Any]]) -> Tuple[Optional[float], Optional[float], int, int]:
+        """
+        Helper function to calculate Best Bid & Offer (BBO) and their sizes from a list of quotes.
+        """
+        best_bid_price = None
+        best_ask_price = None
+        best_bid_size = 0
+        best_ask_size = 0
+
+        if not current_second_quotes:
+            return best_bid_price, best_ask_price, best_bid_size, best_ask_size
+
+        current_bids = {}  # price: total_size
+        current_asks = {}  # price: total_size
+
+        for quote in current_second_quotes:
+            price = quote.get('price')
+            size = quote.get('size', 0)  # Default to 0 if size is missing for some reason
+            side = quote.get('side')  # Assuming 'side' is 'bid' or 'ask'
+
+            if price is None or side is None:
+                continue  # Skip malformed quotes
+
+            if side == 'bid':
+                current_bids[price] = current_bids.get(price, 0) + size
+            elif side == 'ask':
+                current_asks[price] = current_asks.get(price, 0) + size
+
+        if current_bids:
+            best_bid_price = max(current_bids.keys())
+            best_bid_size = int(current_bids[best_bid_price])  # Ensure size is int if it comes as float
+
+        if current_asks:
+            best_ask_price = min(current_asks.keys())
+            best_ask_size = int(current_asks[best_ask_price])  # Ensure size is int
+
+        return best_bid_price, best_ask_price, best_bid_size, best_ask_size
     def close(self):
         """Close the simulator and release resources."""
         self.logger.info("Closing MarketSimulator")

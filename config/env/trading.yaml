@@ -8,6 +8,8 @@ max_steps: 500
 normalize_state: true
 random_reset: true
 max_position: 1.0
+render_mode: "human"
+position_multipliers: [0.25, 0.5, 0.75, 1.0]
 
 # Reward configuration
 reward:
@@ -23,3 +25,7 @@ reward:
   volume_surge_threshold: 5.0
   tape_speed_threshold: 3.0
   tape_imbalance_threshold: 0.7
+
+
+
+
