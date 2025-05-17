@@ -1,4 +1,3 @@
-
 # config/env/trading.yaml
 # Environment configuration for momentum trading
 
@@ -9,7 +8,12 @@ normalize_state: true
 random_reset: true
 max_position: 1.0
 render_mode: "human"
-position_multipliers: [0.25, 0.5, 0.75, 1.0]
+position_multipliers: [ 0.25, 0.5, 0.75, 1.0 ]
+max_episode_loss_percent: 0.5
+bankruptcy_threshold_factor: 0.5
+max_invalid_actions_per_episode: 20
+training_mode: backtesting
+
 
 # Reward configuration
 reward:

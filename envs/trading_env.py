@@ -13,7 +13,7 @@ from data.data_manager import DataManager
 from envs.reward import RewardCalculator  # Ensure this imports types correctly
 from feature.feature_extractor import FeatureExtractor
 from simulators.execution_simulator import ExecutionSimulator
-from simulators.market_simulator import MarketSimulator, TrainingMode
+from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import (
     PortfolioManager, PortfolioState, OrderTypeEnum, OrderSideEnum,
     PositionSideEnum, FillDetails
@@ -140,8 +140,8 @@ class TradingEnvironment(gym.Env):
         self.market_simulator = MarketSimulator(
             symbol=self.primary_asset,
             data_manager=self.data_manager,
-            config=self.config,
-            mode=TrainingMode(self.config.env.training_mode),
+            config=self.config.simulation.market_config,
+            mode=self.config.env.training_mode,
             start_time=self.current_session_start_time_utc,
             end_time=self.current_session_end_time_utc,
             logger=self.logger.getChild("MarketSim")

@@ -8,6 +8,8 @@ mf_seq_len: 30
 mf_feat_dim: 15
 lf_seq_len: 30
 lf_feat_dim: 10
+portfolio_seq_len: 5
+portfolio_feat_dim: 5
 static_feat_dim: 15
 
 # Model dimensions
