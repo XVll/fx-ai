@@ -235,6 +235,9 @@ class TradingEnv(gym.Env):
         self.current_step = 0
 
         # Get initial state
+        # Todo : Check if the 1st tick obs is ready after resetting everything.
+        # Todo : If we start at tick 3000, this should be returning (3000 - lookback window)
+        # Todo : We should handle starting at pre-market 4:00 AM, at that point market wont have any previous data
         self.obs = self._get_observation()
 
         print(f"Resetting environment should we keep this.: {self.obs}")
