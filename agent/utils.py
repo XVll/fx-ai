@@ -1,245 +1,211 @@
-# training/utils.py
+# agent/utils.py
 import numpy as np
 import torch
-from typing import Dict, List, Tuple, Any
-import os
+from typing import Dict, List, Any, Optional
+import logging
+
+# Configure a logger for this module (optional, but good practice)
+logger = logging.getLogger(__name__)
 
 
 class ReplayBuffer:
     """
-    Replay buffer for PPO training, storing transitions and episode information.
+    Replay buffer for PPO, storing transitions.
+    It converts NumPy arrays from the environment to PyTorch tensors for storage.
     """
 
     def __init__(self, capacity: int, device: torch.device):
         self.capacity = capacity
         self.device = device
-        self.clear()
+        self.buffer: List[Dict[str, Any]] = []
+        self.position: int = 0  # Current position to insert new experience
 
-    # In agent/utils.py - ReplayBuffer class
-    def add(self, state: Dict[str, torch.Tensor], action: torch.Tensor,
-            reward: float, next_state: Dict[str, torch.Tensor],
-            done: bool, action_info: Dict[str, torch.Tensor]) -> None:
+        # These will be populated when prepare_data_for_training is called
+        self.states: Optional[Dict[str, torch.Tensor]] = None
+        self.actions: Optional[torch.Tensor] = None
+        self.log_probs: Optional[torch.Tensor] = None
+        self.values: Optional[torch.Tensor] = None
+        self.rewards: Optional[torch.Tensor] = None
+        self.dones: Optional[torch.Tensor] = None
+        self.advantages: Optional[torch.Tensor] = None
+        self.returns: Optional[torch.Tensor] = None
+        logger.info(f"ReplayBuffer initialized with capacity {self.capacity} on device {self.device}")
+
+    def _process_state_dict(self, state_dict_np: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
+        """Converts a dictionary of NumPy arrays to a dictionary of PyTorch tensors."""
+        processed_tensors = {}
+        for key, array_val in state_dict_np.items():
+            # Ensure the numpy array is not an object array if it contains numerical data
+            if array_val.dtype == np.object_:
+                try:
+                    array_val = np.stack(array_val.tolist())  # For safety if it's a list of arrays
+                except Exception as e:
+                    logger.error(f"Could not stack object array for key {key}: {e}. Array: {array_val}")
+                    # Fallback: try to convert as is, or handle error more gracefully
+                    pass
+
+            # Convert to float32 tensor, assuming numerical data
+            # The environment should already provide states with a batch-like dimension of 1
+            # e.g., (1, seq_len, feat_dim) or (1, feat_dim)
+            try:
+                tensor_val = torch.from_numpy(array_val).float().to(self.device)
+                processed_tensors[key] = tensor_val
+            except TypeError as e:
+                logger.error(f"TypeError converting key '{key}' to tensor: {e}. Value: {array_val}, Dtype: {array_val.dtype}")
+                # Handle or re-raise depending on how critical this is
+                raise
+        return processed_tensors
+
+    def add(self,
+            state_np: Dict[str, np.ndarray],
+            action: torch.Tensor,  # Assuming action from a model is already a tensor
+            reward: float,
+            next_state_np: Dict[str, np.ndarray],
+            done: bool,
+            action_info: Dict[str, torch.Tensor]):  # Contains 'value' and 'log_prob' as tensors
         """
-        Add a transition to the buffer with improved log probability handling.
+        Add a transition to the buffer.
+        State and next_state are expected as Dict[str, np.ndarray] from the environment.
+        Action, value, and log_prob are expected as PyTorch tensors from the model/agent.
         """
-        # Convert scalar to tensor
-        reward_tensor = torch.tensor([reward], dtype=torch.float32, device=self.device)
-        done_tensor = torch.tensor([done], dtype=torch.bool, device=self.device)
+        if len(self.buffer) < self.capacity:
+            self.buffer.append({})  # Add a new slot if capacity not reached
 
-        state_tensors = {}
-        for k, v in state.items():
-            if isinstance(v, np.ndarray):
-                # Add batch dimension if missing
-                if len(v.shape) == 1 and k == 'static_features':
-                    v = v[np.newaxis, :]
-                elif len(v.shape) == 2 and k in ['hf_features', 'mf_features', 'lf_features']:
-                    v = v[np.newaxis, :, :]
-                state_tensors[k] = torch.FloatTensor(v).to(self.device)
-            elif isinstance(v, torch.Tensor):
-                state_tensors[k] = v.to(self.device)
+        # Store raw NumPy states for now, convert to a batch of tensors later
+        # Or convert on the fly if memory is not an issue, and for type consistency in buffer dicts
+        # Let's convert on the fly to simplify prepare_data_for_training
 
-        # Initialize state dictionary on first call
-        if not self.states:
-            self.states = {k: [] for k in state_tensors.keys()}
+        experience = {
+            'state': self._process_state_dict(state_np),
+            'action': action.detach().to(self.device),  # Ensure on a correct device and detached
+            'reward': torch.tensor([reward], dtype=torch.float32, device=self.device),
+            'next_state': self._process_state_dict(next_state_np),
+            'done': torch.tensor([done], dtype=torch.bool, device=self.device),
+            'value': action_info['value'].detach().to(self.device),
+            'log_prob': action_info['log_prob'].detach().to(self.device)
+        }
 
-        # Add to buffers
-        for k, v in state_tensors.items():
-            self.states[k].append(v)
+        self.buffer[self.position] = experience
+        self.position = (self.position + 1) % self.capacity
 
-        # Add to buffers
-        for k, v in state.items():
-            self.states[k].append(v)
-
-        self.actions.append(action)
-        self.rewards.append(reward_tensor)
-        self.dones.append(done_tensor)
-
-        # Extract value
-        if 'value' in action_info:
-            self.values.append(action_info['value'])
-
-        # Extract log probability directly if available
-        if 'log_prob' in action_info:
-            self.log_probs.append(action_info['log_prob'])
-        else:
-            # Fallback calculations if log_prob not provided directly
-            if 'mean' in action_info and 'log_std' in action_info:
-                # For continuous actions
-                mean = action_info['mean']
-                log_std = action_info['log_std']
-                std = torch.exp(log_std)
-
-                # Compute log_prob of the action
-                normal_dist = torch.distributions.Normal(mean, std)
-                # Assuming actions are squashed with tanh
-                action_unsquashed = torch.atanh(torch.clamp(action, -0.999, 0.999))
-                log_prob = normal_dist.log_prob(action_unsquashed).sum(1, keepdim=True)
-                self.log_probs.append(log_prob)
-            elif 'logits' in action_info:
-                # For discrete actions
-                logits = action_info['logits']
-                dist = torch.distributions.Categorical(logits=logits)
-                log_prob = dist.log_prob(action.squeeze()).unsqueeze(1)
-                self.log_probs.append(log_prob)
-            elif len(action.shape) > 1 and action.shape[1] == 2:
-                # For tuple actions, warn but create dummy
-                self.logger.warning("Creating dummy log_prob for tuple action without distribution parameters")
-                dummy_log_prob = torch.zeros((action.shape[0], 1), device=self.device)
-                self.log_probs.append(dummy_log_prob)
-
-    def prepare_data(self) -> None:
+    def prepare_data_for_training(self) -> None:
         """
-        Prepare data for training by converting lists to tensors.
+        Converts the list of experiences into batched tensors for training.
+        This should be called when the buffer is full or a rollout is complete.
         """
-        # States - dictionary of tensors
-        self.states = {k: torch.cat(v, dim=0) for k, v in self.states.items()}
+        if not self.buffer:
+            logger.warning("Buffer is empty, cannot prepare data for training.")
+            return
 
-        # Actions, rewards, etc.
-        self.actions = torch.cat(self.actions, dim=0)
-        self.rewards = torch.cat(self.rewards, dim=0)
-        self.dones = torch.cat(self.dones, dim=0)
+        # Initialize lists for each component
+        all_states_components: Dict[str, List[torch.Tensor]] = {
+            key: [] for key in self.buffer[0]['state'].keys()
+        }
+        all_actions: List[torch.Tensor] = []
+        all_log_probs: List[torch.Tensor] = []
+        all_values: List[torch.Tensor] = []
+        all_rewards: List[torch.Tensor] = []
+        all_dones: List[torch.Tensor] = []
 
-        # Add safety checks for potentially empty lists
-        if self.values:
-            self.values = torch.cat(self.values, dim=0)
-        else:
-            # Create empty values tensor with matching batch size
-            self.values = torch.zeros_like(self.rewards)
+        for exp in self.buffer:
+            for key, tensor_val in exp['state'].items():
+                all_states_components[key].append(tensor_val)
+            all_actions.append(exp['action'])
+            all_log_probs.append(exp['log_prob'])
+            all_values.append(exp['value'])
+            all_rewards.append(exp['reward'])
+            all_dones.append(exp['done'])
 
-        if self.log_probs:
-            self.log_probs = torch.cat(self.log_probs, dim=0)
-        else:
-            # Create empty log_probs tensor with matching batch size
-            self.log_probs = torch.zeros_like(self.rewards)
+        # Batch all components
+        self.states = {
+            key: torch.cat(tensors_list, dim=0)
+            for key, tensors_list in all_states_components.items()
+        }
+        self.actions = torch.cat(all_actions, dim=0)
+        self.log_probs = torch.cat(all_log_probs, dim=0)
+        self.values = torch.cat(all_values, dim=0)
+        self.rewards = torch.cat(all_rewards, dim=0)
+        self.dones = torch.cat(all_dones, dim=0)
 
-    def get_size(self) -> int:
-        """Get current size of buffer."""
-        return len(self.rewards)
-
-    def clear(self) -> None:
-        """Clear the buffer."""
-        self.states = {}
-        self.actions = []
-        self.rewards = []
-        self.dones = []
-        self.values = []
-        self.log_probs = []
-
-        # Will be computed during training
+        # The PPO agent will compute advantages and returns after this step
         self.advantages = None
         self.returns = None
+        logger.info(f"Buffer data prepared for training. Buffer size: {len(self.buffer)}")
 
-    def is_ready(self) -> bool:
-        """Check if buffer is ready for training."""
-        return self.get_size() > 0
+    def get_training_data(self) -> Optional[Dict[str, Any]]:
+        """Returns all necessary data for a PPO update epoch if prepared."""
+        if self.states is None or self.actions is None or self.log_probs is None or \
+                self.rewards is None or self.dones is None or self.values is None or \
+                self.advantages is None or self.returns is None:  # Check if advantages and returns are computed
+            logger.error("Training data not fully prepared (states, actions, log_probs, "
+                         "rewards, dones, values, advantages, or returns are None). "
+                         "Call prepare_data_for_training() and then compute_advantages() first.")
+            return None
+
+        return {
+            "states": self.states,
+            "actions": self.actions,
+            "old_log_probs": self.log_probs,
+            "advantages": self.advantages,
+            "returns": self.returns,
+            "values": self.values  # For KL divergence calculation or other diagnostics if needed
+        }
+
+    def get_size(self) -> int:
+        """Get the current number of experiences in the buffer."""
+        return len(self.buffer)
+
+    def clear(self) -> None:
+        """Clear the buffer and reset related tensors."""
+        self.buffer.clear()
+        self.position = 0
+        self.states = None
+        self.actions = None
+        self.log_probs = None
+        self.values = None
+        self.rewards = None
+        self.dones = None
+        self.advantages = None
+        self.returns = None
+        logger.info("ReplayBuffer cleared.")
+
+    def is_ready_for_training(self) -> bool:
+        """Checks if the buffer has enough samples (e.g., is full or met a threshold)."""
+        # This can be customized, e.g., return len(self.buffer) == self.capacity
+        # For PPO, typically we collect a fixed number of steps/episodes, then train.
+        return len(self.buffer) > 0  # A basic check, trainer will decide when to train
 
 
-def normalize_state_dict(state_dict: Dict[str, torch.Tensor],
-                         running_stats: Dict[str, Dict[str, torch.Tensor]] = None,
-                         update_stats: bool = False) -> Tuple[
-    Dict[str, torch.Tensor], Dict[str, Dict[str, torch.Tensor]]]:
+# Optional: State normalization utility (if needed globally)
+# If normalization is part of the environment or feature extractor, this might not be needed here.
+# The original `normalize_state_dict` and `preprocess_state_to_dict` are not directly
+# used if the environment already returns Dict[str, np.ndarray] and the buffer/agent handles
+# the np.ndarray -> torch.Tensor conversion.
+# The `preprocess_state_to_dict` is not needed if your ` environment ` already
+# produces the correct Dict[str, np.ndarray] structure.
+
+def convert_state_dict_to_tensors(
+        state_dict_np: Dict[str, np.ndarray],
+        device: torch.device
+) -> Dict[str, torch.Tensor]:
     """
-    Normalize the state dictionary. If running_stats is provided, use it for normalization.
-    If update_stats is True, update the running statistics.
-
-    Args:
-        state_dict: Dictionary of state tensors to normalize
-        running_stats: Dictionary of running statistics (mean, std) for each component
-        update_stats: Whether to update the running statistics
-
-    Returns:
-        Tuple of (normalized state dict, updated running stats)
+    Converts a dictionary of NumPy arrays (features) to a dictionary of PyTorch tensors
+    and moves them to the specified device.
+    Assumes that the NumPy arrays from the environment already have the correct
+    batch-like dimension (e.g., (1, seq_len, feat_dim) or (1, feat_dim)).
     """
-    if running_stats is None:
-        running_stats = {k: {'mean': None, 'std': None} for k in state_dict.keys()}
+    state_dict_torch = {}
+    for key, np_array in state_dict_np.items():
+        # Ensure the numpy array is not an object array if it contains numerical data
+        if np_array.dtype == np.object_:
+            try:  # Attempt to stack if it's a list of arrays, common for 'portfolio' if not pre-stacked
+                np_array = np.stack(np_array.tolist())
+            except Exception as e:
+                logger.warning(f"Could not stack object array for key {key} during tensor conversion: {e}. Using as is.")
 
-    normalized_state = {}
-
-    for k, v in state_dict.items():
-        if update_stats or running_stats[k]['mean'] is None:
-            # Update or initialize running stats
-            mean = v.mean(dim=0, keepdim=True)
-            std = v.std(dim=0, keepdim=True) + 1e-8
-
-            if running_stats[k]['mean'] is None:
-                running_stats[k]['mean'] = mean
-                running_stats[k]['std'] = std
-            else:
-                # Exponential moving average (momentum=0.99)
-                running_stats[k]['mean'] = 0.99 * running_stats[k]['mean'] + 0.01 * mean
-                running_stats[k]['std'] = 0.99 * running_stats[k]['std'] + 0.01 * std
-
-        # Normalize using running stats
-        normalized_state[k] = (v - running_stats[k]['mean']) / running_stats[k]['std']
-
-    return normalized_state, running_stats
-
-
-def preprocess_state_to_dict(state: np.ndarray, model_config: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-    """
-    Preprocess a raw state vector from the environment into a structured dictionary
-    that can be fed into the multi-branch transformer model.
-
-    Args:
-        state: Raw state vector from environment
-        model_config: Model configuration with feature dimensions
-
-    Returns:
-        Dictionary with state components as tensors
-    """
-    # Extract feature dimensions from model config
-    hf_feat_dim = model_config.get('hf_feat_dim', 20)
-    mf_feat_dim = model_config.get('mf_feat_dim', 15)
-    lf_feat_dim = model_config.get('lf_feat_dim', 10)
-    static_feat_dim = model_config.get('static_feat_dim', 15)
-
-    hf_seq_len = model_config.get('hf_seq_len', 60)
-    mf_seq_len = model_config.get('mf_seq_len', 30)
-    lf_seq_len = model_config.get('lf_seq_len', 30)
-
-    # Convert state array to tensor
-    state_tensor = torch.tensor(state, dtype=torch.float32)
-
-    # Create state dictionary with expected shapes
-    # This is a simplified version that assumes the state vector is already structured
-    # in a specific way. In practice, you'd have custom logic to extract features
-    # from your environment's state.
-
-    # For demonstration, we'll just split the state into segments
-    state_dict = {}
-
-    total_hf_size = hf_seq_len * hf_feat_dim
-    total_mf_size = mf_seq_len * mf_feat_dim
-    total_lf_size = lf_seq_len * lf_feat_dim
-
-    # Check if state is large enough
-    if len(state_tensor) >= total_hf_size + total_mf_size + total_lf_size + static_feat_dim:
-        # Extract features (this is simplified and would need to be adapted to actual state structure)
-        hf_flat = state_tensor[:total_hf_size]
-        mf_flat = state_tensor[total_hf_size:total_hf_size + total_mf_size]
-        lf_flat = state_tensor[total_hf_size + total_mf_size:total_hf_size + total_mf_size + total_lf_size]
-        static_features = state_tensor[total_hf_size + total_mf_size + total_lf_size:
-                                       total_hf_size + total_mf_size + total_lf_size + static_feat_dim]
-
-        # Reshape sequences
-        hf_features = hf_flat.reshape(1, hf_seq_len, hf_feat_dim)  # Add batch dimension
-        mf_features = mf_flat.reshape(1, mf_seq_len, mf_feat_dim)
-        lf_features = lf_flat.reshape(1, lf_seq_len, lf_feat_dim)
-        static_features = static_features.reshape(1, static_feat_dim)
-    else:
-        # If state is not large enough, create dummy tensors with zeros
-        # This is just a fallback - in practice, ensure your state vector is properly structured
-        hf_features = torch.zeros((1, hf_seq_len, hf_feat_dim))
-        mf_features = torch.zeros((1, mf_seq_len, mf_feat_dim))
-        lf_features = torch.zeros((1, lf_seq_len, lf_feat_dim))
-        static_features = torch.zeros((1, static_feat_dim))
-
-    # Build state dict
-    state_dict = {
-        'hf_features': hf_features,
-        'mf_features': mf_features,
-        'lf_features': lf_features,
-        'static_features': static_features
-    }
-
-    return state_dict
+        try:
+            state_dict_torch[key] = torch.from_numpy(np_array).float().to(device)
+        except TypeError as e:
+            logger.error(f"TypeError converting key '{key}' to tensor: {e}. Value: {np_array}, Dtype: {np_array.dtype}")
+            raise
+    return state_dict_torch
