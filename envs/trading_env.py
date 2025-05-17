@@ -1,38 +1,56 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Tuple, Optional, Callable, TypedDict, Type
+from typing import Any, Dict, List, Tuple, Optional, Union
+
 import numpy as np
 import pandas as pd  # For pd.Timestamp
 import gymnasium as gym  # type: ignore
 from gymnasium import spaces  # type: ignore
 
-import config.config
-from config.config import Config
+from config.config import Config  # Assuming your Config class is here
 from data.data_manager import DataManager
-from envs.reward import RewardCalculator
+from envs.reward import RewardCalculator  # Ensure this imports types correctly
 from feature.feature_extractor import FeatureExtractor
 from simulators.execution_simulator import ExecutionSimulator
 from simulators.market_simulator import MarketSimulator, TrainingMode
-from simulators.portfolio_simulator import PortfolioManager, PortfolioState, OrderTypeEnum, OrderSideEnum, PositionSideEnum, FillDetails
+from simulators.portfolio_simulator import (
+    PortfolioManager, PortfolioState, OrderTypeEnum, OrderSideEnum,
+    PositionSideEnum, FillDetails
+)
 
 
-class ActionTypeEnumForEnv(Enum):  # Example, align with your strategy
+class ActionTypeEnum(Enum):
+    """Defines the type of action the agent can take."""
     HOLD = 0
-    BUY_MARKET_SMALL = 1
-    BUY_MARKET_LARGE = 2
-    SELL_MARKET_SMALL = 3
-    SELL_MARKET_LARGE = 4
-    EXIT_ALL = 5
+    BUY = 1  # Enter a new long position or flip from short to long
+    SELL = 2  # Enter a new short position (if allowed) or flip from long to short / exit long
+    SCALEIN = 3  # Increase an existing position (long or short) or open new if flat
+    SCALEOUT = 4  # Decrease an existing position (long or short)
 
 
-class TerminationReasonEnumForEnv(Enum):  # For info dict
+class PositionSizeTypeEnum(Enum):
+    """Defines the relative size of the position for an action."""
+    SIZE_25 = 0  # 25%
+    SIZE_50 = 1  # 50%
+    SIZE_75 = 2  # 75%
+    SIZE_100 = 3  # 100%
+
+    @property
+    def value_float(self) -> float:
+        """Returns the float multiplier for the size (0.25, 0.50, 0.75, 1.0)."""
+        return (self.value + 1) * 0.25
+
+
+class TerminationReasonEnum(Enum):
+    """Reasons for episode termination for the info dict."""
     END_OF_SESSION_DATA = "END_OF_SESSION_DATA"
     MAX_LOSS_REACHED = "MAX_LOSS_REACHED"
     BANKRUPTCY = "BANKRUPTCY"
     MAX_STEPS_REACHED = "MAX_STEPS_REACHED"  # Truncation
     OBSERVATION_FAILURE = "OBSERVATION_FAILURE"
-    # Add other reasons
+    SETUP_FAILURE = "SETUP_FAILURE"
+    INVALID_ACTION_LIMIT_REACHED = "INVALID_ACTION_LIMIT_REACHED"
 
 
 class TradingEnvironment(gym.Env):
@@ -43,9 +61,15 @@ class TradingEnvironment(gym.Env):
         self.config = config
         self.logger = logger or logging.getLogger(self.__class__.__name__)
 
-        self.tradable_assets = self.config['env'].get('tradable_assets', ['DEFAULT_ASSET'])
-        if not self.tradable_assets: raise ValueError("tradable_assets must be configured in env config.")
-        self.primary_asset = self.tradable_assets[0]
+        # --- Environment Configuration ---
+        env_cfg = self.config.env
+        self.primary_asset: Optional[str] = None
+
+        self.max_steps_per_episode: int = env_cfg.max_steps
+        self.random_reset_within_session: bool = env_cfg.random_reset
+        self.max_session_loss_percentage: float = env_cfg.max_episode_loss_percent
+        self.bankruptcy_threshold_factor: float = env_cfg.bankruptcy_threshold_factor
+        self.max_invalid_actions_per_episode: int = env_cfg.max_invalid_actions_per_episode
 
         self.data_manager = data_manager
         self.market_simulator: Optional[MarketSimulator] = None
@@ -54,110 +78,174 @@ class TradingEnvironment(gym.Env):
         self.feature_extractor: Optional[FeatureExtractor] = None
         self.reward_calculator: Optional[RewardCalculator] = None
 
-        # --- Action Space (Example: discrete actions) ---
-        self.action_enums = list(ActionTypeEnumForEnv)
-        self.action_space = spaces.Discrete(len(self.action_enums))
-        self.logger.info(f"Action space: {self.action_space} (Actions: {[a.name for a in self.action_enums]})")
+        # --- Action Space ---
+        self.action_types = list(ActionTypeEnum)
+        self.position_size_types = list(PositionSizeTypeEnum)
+        self.action_space = spaces.MultiDiscrete([len(self.action_types), len(self.position_size_types)])
+        self.logger.info(f"Action space: {self.action_space} "
+                         f"(ActionTypes: {[a.name for a in self.action_types]}, "
+                         f"PositionSizes: {[s.name for s in self.position_size_types]})")
 
         # --- Observation Space (from config.model) ---
-        m_cfg = self.config.model
-        self.observation_space = spaces.Dict({
-            'hf': spaces.Box(low=-np.inf, high=np.inf, shape=(m_cfg.hf_seq_len, m_cfg.hf_feat_dim), dtype=np.float32),
-            'mf': spaces.Box(low=-np.inf, high=np.inf, shape=(m_cfg.mf_seq_len, m_cfg.mf_feat_dim), dtype=np.float32),
-            'lf': spaces.Box(low=-np.inf, high=np.inf, shape=(m_cfg.lf_seq_len, m_cfg.lf_feat_dim), dtype=np.float32),
-            'portfolio': spaces.Box(low=-np.inf, high=np.inf, shape=(m_cfg.portfolio_seq_len, m_cfg.portfolio_feat_dim), dtype=np.float32),
-            'static': spaces.Box(low=-np.inf, high=np.inf, shape=(1, m_cfg.static_feat_dim), dtype=np.float32),
+        model_cfg = self.config.model
+        # Explicitly type self.observation_space to help linters
+        self.observation_space: spaces.Dict = spaces.Dict({
+            'hf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.hf_seq_len, model_cfg.hf_feat_dim), dtype=np.float32),
+            'mf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.mf_seq_len, model_cfg.mf_feat_dim), dtype=np.float32),
+            'lf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.lf_seq_len, model_cfg.lf_feat_dim), dtype=np.float32),
+            'portfolio': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.portfolio_seq_len, model_cfg.portfolio_feat_dim), dtype=np.float32),
+            'static': spaces.Box(low=-np.inf, high=np.inf, shape=(1, model_cfg.static_feat_dim), dtype=np.float32),
         })
-        self.logger.info(f"Observation space: {self.observation_space}")
+        self.logger.info(f"Observation space defined with shapes: "
+                         f"HF({model_cfg.hf_seq_len},{model_cfg.hf_feat_dim}), "
+                         f"MF({model_cfg.mf_seq_len},{model_cfg.mf_feat_dim}), "
+                         f"LF({model_cfg.lf_seq_len},{model_cfg.lf_feat_dim}), "
+                         f"Portfolio({model_cfg.portfolio_seq_len},{model_cfg.portfolio_feat_dim}), "
+                         f"Static(1,{model_cfg.static_feat_dim})")
 
-        # Episode state
-
-        self.current_episode_start_time: Optional[datetime] = None
-        self.current_episode_end_time: Optional[datetime] = None
+        # --- Episode State ---
+        self.current_session_start_time_utc: Optional[datetime] = None
+        self.current_session_end_time_utc: Optional[datetime] = None
         self.current_step: int = 0
+        self.invalid_action_count_episode: int = 0
         self.episode_total_reward: float = 0.0
         self._last_observation: Optional[Dict[str, np.ndarray]] = None
         self._last_portfolio_state_before_action: Optional[PortfolioState] = None
         self._last_decoded_action: Optional[Dict[str, Any]] = None
+        self.initial_capital_for_session: float = 0.0
 
-        self.render_mode = self.config.env.render_mode
+        self.render_mode = env_cfg.render_mode
 
-    def setup_session(self, symbol: str, start_time: datetime, end_time: datetime):
+    def setup_session(self, symbol: str, start_time: Union[str, datetime], end_time: Union[str, datetime]):
         """Configures the environment for a specific trading session (e.g., one day)."""
-        self.primary_asset = symbol  # Update primary asset if it changes per session
-        if symbol not in self.tradable_assets: self.tradable_assets.append(symbol)  # Ensure it's tracked
+        if not symbol or not isinstance(symbol, str):
+            self.logger.error("A valid symbol (string) must be provided to setup_session.")
+            raise ValueError("A valid symbol (string) must be provided to setup_session.")
 
-        self.current_episode_start_time = pd.Timestamp(start_time).tz_localize('UTC').to_pydatetime() \
-            if start_time.tzinfo is None else start_time.astimezone(timezone.utc)
-        self.current_episode_end_time = pd.Timestamp(end_time).tz_localize('UTC').to_pydatetime() \
-            if end_time.tzinfo is None else end_time.astimezone(timezone.utc)
+        self.primary_asset = symbol
+
+        try:
+            self.current_session_start_time_utc = pd.Timestamp(start_time, tz='UTC').to_pydatetime()
+            self.current_session_end_time_utc = pd.Timestamp(end_time, tz='UTC').to_pydatetime()
+        except Exception as e:
+            self.logger.error(f"Error parsing session start/end times: {start_time}, {end_time}. Error: {e}")
+            raise ValueError(f"Invalid session start/end times: {e}")
+
+        self.logger.info(f"Setting up session for symbol '{self.primary_asset}' "
+                         f"from {self.current_session_start_time_utc} to {self.current_session_end_time_utc}.")
+
+        if self.np_random is None:
+            _, _ = super().reset(seed=None)
 
         self.market_simulator = MarketSimulator(
             symbol=self.primary_asset,
-            data_manager=self.data_manager,  # If your provider uses it
-            config=self.config['simulation'].get('market_config', {}),
-            mode=self.config['simulation'].get('market_mode', 'backtesting'),
-            start_time=self.current_episode_start_time,
-            end_time=self.current_episode_end_time,
+            data_manager=self.data_manager,
+            config=self.config,
+            mode=TrainingMode(self.config.env.training_mode),
+            start_time=self.current_session_start_time_utc,
+            end_time=self.current_session_end_time_utc,
             logger=self.logger.getChild("MarketSim")
         )
-        self.portfolio_manager = PortfolioManager(self.logger, self.config, self.tradable_assets)
-        self.feature_extractor = FeatureExtractor(symbol, self.config.model, self.logger)
-        self.reward_calculator = RewardCalculator(self.config)
-        self.execution_manager = ExecutionSimulator(self.logger, self.config.simulation.execution_config, self.np_random, self.market_simulator)
-
-        self.logger.info(f"Session configured for {self.primary_asset} from {self.current_episode_start_time} to {self.current_episode_end_time}.")
+        self.portfolio_manager = PortfolioManager(
+            logger=self.logger.getChild("PortfolioMgr"),
+            config=self.config,
+            tradable_assets=[self.primary_asset]
+        )
+        self.feature_extractor = FeatureExtractor(
+            symbol=self.primary_asset,
+            config=self.config.model,
+            logger=self.logger.getChild("FeatureExt")
+        )
+        self.reward_calculator = RewardCalculator(
+            config=self.config,
+            logger=self.logger.getChild("RewardCalc")
+        )
+        self.execution_manager = ExecutionSimulator(
+            logger=self.logger.getChild("ExecSim"),
+            config_exec=self.config.simulation.execution_config,
+            np_random=self.np_random,
+            market_simulator=self.market_simulator
+        )
+        self.logger.info("All simulators and managers initialized for the session.")
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
-        super().reset(seed=seed)  # Important for self.np_random seeding via Gymnasium
+        super().reset(seed=seed)
         options = options or {}
 
-        if not self.market_simulator or not self.current_episode_start_time:
-            raise RuntimeError("Market simulator or session not set up. Call `setup_session()` before `reset()`.")
+        if not self.primary_asset or not self.market_simulator or \
+                not self.portfolio_manager or not self.feature_extractor or \
+                not self.reward_calculator or not self.execution_manager:
+            self.logger.error("Session not properly set up. Call `setup_session(symbol, start, end)` before `reset()`.")
+            dummy_obs = self._get_dummy_observation()
+            return dummy_obs, {"error": "Session not set up. Call setup_session first.", "termination_reason": TerminationReasonEnum.SETUP_FAILURE.value}
 
         self.current_step = 0
+        self.invalid_action_count_episode = 0
         self.episode_total_reward = 0.0
         self._last_decoded_action = None
 
-        # Reset managers, propagating the (potentially new) RNG
-        if hasattr(self.execution_manager, 'reset'): self.execution_manager.reset(np_random_seed_source=self.np_random)  # type: ignore
+        self.execution_manager.reset(np_random_seed_source=self.np_random)
 
-        # MarketSim reset options (e.g., random start within a session)
-        market_reset_options = {'random_start': self.config.env.random_reset}
-        if options.get('start_time_offset_seconds'):  # For curriculum
-            market_reset_options['start_time_offset_seconds'] = options['start_time_offset_seconds']  # type: ignore
+        market_reset_options = {'random_start': self.random_reset_within_session}
+        if 'start_time_offset_seconds' in options:
+            market_reset_options['start_time_offset_seconds'] = options['start_time_offset_seconds']
 
         initial_market_state = self.market_simulator.reset(options=market_reset_options)
+        if initial_market_state is None or 'timestamp_utc' not in initial_market_state:
+            self.logger.critical("Market simulator failed to reset or provide initial state. Check data availability for the session.")
+            dummy_obs = self._get_dummy_observation()
+            return dummy_obs, {"error": "Market simulator reset failed.", "termination_reason": TerminationReasonEnum.SETUP_FAILURE.value}
+
         current_sim_time = initial_market_state['timestamp_utc']
 
         self.portfolio_manager.reset(episode_start_timestamp=current_sim_time)
-        if hasattr(self.reward_calculator, 'reset'): self.reward_calculator.reset()  # type: ignore
-        if hasattr(self.feature_extractor, 'reset'): self.feature_extractor.reset()  # type: ignore
+        self.initial_capital_for_session = self.portfolio_manager.initial_capital
+        if hasattr(self.reward_calculator, 'reset'): self.reward_calculator.reset()
+        if hasattr(self.feature_extractor, 'reset'): self.feature_extractor.reset()
+
+        if hasattr(self.market_simulator, 'raw_1d_bars') and self.market_simulator.raw_1d_bars is not None:
+            if hasattr(self.feature_extractor, 'update_daily_levels'):
+                self.feature_extractor.update_daily_levels(self.market_simulator.raw_1d_bars, current_sim_time)
+        else:
+            self.logger.warning("raw_1d_bars not available from market_simulator for feature_extractor.update_daily_levels.")
 
         self._last_observation = self._get_observation(initial_market_state, current_sim_time)
         if self._last_observation is None:
             self.logger.critical("Failed to get initial observation. Ensure sufficient data/lookback at episode start.")
-            # Return a dummy observation and mark for immediate termination if this happens
-            dummy_obs_shape = self.observation_space['portfolio'].shape  # type: ignore
-            self._last_observation = {
-                'market_hf': np.zeros(self.observation_space['market_hf'].shape, dtype=np.float32),  # type: ignore
-                'portfolio': np.zeros(dummy_obs_shape, dtype=np.float32)
-            }
-            # This scenario implies a critical setup error that should ideally not occur.
-            # Or, the environment needs a mechanism to "fast-forward" until a valid observation can be made.
-            raise RuntimeError("Initial observation failed. Check data and feature extraction settings.")
+            dummy_obs = self._get_dummy_observation()
+            return dummy_obs, {"error": "Initial observation failed.", "termination_reason": TerminationReasonEnum.OBSERVATION_FAILURE.value}
 
         self._last_portfolio_state_before_action = self.portfolio_manager.get_portfolio_state(current_sim_time)
         initial_info = self._get_current_info(reward=0.0, current_portfolio_state_for_info=self._last_portfolio_state_before_action)
 
         if self.render_mode in ['human', 'logs']: self.render(info_dict=initial_info)
-        self.logger.info(f"Environment reset. Agent Start Time: {current_sim_time}, Initial Equity: ${self.portfolio_manager.initial_capital:.2f}")
+        self.logger.info(
+            f"Environment reset for {self.primary_asset}. Agent Start Time: {current_sim_time}, Initial Equity: ${self.initial_capital_for_session:.2f}")
         return self._last_observation, initial_info
 
+    def _get_dummy_observation(self) -> Dict[str, np.ndarray]:
+        dummy_obs = {}
+        if isinstance(self.observation_space, spaces.Dict):  # Type guard
+            for key in self.observation_space.keys():  # Iterate using keys()
+                space_item = self.observation_space[key]  # Access sub-space by key
+                dummy_obs[key] = np.zeros(space_item.shape, dtype=space_item.dtype)
+        else:
+            self.logger.error("Observation space is not a gymnasium.spaces.Dict. Cannot create dummy observation.")
+            # Fallback: create based on a predefined structure if possible, or raise error
+            # This part depends on how you want to handle an unexpected observation_space type
+            # For now, returning an empty dict, which will likely cause issues downstream if this path is hit.
+        return dummy_obs
+
     def _get_observation(self, market_state_now: Dict[str, Any], current_sim_time: datetime) -> Optional[Dict[str, np.ndarray]]:
+        if market_state_now is None:
+            self.logger.warning(f"Market state is None at {current_sim_time} during observation generation.")
+            return None
         try:
-            # Market features from FeatureExtractor
-            market_features_dict = self.feature_extractor.extract_features(current_market_state=market_state_now)  # type: ignore
+            current_portfolio_state = self.portfolio_manager.get_portfolio_state(current_sim_time)
+            market_features_dict = self.feature_extractor.extract_features(
+                market_state=market_state_now,
+                portfolio_state=current_portfolio_state
+            )
             if market_features_dict is None:
                 self.logger.warning(f"FeatureExtractor returned None at {current_sim_time}. Not enough data for lookbacks?")
                 return None
@@ -165,230 +253,356 @@ class TradingEnvironment(gym.Env):
             self.logger.error(f"Error during feature extraction at {current_sim_time}: {e}", exc_info=True)
             return None
 
-        # Portfolio features from PortfolioManager
-        portfolio_obs_component = self.portfolio_manager.get_portfolio_observation()  # PortfolioObservationFeatures
+        portfolio_obs_component = self.portfolio_manager.get_portfolio_observation()
         portfolio_features_array = portfolio_obs_component['features']
 
-        # Construct the full observation dictionary
-        observation = {
-            # Assuming market_hf is the primary key for market features for this example
-            'market_hf': market_features_dict.get('hf_features', np.zeros(self.observation_space['market_hf'].shape, dtype=np.float32)),  # type: ignore
-            # Add other market feature keys ('mf_features', etc.) as defined in observation_space
+        obs = {
+            'hf': market_features_dict.get('hf'),
+            'mf': market_features_dict.get('mf'),
+            'lf': market_features_dict.get('lf'),
+            'static': market_features_dict.get('static'),
             'portfolio': portfolio_features_array
         }
 
-        # Validate shapes (crucial for model input)
-        for key, space in self.observation_space.spaces.items():  # type: ignore
-            if key not in observation:
-                self.logger.error(f"Observation missing key '{key}' defined in observation_space.")
-                return None
-            if observation[key].shape != space.shape:
+        if not isinstance(self.observation_space, spaces.Dict):
+            self.logger.error("Observation space is not a gymnasium.spaces.Dict. Cannot validate observation.")
+            return None  # Or handle error appropriately
+
+        for key in self.observation_space.keys():  # Iterate using keys()
+            space_item = self.observation_space[key]  # Access sub-space by key
+            if obs.get(key) is None:
+                self.logger.error(f"Observation missing key '{key}'. Filling with zeros.")
+                obs[key] = np.zeros(space_item.shape, dtype=space_item.dtype)
+
+            if key == 'static' and obs[key].ndim == 1:
+                obs[key] = obs[key].reshape(1, -1)
+
+            if obs[key].shape != space_item.shape:
                 self.logger.error(
                     f"Shape mismatch for observation key '{key}'. "
-                    f"Expected {space.shape}, Got {observation[key].shape}. "
-                    f"Check FeatureExtractor/PortfolioManager output shapes against config.model."
+                    f"Expected {space_item.shape}, Got {obs[key].shape}."
                 )
                 return None
-        return observation
+        return obs
 
-    def _decode_action(self, raw_action: int) -> Dict[str, Any]:  # Assuming discrete action space
-        selected_action_enum = self.action_enums[raw_action]
-        # Example: Can add more details like size if action space is more complex (e.g., Tuple)
-        return {"type": selected_action_enum, "raw_action": raw_action}
+    def _decode_action(self, raw_action: np.ndarray) -> Dict[str, Any]:
+        action_type_idx, size_type_idx = raw_action
+        action_type = self.action_types[action_type_idx]
+        size_type = self.position_size_types[size_type_idx]
+
+        return {
+            "type": action_type,
+            "size_enum": size_type,
+            "size_float": size_type.value_float,
+            "raw_action": raw_action.tolist(),
+            "invalid_reason": None
+        }
 
     def _translate_agent_action_to_order(self,
                                          decoded_action: Dict[str, Any],
-                                         portfolio_state_before_action: PortfolioState,
-                                         market_state_at_decision: Dict[str, Any]
+                                         portfolio_state: PortfolioState,
+                                         market_state: Dict[str, Any]
                                          ) -> Optional[Dict[str, Any]]:
-        """Translates agent's abstract action into concrete order parameters."""
         action_type = decoded_action['type']
-        asset_id = self.primary_asset  # Assuming single asset trading for this translation logic
+        size_float = decoded_action['size_float']
 
-        # Ideal prices from market state at decision time (t)
-        # For simplicity, using 'current_price' as a basis if bid/ask not directly available
-        ideal_ask = market_state_at_decision.get('ask_price', market_state_at_decision.get('current_price', 0) * 1.0001)
-        ideal_bid = market_state_at_decision.get('bid_price', market_state_at_decision.get('current_price', 0) * 0.9999)
-        if ideal_ask <= 0 or ideal_bid <= 0:
-            self.logger.warning(f"Invalid ideal prices ({ideal_ask}, {ideal_bid}) for order at {market_state_at_decision['timestamp_utc']}. No trade.")
-            decoded_action['invalid_reason'] = "Missing or invalid market prices for order"
+        if not self.primary_asset:
+            decoded_action['invalid_reason'] = "Primary asset not set in environment."
+            self.logger.error("Attempted to translate action to order but primary_asset is not set.")
+            self.invalid_action_count_episode += 1
+            return None
+        asset_id = self.primary_asset
+
+        ideal_ask = market_state.get('best_ask_price')
+        ideal_bid = market_state.get('best_bid_price')
+        current_price_fallback = market_state.get('current_price')
+
+        if ideal_ask is None or ideal_bid is None:
+            if current_price_fallback is not None and current_price_fallback > 0:
+                ideal_ask = current_price_fallback * 1.0002
+                ideal_bid = current_price_fallback * 0.9998
+            else:
+                decoded_action['invalid_reason'] = "Missing market prices (BBO and current) for order."
+                self.logger.warning(f"Invalid prices for order at {market_state.get('timestamp_utc', 'N/A')}. No trade.")
+                self.invalid_action_count_episode += 1
+                return None
+
+        if ideal_ask <= 0 or ideal_bid <= 0 or ideal_ask <= ideal_bid:
+            decoded_action['invalid_reason'] = f"Invalid BBO prices: Ask ${ideal_ask:.2f}, Bid ${ideal_bid:.2f}."
+            self.logger.warning(f"Invalid BBO for order at {market_state.get('timestamp_utc', 'N/A')}: Ask {ideal_ask}, Bid {ideal_bid}.")
+            self.invalid_action_count_episode += 1
             return None
 
         order_params: Optional[Dict[str, Any]] = None
-        current_pos_data = portfolio_state_before_action['positions'][asset_id]
-        current_qty = current_pos_data['quantity']
-
-        # Example sizing: 25% of current equity for BUY_MARKET_LARGE
-        # More sophisticated sizing would come from config or action space itself
-        equity = portfolio_state_before_action['total_equity']
-        cash = portfolio_state_before_action['cash']
-
-        qty_small = (equity * 0.10) / ideal_ask if ideal_ask > 0 else 0
-        qty_large = (equity * 0.25) / ideal_ask if ideal_ask > 0 else 0
-        qty_small = min(qty_small, cash / ideal_ask if ideal_ask > 0 else 0)  # Cap by cash
-        qty_large = min(qty_large, cash / ideal_ask if ideal_ask > 0 else 0)  # Cap by cash
-
-        if action_type == ActionTypeEnumForEnv.HOLD:
+        pos_data = portfolio_state['positions'].get(asset_id)
+        if not pos_data:
+            decoded_action['invalid_reason'] = f"Position data for asset {asset_id} not found."
+            self.logger.error(f"Position data for asset {asset_id} not found in portfolio_state.")
+            self.invalid_action_count_episode += 1
             return None
-        elif action_type == ActionTypeEnumForEnv.BUY_MARKET_SMALL and qty_small > 1e-9:
-            order_params = {'asset_id': asset_id, 'order_type': OrderTypeEnum.MARKET, 'order_side': OrderSideEnum.BUY,
-                            'quantity': qty_small, 'ideal_price_ask': ideal_ask, 'ideal_price_bid': ideal_bid}
-        elif action_type == ActionTypeEnumForEnv.BUY_MARKET_LARGE and qty_large > 1e-9:
-            order_params = {'asset_id': asset_id, 'order_type': OrderTypeEnum.MARKET, 'order_side': OrderSideEnum.BUY,
-                            'quantity': qty_large, 'ideal_price_ask': ideal_ask, 'ideal_price_bid': ideal_bid}
-        elif action_type == ActionTypeEnumForEnv.SELL_MARKET_SMALL and current_qty > 1e-9:
-            order_params = {'asset_id': asset_id, 'order_type': OrderTypeEnum.MARKET, 'order_side': OrderSideEnum.SELL,
-                            'quantity': min(current_qty, qty_small), 'ideal_price_ask': ideal_ask, 'ideal_price_bid': ideal_bid}  # Sell a portion
-        elif action_type == ActionTypeEnumForEnv.SELL_MARKET_LARGE and current_qty > 1e-9:
-            order_params = {'asset_id': asset_id, 'order_type': OrderTypeEnum.MARKET, 'order_side': OrderSideEnum.SELL,
-                            'quantity': min(current_qty, qty_large), 'ideal_price_ask': ideal_ask, 'ideal_price_bid': ideal_bid}
-        elif action_type == ActionTypeEnumForEnv.EXIT_ALL and current_qty > 1e-9:
-            order_params = {'asset_id': asset_id, 'order_type': OrderTypeEnum.MARKET,
-                            'order_side': OrderSideEnum.SELL if current_pos_data['current_side'] == PositionSideEnum.LONG else OrderSideEnum.BUY,
-                            'quantity': current_qty, 'ideal_price_ask': ideal_ask, 'ideal_price_bid': ideal_bid}
 
+        current_qty = pos_data['quantity']
+        current_pos_side = pos_data['current_side']
+        cash = portfolio_state['cash']
+        total_equity = portfolio_state['total_equity']
 
-        if order_params: decoded_action['translated_order'] = order_params.copy()  # Log the translated order
-        return order_params
+        max_pos_value_abs = total_equity * self.portfolio_manager.max_position_value_ratio
+        available_buying_power = cash
+        allow_shorting = self.portfolio_manager.allow_shorting
 
-    def step(self, action: int) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
-        if self._last_observation is None:  # Should be caught by reset, defensive check
-            self.logger.critical("Step called with _last_observation as None. This indicates a severe issue.")
-            # Return a dummy observation and terminate
-            dummy_obs = {key: np.zeros(space.shape, dtype=space.dtype) for key, space in self.observation_space.spaces.items()}  # type: ignore
-            return dummy_obs, 0.0, True, False, {"error": "Critical: _last_observation was None.",
-                                                 "termination_reason": TerminationReasonEnumForEnv.OBSERVATION_FAILURE.value}
+        quantity_to_trade = 0.0
+        order_side: Optional[OrderSideEnum] = None
+
+        if action_type == ActionTypeEnum.HOLD:
+            return None
+
+        elif action_type == ActionTypeEnum.BUY:
+            target_buy_value = size_float * available_buying_power
+            target_buy_value = min(target_buy_value, max_pos_value_abs, cash)
+            if target_buy_value > 1e-9 and ideal_ask > 1e-9:
+                quantity_to_trade = target_buy_value / ideal_ask
+                order_side = OrderSideEnum.BUY
+                if current_pos_side == PositionSideEnum.SHORT:
+                    quantity_to_trade += current_qty
+            else:
+                decoded_action['invalid_reason'] = "Insufficient buying power or invalid price for BUY."
+
+        elif action_type == ActionTypeEnum.SELL:
+            if current_pos_side == PositionSideEnum.LONG:
+                quantity_to_trade = size_float * current_qty
+                order_side = OrderSideEnum.SELL
+            elif allow_shorting:
+                target_short_value = size_float * total_equity
+                target_short_value = min(target_short_value, max_pos_value_abs)
+                if target_short_value > 1e-9 and ideal_bid > 1e-9:
+                    quantity_to_trade = target_short_value / ideal_bid
+                    order_side = OrderSideEnum.SELL
+                    if current_pos_side == PositionSideEnum.LONG:
+                        quantity_to_trade += current_qty
+                else:
+                    decoded_action['invalid_reason'] = "Insufficient shorting power or invalid price for SELL (short)."
+            else:
+                decoded_action['invalid_reason'] = "SELL action invalid: Not holding long and shorting disallowed."
+
+        elif action_type == ActionTypeEnum.SCALEIN:
+            if current_pos_side == PositionSideEnum.FLAT:
+                target_value = size_float * available_buying_power
+                target_value = min(target_value, max_pos_value_abs, cash)
+                if target_value > 1e-9 and ideal_ask > 1e-9:
+                    quantity_to_trade = target_value / ideal_ask
+                    order_side = OrderSideEnum.BUY
+                else:
+                    if allow_shorting:
+                        target_value = size_float * total_equity
+                        target_value = min(target_value, max_pos_value_abs)
+                        if target_value > 1e-9 and ideal_bid > 1e-9:
+                            quantity_to_trade = target_value / ideal_bid
+                            order_side = OrderSideEnum.SELL
+                        else:
+                            decoded_action['invalid_reason'] = "SCALEIN (from flat): Insufficient power or invalid price for BUY/SELL."
+                    else:
+                        decoded_action['invalid_reason'] = "SCALEIN (as BUY from flat): Insufficient buying power or invalid price."
+            elif current_pos_side == PositionSideEnum.LONG:
+                additional_qty = size_float * current_qty
+                additional_value_needed = additional_qty * ideal_ask
+                if additional_value_needed <= available_buying_power:
+                    current_value = current_qty * ideal_ask
+                    if current_value + additional_value_needed <= max_pos_value_abs:
+                        quantity_to_trade = additional_qty
+                        order_side = OrderSideEnum.BUY
+                    else:
+                        decoded_action['invalid_reason'] = "SCALEIN Long: Exceeds max position value."
+                else:
+                    decoded_action['invalid_reason'] = "SCALEIN Long: Insufficient cash for additional shares."
+            elif current_pos_side == PositionSideEnum.SHORT and allow_shorting:
+                additional_qty = size_float * current_qty
+                current_short_value_abs = current_qty * ideal_bid
+                additional_short_value_abs = additional_qty * ideal_bid
+                if current_short_value_abs + additional_short_value_abs <= max_pos_value_abs:
+                    quantity_to_trade = additional_qty
+                    order_side = OrderSideEnum.SELL
+                else:
+                    decoded_action['invalid_reason'] = "SCALEIN Short: Exceeds margin/max position value."
+            else:
+                decoded_action['invalid_reason'] = f"SCALEIN invalid for current position side {current_pos_side} (shorting allowed: {allow_shorting})."
+
+        elif action_type == ActionTypeEnum.SCALEOUT:
+            if current_pos_side == PositionSideEnum.LONG:
+                quantity_to_trade = size_float * current_qty
+                order_side = OrderSideEnum.SELL
+            elif current_pos_side == PositionSideEnum.SHORT and allow_shorting:
+                quantity_to_trade = size_float * current_qty
+                order_side = OrderSideEnum.BUY
+            else:
+                decoded_action['invalid_reason'] = "SCALEOUT invalid: No open position or wrong side."
+
+        if quantity_to_trade > 1e-9 and order_side is not None:
+            quantity_to_trade = abs(quantity_to_trade)
+            order_params = {
+                'asset_id': asset_id,
+                'order_type': OrderTypeEnum.MARKET,
+                'order_side': order_side,
+                'quantity': quantity_to_trade,
+                'ideal_decision_price_ask': ideal_ask,
+                'ideal_decision_price_bid': ideal_bid
+            }
+            decoded_action['translated_order'] = {
+                k: v.value if isinstance(v, Enum) else v
+                for k, v in order_params.items()
+            }
+            return order_params
+        elif decoded_action['invalid_reason'] is None and action_type != ActionTypeEnum.HOLD:
+            decoded_action['invalid_reason'] = "Calculated quantity was zero or order side not determined."
+
+        if decoded_action['invalid_reason']:
+            self.invalid_action_count_episode += 1
+        return None
+
+    def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
+        if self._last_observation is None or self.primary_asset is None:
+            self.logger.critical("Step called with _last_observation as None or primary_asset not set. Resetting or critical error.")
+            dummy_obs = self._get_dummy_observation()
+            return dummy_obs, 0.0, True, False, {"error": "Critical: _last_observation was None or primary_asset not set.",
+                                                 "termination_reason": TerminationReasonEnum.SETUP_FAILURE.value}
 
         self.current_step += 1
-
-        # 1. Get market state at decision time (m_t)
-        market_state_at_decision = self.market_simulator.get_current_market_state()  # type: ignore
-        if market_state_at_decision is None:  # Should not happen if is_done() is checked
-            self.logger.error("Market simulator returned None for current state. Terminating.")
+        market_state_at_decision = self.market_simulator.get_current_market_state()
+        if market_state_at_decision is None or 'timestamp_utc' not in market_state_at_decision:
+            self.logger.error("Market simulator returned None or invalid state for current market state. Terminating.")
             return self._last_observation, 0.0, True, False, {"error": "Market state unavailable at decision.",
-                                                              "termination_reason": TerminationReasonEnumForEnv.OBSERVATION_FAILURE.value}
+                                                              "termination_reason": TerminationReasonEnum.OBSERVATION_FAILURE.value}
         current_sim_time_decision = market_state_at_decision['timestamp_utc']
-
-        # 2. Store portfolio state before action (p_t)
         self._last_portfolio_state_before_action = self.portfolio_manager.get_portfolio_state(current_sim_time_decision)
-
-        # 3. Decode action and translate to order request
         self._last_decoded_action = self._decode_action(action)
         order_request = self._translate_agent_action_to_order(
-            self._last_decoded_action,
-            self._last_portfolio_state_before_action,
-            market_state_at_decision
+            self._last_decoded_action, self._last_portfolio_state_before_action, market_state_at_decision
         )
 
-        # 4. Execute order (if any) and update portfolio with fills
         fill_details_list: List[FillDetails] = []
         if order_request:
-            # Pass ideal prices from decision time to ExecutionManager
-            fill = self.execution_manager.execute_order(  # type: ignore
-                asset_id=order_request['asset_id'],
-                order_type=order_request['order_type'],
-                order_side=order_request['order_side'],
-                requested_quantity=order_request['quantity'],
-                ideal_price_ask=order_request['ideal_price_ask'],  # From m_t
-                ideal_price_bid=order_request['ideal_price_bid'],  # From m_t
-                current_market_timestamp=current_sim_time_decision  # Time of decision
+            fill = self.execution_manager.execute_order(
+                asset_id=order_request['asset_id'], order_type=order_request['order_type'],
+                order_side=order_request['order_side'], requested_quantity=order_request['quantity'],
+                ideal_decision_price_ask=order_request['ideal_decision_price_ask'],
+                ideal_decision_price_bid=order_request['ideal_decision_price_bid'],
+                decision_timestamp=current_sim_time_decision
             )
             if fill:
                 fill_details_list.append(fill)
                 self.portfolio_manager.update_fill(fill)
 
-        # 5. Portfolio state after fills, market values based on m_t (p'_t)
-        # Use the latest fill timestamp if fills occurred, else current decision time.
         time_for_pf_update_after_fill = fill_details_list[-1]['fill_timestamp'] if fill_details_list else current_sim_time_decision
-        # Market prices for this valuation are from m_t because market hasn't moved yet.
-        prices_at_decision_time = {self.primary_asset: market_state_at_decision.get('current_price', 0.0)}
+
+        price_for_decision_val = market_state_at_decision.get('current_price')
+        if price_for_decision_val is None or price_for_decision_val <= 0:
+            ask = market_state_at_decision.get('best_ask_price')
+            bid = market_state_at_decision.get('best_bid_price')
+            if ask is not None and bid is not None and ask > 0 and bid > 0:
+                price_for_decision_val = (ask + bid) / 2
+            else:
+                price_for_decision_val = 0.0
+
+        prices_at_decision_time = {self.primary_asset: price_for_decision_val}
+        if prices_at_decision_time[self.primary_asset] <= 0.0:
+            self.logger.warning(
+                f"Could not determine a valid price for {self.primary_asset} at decision time {current_sim_time_decision} for portfolio valuation after fills.")
+
         self.portfolio_manager.update_market_value(prices_at_decision_time, time_for_pf_update_after_fill)
         portfolio_state_after_action_fills = self.portfolio_manager.get_portfolio_state(time_for_pf_update_after_fill)
 
-        # 6. Advance Market Simulator to next state (m_{t+1})
-        market_advanced = self.market_simulator.step()  # type: ignore
+        market_advanced = self.market_simulator.step()
         market_state_next_t: Optional[Dict[str, Any]] = None
         next_sim_time: Optional[datetime] = None
 
         if market_advanced:
-            market_state_next_t = self.market_simulator.get_current_market_state()  # type: ignore
-            if market_state_next_t:
+            market_state_next_t = self.market_simulator.get_current_market_state()
+            if market_state_next_t and 'timestamp_utc' in market_state_next_t:
                 next_sim_time = market_state_next_t['timestamp_utc']
-            else:  # Should ideally not happen if market_advanced is True unless at the very end
-                market_advanced = False  # Treat as end of data
+            else:
+                market_advanced = False
+                self.logger.warning("Market advanced but get_current_market_state returned None or invalid state.")
 
-        # 7. Update Portfolio Market Value with new prices from m_{t+1} (results in p_{t+1})
-        # This is crucial for updating MFE/MAE for open trades with the latest market price.
         if market_state_next_t and next_sim_time:
-            prices_at_next_time = {self.primary_asset: market_state_next_t.get('current_price', 0.0)}
+            price_for_next_val = market_state_next_t.get('current_price')
+            if price_for_next_val is None or price_for_next_val <= 0:
+                ask = market_state_next_t.get('best_ask_price')
+                bid = market_state_next_t.get('best_bid_price')
+                if ask is not None and bid is not None and ask > 0 and bid > 0:
+                    price_for_next_val = (ask + bid) / 2
+                else:
+                    price_for_next_val = 0.0
+
+            prices_at_next_time = {self.primary_asset: price_for_next_val}
+            if prices_at_next_time[self.primary_asset] <= 0.0:
+                self.logger.warning(f"Could not determine a valid price for {self.primary_asset} at next time {next_sim_time} for portfolio valuation.")
             self.portfolio_manager.update_market_value(prices_at_next_time, next_sim_time)
-        # If market didn't advance, portfolio features for obs will be based on last known state (p'_t)
+
         portfolio_state_next_t = self.portfolio_manager.get_portfolio_state(next_sim_time or time_for_pf_update_after_fill)
 
-        # 8. Get New Observation (o_{t+1})
         observation_next_t: Optional[Dict[str, np.ndarray]] = None
         terminated_by_obs_failure = False
-        if market_state_next_t and next_sim_time:  # If market advanced and new state is valid
+        if market_state_next_t and next_sim_time:
             observation_next_t = self._get_observation(market_state_next_t, next_sim_time)
             if observation_next_t is None:
-                self.logger.warning(f"Failed to get observation o_{{t+1}} at sim time {next_sim_time}. Terminating.")
-                observation_next_t = self._last_observation  # Fallback to last valid observation
+                self.logger.warning(f"Failed to get observation o_{{t+1}} at sim time {next_sim_time}. Using last valid observation and terminating.")
+                observation_next_t = self._last_observation
                 terminated_by_obs_failure = True
-        else:  # Market didn't advance or next state is None (end of data for observation)
-            self.logger.info(f"No further market state for new observation at step {self.current_step}.")
-            observation_next_t = self._last_observation  # Use last observation
+        else:
+            self.logger.info(f"No further market state for new observation at step {self.current_step}. Using last valid observation.")
+            observation_next_t = self._last_observation
 
-        if observation_next_t is None:  # Should only happen if _last_observation was also None (e.g. reset failed)
-            dummy_obs_shape = self.observation_space['portfolio'].shape  # type: ignore
-            observation_next_t = {
-                'market_hf': np.zeros(self.observation_space['market_hf'].shape, dtype=np.float32),  # type: ignore
-                'portfolio': np.zeros(dummy_obs_shape, dtype=np.float32)
-            }
-            self.logger.error("Observation is critically None even after fallbacks.")
+        if observation_next_t is None:
+            self.logger.error("Observation is critically None even after fallbacks. Using dummy observation.")
+            observation_next_t = self._get_dummy_observation()
             if not terminated_by_obs_failure: terminated_by_obs_failure = True
 
-        self._last_observation = observation_next_t  # Store o_{t+1}
+        self._last_observation = observation_next_t
 
-        # 9. Check Terminations & Truncations
         terminated = False
         truncated = False
-        termination_reason: Optional[TerminationReasonEnumForEnv] = None
+        termination_reason: Optional[TerminationReasonEnum] = None
 
-        if terminated_by_obs_failure:
+        current_equity = portfolio_state_next_t['total_equity']
+        if current_equity <= self.initial_capital_for_session * self.bankruptcy_threshold_factor:
             terminated = True
-            termination_reason = TerminationReasonEnumForEnv.OBSERVATION_FAILURE
-        elif not market_advanced or (self.market_simulator and self.market_simulator.is_done()):  # type: ignore
+            termination_reason = TerminationReasonEnum.BANKRUPTCY
+            self.logger.info(f"Episode terminated: Bankruptcy. Equity ${current_equity:.2f} <= Threshold.")
+        elif current_equity <= self.initial_capital_for_session * (1 - self.max_session_loss_percentage):
             terminated = True
-            termination_reason = TerminationReasonEnumForEnv.END_OF_SESSION_DATA
+            termination_reason = TerminationReasonEnum.MAX_LOSS_REACHED
+            self.logger.info(f"Episode terminated: Max session loss. Equity ${current_equity:.2f}")
+
+        if terminated_by_obs_failure and not terminated:
+            terminated = True
+            termination_reason = TerminationReasonEnum.OBSERVATION_FAILURE
+
+        if not market_advanced and not terminated:
+            terminated = True
+            termination_reason = TerminationReasonEnum.END_OF_SESSION_DATA
             self.logger.info(f"Episode terminated: End of market data at step {self.current_step}.")
-        # Add other termination checks (bankruptcy, max loss) using PortfolioManager
-        # Example:
-        # elif self.portfolio_manager.check_max_loss(self.config['env'].get('max_loss_percentage_session', 0.2)):
-        #     terminated = True; termination_reason = TerminationReasonEnumForEnv.MAX_LOSS_REACHED
 
-        if not terminated and self.current_step >= self.config.env.max_steps:
+        if self.invalid_action_count_episode >= self.max_invalid_actions_per_episode and not terminated:
+            terminated = True
+            termination_reason = TerminationReasonEnum.INVALID_ACTION_LIMIT_REACHED
+            self.logger.info(f"Episode terminated: Reached max invalid actions ({self.invalid_action_count_episode}).")
+
+        if not terminated and self.current_step >= self.max_steps_per_episode:
             truncated = True
-            termination_reason = TerminationReasonEnumForEnv.MAX_STEPS_REACHED
             self.logger.info(f"Episode truncated: MAX_STEPS_REACHED ({self.current_step}).")
 
-        # 10. Calculate Reward (r_t)
-        reward = self.reward_calculator.calculate(  # type: ignore
-            portfolio_state_before_action=self._last_portfolio_state_before_action,  # p_t
-            portfolio_state_after_action_fills=portfolio_state_after_action_fills,  # p'_t
-            portfolio_state_next_t=portfolio_state_next_t,  # p_{t+1}
-            market_state_at_decision=market_state_at_decision,
-            market_state_next_t=market_state_next_t,  # Can be None if at end
-            decoded_action=self._last_decoded_action,
-            fill_details_list=fill_details_list,
+        reward = self.reward_calculator.calculate(
+            portfolio_state_before_action=self._last_portfolio_state_before_action,
+            portfolio_state_after_action_fills=portfolio_state_after_action_fills,
+            portfolio_state_next_t=portfolio_state_next_t,
+            market_state_at_decision=market_state_at_decision, market_state_next_t=market_state_next_t,
+            decoded_action=self._last_decoded_action, fill_details_list=fill_details_list,
             terminated=terminated, truncated=truncated, termination_reason=termination_reason
         )
         self.episode_total_reward += reward
 
-        # 11. Get Info for this step (info_t)
         info = self._get_current_info(
-            reward=reward,
-            fill_details_list=fill_details_list,
-            current_portfolio_state_for_info=portfolio_state_next_t,  # Log state p_{t+1}
+            reward=reward, fill_details_list=fill_details_list,
+            current_portfolio_state_for_info=portfolio_state_next_t,
             termination_reason_enum=termination_reason,
             is_terminated=terminated, is_truncated=truncated
         )
@@ -396,73 +610,80 @@ class TradingEnvironment(gym.Env):
         if terminated or truncated:
             final_metrics = self.portfolio_manager.get_trader_vue_metrics()
             info['episode_summary'] = {
-                "total_reward": self.episode_total_reward,
-                "steps": self.current_step,
+                "total_reward": self.episode_total_reward, "steps": self.current_step,
                 "final_equity": portfolio_state_next_t['total_equity'],
                 "session_realized_pnl_net": portfolio_state_next_t['realized_pnl_session'],
-                "session_net_profit_equity_change": portfolio_state_next_t['total_equity'] - self.portfolio_manager.initial_capital,
-                # Session totals from PortfolioState (which are from PortfolioManager)
+                "session_net_profit_equity_change": portfolio_state_next_t['total_equity'] - self.initial_capital_for_session,
                 "session_total_commissions": portfolio_state_next_t['total_commissions_session'],
                 "session_total_fees": portfolio_state_next_t['total_fees_session'],
                 "session_total_slippage_cost": portfolio_state_next_t['total_slippage_cost_session'],
-                "session_total_volume_traded": portfolio_state_next_t['total_volume_traded_session'],
-                "session_total_turnover": portfolio_state_next_t['total_turnover_session'],
                 "termination_reason": termination_reason.value if termination_reason else ("TRUNCATED" if truncated else "UNKNOWN"),
-                **final_metrics  # Spread all detailed TraderVue metrics
+                "invalid_actions_in_episode": self.invalid_action_count_episode,
+                **final_metrics
             }
-            self.logger.info(
-                f"EPISODE END. Reason: {info['episode_summary']['termination_reason']}. Net Profit (Equity Change): ${info['episode_summary']['session_net_profit_equity_change']:.2f}")
+            self.logger.info(f"EPISODE END ({self.primary_asset}). Reason: {info['episode_summary']['termination_reason']}. "
+                             f"Net Profit (Equity Change): ${info['episode_summary']['session_net_profit_equity_change']:.2f}. "
+                             f"Total Reward: {self.episode_total_reward:.4f}. Steps: {self.current_step}.")
 
-        if self.render_mode in ['human', 'logs'] and (self.current_step % 10 == 0 or terminated or truncated):
+        if self.render_mode in ['human', 'logs'] and (self.current_step % self.config.env.render_interval == 0 or terminated or truncated):
             self.render(info_dict=info)
 
         return observation_next_t, reward, terminated, truncated, info
 
     def _get_current_info(self, reward: float, current_portfolio_state_for_info: PortfolioState,
                           fill_details_list: Optional[List[FillDetails]] = None,
-                          termination_reason_enum: Optional[TerminationReasonEnumForEnv] = None,
+                          termination_reason_enum: Optional[TerminationReasonEnum] = None,
                           is_terminated: bool = False, is_truncated: bool = False) -> Dict[str, Any]:
-        """Helper to construct the info dictionary for logging for the current step t."""
         info: Dict[str, Any] = {
             'timestamp_iso': current_portfolio_state_for_info['timestamp'].isoformat(),
-            'step': self.current_step,
-            'reward_step': reward,
+            'step': self.current_step, 'reward_step': reward,
             'episode_cumulative_reward': self.episode_total_reward,
             'action_decoded': self._last_decoded_action,
             'fills_step': fill_details_list if fill_details_list else [],
-            # Log key portfolio state items for step-wise W&B tracking if needed
             'portfolio_equity': current_portfolio_state_for_info['total_equity'],
             'portfolio_cash': current_portfolio_state_for_info['cash'],
             'portfolio_unrealized_pnl': current_portfolio_state_for_info['unrealized_pnl'],
             'portfolio_realized_pnl_session_net': current_portfolio_state_for_info['realized_pnl_session'],
+            'invalid_action_in_step': bool(self._last_decoded_action.get('invalid_reason')) if self._last_decoded_action else False,
+            'invalid_actions_total_episode': self.invalid_action_count_episode,
         }
-        # Add current position details for the primary asset
-        pos_detail = current_portfolio_state_for_info['positions'].get(self.primary_asset, {})
-        info[f'position_{self.primary_asset}_qty'] = pos_detail.get('quantity', 0.0)
-        info[f'position_{self.primary_asset}_side'] = pos_detail.get('current_side', PositionSideEnum.FLAT).value
+        if self.primary_asset:
+            pos_detail = current_portfolio_state_for_info['positions'].get(self.primary_asset, {})
+            info[f'position_{self.primary_asset}_qty'] = pos_detail.get('quantity', 0.0)
+            info[f'position_{self.primary_asset}_side'] = pos_detail.get('current_side', PositionSideEnum.FLAT).value
+            info[f'position_{self.primary_asset}_avg_entry'] = pos_detail.get('avg_entry_price', 0.0)
 
-        if self._last_decoded_action and self._last_decoded_action.get('invalid_reason'):
-            info['action_invalid_reason'] = self._last_decoded_action['invalid_reason']
         if is_terminated and termination_reason_enum:
             info['termination_reason'] = termination_reason_enum.value
         if is_truncated:
-            info['TimeLimit.truncated'] = True  # Standard Gymnasium key for SB3 compatibility
+            info['TimeLimit.truncated'] = True
         return info
 
     def render(self, info_dict: Optional[Dict[str, Any]] = None):
-        if self.render_mode == 'none' or info_dict is None: return
+        if self.render_mode == 'none' or info_dict is None or not self.primary_asset: return
 
-        log_lines = [f"--- Step: {info_dict.get('step', self.current_step)} | Time: {info_dict.get('timestamp_iso', 'N/A')} ---"]
-        if 'action_decoded' in info_dict and info_dict['action_decoded']:
-            log_lines.append(f"Action: {info_dict['action_decoded'].get('type', {}).get('name', 'N/A')}")
-            if 'translated_order' in info_dict['action_decoded']: log_lines.append(f"  Order: {info_dict['action_decoded']['translated_order']}")
-            if 'invalid_reason' in info_dict['action_decoded']: log_lines.append(f"  Invalid: {info_dict['action_decoded']['invalid_reason']}")
+        log_lines = [f"--- Step: {info_dict.get('step', self.current_step)} | Symbol: {self.primary_asset} | Time: {info_dict.get('timestamp_iso', 'N/A')} ---"]
+        decoded_action = info_dict.get('action_decoded')
+        if decoded_action:
+            log_lines.append(
+                f"Action: {decoded_action.get('type').name}, Size: {decoded_action.get('size_enum').name} ({decoded_action.get('size_float') * 100:.0f}%)")
+            if 'translated_order' in decoded_action and decoded_action['translated_order']:
+                log_lines.append(f"  Order: {decoded_action['translated_order']}")
+            if decoded_action.get('invalid_reason'):
+                log_lines.append(f"  Invalid Action Reason: {decoded_action['invalid_reason']}")
+
         if 'fills_step' in info_dict and info_dict['fills_step']:
-            for fill in info_dict['fills_step']: log_lines.append(
-                f"  Fill: {fill['order_side'].value} {fill['executed_quantity']:.2f}@{fill['executed_price']:.2f} Comm:{fill['commission']:.2f} Fees:{fill['fees']:.2f}")
+            for fill in info_dict['fills_step']:
+                log_lines.append(
+                    f"  Fill: {fill['order_side'].value} {fill['executed_quantity']:.4f}@{fill['executed_price']:.2f} "
+                    f"Comm:{fill['commission']:.2f} Fees:{fill['fees']:.2f} SlipCost:{fill.get('slippage_cost_total', 0):.2f}")
 
         log_lines.append(
-            f"Portfolio: Equity ${info_dict.get('portfolio_equity', 0):.2f}, Cash ${info_dict.get('portfolio_cash', 0):.2f}, UnrealPnL ${info_dict.get('portfolio_unrealized_pnl', 0):.2f}")
+            f"Portfolio: Equity ${info_dict.get('portfolio_equity', 0):.2f}, Cash ${info_dict.get('portfolio_cash', 0):.2f}, "
+            f"UnrealPnL ${info_dict.get('portfolio_unrealized_pnl', 0):.2f}, RealPnL ${info_dict.get('portfolio_realized_pnl_session_net', 0):.2f}")
+        log_lines.append(f"  Position[{self.primary_asset}]: Qty {info_dict.get(f'position_{self.primary_asset}_qty', 0):.4f}, "
+                         f"Side {info_dict.get(f'position_{self.primary_asset}_side', 'FLAT')}, "
+                         f"AvgEntry ${info_dict.get(f'position_{self.primary_asset}_avg_entry', 0):.2f}")
         log_lines.append(f"Reward: Step {info_dict.get('reward_step', 0):.4f}, Episode Total {info_dict.get('episode_cumulative_reward', 0):.4f}")
 
         if info_dict.get('termination_reason'): log_lines.append(f"TERMINATED: {info_dict['termination_reason']}")
@@ -475,13 +696,22 @@ class TradingEnvironment(gym.Env):
             self.logger.info(output_str)
 
         if (info_dict.get('termination_reason') or info_dict.get('TimeLimit.truncated')) and 'episode_summary' in info_dict:
-            summary_log = ["--- EPISODE SUMMARY ---"]
-            for k, v in info_dict['episode_summary'].items():
-                summary_log.append(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
+            summary_log = [f"--- EPISODE SUMMARY ({self.primary_asset}) ---"]
+            for k, v_item in info_dict['episode_summary'].items():
+                if isinstance(v_item, float):
+                    summary_log.append(f"  {k}: {v_item:.4f}")
+                elif isinstance(v_item, dict):
+                    summary_log.append(f"  {k}:")
+                    for sub_k, sub_v in v_item.items():
+                        summary_log.append(f"    {sub_k}: {sub_v:.4f}" if isinstance(sub_v, float) else f"    {sub_k}: {sub_v}")
+                else:
+                    summary_log.append(f"  {k}: {v_item}")
+
+            final_output_str = "\n".join(summary_log)
             if self.render_mode == 'human':
-                print("\n".join(summary_log))
+                print(final_output_str)
             elif self.render_mode == 'logs':
-                self.logger.info("\n".join(summary_log))
+                self.logger.info(final_output_str)
 
     def close(self):
         if self.market_simulator and hasattr(self.market_simulator, 'close'):

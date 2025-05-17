@@ -1,31 +1,16 @@
 # config/config.py
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, List, Optional, Dict
 from hydra.core.config_store import ConfigStore
 
-"""
-  'env': {
-    'tradable_assets': ['AAPL'],
-    'max_steps_per_episode': 2000,  # Example
-    'render_mode': 'logs',  # 'human', 'logs', or 'none'
-    'min_trade_quantity': 0.001,  # Example
-    'bankruptcy_threshold_factor': 0.1,  # Example
-    'max_loss_percentage_session': 0.2  # Example: Max 20% loss of initial capital
-  },
-  'simulation': {
-    'portfolio_config': {
-    },
-  },
-  'model': {  # For Observation Space and Portfolio Features
-    'portfolio_feature_lookback': 5,
-    'portfolio_feature_dim': 3,  # e.g. norm_pos_size, norm_unreal_pnl, norm_cash_pct
-    'hf_feat_dim': 8, 'hf_seq_len': 60,  # Example high-frequency features
-    'mf_feat_dim': 6, 'mf_seq_len': 30,  # Example mid-frequency features
-    'lf_feat_dim': 4, 'lf_seq_len': 10,  # Example low-frequency features
-    'static_feat_dim': 2  # Example static features
-  }
-}
-"""
+
+class TrainingMode(Enum):
+    BACKTESTING = "backtesting"
+    LIVE = "live"
+
+    def __str__(self):
+        return self.value
 
 @dataclass
 class RewardConfig:
@@ -44,6 +29,12 @@ class RewardConfig:
 
 @dataclass
 class EnvConfig:
+    training_mode:TrainingMode = TrainingMode.BACKTESTING  # Training mode (training, validation, testing)
+    render_interval: int = 10  # Interval for rendering (in steps)
+    max_episode_loss_percent: float = 0.5  # Maximum loss percentage per episode
+    bankruptcy_threshold_factor: float = 0.5  # Bankruptcy threshold as a factor of initial capital
+    max_invalid_actions_per_episode: int = 20  # Maximum invalid actions allowed per episode
+
     state_dimension: int = 1000  # State dimensions, size of feature vectors
     max_steps: int = 500  # Maximum number of steps in an episode
     normalize_state: bool = True  # Should feature vectors be normalized?

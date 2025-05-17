@@ -1,9 +1,6 @@
-# models/transformer.py
 import torch
 import torch.nn as nn
-import numpy as np
 from typing import Dict, Tuple, List, Optional, Union
-from omegaconf import DictConfig
 
 from models.layers import (
     PositionalEncoding,
@@ -31,6 +28,8 @@ class MultiBranchTransformer(nn.Module):
             mf_feat_dim: int = 15,
             lf_seq_len: int = 30,
             lf_feat_dim: int = 10,
+            portfolio_seq_len: int = 5,
+            portfolio_feat_dim: int = 5,
             static_feat_dim: int = 15,
 
             # Model dimensions
@@ -44,6 +43,7 @@ class MultiBranchTransformer(nn.Module):
             hf_heads: int = 4,
             mf_heads: int = 4,
             lf_heads: int = 4,
+            portfolio_heads: int = 4,
 
             # Output parameters
             action_dim: Union[int, List[int], Tuple[int, ...]] = 1,
@@ -55,7 +55,6 @@ class MultiBranchTransformer(nn.Module):
 
             # For Hydra compatibility
             _target_: Optional[str] = None,  # Hydra instantiation target
-            **kwargs  # Capture any additional Hydra parameters
     ):
         super().__init__()
 
@@ -90,12 +89,14 @@ class MultiBranchTransformer(nn.Module):
         self.hf_seq_len = hf_seq_len
         self.mf_seq_len = mf_seq_len
         self.lf_seq_len = lf_seq_len
+        self.portfolio_seq_len = portfolio_seq_len
         self.static_feat_dim = static_feat_dim
 
         # Feature dimensions
         self.hf_feat_dim = hf_feat_dim
         self.mf_feat_dim = mf_feat_dim
         self.lf_feat_dim = lf_feat_dim
+        self.portfolio_feat_dim = portfolio_feat_dim
 
         # HF Branch (High Frequency)
         self.hf_proj = nn.Linear(hf_feat_dim, d_model)
@@ -115,6 +116,13 @@ class MultiBranchTransformer(nn.Module):
         encoder_layer_lf = TransformerEncoderLayer(d_model, lf_heads, dim_feedforward=2 * d_model, dropout=dropout)
         self.lf_encoder = TransformerEncoder(encoder_layer_lf, lf_layers)
 
+        # Portfolio Branch (Static features)
+        self.portfolio_proj = nn.Linear(portfolio_feat_dim, d_model)
+        self.portfolio_pos_enc = PositionalEncoding(d_model, dropout, max_len=portfolio_seq_len)
+        encoder_layer_portfolio = TransformerEncoderLayer(d_model, portfolio_heads, dim_feedforward=2 * d_model, dropout=dropout)
+        self.portfolio_encoder = TransformerEncoder(encoder_layer_portfolio, portfolio_seq_len)
+
+
         # Static Branch (Position, S/R, etc.)
         self.static_encoder = nn.Sequential(
             nn.Linear(static_feat_dim, d_model),
@@ -126,9 +134,9 @@ class MultiBranchTransformer(nn.Module):
         )
 
         # Fusion Layer
-        self.fusion = AttentionFusion(d_model, 4, d_fused, 4)
+        self.fusion = AttentionFusion(d_model, 5, d_fused, 4)
 
-        # Output layers - different depending on continuous vs discrete
+        # Output layers - different depending on continuous vs. discrete
         if continuous_action:
             # For continuous actions
             self.actor_mean = nn.Linear(d_fused, self.action_dim)
@@ -162,23 +170,25 @@ class MultiBranchTransformer(nn.Module):
 
         Args:
             state_dict: Dictionary containing:
-                - hf_features: (batch_size, hf_seq_len, hf_feat_dim)
-                - mf_features: (batch_size, mf_seq_len, mf_feat_dim)
-                - lf_features: (batch_size, lf_seq_len, lf_feat_dim)
-                - static_features: (batch_size, static_feat_dim)
+                - hf: (batch_size, hf_seq_len, hf_feat_dim)
+                - mf: (batch_size, mf_seq_len, mf_feat_dim)
+                - lf: (batch_size, lf_seq_len, lf_feat_dim)
+                - static: (batch_size, static_feat_dim)
+                - portfolio: (batch_size, portfolio_seq_len, portfolio_feat_dim)
 
         Returns:
             Tuple of (action_distribution_params, value)
             - For continuous actions: (mean, log_std)
             - For discrete tuple actions: (action_type_logits, action_size_logits)
-            - For discrete single actions: (logits,)
+            - For discrete single actions: (logits)
             - value: Value estimate tensor
         """
-        # Extract features from dict, ensuring they're on the right device
-        hf_features = state_dict['hf_features'].to(self.device)
-        mf_features = state_dict['mf_features'].to(self.device)
-        lf_features = state_dict['lf_features'].to(self.device)
-        static_features = state_dict['static_features'].to(self.device)
+        # Extract features from dict, ensuring their on the right device
+        hf_features = state_dict['hf'].to(self.device)
+        mf_features = state_dict['mf'].to(self.device)
+        lf_features = state_dict['lf'].to(self.device)
+        static_features = state_dict['static'].to(self.device)
+        portfolio_features = state_dict['portfolio'].to(self.device)
 
         # Process HF Branch
         # Shape: (batch_size, hf_seq_len, d_model)
@@ -210,24 +220,35 @@ class MultiBranchTransformer(nn.Module):
         # Shape: (batch_size, d_model)
         lf_rep = lf_x[:, -1, :]
 
+        # Process Portfolio Branch
+        # Shape: (batch_size, portfolio_seq_len, d_model)
+        portfolio_x = self.portfolio_proj(portfolio_features)
+        portfolio_x = self.portfolio_pos_enc(portfolio_x)
+        # Shape: (batch_size, portfolio_seq_len, d_model)
+        portfolio_x = self.portfolio_encoder(portfolio_x)
+        # Take last timestep's representation
+        # Shape: (batch_size, d_model)
+        portfolio_rep = portfolio_x[:, -1, :]
+
+
         # Process Static Branch
         # Shape: (batch_size, d_model)
         static_rep = self.static_encoder(static_features)
 
         # Fusion via attention
-        # Prepare all branches for fusion
+        # Prepares all branches for fusion
         # Shape: (batch_size, 4, d_model)
-        features_to_fuse = torch.stack([hf_rep, mf_rep, lf_rep, static_rep], dim=1)
+        features_to_fuse = torch.stack([hf_rep, mf_rep, lf_rep,portfolio_rep, static_rep], dim=1)
 
-        # Fuse all branches
+        # Fuse all-branches
         # Shape: (batch_size, d_fused)
         fused = self.fusion(features_to_fuse)
 
-        # Output action parameters based on action space type
+        # Output action parameters based on an action space type
         if self.continuous_action:
             # For continuous action space, output mean and log_std
             mean = self.actor_mean(fused)
-            # Expand log_std to match batch size
+            # Expand log_std to match the batch size
             batch_size = fused.size(0)
             log_std = self.actor_log_std.expand(batch_size, -1)
             action_params = (mean, log_std)
@@ -311,7 +332,7 @@ class MultiBranchTransformer(nn.Module):
                         'log_prob': log_prob  # Always include log_prob
                     }
                 else:
-                    # For single discrete action
+                    # For a single discrete action
                     logits = action_params[0]
                     dist = torch.distributions.Categorical(logits=logits)
 

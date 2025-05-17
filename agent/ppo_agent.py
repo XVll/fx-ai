@@ -1,34 +1,30 @@
+# agent/ppo_agent.py
 import os
-import time
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from typing import Dict, List, Union, Any
+from typing import Dict, List, Union, Any, Optional
 import logging
-import torch.nn.functional as F
-import wandb
+import wandb  # Assuming wandb is used
 from omegaconf import DictConfig
+import torch.nn.functional as nnf
 
-from models.transformer import MultiBranchTransformer
-from envs.trading_env import TradingEnv
-from agent.utils import ReplayBuffer, normalize_state_dict, preprocess_state_to_dict
-from agent.callbacks import TrainingCallback
+# Assuming these are your custom module imports
+from envs.trading_env import TradingEnvironment  # Your environment class
+from models.transformer import MultiBranchTransformer  # Your model class
+from agent.utils import ReplayBuffer, convert_state_dict_to_tensors  # From the rewritten utils
+from agent.callbacks import TrainingCallback  # Your callback base class
+
+logger = logging.getLogger(__name__)
 
 
 class PPOTrainer:
-    """
-    Proximal Policy Optimization (PPO) trainer for the Multi-Branch Transformer model.
-
-    Implements PPO with clipped surrogate objective, critic loss, and entropy bonus.
-    """
-
     def __init__(
             self,
-            env: TradingEnv,
-            model: MultiBranchTransformer,
-            model_config: Union[Dict[str, Any], DictConfig] = None,
-            # Training hyperparameters
+            env: TradingEnvironment,
+            model: MultiBranchTransformer,  # Expects MultiBranchTransformer specifically
+            model_config: Optional[Union[Dict[str, Any], DictConfig]] = None,  # For model details if needed elsewhere
             lr: float = 3e-4,
             gamma: float = 0.99,
             gae_lambda: float = 0.95,
@@ -36,51 +32,19 @@ class PPOTrainer:
             critic_coef: float = 0.5,
             entropy_coef: float = 0.01,
             max_grad_norm: float = 0.5,
-            n_epochs: int = 10,
-            batch_size: int = 64,
-            # Buffer and rollout settings
-            buffer_size: int = 2048,
-            n_episodes_per_update: int = 8,
-            # Other settings
-            device: Union[str, torch.device] = None,
-            output_dir: str = "./output",
-            logger: logging.Logger = None,
-            callbacks: List[TrainingCallback] = None
+            ppo_epochs: int = 10,  # Number of epochs to train on the collected data
+            batch_size: int = 64,  # Minibatch size for PPO updates
+            rollout_steps: int = 2048,  # Number of steps to collect per rollout before updating
+            device: Optional[Union[str, torch.device]] = None,
+            output_dir: str = "./ppo_output",
+            use_wandb: bool = True,
+            callbacks: Optional[List[TrainingCallback]] = None,
     ):
-        """
-        Initialize the PPO trainer.
-
-        Args:
-            env: Trading environment instance
-            model: Multi-Branch Transformer model instance
-            model_config: Configuration dictionary for model architecture (can be Hydra DictConfig)
-            lr: Learning rate
-            gamma: Discount factor
-            gae_lambda: GAE lambda parameter
-            clip_eps: PPO clip epsilon
-            critic_coef: Weight of critic loss
-            entropy_coef: Weight of entropy bonus
-            max_grad_norm: Max gradient norm for clipping
-            n_epochs: Number of optimization epochs per update
-            batch_size: Minibatch size for optimization
-            buffer_size: Size of replay buffer
-            n_episodes_per_update: Number of episodes to collect before updating
-            device: Device to use (default: cuda if available, otherwise cpu)
-            output_dir: Directory for saving models and logs
-            logger: Logger object
-            callbacks: List of callbacks for training hooks
-        """
-        # Environment and model
         self.env = env
         self.model = model
+        self.model_config = model_config if model_config else {}  # Store for reference
 
-        # Handle Hydra config
-        if model_config is not None and hasattr(model_config, "_to_dict"):
-            self.model_config = model_config._to_dict()
-        else:
-            self.model_config = model_config or {}
-
-        # Training parameters
+        # Hyperparameters
         self.lr = lr
         self.gamma = gamma
         self.gae_lambda = gae_lambda
@@ -88,634 +52,534 @@ class PPOTrainer:
         self.critic_coef = critic_coef
         self.entropy_coef = entropy_coef
         self.max_grad_norm = max_grad_norm
-        self.n_epochs = n_epochs
+        self.ppo_epochs = ppo_epochs
         self.batch_size = batch_size
+        self.rollout_steps = rollout_steps  # Buffer capacity will be this
 
-        # Rollout parameters
-        self.buffer_size = buffer_size
-        self.n_episodes_per_update = n_episodes_per_update
-
-        # Set device
+        # Device setup
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         elif isinstance(device, str):
             self.device = torch.device(device)
         else:
             self.device = device
+        self.model.to(self.device)  # Ensure the model is on the correct device
 
         # Optimizer
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
-        # Set up buffer
-        self.buffer = ReplayBuffer(buffer_size, self.device)
+        # Replay Buffer
+        self.buffer = ReplayBuffer(capacity=self.rollout_steps, device=self.device)
 
-        # Setup directories
+        # Output directories
         self.output_dir = output_dir
         self.model_dir = os.path.join(output_dir, "models")
-        self.log_dir = os.path.join(output_dir, "logs")
         os.makedirs(self.model_dir, exist_ok=True)
-        os.makedirs(self.log_dir, exist_ok=True)
 
-        # Setup logging
-        self.logger = logger or logging.getLogger(__name__)
+        # Logging and W&B
+        self.use_wandb = use_wandb
+        if self.use_wandb and wandb.run is None:  # Check if wandb is already initialized
+            logger.warning("W&B not initialized. Consider initializing wandb.init() before trainer.")
+            # Or initialize here: wandb.init(project="your_project_name")
 
         # Callbacks
-        self.callbacks = callbacks or []
+        self.callbacks = callbacks if callbacks else []
 
         # Training state
-        self.total_steps = 0
-        self.total_episodes = 0
-        self.updates = 0
+        self.global_step_counter = 0  # Total environment steps taken
+        self.global_episode_counter = 0
+        self.global_update_counter = 0
 
-        # Metrics
-        self.episode_rewards = []
-        self.episode_lengths = []
+        logger.info(f"PPOTrainer initialized. Device: {self.device}, LR: {self.lr}, Rollout Steps: {self.rollout_steps}")
+        logger.info(f"Model: {type(self.model).__name__}")
 
-        # Log info
-        self.logger.info(f"PPO Trainer initialized on device: {self.device}")
-        self.logger.info(f"Model: {type(self.model).__name__}")
-        self.logger.info(f"Learning rate: {self.lr}")
+    def _convert_action_for_env(self, action_tensor: torch.Tensor) -> Any:
+        """Converts model's action tensor to environment-compatible format."""
+        if self.model.continuous_action:
+            action_np = action_tensor.cpu().numpy().squeeze()
+            # Ensure it's a 1D array if squeezed to scalar, matching common env expectations
+            return np.array([action_np], dtype=np.float32) if np.isscalar(action_np) else action_np.astype(np.float32)
+        else:  # Discrete actions
+            # For MultiDiscrete, model.get_action should return a tensor like [action_type_idx, action_size_idx]
+            if action_tensor.ndim > 0 and action_tensor.shape[-1] == 2:  # Assuming (..., 2) for MultiDiscrete
+                return tuple(action_tensor.cpu().numpy().squeeze().astype(int))
+            else:  # Single discrete action
+                return action_tensor.cpu().numpy().item()
 
-    # agent/ppo_agent.py - Fixed collect_rollouts method
-    def collect_rollouts(self, n_episodes: int = None) -> Dict[str, Any]:
-        """
-        Collect rollouts from the environment with improved error handling.
+    def collect_rollout_data(self) -> Dict[str, Any]:
+        """Collects data for a fixed number of steps (self.rollout_steps)."""
+        logger.info(f"Starting rollout data collection for {self.rollout_steps} steps...")
+        self.buffer.clear()  # Clear buffer before a new rollout collection
 
-        Args:
-            n_episodes: Number of episodes to collect (if None, use n_episodes_per_update)
+        # Get initial state from environment
+        # The environment should return Dict[str, np.ndarray]
+        current_env_state_np, _ = self.env.reset()
 
-        Returns:
-            Dictionary with collection statistics
-        """
-        n_episodes = n_episodes or self.n_episodes_per_update
+        # For callback on_rollout_start
+        for callback in self.callbacks: callback.on_rollout_start(self)
 
-        total_reward = 0.0
-        total_steps = 0
-        episode_rewards = []
-        episode_lengths = []
+        collected_steps = 0
+        episode_rewards_in_rollout = []
+        episode_lengths_in_rollout = []
+        current_episode_reward = 0.0
+        current_episode_length = 0
 
-        self.logger.info(f"Collecting {n_episodes} episodes...")
+        while collected_steps < self.rollout_steps:
+            # Convert the current environment state (NumPy dict) to PyTorch tensor dict for the model
+            current_model_state_torch = convert_state_dict_to_tensors(current_env_state_np, self.device)
 
-        # Call on_rollout_start for callbacks
-        for callback in self.callbacks:
-            callback.on_rollout_start(self)
+            with torch.no_grad():
+                # Model's get_action should return action tensor and action_info dict (with 'value', 'log_prob')
+                action_tensor, action_info = self.model.get_action(current_model_state_torch, deterministic=False)
 
-        for episode in range(n_episodes):
-            # Reset environment
+            # Convert action tensor to environment-compatible format
+            env_action = self._convert_action_for_env(action_tensor)
+
             try:
-                state_dict, _ = self.env.reset()
+                next_env_state_np, reward, terminated, truncated, info = self.env.step(env_action)
+                done = terminated or truncated
             except Exception as e:
-                self.logger.error(f"Error resetting environment: {e}")
-                break
+                logger.error(f"Error during environment step: {e}", exc_info=True)
+                break  # End rollout if an environment step fails
 
-            # Track episode data
-            episode_reward = 0
-            episode_length = 0
-            episode_done = False
+            self.buffer.add(
+                current_env_state_np,
+                action_tensor,  # Store model's tensor action
+                reward,
+                next_env_state_np,
+                done,
+                action_info  # Contains value and log_prob tensors
+            )
 
-            while not episode_done:
-                try:
-                    # Get action from policy
-                    with torch.no_grad():
-                        action, action_info = self.model.get_action(state_dict)
+            current_env_state_np = next_env_state_np
+            self.global_step_counter += 1
+            collected_steps += 1
+            current_episode_reward += reward
+            current_episode_length += 1
 
-                    # Convert action to the format expected by the environment
-                    if self.model.continuous_action:
-                        # For continuous actions - ensure it's a 1D numpy array
-                        action_np = action.cpu().numpy().squeeze()
-                        if np.isscalar(action_np):
-                            action_np = np.array([action_np], dtype=np.float32)
-                    else:
-                        # Discrete actions - could be single or tuple
-                        if isinstance(action, torch.Tensor) and action.shape[-1] == 2:
-                            # We have a tuple action [action_type, action_size]
-                            action_np = tuple(action.cpu().numpy().squeeze().astype(int))
-                        else:
-                            # Single discrete action
-                            action_np = action.cpu().numpy().item()
+            # For callback on_step
+            for callback in self.callbacks: callback.on_step(self, current_model_state_torch, action_tensor, reward, next_env_state_np, info)
 
-                    # Take step in environment
-                    next_state_dict, reward, terminated, truncated, info = self.env.step(action_np)
-                    episode_done = terminated or truncated
+            if done:
+                self.global_episode_counter += 1
+                episode_rewards_in_rollout.append(current_episode_reward)
+                episode_lengths_in_rollout.append(current_episode_length)
+                logger.info(
+                    f"Episode {self.global_episode_counter} finished. Reward: {current_episode_reward:.2f}, Length: {current_episode_length}, Global Steps: {self.global_step_counter}")
+                if self.use_wandb:
+                    wandb.log({
+                        "rollout/episode_reward": current_episode_reward,
+                        "rollout/episode_length": current_episode_length,
+                        "global_step": self.global_step_counter
+                    }, step=self.global_update_counter)  # Log against PPO updates
 
-                    # Check if we encountered end of data
-                    if 'end_reason' in info and info['end_reason'] == 'end_of_data':
-                        self.logger.warning("Reached end of data, ending collection early")
-                        break
+                # For callback on_episode_end
+                for callback in self.callbacks: callback.on_episode_end(self, current_episode_reward, current_episode_length, info)
 
-                    # Process next state
-                    state_dict = next_state_dict
+                current_env_state_np, _ = self.env.reset()  # Reset for the next episode within the rollout
+                current_episode_reward = 0.0
+                current_episode_length = 0
 
-                    # Add to buffer
-                    self.buffer.add(
-                        state_dict,
-                        action,
-                        reward,
-                        next_state_dict,
-                        episode_done,
-                        action_info
-                    )
-
-                    # Update state
-                    state_dict = next_state_dict
-
-                    # Update counters
-                    episode_reward += reward
-                    episode_length += 1
-                    total_steps += 1
-
-                    # Call on_step for callbacks
-                    for callback in self.callbacks:
-                        callback.on_step(self, state_dict, action, reward, next_state_dict, info)
-
-                except Exception as e:
-                    self.logger.error(f"Error during environment step: {e}", exc_info=True)
-                    episode_done = True
+                if collected_steps >= self.rollout_steps:  # Ensure we don't overshoot if an episode ends exactly at rollout_steps
                     break
 
-            # Record episode statistics
-            episode_rewards.append(episode_reward)
-            episode_lengths.append(episode_length)
-            total_reward += episode_reward
+        # For callback on_rollout_end
+        for callback in self.callbacks: callback.on_rollout_end(self)
 
-            # Log episode results
-            self.logger.info(f"Episode {self.total_episodes + 1}: reward={episode_reward:.2f}, length={episode_length}")
+        # Prepare buffer data (stacks all collected experiences into large tensors)
+        self.buffer.prepare_data_for_training()
 
-            # Increment episode counter
-            self.total_episodes += 1
-
-            # Call on_episode_end for callbacks
-            for callback in self.callbacks:
-                callback.on_episode_end(self, episode_reward, episode_length, info)
-
-        # Update global counters
-        self.total_steps += total_steps
-
-        # Call on_rollout_end for callbacks
-        for callback in self.callbacks:
-            callback.on_rollout_end(self)
-
-        # Return statistics
-        stats = {
-            "episodes": n_episodes,
-            "total_steps": total_steps,
-            "mean_reward": total_reward / max(1, n_episodes),
-            "episode_rewards": episode_rewards,
-            "episode_lengths": episode_lengths,
+        rollout_stats = {
+            "collected_steps": collected_steps,
+            "mean_episode_reward": np.mean(episode_rewards_in_rollout) if episode_rewards_in_rollout else 0,
+            "mean_episode_length": np.mean(episode_lengths_in_rollout) if episode_lengths_in_rollout else 0,
+            "num_episodes_in_rollout": len(episode_rewards_in_rollout)
         }
+        logger.info(f"Rollout finished. {rollout_stats}")
+        return rollout_stats
 
-        return stats
+    def _compute_advantages_and_returns(self):
+        """Computes GAE advantages and returns, storing them in the buffer."""
+        if self.buffer.rewards is None or self.buffer.values is None or self.buffer.dones is None:
+            logger.error("Cannot compute advantages: buffer data (rewards, values, dones) not prepared.")
+            return
 
-    # Simplified compute_advantages method for agent/ppo_agent.py
-
-    def compute_advantages(self) -> None:
-        """
-        Compute advantages and returns using Generalized Advantage Estimation (GAE).
-        """
-        # Make sure buffer data is prepared
-        if isinstance(self.buffer.rewards, list):
-            self.buffer.prepare_data()
-
-        # Get data from buffer
         rewards = self.buffer.rewards
         values = self.buffer.values
         dones = self.buffer.dones
+        num_steps = len(rewards)
 
-        # Log shapes for debugging
-        self.logger.info(
-            f"Computing advantages - rewards: {rewards.shape}, values: {values.shape}, dones: {dones.shape}")
+        advantages = torch.zeros_like(rewards, device=self.device)
+        last_gae_lam = 0
 
-        # Ensure consistent shapes - reshape if needed
-        if len(rewards.shape) == 1:
-            rewards = rewards.unsqueeze(1)  # Convert [batch_size] to [batch_size, 1]
-        if len(dones.shape) == 1:
-            dones = dones.unsqueeze(1)  # Convert [batch_size] to [batch_size, 1]
-        if len(values.shape) == 1:
-            values = values.unsqueeze(1)  # Convert [batch_size] to [batch_size, 1]
+        # Estimate the value of the last state if not done, otherwise 0
+        # This requires getting the value of the *very last* next_state encountered in rollout
+        # For simplicity, if the last step was 'done', next_value is 0.
+        # If not, we would ideally compute model.value(last_next_state).
+        # Common practice: if rollout ends not due to 'done', bootstrap from the last value.
+        # Here, we assume the value tensor already includes V(s_t) for all t in rollout.
+        # So V(s_{t+1}) is values[t+1] effectively.
 
-        # Convert to NumPy arrays for easier processing
-        rewards_np = rewards.detach().cpu().numpy()
-        values_np = values.detach().cpu().numpy()
-        dones_np = dones.detach().cpu().numpy()
+        for t in reversed(range(num_steps)):
+            if t == num_steps - 1:  # Last step in the buffer
+                # If the episode was not 'done' at this last step, we might need V(s_T+1)
+                # For simplicity, if it's not done, the advantage calculation can use V(s_T) as if it were terminal,
+                # or we'd need to have stored V(s_T+1) from the model.
+                # Assuming values contains V(s_0)...V(s_T-1).
+                # So, next_value for rewards[T-1] would be 0 if dones[T-1] is true, or V(s_T) if we had it.
+                # A common simplification: if dones[t] is true, next_val_for_delta is 0.
+                # If not, it's values[t+1] if t+1 is in buffer, or bootstrap V(s_last_next_state)
 
-        # Create NumPy array for advantages
-        advantages_np = np.zeros_like(rewards_np)
+                # Let's assume values are V(s_t).
+                # For the last element rewards[num_steps-1], delta uses V(s_{num_steps-1})
+                # and needs a next_value. If dones[num_steps-1] is true, next_value = 0.
+                # If dones[num_steps-1] is false, we'd ideally use the value of the *actual next state* after the rollout.
+                # For PPO rollouts, the 'values' are V(s_t).
+                # The 'next_value' for delta at step 't' is V(s_{t+1}).
+                # So for the last step 'num_steps-1', the next_value for delta would be from V(s_{num_steps}).
+                # We use the value of the state *after* the last action in the buffer.
+                # This is usually handled by getting the value of `last_next_env_state_np` if the episode didn't end.
 
-        # Log after reshaping
-        self.logger.info(
-            f"After reshaping - rewards: {rewards_np.shape}, values: {values_np.shape}, dones: {dones_np.shape}")
-
-        # Compute GAE
-        last_gae = 0
-        for t in reversed(range(len(rewards_np))):
-            # End of episode or end of buffer
-            if t == len(rewards_np) - 1:
-                # For the last step, use 0 as the next value
-                next_value = 0
-                next_non_terminal = 1.0 - float(dones_np[t, 0])
+                # A practical way: `values` stores V(s_0)...V(s_N-1)
+                # For GAE at step N-1, we need V(s_N).
+                # If done[N-1] is true, V(s_N) = 0.
+                # If done[N-1] is false, V(s_N) is estimated by the model on the actual next state s_N.
+                # Since we are operating on a fixed buffer, if not done, the next_value is values[t+1]
+                # For the last step in buffer:
+                if dones[t]:
+                    next_value = torch.tensor([0.0], device=self.device)
+                else:
+                    # Bootstrap with the value of the state *after* the last action of the rollout
+                    # This requires `self.buffer.buffer[-1]['next_state']` to be evaluated by the critic
+                    # For simplicity, let's assume it if not done, we use the value estimate of the last *next_state*
+                    # that was stored alongside the last experience in the buffer before `prepare_data_for_training`.
+                    # This value is NOT in self.buffer.values (which are V(s_t) for t in buffer).
+                    # We need to compute it.
+                    last_exp_next_state_torch = self.buffer.buffer[-1]['next_state']  # This is Dict[str, Tensor]
+                    with torch.no_grad():
+                        _, next_value_container = self.model(last_exp_next_state_torch)  # Get value V(s_N)
+                        next_value = next_value_container
             else:
-                next_value = values_np[t + 1, 0]
-                next_non_terminal = 1.0 - float(dones_np[t, 0])
+                if dones[t]:
+                    next_value = torch.tensor([0.0], device=self.device)
+                else:
+                    next_value = values[t + 1]  # V(s_{t+1})
 
-            # TD error
-            delta = rewards_np[t, 0] + self.gamma * next_value * next_non_terminal - values_np[t, 0]
+            delta = rewards[t] + self.gamma * next_value * (1.0 - dones[t].float()) - values[t]
+            advantages[t] = last_gae_lam = delta + self.gamma * self.gae_lambda * (1.0 - dones[t].float()) * last_gae_lam
 
-            # Recursive GAE formula
-            last_gae = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae
-
-            # Store advantage in NumPy array
-            advantages_np[t, 0] = last_gae
-
-        # Convert back to PyTorch tensors
-        advantages = torch.FloatTensor(advantages_np).to(self.device)
-        returns = advantages + values
-
-        # Store in buffer
         self.buffer.advantages = advantages
-        self.buffer.returns = returns
-
-        # Log output shapes
-        self.logger.info(f"Computed - advantages: {advantages.shape}, returns: {returns.shape}")
+        self.buffer.returns = advantages + values  # Rt = At + Vt
+        logger.info("Advantages and returns computed and stored in buffer.")
 
     def update_policy(self) -> Dict[str, float]:
-        """
-        Update the policy using PPO with proper handling of tuple action parameters.
-        """
-        # Compute advantages and returns
-        self.compute_advantages()
+        """Performs PPO updates for ppo_epochs using data in the buffer."""
+        # Compute advantages and returns first
+        self._compute_advantages_and_returns()
 
-        # Get data from buffer and convert to CPU numpy arrays to reset any computation history
-        states_np = {k: v.detach().cpu().numpy() for k, v in self.buffer.states.items()}
-        actions_np = self.buffer.actions.detach().cpu().numpy()
-        old_log_probs_np = self.buffer.log_probs.detach().cpu().numpy()
-        advantages_np = self.buffer.advantages.detach().cpu().numpy()
-        returns_np = self.buffer.returns.detach().cpu().numpy()
+        training_data = self.buffer.get_training_data()
+        if training_data is None:
+            logger.error("Skipping policy update due to missing training data in buffer.")
+            return {}
 
-        # Get total buffer size
-        buffer_size = advantages_np.shape[0]
+        states_dict = training_data["states"]
+        actions = training_data["actions"]
+        old_log_probs = training_data["old_log_probs"]
+        advantages = training_data["advantages"]
+        returns = training_data["returns"]
+        # old_values = training_data["values"] # V(s_t) from rollout
 
-        # Log buffer sizes for debugging
-        self.logger.info(f"Buffer sizes - buffer: {buffer_size}, advantages: {advantages_np.shape}")
+        # Normalize advantages (important for PPO stability)
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # Tracking metrics
-        total_actor_loss = 0
-        total_critic_loss = 0
-        total_entropy = 0
-        total_kl = 0
-        total_clip_fraction = 0
-        n_updates = 0
+        num_samples = actions.size(0)
+        if num_samples == 0:
+            logger.warning("No samples in buffer to update policy. Skipping update.")
+            return {}
 
-        # Main training loop
-        for epoch in range(self.n_epochs):
-            # Shuffle data for each epoch
-            indices = np.random.permutation(buffer_size)
+        # Create indices for batching
+        indices = np.arange(num_samples)
 
-            # Process in batches
-            for start_idx in range(0, buffer_size, self.batch_size):
-                # Get batch indices
-                end_idx = min(start_idx + self.batch_size, buffer_size)
-                batch_indices = indices[start_idx:end_idx]
+        # For callback on_update_start
+        for callback in self.callbacks: callback.on_update_start(self)
 
-                if len(batch_indices) == 0:
-                    continue
+        total_actor_loss, total_critic_loss, total_entropy_loss = 0, 0, 0
+        num_updates_in_epoch = 0
 
-                # Convert numpy arrays back to fresh PyTorch tensors
-                batch_states = {k: torch.FloatTensor(v[batch_indices]).to(self.device)
-                                for k, v in states_np.items()}
-                batch_actions = torch.FloatTensor(actions_np[batch_indices]).to(self.device)
-                batch_old_log_probs = torch.FloatTensor(old_log_probs_np[batch_indices]).to(self.device)
-                batch_advantages = torch.FloatTensor(advantages_np[batch_indices]).to(self.device)
-                batch_returns = torch.FloatTensor(returns_np[batch_indices]).to(self.device)
+        for epoch in range(self.ppo_epochs):
+            np.random.shuffle(indices)  # Shuffle for each epoch
 
-                # Ensure consistent shapes
-                if len(batch_actions.shape) == 1:
-                    batch_actions = batch_actions.unsqueeze(1)
-                if len(batch_old_log_probs.shape) == 1:
-                    batch_old_log_probs = batch_old_log_probs.unsqueeze(1)
-                if len(batch_advantages.shape) == 1:
-                    batch_advantages = batch_advantages.unsqueeze(1)
-                if len(batch_returns.shape) == 1:
-                    batch_returns = batch_returns.unsqueeze(1)
+            for start_idx in range(0, num_samples, self.batch_size):
+                batch_indices = indices[start_idx: start_idx + self.batch_size]
 
-                # Normalize advantages (just for this batch)
-                batch_advantages = (batch_advantages - batch_advantages.mean()) / (batch_advantages.std() + 1e-8)
+                # Create a batch states dictionary
+                batch_states = {key: tensor_val[batch_indices] for key, tensor_val in states_dict.items()}
+                batch_actions = actions[batch_indices]
+                batch_old_log_probs = old_log_probs[batch_indices]
+                batch_advantages = advantages[batch_indices]
+                batch_returns = returns[batch_indices]
+                # batch_old_values = old_values[batch_indices] # For value clipping if used
 
-                # Zero gradients for actor update
-                self.optimizer.zero_grad()
+                # Get new log probs, entropy, and values from current policy
+                # model.forward returns (action_params, value_estimate)
+                action_params, current_values = self.model(batch_states)
+                current_values = current_values.squeeze(-1)  # Ensure the correct shape if [batch, 1]
 
-                # Get action distribution parameters and values
-                action_params, values = self.model(batch_states)
-
-                # Compute log probabilities of actions
+                # Calculate new log probabilities and entropy
                 if self.model.continuous_action:
                     mean, log_std = action_params
                     std = torch.exp(log_std)
-                    normal_dist = torch.distributions.Normal(mean, std)
+                    dist = torch.distributions.Normal(mean, std)
 
-                    # Handle squashed actions (tanh)
-                    action_unsquashed = torch.atanh(torch.clamp(batch_actions, -0.999, 0.999))
-                    log_probs = normal_dist.log_prob(action_unsquashed).sum(1, keepdim=True)
-                    entropy = normal_dist.entropy().sum(1, keepdim=True)
-                else:
-                    # Check if action_params is a tuple (for multiple discrete actions)
-                    if isinstance(action_params, tuple) and len(action_params) == 2:
-                        # Handle tuple actions (action_type, action_size)
-                        action_type_logits, action_size_logits = action_params
+                    # For tanh-squashed actions, PPO typically works with the distribution *before* squashing
+                    # The action_tensor in buffer is the squashed action. We need to "unsquash" it
+                    # or re-evaluate the log_prob of the pre-squashed sample if that was stored.
+                    # Assuming log_probs in buffer are for the squashed action WITH correction,
+                    # or the PPO update should use the distribution of the pre-squashed action.
+                    # For simplicity, let's assume log_probs in the buffer are from `dist.log_prob(pre_squashed_action) - correction`.
+                    # When evaluating new log_probs for PPO, we need log_prob of batch_actions.
+                    # If batch_actions are squashed, we need to apply the same logic.
+                    # The model's get_action already provides log_prob including Tanh correction.
+                    # So, batch_old_log_probs already has this.
+                    # For new_log_probs, we need to re-evaluate based on batch_actions (which are squashed).
+                    # To get log_prob of squashed action `a` from Normal(mu, sigma) then tanh:
+                    #   x = atanh(a)
+                    #   log_prob = Normal(mu, sigma).log_prob(x) - log(1 - a^2 + eps)
+                    # This should match how old_log_probs were computed.
 
-                        # Extract action components
-                        if batch_actions.shape[-1] == 2:
-                            action_type = batch_actions[:, 0].long()
-                            action_size = batch_actions[:, 1].long()
-                        else:
-                            # If actions are already flattened
-                            action_type = batch_actions.long().squeeze()
-                            action_size = torch.zeros_like(action_type)  # Default if not available
+                    # Let's ensure `batch_actions` are correctly shaped for `dist.log_prob`
+                    # If action_dim > 1, sum log_probs over action dimensions
+                    # Model's `get_action` log_prob sum is `sum(1, keepdim=True)`
 
-                        # Create separate distributions
-                        type_dist = torch.distributions.Categorical(logits=action_type_logits)
-                        size_dist = torch.distributions.Categorical(logits=action_size_logits)
+                    # Re-evaluate log_prob for the current policy based on actions taken
+                    # inverse_tanh_actions = torch.atanh(batch_actions.clamp(-0.9999, 0.9999))
+                    # new_log_probs = dist.log_prob(inverse_tanh_actions).sum(dim=-1, keepdim=True)
+                    # entropy = dist.entropy().sum(dim=-1, keepdim=True)
 
-                        # Get log probs for each component
-                        type_log_probs = type_dist.log_prob(action_type).unsqueeze(1)
-                        size_log_probs = size_dist.log_prob(action_size).unsqueeze(1)
+                    # Alternative & often simpler: A PPO ratio is on the distribution directly.
+                    # The critical part is that old_log_probs and new_log_probs are comparable.
+                    # If model.get_action stores log_prob of the pre-squashed sample, then:
+                    # new_log_probs = dist.log_prob(dist.rsample()).sum(-1, keepdim=True) - this isn't right for PPO.
+                    # We need log_prob of *taken actions* under *current policy*.
 
-                        # Combined log prob
-                        log_probs = type_log_probs + size_log_probs
+                    # Let's assume 'batch_actions' are the Tanh-squashed actions.
+                    # To get log_prob(batch_actions | current_policy):
+                    # 1. Inverse Tanh: x_t = atanh(batch_actions)
+                    # 2. Log prob of x_t undercurrent Gaussian: log_pi(x_t)
+                    # 3. Tanh correction: log(1 - batch_actions^2)
+                    # new_log_probs = log_pi(x_t) - log(1 - batch_actions^2)
+                    # This must match how old_log_probs was computed.
 
-                        # Combined entropy
-                        entropy = (type_dist.entropy() + size_dist.entropy()).unsqueeze(1)
-                    else:
-                        # Single discrete action
-                        logits = action_params
-                        dist = torch.distributions.Categorical(logits=logits)
+                    # Let's follow the model's get_action structure for log_prob:
+                    x_t_for_actions = torch.atanh(batch_actions.clamp(-1.0 + 1e-6, 1.0 - 1e-6))  # Inverse of action
+                    new_log_probs = dist.log_prob(x_t_for_actions)
+                    # Tanh correction for log_prob
+                    new_log_probs -= torch.log(1.0 - batch_actions.pow(2) + 1e-6)
+                    new_log_probs = new_log_probs.sum(1, keepdim=True)
+                    entropy = dist.entropy().sum(1, keepdim=True)
 
-                        if len(batch_actions.shape) > 1:
-                            action_indices = batch_actions.long().squeeze(1)
-                        else:
-                            action_indices = batch_actions.long()
+                else:  # Discrete actions
+                    action_type_logits, action_size_logits = action_params  # Assuming tuple action
 
-                        log_probs = dist.log_prob(action_indices).unsqueeze(1)
-                        entropy = dist.entropy().unsqueeze(1)
+                    # batch_actions should be shape [batch_size, 2] for (type, size)
+                    action_types_taken = batch_actions[:, 0].long()
+                    action_sizes_taken = batch_actions[:, 1].long()
 
-                # Calculate PPO ratio
-                ratio = torch.exp(log_probs - batch_old_log_probs)
+                    type_dist = torch.distributions.Categorical(logits=action_type_logits)
+                    size_dist = torch.distributions.Categorical(logits=action_size_logits)
 
-                # Clipped surrogate objective
-                surrogate1 = ratio * batch_advantages
-                surrogate2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * batch_advantages
+                    new_type_log_probs = type_dist.log_prob(action_types_taken)
+                    new_size_log_probs = size_dist.log_prob(action_sizes_taken)
+                    new_log_probs = (new_type_log_probs + new_size_log_probs).unsqueeze(1)  # Ensure [batch, 1]
 
-                # Actor loss
-                actor_loss = -torch.min(surrogate1, surrogate2).mean()
+                    entropy = (type_dist.entropy() + size_dist.entropy()).unsqueeze(1)  # Ensure [batch, 1]
 
-                # Entropy loss (encouraged exploration)
+                # PPO Ratio
+                ratio = torch.exp(new_log_probs - batch_old_log_probs)
+
+                # Clipped Surrogate Objective
+                surr1 = ratio * batch_advantages
+                surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * batch_advantages
+                actor_loss = -torch.min(surr1, surr2).mean()
+
+                # Critic Loss (Value Loss)
+                # Optional: Value clipping (as in original PPO paper)
+                # values_clipped = batch_old_values + torch.clamp(current_values - batch_old_values, -self.clip_eps, self.clip_eps)
+                # critic_loss1 = F.mse_loss(current_values, batch_returns)
+                # critic_loss2 = F.mse_loss(values_clipped, batch_returns)
+                # critic_loss = 0.5 * torch.max(critic_loss1, critic_loss2).mean() # Or just simple MSE
+                critic_loss = nnf.mse_loss(current_values.unsqueeze(1), batch_returns)
+
+                # Entropy Bonus
                 entropy_loss = -entropy.mean()
 
-                # Compute critic loss
-                critic_loss = F.mse_loss(values, batch_returns)
-
-                # Combine losses with coefficients
+                # Total Loss
                 loss = actor_loss + self.critic_coef * critic_loss + self.entropy_coef * entropy_loss
 
-                # Backward pass and optimize
+                # Optimization
+                self.optimizer.zero_grad()
                 loss.backward()
-
-                # Optional gradient clipping
                 if self.max_grad_norm > 0:
                     nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
-
-                # Update model parameters
                 self.optimizer.step()
 
-                # Compute metrics with no gradients
-                with torch.no_grad():
-                    # Approximate KL divergence
-                    approx_kl = ((batch_old_log_probs - log_probs) ** 2).mean().item()
-
-                    # Clip fraction
-                    clip_fraction = ((ratio - 1.0).abs() > self.clip_eps).float().mean().item()
-
-                # Update tracking metrics
                 total_actor_loss += actor_loss.item()
                 total_critic_loss += critic_loss.item()
-                total_entropy += entropy_loss.item()
-                total_kl += approx_kl
-                total_clip_fraction += clip_fraction
-                n_updates += 1
+                total_entropy_loss += entropy.mean().item()  # Use actual entropy value, not loss
+                num_updates_in_epoch += 1
 
-        # Compute average metrics
-        metrics = {
-            "actor_loss": total_actor_loss / max(1, n_updates),
-            "critic_loss": total_critic_loss / max(1, n_updates),
-            "entropy": total_entropy / max(1, n_updates),
-            "approx_kl": total_kl / max(1, n_updates),
-            "clip_fraction": total_clip_fraction / max(1, n_updates),
-            "loss": (total_actor_loss + self.critic_coef * total_critic_loss +
-                     self.entropy_coef * total_entropy) / max(1, n_updates)
+            # End of minibatch loop
+        # End of epoch loop
+        self.global_update_counter += 1
+
+        avg_actor_loss = total_actor_loss / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
+        avg_critic_loss = total_critic_loss / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
+        avg_entropy = total_entropy_loss / num_updates_in_epoch if num_updates_in_epoch > 0 else 0  # This is actually avg entropy value
+
+        update_metrics = {
+            "actor_loss": avg_actor_loss,
+            "critic_loss": avg_critic_loss,
+            "entropy": avg_entropy,
+            "total_loss": avg_actor_loss + self.critic_coef * avg_critic_loss + self.entropy_coef * (-avg_entropy)
+            # Reconstruct total loss with the correct entropy sign
         }
 
-        # Clear buffer after update
-        self.buffer.clear()
+        # For callback on_update_end
+        for callback in self.callbacks: callback.on_update_end(self, update_metrics)
 
-        # Call callbacks
-        for callback in self.callbacks:
-            callback.on_update_end(self, metrics)
+        logger.info(f"PPO Update {self.global_update_counter}: {update_metrics}")
+        if self.use_wandb:
+            wandb.log({f"update/{k}": v for k, v in update_metrics.items()}, step=self.global_update_counter)
+            wandb.log({"global_step": self.global_step_counter}, step=self.global_update_counter)
 
-        return metrics
+        return update_metrics
 
-    def train(self, total_updates: int, eval_freq: int = 5) -> Dict[str, Any]:
-        """
-        Train the model for a specified number of updates.
+    def train(self, total_training_steps: int, eval_freq_steps: Optional[int] = None):
+        """Main training loop."""
+        logger.info(f"Starting PPO training for a total of {total_training_steps} environment steps.")
+        # For callback on_training_start
+        for callback in self.callbacks: callback.on_training_start(self)
 
-        Args:
-            total_updates: Total number of policy updates to perform
-            eval_freq: Frequency of evaluation (in updates)
+        best_eval_reward = -float('inf')
 
-        Returns:
-            Dictionary with final training statistics
-        """
-        self.logger.info(f"Starting training for {total_updates} updates")
+        while self.global_step_counter < total_training_steps:
+            rollout_info = self.collect_rollout_data()  # Collects self.rollout_steps
 
-        # Call on_training_start for callbacks
-        for callback in self.callbacks:
-            callback.on_training_start(self)
+            if self.buffer.get_size() < self.rollout_steps and self.buffer.get_size() < self.batch_size:  # Or some minimum
+                logger.warning(f"Buffer size {self.buffer.get_size()} is less than rollout_steps {self.rollout_steps} "
+                               f"or batch_size {self.batch_size} after collection. Might be due to early episode ends. Skipping update if too small.")
+                if self.buffer.get_size() < self.batch_size:  # Ensure enough data for at least one batch
+                    continue
 
-        # Track best model
-        best_mean_reward = -float('inf')
-        best_model_path = None
-
-        # Training loop
-        start_time = time.time()
-        for update in range(1, total_updates + 1):
-            self.logger.info(f"Update {update}/{total_updates}")
-
-            # Collect rollouts
-            rollout_stats = self.collect_rollouts()
-
-            # Log rollout statistics
-            for k, v in rollout_stats.items():
-                if k != "episode_rewards" and k != "episode_lengths":
-                    wandb.log({f"rollout/{k}":v},step=self.updates)
-
-            # Update policy
             update_metrics = self.update_policy()
-            self.updates += 1
 
-            # Log update metrics
-            for k, v in update_metrics.items():
-                wandb.log({f"train/{k}":v},step=self.updates)
-
-            # Log mean episode reward
-            mean_reward = rollout_stats["mean_reward"]
-            wandb.log({"rollout/mean_reward": mean_reward}, step=self.updates)
-
-            # Save model
-            if update % eval_freq == 0:
-                # Evaluate model
-                eval_stats = self.evaluate(10)
-                eval_mean_reward = eval_stats["mean_reward"]
-
-                # Log evaluation statistics
-                for k, v in eval_stats.items():
-                    if k != "episode_rewards" and k != "episode_lengths":
-                        wandb.log({f"eval/{k}": v},step=self.updates)
-
-                # Save model if it's the best so far
-                if eval_mean_reward > best_mean_reward:
-                    best_mean_reward = eval_mean_reward
-                    best_model_path = os.path.join(self.model_dir, f"best_model_{self.updates}.pt")
-                    self.save_model(best_model_path)
-                    self.logger.info(f"New best model with mean reward: {best_mean_reward:.4f}")
-
-                # Also save latest model
-                latest_model_path = os.path.join(self.model_dir, "latest_model.pt")
-                self.save_model(latest_model_path)
-
-            # Log elapsed time
-            elapsed_time = time.time() - start_time
-            self.logger.info(f"Elapsed time: {elapsed_time:.2f}s")
-
-            # Call on_update_iteration_end for callbacks
+            # For callback on_update_iteration_end
             for callback in self.callbacks:
-                callback.on_update_iteration_end(self, update, update_metrics, rollout_stats)
+                callback.on_update_iteration_end(self, self.global_update_counter, update_metrics, rollout_info)
 
-        # Call on_training_end for callbacks
-        final_stats = {
-            "total_updates": self.updates,
-            "total_episodes": self.total_episodes,
-            "total_steps": self.total_steps,
-            "best_mean_reward": best_mean_reward,
-            "best_model_path": best_model_path,
-            "elapsed_time": time.time() - start_time
-        }
-        for callback in self.callbacks:
-            callback.on_training_end(self, final_stats)
+            # Evaluation (optional)
+            if eval_freq_steps and (self.global_update_counter % (
+                    eval_freq_steps // self.rollout_steps) == 0 or self.global_step_counter >= total_training_steps):  # Approx eval freq
+                eval_stats = self.evaluate(n_episodes=10)  # Number of eval episodes
+                logger.info(f"Evaluation at step {self.global_step_counter}: Mean Reward: {eval_stats['mean_reward']:.2f}")
+                if self.use_wandb:
+                    wandb.log({
+                        "eval/mean_reward": eval_stats['mean_reward'],
+                        "eval/mean_length": eval_stats['mean_length'],
+                        "global_step": self.global_step_counter
+                    }, step=self.global_update_counter)
 
-        self.logger.info(f"Training completed. Total updates: {self.updates}, episodes: {self.total_episodes}")
-        self.logger.info(f"Best mean reward: {best_mean_reward:.4f}")
+                if eval_stats['mean_reward'] > best_eval_reward:
+                    best_eval_reward = eval_stats['mean_reward']
+                    self.save_model(os.path.join(self.model_dir, f"best_model_update_{self.global_update_counter}.pt"))
+                    logger.info(f"New best model saved with eval reward: {best_eval_reward:.2f}")
 
+                self.save_model(os.path.join(self.model_dir, "latest_model.pt"))
+
+        final_stats = {"total_steps_trained": self.global_step_counter, "total_updates": self.global_update_counter}
+        # For callback on_training_end
+        for callback in self.callbacks: callback.on_training_end(self, final_stats)
+        logger.info(f"Training finished. Total steps: {self.global_step_counter}, Total PPO updates: {self.global_update_counter}")
         return final_stats
 
-    def evaluate(self, n_episodes: int = 10) -> Dict[str, Any]:
-        """
-        Evaluate the current policy.
+    def evaluate(self, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
+        """Evaluates the current model policy."""
+        logger.info(f"Starting evaluation for {n_episodes} episodes (deterministic: {deterministic})...")
+        self.model.eval()  # Set the model to evaluation mode
 
-        Args:
-            n_episodes: Number of episodes to evaluate
-
-        Returns:
-            Dictionary with evaluation statistics
-        """
-        self.logger.info(f"Evaluating for {n_episodes} episodes...")
-
-        # Set model to evaluation mode
-        self.model.eval()
-
-        total_reward = 0.0
         episode_rewards = []
         episode_lengths = []
 
-        for episode in range(n_episodes):
-            # Reset environment
-            state, _ = self.env.reset()
-            state_dict = preprocess_state_to_dict(state, self.model_config)
+        for i in range(n_episodes):
+            env_state_np, _ = self.env.reset()
+            current_episode_reward = 0.0
+            current_episode_length = 0
+            done = False
 
-            # Track episode data
-            episode_reward = 0
-            episode_length = 0
-            episode_done = False
-
-            while not episode_done:
-                # Get action from policy (deterministic)
+            while not done:
+                model_state_torch = convert_state_dict_to_tensors(env_state_np, self.device)
                 with torch.no_grad():
-                    action, _ = self.model.get_action(state_dict, deterministic=True)
+                    action_tensor, _ = self.model.get_action(model_state_torch, deterministic=deterministic)
 
-                # Take step in environment
-                next_state, reward, terminated, truncated, _ = self.env.step(action.cpu().numpy())
-                episode_done = terminated or truncated
+                env_action = self._convert_action_for_env(action_tensor)
+                next_env_state_np = None
 
-                # Process next state
-                next_state_dict = preprocess_state_to_dict(next_state, self.model_config)
+                try:
+                    next_env_state_np, reward, terminated, truncated, _ = self.env.step(env_action)
+                    done = terminated or truncated
+                except Exception as e:
+                    logger.error(f"Error during evaluation step: {e}", exc_info=True)
+                    done = True  # Terminate episode on error
+                    reward = 0  # Or some penalty
 
-                # Update state
-                state_dict = next_state_dict
+                env_state_np = next_env_state_np
+                current_episode_reward += reward
+                current_episode_length += 1
 
-                # Update counters
-                episode_reward += reward
-                episode_length += 1
+            episode_rewards.append(current_episode_reward)
+            episode_lengths.append(current_episode_length)
+            logger.debug(f"Eval Episode {i + 1}/{n_episodes} finished. Reward: {current_episode_reward:.2f}, Length: {current_episode_length}")
 
-            # Record episode statistics
-            episode_rewards.append(episode_reward)
-            episode_lengths.append(episode_length)
-            total_reward += episode_reward
+        self.model.train()  # Set the model back to training mode
 
-            self.logger.info(f"Eval episode {episode + 1}: reward={episode_reward:.2f}, length={episode_length}")
-
-        # Set model back to training mode
-        self.model.train()
-
-        # Return statistics
-        stats = {
-            "episodes": n_episodes,
-            "mean_reward": total_reward / n_episodes,
-            "mean_length": sum(episode_lengths) / n_episodes,
+        eval_results = {
+            "mean_reward": np.mean(episode_rewards) if episode_rewards else 0,
+            "std_reward": np.std(episode_rewards) if episode_rewards else 0,
+            "mean_length": np.mean(episode_lengths) if episode_lengths else 0,
             "episode_rewards": episode_rewards,
-            "episode_lengths": episode_lengths,
+            "episode_lengths": episode_lengths
         }
-
-        return stats
+        return eval_results
 
     def save_model(self, path: str) -> None:
-        """
-        Save the model to a file.
-
-        Args:
-            path: Path to save the model
-        """
-        torch.save({
-            "model_state_dict": self.model.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
-            "model_config": self.model_config,
-            "updates": self.updates,
-            "total_episodes": self.total_episodes,
-            "total_steps": self.total_steps,
-        }, path)
-
-        self.logger.info(f"Model saved to {path}")
+        """Saves the model and optimizer state."""
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            torch.save({
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'global_step_counter': self.global_step_counter,
+                'global_episode_counter': self.global_episode_counter,
+                'global_update_counter': self.global_update_counter,
+                'model_config': self.model_config  # Save model config for reproducibility
+            }, path)
+            logger.info(f"Model saved to {path}")
+        except Exception as e:
+            logger.error(f"Error saving model to {path}: {e}", exc_info=True)
 
     def load_model(self, path: str) -> None:
-        """
-        Load a model from a file.
+        """Loads the model and optimizer state."""
+        try:
+            checkpoint = torch.load(path, map_location=self.device)
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        Args:
-            path: Path to load the model from
-        """
-        checkpoint = torch.load(path, map_location=self.device)
+            self.global_step_counter = checkpoint.get('global_step_counter', 0)
+            self.global_episode_counter = checkpoint.get('global_episode_counter', 0)
+            self.global_update_counter = checkpoint.get('global_update_counter', 0)
+            # self.model_config = checkpoint.get('model_config', self.model_config) # Optionally load if needed
 
-        self.model.load_state_dict(checkpoint["model_state_dict"])
-        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-
-        self.updates = checkpoint.get("updates", 0)
-        self.total_episodes = checkpoint.get("total_episodes", 0)
-        self.total_steps = checkpoint.get("total_steps", 0)
-
-        self.logger.info(f"Model loaded from {path}")
+            self.model.to(self.device)  # Ensure the model is on the correct device after loading
+            logger.info(f"Model loaded from {path}. Resuming from step {self.global_step_counter}, update {self.global_update_counter}.")
+        except Exception as e:
+            logger.error(f"Error loading model from {path}: {e}", exc_info=True)

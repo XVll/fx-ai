@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import bisect
 
-from config.config import MarketConfig
+from config.config import MarketConfig, TrainingMode
 from data.data_manager import DataManager
 
 DEFAULT_MARKET_HOURS = {
@@ -22,12 +22,6 @@ DEFAULT_MARKET_HOURS = {
     "TIMEZONE": "America/New_York"
 }
 
-class TrainingMode(Enum):
-    BACKTESTING = "backtesting"
-    LIVE = "live"
-
-    def __str__(self):
-        return self.value
 
 
 class MarketSimulator:

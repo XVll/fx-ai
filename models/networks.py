@@ -1,8 +1,6 @@
 # models/networks.py
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
 
 
 class ActorNetwork(nn.Module):
@@ -49,7 +47,7 @@ class ActorNetwork(nn.Module):
         if self.continuous_action:
             # Output mean and use parameter for log_std
             action_mean = self.mean(shared_out)
-            # Expand log_std to match batch size
+            # Expand log_std to match the batch size
             batch_size = x.size(0)
             log_std = self.log_std.expand(batch_size, -1)
             return action_mean, log_std
