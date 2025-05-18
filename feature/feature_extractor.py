@@ -67,7 +67,7 @@ class FeatureExtractor:
 
         try:
             symbol_info = self.market_simulator.get_symbol_info()
-            self.total_shares_outstanding: Optional[float] = symbol_info.total_shares_outstanding
+            self.total_shares_outstanding: Optional[float] = symbol_info['total_shares_outstanding']
         except Exception as e:
             self.logger.error(f"Could not get total_shares_outstanding: {e}. Market cap feature will be NaN.")
             self.total_shares_outstanding = None
