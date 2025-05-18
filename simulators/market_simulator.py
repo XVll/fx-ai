@@ -24,6 +24,8 @@ DEFAULT_MARKET_HOURS = {
     "POSTMARKET_END": "20:00:00",
     "TIMEZONE": "America/New_York"
 }
+
+
 class MarketSimulator:
     """
     Market simulator with unified state architecture.
@@ -88,7 +90,6 @@ class MarketSimulator:
         # Initialize from market_config first (these are max lengths for deques in state)
 
         # Ensure rolling windows are large enough for feature sequence lengths
-
 
         self.rolling_1s_window_size = feature_config.hf_seq_len
         self.rolling_1m_window_size = feature_config.mf_seq_len
@@ -312,8 +313,8 @@ class MarketSimulator:
                 resampled['vwap'] = resampled['value_sum'] / resampled['volume']
                 resampled.drop(columns=['value_sum'], inplace=True)
                 resampled.replace([np.inf, -np.inf], np.nan, inplace=True)
-                resampled['vwap'].ffill(inplace=True)
-                resampled['vwap'].bfill(inplace=True)
+                resampled.ffill({'vwap'},inplace=True)
+                resampled.bfill({'vwap'},inplace=True)
 
             self.raw_1s_bars = resampled
             if self.raw_1s_bars.index.tzinfo is None and not self.raw_1s_bars.empty:  # Resample might lose tz
@@ -470,6 +471,12 @@ class MarketSimulator:
         current_1m_bar_forming: Optional[Dict[str, Any]] = None
         current_5m_bar_forming: Optional[Dict[str, Any]] = None
 
+        best_bid_price: Optional[float] = None
+        best_ask_price: Optional[float] = None
+        best_bid_size: int = 0
+        best_ask_size: int = 0
+        current_price: Optional[float] = None
+
         for i, timestamp in enumerate(timestamps_to_iterate):
             local_datetime = timestamp.astimezone(self.exchange_timezone)
             local_date = local_datetime.date()
@@ -483,6 +490,12 @@ class MarketSimulator:
                 current_5m_bar_forming = None
 
             current_1s_bar_data = self._get_raw_bar_at(timestamp)
+
+            if current_1s_bar_data and current_1s_bar_data.get('close') is not None:
+                try:
+                    current_price = float(current_1s_bar_data['close'])
+                except (ValueError, TypeError):
+                    self.logger.warning(f"Could not convert current_1s_bar_data['close'] to float: {current_1s_bar_data['close']} at {timestamp}")
 
             event_data_for_rolling_window = {
                 'timestamp': timestamp,
@@ -503,12 +516,48 @@ class MarketSimulator:
                     current_1m_bar_forming, current_5m_bar_forming,
                     completed_1m_bars, completed_5m_bars
                 )
+            current_bbo_bid_px_this_sec: Optional[float] = None
+            current_bbo_ask_px_this_sec: Optional[float] = None
+            current_bbo_bid_sz_this_sec: int = 0
+            current_bbo_ask_sz_this_sec: int = 0
+
+            quotes_this_second = event_data_for_rolling_window.get('quotes', [])
+            if quotes_this_second:  # Only if there are quotes for this exact second
+                bbo_tuple = self._get_bbo_and_sizes_from_quotes(quotes_this_second)
+                current_bbo_bid_px_this_sec = bbo_tuple[0]
+                current_bbo_ask_px_this_sec = bbo_tuple[1]
+                current_bbo_bid_sz_this_sec = bbo_tuple[2]
+                current_bbo_ask_sz_this_sec = bbo_tuple[3]
+
+            if current_bbo_bid_px_this_sec is not None and current_bbo_ask_px_this_sec is not None:
+                # Valid BBO found for this second, update LOCF holders
+                best_bid_price = current_bbo_bid_px_this_sec
+                best_ask_price = current_bbo_ask_px_this_sec
+                best_bid_size = current_bbo_bid_sz_this_sec
+                best_ask_size = current_bbo_ask_sz_this_sec
+            else:
+                # No valid BBO from current second's quotes, apply LOCF
+                current_bbo_bid_px_this_sec = best_bid_price
+                current_bbo_ask_px_this_sec = best_ask_price
+                current_bbo_bid_sz_this_sec = best_bid_size
+                current_bbo_ask_sz_this_sec = best_ask_size
+
+            if current_bbo_bid_px_this_sec is None and current_bbo_ask_px_this_sec is None and current_price is not None:  # Check if we have a trade-based locf_current_price
+                current_bbo_bid_px_this_sec = current_price
+                current_bbo_ask_px_this_sec = current_price
+                current_bbo_bid_sz_this_sec = 0  # No actual quote depth
+                current_bbo_ask_sz_this_sec = 0
 
             if timestamp in store_state_for_ts:
                 market_session = self._determine_market_session(timestamp)
                 state = self._calculate_complete_state(
                     timestamp=timestamp,
                     current_1s_bar=current_1s_bar_data,
+                    determined_best_bid_price=current_bbo_bid_px_this_sec,
+                    determined_best_ask_price=current_bbo_ask_px_this_sec,
+                    determined_best_bid_size=current_bbo_bid_sz_this_sec,
+                    determined_best_ask_size=current_bbo_ask_sz_this_sec,
+                    current_price=current_price,
                     rolling_1s_data=list(rolling_1s_data),
                     day_high=day_high,
                     day_low=day_low,
@@ -654,6 +703,11 @@ class MarketSimulator:
         return "CLOSED"
 
     def _calculate_complete_state(self, timestamp: datetime, current_1s_bar: Optional[Dict[str, Any]],  # No functional changes
+                                  determined_best_bid_price: Optional[float],
+                                  determined_best_ask_price: Optional[float],
+                                  determined_best_bid_size: int,
+                                  determined_best_ask_size: int,
+                                  current_price: Optional[float],
                                   rolling_1s_data: List[Dict[str, Any]],
                                   day_high: Optional[float], day_low: Optional[float], market_session: str,
                                   current_1m_bar_forming: Optional[Dict[str, Any]],
@@ -663,24 +717,16 @@ class MarketSimulator:
         """
         Calculate the complete market state at the given timestamp.
         """
-        current_price = current_1s_bar.get('close') if current_1s_bar else None
-
-        best_bid_price, best_ask_price, best_bid_size, best_ask_size = None, None, 0, 0
-        if rolling_1s_data:
-            latest_sec_event_data = rolling_1s_data[-1]
-            if latest_sec_event_data['timestamp'] == timestamp:
-                best_bid_price, best_ask_price, best_bid_size, best_ask_size = \
-                    self._get_bbo_and_sizes_from_quotes(latest_sec_event_data['quotes'])
 
         state = {
             'timestamp_utc': timestamp,
             'current_market_session': market_session,
             'current_time': timestamp,
             'current_price': current_price,
-            'best_bid_price': best_bid_price,
-            'best_ask_price': best_ask_price,
-            'best_bid_size': best_bid_size,
-            'best_ask_size': best_ask_size,
+            'best_bid_price': determined_best_bid_price,
+            'best_ask_price': determined_best_ask_price,
+            'best_bid_size': determined_best_bid_size,
+            'best_ask_size': determined_best_ask_size,
 
             'intraday_high': day_high,
             'intraday_low': day_low,
@@ -719,20 +765,49 @@ class MarketSimulator:
             'historical_1d_bars': self.raw_1d_bars if hasattr(self, 'raw_1d_bars') else None,
         }
 
-    def get_state_at_time(self, timestamp: datetime) -> Optional[Dict[str, Any]]:  # No functional changes
+    def get_state_at_time(self, timestamp: datetime, tolerance_seconds: int = 5) -> Optional[Dict[str, Any]]:
         """
-        Get the complete market state at any agent-accessible timestamp.
-        Assumes timestamp is one for which a state was precomputed and stored.
+        Get the complete market state at a given timestamp.
+        If exact timestamp is not found, attempts to find the closest *past or current* state within tolerance.
         """
         state = self._precomputed_states.get(timestamp)
-        if state is None:
-            self.logger.warning(f"State for timestamp {timestamp} not found in precomputed states. ")
-            if self._all_timestamps:
-                if timestamp < self._all_timestamps[0] or timestamp > self._all_timestamps[-1]:
-                    self.logger.warning(f"Timestamp {timestamp} is outside the "
-                                        f"agent's timeline [{self._all_timestamps[0]}, {self._all_timestamps[-1]}].")
+        if state is not None:
+            return state  # Exact match found
+
+        if not self._all_timestamps:
+            self.logger.warning(f"State for timestamp {timestamp} not found, and _all_timestamps is empty.")
             return self._calculate_default_state(timestamp)
-        return state
+
+        # Find the insertion point for the requested timestamp.
+        # bisect_left returns an index idx such that all e in a[:idx] have e < x,
+        # and all e in a[idx:] have e >= x.
+        idx = bisect.bisect_left(self._all_timestamps, timestamp)
+
+        # Candidate 1: The timestamp at self._all_timestamps[idx-1]
+        # This is the largest timestamp in _all_timestamps that is strictly less than 'timestamp'
+        # (or equal if timestamp itself was found and idx was shifted, but we already checked for exact match).
+        candidate_ts = None
+        if idx > 0:  # Means there's at least one element before the insertion point
+            ts_before = self._all_timestamps[idx - 1]
+            # Ensure ts_before is indeed <= timestamp (it should be by bisect_left logic if no exact match)
+            # and within tolerance.
+            if ts_before <= timestamp and (timestamp - ts_before) <= timedelta(seconds=tolerance_seconds):
+                candidate_ts = ts_before
+                self.logger.debug(
+                    f"Exact state for {timestamp} not found. Using closest past/present state from {candidate_ts} (diff: {timestamp - candidate_ts}).")
+                return self._precomputed_states.get(candidate_ts)
+
+        # If no suitable past/present timestamp was found within tolerance
+        self.logger.warning(f"State for timestamp {timestamp} not found in precomputed states. "
+                            f"No suitable past/present timestamp found within {tolerance_seconds}s tolerance. "
+                            f"The closest preceding timestamp considered was {self._all_timestamps[idx - 1] if idx > 0 else 'N/A'}.")
+
+        # Log details if timestamp is outside the agent's timeline (for context)
+        if self._all_timestamps:  # Check if not empty
+            if timestamp < self._all_timestamps[0] or timestamp > self._all_timestamps[-1]:
+                self.logger.warning(f"Requested timestamp {timestamp} is outside the agent's timeline "
+                                    f"[{self._all_timestamps[0]}, {self._all_timestamps[-1]}].")
+        return self._calculate_default_state(timestamp)  # Fallback if no suitable data
 
     def get_current_market_state(self) -> Optional[Dict[str, Any]]:  # No functional changes
         """Get the market state at the agent's current timeline position."""
