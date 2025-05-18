@@ -263,10 +263,26 @@ class FeatureExtractor:
                 self.recent_1s_trade_counts.append(default_val_deque)
                 self.recent_1s_total_trade_shares.append(default_val_deque)
 
-            bid_val = float(self.market_data.get('best_bid_price', 0) * self.market_data.get('best_bid_size', 0))
-            ask_val = float(self.market_data.get('best_ask_price', 0) * self.market_data.get('best_ask_size', 0))
-            self.recent_1s_bid_values_usd.append(bid_val)
-            self.recent_1s_ask_values_usd.append(ask_val)
+                best_bid_price_val = self.market_data.get('best_bid_price')  # This can be None
+                best_bid_size_val = self.market_data.get('best_bid_size', 0)  # Defaults to 0, which is fine
+
+                if best_bid_price_val is not None:
+                    # Ensure both operands are numbers before multiplication
+                    bid_val = float(best_bid_price_val) * float(best_bid_size_val)
+                else:
+                    bid_val = 0.0  # If price is None, total value is 0
+
+                best_ask_price_val = self.market_data.get('best_ask_price')  # This can be None
+                best_ask_size_val = self.market_data.get('best_ask_size', 0)  # Defaults to 0
+
+                if best_ask_price_val is not None:
+                    # Ensure both operands are numbers before multiplication
+                    ask_val = float(best_ask_price_val) * float(best_ask_size_val)
+                else:
+                    ask_val = 0.0  # If price is None, total value is 0
+
+                self.recent_1s_bid_values_usd.append(bid_val)
+                self.recent_1s_ask_values_usd.append(ask_val)
         else:  # If no current_1s_bar, append defaults to deques to maintain size
             self.recent_1s_volumes.append(default_val_deque)
             self.recent_1s_trade_counts.append(default_val_deque)
@@ -320,9 +336,24 @@ class FeatureExtractor:
 
     def _get_current_price_for_mf_dists(self) -> float:
         if self.MF_CURRENT_PRICE_SOURCE_FOR_DISTS == "LiveTickPrice":
-            return float(self.market_data.get('current_price', np.nan))
+            price_value = self.market_data.get('current_price')  # This can be None
+            if price_value is None:
+                return np.nan  # Explicitly return np.nan if current_price was None
+            try:
+                # If price_value is already a float (like np.nan), this is fine.
+                # If it's a number-like string, it will be converted.
+                return float(price_value)
+            except TypeError:
+                # Fallback if it's some other unexpected non-convertible type
+                self.logger.warning(f"Could not convert price_value '{price_value}' to float in _get_current_price_for_mf_dists. Returning np.nan.")
+                return np.nan
         elif self.MF_CURRENT_PRICE_SOURCE_FOR_DISTS == "BarClosePrice":
-            return self._safe_get_from_bar(self.market_data.get('current_1s_bar'), 'close')
+            # _safe_get_from_bar should already handle None bar_data and return np.nan by default
+            current_1s_bar = self.market_data.get('current_1s_bar')
+            return self._safe_get_from_bar(current_1s_bar, 'close')
+
+        # Default fallback if MF_CURRENT_PRICE_SOURCE_FOR_DISTS is an unexpected value
+        self.logger.warning(f"Unknown MF_CURRENT_PRICE_SOURCE_FOR_DISTS: {self.MF_CURRENT_PRICE_SOURCE_FOR_DISTS}. Returning np.nan.")
         return np.nan
 
     def _calculate_pct_dist(self, price: float, level: float) -> float:
@@ -467,7 +498,6 @@ class FeatureExtractor:
                     self.s_initial_premarket_gap_pct = self._pct_change(self.first_tick_price_today, self.prev_day_close_price_for_gaps)
             features[3] = self.s_initial_premarket_gap_pct
 
-            # Regular Open Gap
             if self.s_regular_open_gap_pct is None:  # Calculate once per day
                 if self.rth_open_price_today is None:
                     try:
@@ -477,20 +507,33 @@ class FeatureExtractor:
                         rth_open_time_utc = rth_open_time_et.astimezone(timezone.utc)
 
                         state_at_rth_open = self.market_simulator.get_state_at_time(rth_open_time_utc)
-                        bar_at_rth_open = state_at_rth_open.get('current_1s_bar')
-                        if bar_at_rth_open and 'open' in bar_at_rth_open:
-                            self.rth_open_price_today = float(bar_at_rth_open['open'])
-                        elif 'current_price' in state_at_rth_open:  # Fallback
-                            self.rth_open_price_today = float(state_at_rth_open['current_price'])
+                        if state_at_rth_open:  # Check if state itself is not None
+                            rth_open_val = None
+                            bar_at_rth_open = state_at_rth_open.get('current_1s_bar')
+                            if bar_at_rth_open and bar_at_rth_open.get('open') is not None:
+                                rth_open_val = bar_at_rth_open['open']
+                            elif state_at_rth_open.get('current_price') is not None:
+                                rth_open_val = state_at_rth_open['current_price']
+
+                            if rth_open_val is not None:
+                                try:
+                                    self.rth_open_price_today = float(rth_open_val)
+                                except (ValueError, TypeError):
+                                    self.logger.warning(f"Could not convert RTH open value '{rth_open_val}' to float.")
+                                    self.rth_open_price_today = None  # Or np.nan
+                            else:
+                                self.logger.warning("Could not determine RTH open price value from get_state_at_time (bar or current_price was None).")
                         else:
-                            self.logger.warning("Could not determine RTH open price from get_state_at_time.")
+                            self.logger.warning(f"State at RTH open ({rth_open_time_utc}) was None.")
+
                     except Exception as e:
-                        self.logger.error(f"Error getting RTH open state: {e}")
+                        self.logger.error(f"Error getting RTH open state: {e}", exc_info=True)  # Add exc_info for more details
+                        self.rth_open_price_today = None  # Or np.nan
 
                 if self.rth_open_price_today is not None and self.prev_day_close_price_for_gaps is not None and not np.isnan(
                         self.prev_day_close_price_for_gaps):
                     self.s_regular_open_gap_pct = self._pct_change(self.rth_open_price_today, self.prev_day_close_price_for_gaps)
-            features[4] = self.s_regular_open_gap_pct
+            features[4] = self.s_regular_open_gap_pct if self.s_regular_open_gap_pct is not None else np.nan
 
         return features.astype(np.float32)
 
@@ -593,8 +636,37 @@ class FeatureExtractor:
 
         features[12] = self._safe_get_from_bar(current_1s, 'vwap')
 
-        bid_px, ask_px = float(self.market_data.get('best_bid_price', np.nan)), float(self.market_data.get('best_ask_price', np.nan))
-        bid_sz, ask_sz = float(self.market_data.get('best_bid_size', np.nan)), float(self.market_data.get('best_ask_size', np.nan))
+        # ... (other HF feature calculations) ...
+
+        best_bid_price_val = self.market_data.get('best_bid_price')  # Get value, could be None
+        best_ask_price_val = self.market_data.get('best_ask_price')  # Get value, could be None
+
+        bid_px = np.nan
+        if best_bid_price_val is not None:
+            try:
+                bid_px = float(best_bid_price_val)
+            except (ValueError, TypeError):
+                self.logger.warning(f"Could not convert best_bid_price_val '{best_bid_price_val}' to float. Using np.nan.")
+
+        ask_px = np.nan
+        if best_ask_price_val is not None:
+            try:
+                ask_px = float(best_ask_price_val)
+            except (ValueError, TypeError):
+                self.logger.warning(f"Could not convert best_ask_price_val '{best_ask_price_val}' to float. Using np.nan.")
+
+        # The rest of the features that use bid_px, ask_px will now receive np.nan if conversion failed or value was None
+        # For example:
+        # bid_sz, ask_sz = float(self.market_data.get('best_bid_size', np.nan)), float(self.market_data.get('best_ask_size', np.nan))
+        # Needs similar careful handling if 'best_bid_size' could be None rather than a number or np.nan
+        # However, MarketSimulator._calculate_default_state sets sizes to 0, and _get_bbo_and_sizes_from_quotes also returns int sizes (0 if no BBO).
+        # So, size is likely already a number (0 or actual size). Let's assume size is fine for now.
+
+        bid_sz_val = self.market_data.get('best_bid_size', 0)  # Assuming this is always a number (0 or actual size)
+        ask_sz_val = self.market_data.get('best_ask_size', 0)  # Assuming this is always a number
+
+        bid_sz = float(bid_sz_val) if bid_sz_val is not None else np.nan  # Robust conversion for size too
+        ask_sz = float(ask_sz_val) if ask_sz_val is not None else np.nan  # Robust conversion for size too
 
         spread_abs_q = ask_px - bid_px if not (np.isnan(ask_px) or np.isnan(bid_px)) else np.nan
         mid_px_q = (ask_px + bid_px) / 2.0 if not (np.isnan(ask_px) or np.isnan(bid_px)) else np.nan
