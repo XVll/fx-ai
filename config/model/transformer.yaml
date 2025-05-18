@@ -3,9 +3,9 @@
 
 # Feature dimensions
 hf_seq_len: 60
-hf_feat_dim: 20
+hf_feat_dim: 19
 mf_seq_len: 30
-mf_feat_dim: 15
+mf_feat_dim: 33
 lf_seq_len: 30
 lf_feat_dim: 10
 portfolio_seq_len: 5
@@ -15,9 +15,9 @@ static_feat_dim: 15
 # Feature Config
 feature_config:
   hf_seq_len: 60
-  hf_feat_dim: 20
+  hf_feat_dim: 19
   mf_seq_len: 30
-  mf_feat_dim: 15
+  mf_feat_dim: 33
   lf_seq_len: 30
   lf_feat_dim: 10
   portfolio_seq_len: 5
