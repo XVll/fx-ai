@@ -140,7 +140,8 @@ class TradingEnvironment(gym.Env):
         self.market_simulator = MarketSimulator(
             symbol=self.primary_asset,
             data_manager=self.data_manager,
-            config=self.config.simulation.market_config,
+            market_config=self.config.simulation.market_config,
+            feature_config=self.config.model.feature_config,
             mode=self.config.env.training_mode,
             start_time=self.current_session_start_time_utc,
             end_time=self.current_session_end_time_utc,
