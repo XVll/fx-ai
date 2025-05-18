@@ -20,6 +20,7 @@ gymnasium = "^1.1.1"
 matplotlib = "^3.10.3"
 databento = "^0.54.0"
 poetry-core = ">=1.0.0"
+ta = "^0.11.0"
 
 [tool.poetry.group.dev.dependencies] # For development-only dependencies
 # pytest = "^7.0"

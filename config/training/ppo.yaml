@@ -1,5 +1,6 @@
+
 # config/training/ppo.yaml
-# PPO training configuration
+# PPO training configuration - synchronized with TrainingConfig
 
 # Learning parameters
 lr: 3e-4
