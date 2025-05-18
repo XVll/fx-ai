@@ -40,8 +40,21 @@ class EnvConfig:
 
 
 @dataclass
+class FeatureConfig:
+    hf_seq_len: int = 60
+    hf_feat_dim: int = 20
+    mf_seq_len: int = 30
+    mf_feat_dim: int = 15
+    lf_seq_len: int = 30
+    lf_feat_dim: int = 10
+    static_feat_dim: int = 15
+    portfolio_feat_dim: int = 5
+    portfolio_seq_len: int = 5
+
+@dataclass
 class ModelConfig:
     # Feature dimensions
+    feature_config: FeatureConfig = field(default_factory=FeatureConfig)
     hf_seq_len: int = 60
     hf_feat_dim: int = 20
     mf_seq_len: int = 30
@@ -175,7 +188,7 @@ class ExecutionConfig:
 @dataclass
 class PortfolioConfig:
     initial_cash: float = 100000.0
-    max_position_value_ratio: float = 2.0,  # Example: Up to 2x leverage on equity
+    max_position_value_ratio: float = 2.0  # Fixed: removed the comma - Example: Up to 2x leverage on equity
     max_position_holding_seconds: int = 300
 
 
@@ -202,17 +215,19 @@ class Config:
     project_name: str = "Fx AI"
 
 
-# Register schemas with Hydra's ConfigStore
+# Register all schemas with Hydra's ConfigStore - Updated
+
 cs = ConfigStore.instance()
 
-# Register all schemas
+# Register all schemas with their correct paths
 cs.store(name="model/transformer", node=ModelConfig)
 cs.store(name="env/trading", node=EnvConfig)
 cs.store(name="training/ppo", node=TrainingConfig)
 cs.store(name="data/databento", node=DataConfig)
-cs.store(name="wandb/default.yaml", node=WandbConfig)
-cs.store(name="simulation/default.yaml", node=SimulationConfig)
+cs.store(name="wandb/default", node=WandbConfig)
+cs.store(name="simulation/default", node=SimulationConfig)
+cs.store(name="callbacks/default", node=CallbacksConfig)  # Added callbacks registration
 
 # Export the Config class and all config components for direct import
 __all__ = ['Config', 'EnvConfig', 'ModelConfig', 'TrainingConfig', 'DataConfig',
-           'WandbConfig', 'SimulationConfig', 'RewardConfig']
+           'WandbConfig', 'SimulationConfig', 'CallbacksConfig', 'RewardConfig']

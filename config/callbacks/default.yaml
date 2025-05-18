@@ -1,15 +1,12 @@
-# conf/callbacks/trading.yaml
-# Default callback configuration
+# config/callbacks/default.yaml
+# Synchronized with CallbacksConfig dataclass
 
-# Model checkpoint callback
-save_freq: 5  # Save model every N updates
-save_best_only: false  # If true, only save models that improve mean reward
-
-# Tensorboard callback
-log_freq: 100  # Log every N steps
+save_freq: 5                 # Save model every N updates
+log_freq: 10                 # Log every N steps
+save_best_only: false        # If true, only save models that improve mean reward
 
 # Early stopping callback
 early_stopping:
-  enabled: false  # Enable early stopping
-  patience: 10  # Number of updates with no improvement before stopping
-  min_delta: 0.0  # Minimum change to qualify as improvement
+  enabled: true
+  patience: 10
+  min_delta: 0.0

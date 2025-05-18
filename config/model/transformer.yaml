@@ -1,5 +1,5 @@
 # config/model/transformer.yaml
-# Transformer model configuration
+# Transformer model configuration - synchronized with ModelConfig
 
 # Feature dimensions
 hf_seq_len: 60
@@ -11,6 +11,18 @@ lf_feat_dim: 10
 portfolio_seq_len: 5
 portfolio_feat_dim: 5
 static_feat_dim: 15
+
+# Feature Config
+feature_config:
+  hf_seq_len: 60
+  hf_feat_dim: 20
+  mf_seq_len: 30
+  mf_feat_dim: 15
+  lf_seq_len: 30
+  lf_feat_dim: 10
+  portfolio_seq_len: 5
+  portfolio_feat_dim: 5
+  static_feat_dim: 15
 
 # Model dimensions
 d_model: 64
@@ -25,7 +37,7 @@ mf_heads: 4
 lf_heads: 4
 
 # Output parameters
-action_dim: [5,4]
+action_dim: [5, 4]
 continuous_action: false
 
 # Other parameters

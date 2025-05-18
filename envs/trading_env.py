@@ -153,7 +153,8 @@ class TradingEnvironment(gym.Env):
         )
         self.feature_extractor = FeatureExtractor(
             symbol=self.primary_asset,
-            config=self.config.model,
+            market_simulator=self.market_simulator,
+            config=self.config.model.feature_config,
             logger=self.logger.getChild("FeatureExt")
         )
         self.reward_calculator = RewardCalculator(
@@ -242,10 +243,7 @@ class TradingEnvironment(gym.Env):
             return None
         try:
             current_portfolio_state = self.portfolio_manager.get_portfolio_state(current_sim_time)
-            market_features_dict = self.feature_extractor.extract_features(
-                market_state=market_state_now,
-                portfolio_state=current_portfolio_state
-            )
+            market_features_dict = self.feature_extractor.extract_features()
             if market_features_dict is None:
                 self.logger.warning(f"FeatureExtractor returned None at {current_sim_time}. Not enough data for lookbacks?")
                 return None

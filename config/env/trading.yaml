@@ -1,35 +1,32 @@
 # config/env/trading.yaml
-# Environment configuration for momentum trading
+# Environment configuration for momentum trading - synchronized with EnvConfig
 
 # General parameters
-state_dim: 6000  # Increased from 1000 to 6000 to accommodate the actual state size
+training_mode: "backtesting"
+render_interval: 10
+max_episode_loss_percent: 0.5
+bankruptcy_threshold_factor: 0.5
+max_invalid_actions_per_episode: 20
+
+state_dimension: 6000  # Increased to accommodate the actual state size
 max_steps: 500
 normalize_state: true
 random_reset: true
 max_position: 1.0
 render_mode: "human"
-position_multipliers: [ 0.25, 0.5, 0.75, 1.0 ]
-max_episode_loss_percent: 0.5
-bankruptcy_threshold_factor: 0.5
-max_invalid_actions_per_episode: 20
-training_mode: backtesting
-
+position_multipliers: [0.25, 0.5, 0.75, 1.0]
 
 # Reward configuration
 reward:
-  type: "momentum"
-  scaling: 2.0
-  trade_penalty: 0.1
-  hold_penalty: 0.0
-  early_exit_bonus: 0.5
-  flush_prediction_bonus: 2.0
-
-  # Strategy thresholds
-  momentum_threshold: 0.5
-  volume_surge_threshold: 5.0
-  tape_speed_threshold: 3.0
-  tape_imbalance_threshold: 0.7
-
-
+  weight_equity_change: 1.0
+  weight_realized_pnl: 0.1
+  penalty_transaction_fill: 0.005
+  penalty_holding_inaction: 0.0001
+  penalty_drawdown_step: 0.2
+  penalty_invalid_action: 0.05
+  terminal_penalty_bankruptcy: 20.0
+  terminal_penalty_max_loss: 10.0
+  reward_scaling_factor: 0.01
+  log_reward_components: true
 
 
