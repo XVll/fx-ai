@@ -31,6 +31,7 @@ class MultiBranchTransformer(nn.Module):
             portfolio_seq_len: int = 5,
             portfolio_feat_dim: int = 5,
             static_feat_dim: int = 15,
+            feature_config: Optional[Dict[str, int]] = None,
 
             # Model dimensions
             d_model: int = 64,
