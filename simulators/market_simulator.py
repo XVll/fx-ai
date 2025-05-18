@@ -84,6 +84,13 @@ class MarketSimulator:
         # Load data and initialize the simulator
         self._initialize()
 
+    def get_symbol_info(self):
+        return {
+            "symbol": self.symbol,
+            "total_shares_outstanding": 100_000_000,
+        }
+
+
     def _setup_market_hours(self):
         """Configure timezone and market hours."""
         _market_hours_cfg_raw = self.config.get('market_hours', DEFAULT_MARKET_HOURS)
