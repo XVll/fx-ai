@@ -126,11 +126,45 @@ class PPOTrainer:
 
         while collected_steps < self.rollout_steps:
             # Convert the current environment state (NumPy dict) to PyTorch tensor dict for the model
-            current_model_state_torch = convert_state_dict_to_tensors(current_env_state_np, self.device)
+            # Convert NumPy dict from environment to PyTorch tensor dict
+            # (This step might be handled by your `convert_state_dict_to_tensors` utility.
+            # If that utility doesn't add the batch dimension, you do it here.)
+            single_step_tensors = {
+                k: torch.as_tensor(v, dtype=torch.float32).to(self.device)
+                for k, v in current_env_state_np.items()
+            }
+
+            # Add the batch dimension to each tensor as expected by the model.
+            # The model's forward pass (and thus get_action) expects:
+            # - hf, mf, lf, portfolio: [batch_size, sequence_length, feature_dimension]
+            # - static: [batch_size, feature_dimension]
+            current_model_state_torch_batched = {}
+            for key, tensor_val in single_step_tensors.items():
+                if key in ['hf', 'mf', 'lf', 'portfolio']:  # Sequential features
+                    if tensor_val.ndim == 2:  # Expected shape from env: [sequence_length, feature_dimension]
+                        current_model_state_torch_batched[key] = tensor_val.unsqueeze(0)  # Add batch dim: [1, sequence_length, feature_dimension]
+                    elif tensor_val.ndim == 3 and tensor_val.shape[0] == 1:  # Already correctly batched
+                        current_model_state_torch_batched[key] = tensor_val
+                    else:
+                        # Log an error if the tensor shape is unexpected for sequential data
+                        logger.error(f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}'. Expected 2D. Shape: {tensor_val.shape}")
+                        current_model_state_torch_batched[key] = tensor_val  # Fallback, may cause issues
+                elif key == 'static':  # Static features
+                    if tensor_val.ndim == 2 and tensor_val.shape[0] == 1:  # Expected shape from env: [1, feature_dimension]
+                        current_model_state_torch_batched[key] = tensor_val  # Already correctly batched: [1, feature_dimension]
+                    elif tensor_val.ndim == 1:  # Shape from env might be [feature_dimension]
+                        current_model_state_torch_batched[key] = tensor_val.unsqueeze(0)  # Add batch dim: [1, feature_dimension]
+                    else:
+                        # Log an error if the tensor shape is unexpected for static data
+                        logger.error(f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}' (static). Expected 1D or 2D (1,F). Shape: {tensor_val.shape}")
+                        current_model_state_torch_batched[key] = tensor_val  # Fallback
+                else:
+                    current_model_state_torch_batched[key] = tensor_val  # Handle any other keys as they are
+            # --- END OF THE FIX ---
 
             with torch.no_grad():
                 # Model's get_action should return action tensor and action_info dict (with 'value', 'log_prob')
-                action_tensor, action_info = self.model.get_action(current_model_state_torch, deterministic=False)
+                action_tensor, action_info = self.model.get_action(current_model_state_torch_batched, deterministic=False)
 
             # Convert action tensor to environment-compatible format
             env_action = self._convert_action_for_env(action_tensor)
