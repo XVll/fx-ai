@@ -313,8 +313,8 @@ class MarketSimulator:
                 resampled['vwap'] = resampled['value_sum'] / resampled['volume']
                 resampled.drop(columns=['value_sum'], inplace=True)
                 resampled.replace([np.inf, -np.inf], np.nan, inplace=True)
-                resampled.ffill({'vwap'},inplace=True)
-                resampled.bfill({'vwap'},inplace=True)
+                resampled = resampled.ffill()
+                resampled = resampled.bfill()
 
             self.raw_1s_bars = resampled
             if self.raw_1s_bars.index.tzinfo is None and not self.raw_1s_bars.empty:  # Resample might lose tz
