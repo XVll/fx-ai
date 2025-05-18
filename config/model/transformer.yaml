@@ -10,7 +10,7 @@ lf_seq_len: 30
 lf_feat_dim: 10
 portfolio_seq_len: 5
 portfolio_feat_dim: 5
-static_feat_dim: 15
+static_feat_dim: 5
 
 # Feature Config
 feature_config:
@@ -22,7 +22,7 @@ feature_config:
   lf_feat_dim: 10
   portfolio_seq_len: 5
   portfolio_feat_dim: 5
-  static_feat_dim: 15
+  static_feat_dim: 5
 
 # Model dimensions
 d_model: 64
