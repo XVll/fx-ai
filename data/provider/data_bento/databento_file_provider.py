@@ -421,6 +421,12 @@ class DabentoFileProvider(HistoricalDataProvider):
         else:
             std_df['ask_count'] = 0  # Default
 
+        # Side Can be Ask for sell aggresor, Bid for buy aggresor, or None for no aggressor
+        if 'side' in raw_df.columns:
+            std_df['side'] = raw_df['side']
+        else:
+            std_df['side'] = 'N'
+
         # Exchange from publisher_id
         if 'publisher_id' in raw_df.columns:
             std_df['exchange'] = raw_df['publisher_id'].astype(str)
