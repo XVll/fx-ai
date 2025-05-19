@@ -66,9 +66,9 @@ class MarketSimulator:
         self._agent_timeline_utc: List[datetime] = []  # Timestamps agent will step through
 
         # Rolling window sizes (number of items in deques)
-        self.rolling_1s_event_window_size = max(1, self.feature_config.hf_seq_len)
-        self.completed_1m_bars_window_size = max(1, self.feature_config.mf_seq_len)
-        self.completed_5m_bars_window_size = max(1, self.feature_config.lf_seq_len)
+        self.rolling_1s_event_window_size = max(1, self.feature_config.hf_seq_len * 2)
+        self.completed_1m_bars_window_size = max(1, self.feature_config.mf_seq_len * 2)
+        self.completed_5m_bars_window_size = max(1, self.feature_config.lf_seq_len * 2)
 
         # Determine data loading range for priming lookbacks
         self._priming_lookback_seconds = self._calculate_priming_lookback_seconds()
