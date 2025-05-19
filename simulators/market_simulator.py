@@ -199,6 +199,8 @@ class MarketSimulator:
         effective_load_start_time = self.start_time_utc
         if self.start_time_utc:
             padding_duration = timedelta(seconds=self._effective_max_lookback_seconds)
+
+
             padding_duration += timedelta(days=1)  # Extra day buffer for cross-session robustness
             effective_load_start_time = self.start_time_utc - padding_duration
             self.logger.info(
@@ -464,6 +466,7 @@ class MarketSimulator:
         day_high = None
         day_low = None
 
+
         rolling_1s_data = deque(maxlen=self.rolling_1s_window_size if self.rolling_1s_window_size > 0 else None)
         completed_1m_bars = deque(maxlen=self.rolling_1m_window_size if self.rolling_1m_window_size > 0 else None)
         completed_5m_bars = deque(maxlen=self.rolling_5m_window_size if self.rolling_5m_window_size > 0 else None)
@@ -471,11 +474,40 @@ class MarketSimulator:
         current_1m_bar_forming: Optional[Dict[str, Any]] = None
         current_5m_bar_forming: Optional[Dict[str, Any]] = None
 
-        best_bid_price: Optional[float] = None
-        best_ask_price: Optional[float] = None
-        best_bid_size: int = 0
-        best_ask_size: int = 0
-        current_price: Optional[float] = None
+        last_known_valid_price = None
+        last_known_valid_bid = None
+        last_known_valid_ask = None
+        last_known_valid_bid_size = 0
+        last_known_valid_ask_size = 0
+
+        # Preprocess first to find initial valid values before main loop
+        # This ensures we have fallbacks even when starting at a random point
+        for i in range(min(1000, len(timestamps_to_iterate))):
+            ts = timestamps_to_iterate[i]
+            # Look for valid price/quote data in first 1000 timestamps
+            bar_data = self._get_raw_bar_at(ts)
+            if bar_data and 'close' in bar_data and bar_data['close'] is not None:
+                last_known_valid_price = float(bar_data['close'])
+
+            # Try to find valid BBO
+            quotes_this_sec = self._get_quotes_in_second(ts)
+            if quotes_this_sec:
+                bbo = self._get_bbo_and_sizes_from_quotes(quotes_this_sec)
+                if bbo[0] is not None and bbo[1] is not None and bbo[0] > 0 and bbo[1] > 0:
+                    last_known_valid_bid = bbo[0]
+                    last_known_valid_ask = bbo[1]
+                    last_known_valid_bid_size = bbo[2]
+                    last_known_valid_ask_size = bbo[3]
+
+            # If we found both price and BBO, we can stop early
+            if last_known_valid_price is not None and last_known_valid_bid is not None and last_known_valid_ask is not None:
+                break
+
+        best_bid_price = last_known_valid_bid
+        best_ask_price = last_known_valid_ask
+        best_bid_size = last_known_valid_bid_size
+        best_ask_size = last_known_valid_ask_size
+        current_price = last_known_valid_price
 
         for i, timestamp in enumerate(timestamps_to_iterate):
             local_datetime = timestamp.astimezone(self.exchange_timezone)

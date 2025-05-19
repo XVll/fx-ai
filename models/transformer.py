@@ -1,3 +1,5 @@
+import logging
+
 import torch
 import torch.nn as nn
 from typing import Dict, Tuple, List, Optional, Union
@@ -23,14 +25,14 @@ class MultiBranchTransformer(nn.Module):
             self,
             # Feature dimensions
             hf_seq_len: int = 60,
-            hf_feat_dim: int = 20,
+            hf_feat_dim: int = 19,
             mf_seq_len: int = 30,
             mf_feat_dim: int = 15,
             lf_seq_len: int = 30,
             lf_feat_dim: int = 10,
             portfolio_seq_len: int = 5,
             portfolio_feat_dim: int = 5,
-            static_feat_dim: int = 15,
+            static_feat_dim: int = 3,
             feature_config: Optional[Dict[str, int]] = None,
 
             # Model dimensions
@@ -56,8 +58,10 @@ class MultiBranchTransformer(nn.Module):
 
             # For Hydra compatibility
             _target_: Optional[str] = None,  # Hydra instantiation target
+            logger: Optional[object] = None  # Logger for debugging
     ):
         super().__init__()
+        self.logger = logger or logging.getLogger(__name__)
 
         # Set device
         if device is None:
@@ -123,7 +127,6 @@ class MultiBranchTransformer(nn.Module):
         encoder_layer_portfolio = TransformerEncoderLayer(d_model, portfolio_heads, dim_feedforward=2 * d_model, dropout=dropout)
         self.portfolio_encoder = TransformerEncoder(encoder_layer_portfolio, portfolio_seq_len)
 
-
         # Static Branch (Position, S/R, etc.)
         self.static_encoder = nn.Sequential(
             nn.Linear(static_feat_dim, d_model),
@@ -184,6 +187,13 @@ class MultiBranchTransformer(nn.Module):
             - For discrete single actions: (logits)
             - value: Value estimate tensor
         """
+
+        # Todo Delete me for debugs
+        for key, tensor in state_dict.items():
+            if torch.isnan(tensor).any():
+                nan_count = torch.isnan(tensor).sum().item()
+                self.logger.warning(f"NaN detected in input tensor '{key}': {nan_count} values")
+
         # Extract features from dict, ensuring their on the right device
         hf_features = state_dict['hf'].to(self.device)
         mf_features = state_dict['mf'].to(self.device)
@@ -231,7 +241,6 @@ class MultiBranchTransformer(nn.Module):
         # Shape: (batch_size, d_model)
         portfolio_rep = portfolio_x[:, -1, :]
 
-
         # Process Static Branch
         # Shape: (batch_size, d_model)
         static_rep = self.static_encoder(static_features)
@@ -239,7 +248,7 @@ class MultiBranchTransformer(nn.Module):
         # Fusion via attention
         # Prepares all branches for fusion
         # Shape: (batch_size, 4, d_model)
-        features_to_fuse = torch.stack([hf_rep, mf_rep, lf_rep,portfolio_rep, static_rep], dim=1)
+        features_to_fuse = torch.stack([hf_rep, mf_rep, lf_rep, portfolio_rep, static_rep], dim=1)
 
         # Fuse all-branches
         # Shape: (batch_size, d_fused)

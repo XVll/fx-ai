@@ -187,7 +187,7 @@ def run_training(cfg: Config):
         obs, info = env.reset()
 
         try:
-            model = MultiBranchTransformer(**model_config, device=device)
+            model = MultiBranchTransformer(**model_config, device=device, logger=log.getChild("Transformer"))
             log.info(f"Model created successfully with config: {model_config}")
         except Exception as e:
             log.error(f"Error creating model: {e}")

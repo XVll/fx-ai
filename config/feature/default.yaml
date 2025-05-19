@@ -7,7 +7,7 @@ mf_seq_len: 30  # Medium-frequency sequence length (1m data)
 mf_feat_dim: 15  # Medium-frequency feature dimension
 lf_seq_len: 30  # Low-frequency sequence length (5m data)
 lf_feat_dim: 10  # Low-frequency feature dimension
-static_feat_dim: 15  # Static feature dimension
+static_feat_dim: 3  # Static feature dimension
 
 # Feature normalization
 feature_normalization: "standardize"
