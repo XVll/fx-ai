@@ -262,6 +262,18 @@ class TradingEnvironment(gym.Env):
             'static': market_features_dict.get('static'),
             'portfolio': portfolio_features_array
         }
+        # Todo : Diagnostic logging for NaN values, can be removed.
+        for key, arr in obs.items():
+            if arr is not None:
+                nan_count = np.isnan(arr).sum()
+                if nan_count > 0:
+                    self.logger.warning(f"NaN values detected in {key} features: {nan_count} values")
+                    # Log specific indices where NaNs occur to help with debugging
+                    nan_indices = np.where(np.isnan(arr))
+                    self.logger.debug(f"NaN indices in {key}: {nan_indices}")
+
+                    # Replace NaNs with zeros for safety
+                    obs[key] = np.nan_to_num(arr, nan=0.0)
 
         if not isinstance(self.observation_space, spaces.Dict):
             self.logger.error("Observation space is not a gymnasium.spaces.Dict. Cannot validate observation.")
@@ -284,8 +296,28 @@ class TradingEnvironment(gym.Env):
                 return None
         return obs
 
-    def _decode_action(self, raw_action: np.ndarray) -> Dict[str, Any]:
-        action_type_idx, size_type_idx = raw_action
+    def _decode_action(self, raw_action) -> Dict[str, Any]:
+        """
+        Decode the agent's action into a structured format the environment can use.
+        Now handles both numpy arrays and tuples.
+        """
+        # Extract action components, handling both tuples and arrays
+        if isinstance(raw_action, (tuple, list)):
+            action_type_idx, size_type_idx = raw_action
+            raw_action_list = list(raw_action)  # Convert to list for consistent handling
+        elif hasattr(raw_action, 'tolist'):  # NumPy array or PyTorch tensor
+            action_type_idx, size_type_idx = raw_action
+            raw_action_list = raw_action.tolist()
+        else:
+            self.logger.error(f"Unexpected action type: {type(raw_action)}")
+            # Fallback to sensible defaults
+            action_type_idx, size_type_idx = 0, 0  # HOLD action, smallest size
+            raw_action_list = [0, 0]
+
+        # Ensure indices are integers and within valid range
+        action_type_idx = int(action_type_idx) % len(self.action_types)
+        size_type_idx = int(size_type_idx) % len(self.position_size_types)
+
         action_type = self.action_types[action_type_idx]
         size_type = self.position_size_types[size_type_idx]
 
@@ -293,7 +325,7 @@ class TradingEnvironment(gym.Env):
             "type": action_type,
             "size_enum": size_type,
             "size_float": size_type.value_float,
-            "raw_action": raw_action.tolist(),
+            "raw_action": raw_action_list,
             "invalid_reason": None
         }
 

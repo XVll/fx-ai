@@ -296,9 +296,8 @@ class DabentoFileProvider(HistoricalDataProvider):
         std_df = pd.DataFrame(index=raw_df.index)
 
         # Map columns from Databento format to standard format
-        # Price (scaled by 1e-9 in Databento)
         if 'price' in raw_df.columns:
-            std_df['price'] = raw_df['price'] * 1e-9
+            std_df['price'] = raw_df['price']
         else:
             std_df['price'] = 0.0  # Default
 
@@ -388,15 +387,13 @@ class DabentoFileProvider(HistoricalDataProvider):
         # Map to standard format with all required fields
         std_df = pd.DataFrame(index=raw_df.index)
 
-        # Bid price (scaled by 1e-9 in Databento)
         if 'bid_px_00' in raw_df.columns:
-            std_df['bid_price'] = raw_df['bid_px_00'] * 1e-9
+            std_df['bid_price'] = raw_df['bid_px_00']
         else:
             std_df['bid_price'] = 0.0  # Default
 
-        # Ask price (scaled by 1e-9 in Databento)
         if 'ask_px_00' in raw_df.columns:
-            std_df['ask_price'] = raw_df['ask_px_00'] * 1e-9
+            std_df['ask_price'] = raw_df['ask_px_00']
         else:
             std_df['ask_price'] = 0.0  # Default
 
@@ -491,28 +488,27 @@ class DabentoFileProvider(HistoricalDataProvider):
         std_df = pd.DataFrame(index=raw_df.index)
 
         # Map columns from Databento format to standard format
-        # Databento uses fixed-point with 1e-9 scaling factor for prices
         # Open price
         if 'open' in raw_df.columns:
-            std_df['open'] = raw_df['open'] * 1e-9
+            std_df['open'] = raw_df['open']
         else:
             std_df['open'] = 0.0  # Default
 
         # High price
         if 'high' in raw_df.columns:
-            std_df['high'] = raw_df['high'] * 1e-9
+            std_df['high'] = raw_df['high']
         else:
             std_df['high'] = 0.0  # Default
 
         # Low price
         if 'low' in raw_df.columns:
-            std_df['low'] = raw_df['low'] * 1e-9
+            std_df['low'] = raw_df['low']
         else:
             std_df['low'] = 0.0  # Default
 
         # Close price
         if 'close' in raw_df.columns:
-            std_df['close'] = raw_df['close'] * 1e-9
+            std_df['close'] = raw_df['close']
         else:
             std_df['close'] = 0.0  # Default
 

@@ -47,7 +47,7 @@ class FeatureConfig:
     mf_feat_dim: int = 15
     lf_seq_len: int = 30
     lf_feat_dim: int = 10
-    static_feat_dim: int = 15
+    static_feat_dim: int = 3
     portfolio_feat_dim: int = 5
     portfolio_seq_len: int = 5
 
@@ -61,7 +61,7 @@ class ModelConfig:
     mf_feat_dim: int = 15
     lf_seq_len: int = 30
     lf_feat_dim: int = 10
-    static_feat_dim: int = 15
+    static_feat_dim: int = 3
     portfolio_feat_dim: int = 5
     portfolio_seq_len: int = 5
 

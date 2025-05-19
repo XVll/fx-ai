@@ -97,12 +97,13 @@ class PPOTrainer:
         """Converts model's action tensor to environment-compatible format."""
         if self.model.continuous_action:
             action_np = action_tensor.cpu().numpy().squeeze()
-            # Ensure it's a 1D array if squeezed to scalar, matching common env expectations
+            # Ensure it's a 1D array if squeezed to scalar
             return np.array([action_np], dtype=np.float32) if np.isscalar(action_np) else action_np.astype(np.float32)
         else:  # Discrete actions
-            # For MultiDiscrete, model.get_action should return a tensor like [action_type_idx, action_size_idx]
-            if action_tensor.ndim > 0 and action_tensor.shape[-1] == 2:  # Assuming (..., 2) for MultiDiscrete
-                return tuple(action_tensor.cpu().numpy().squeeze().astype(int))
+            # For MultiDiscrete actions (which we're using)
+            if action_tensor.ndim > 0 and action_tensor.shape[-1] == 2:
+                # Convert to NumPy array rather than tuple for consistency
+                return action_tensor.cpu().numpy().squeeze().astype(int)
             else:  # Single discrete action
                 return action_tensor.cpu().numpy().item()
 
@@ -160,7 +161,6 @@ class PPOTrainer:
                         current_model_state_torch_batched[key] = tensor_val  # Fallback
                 else:
                     current_model_state_torch_batched[key] = tensor_val  # Handle any other keys as they are
-            # --- END OF THE FIX ---
 
             with torch.no_grad():
                 # Model's get_action should return action tensor and action_info dict (with 'value', 'log_prob')
@@ -192,7 +192,7 @@ class PPOTrainer:
             current_episode_length += 1
 
             # For callback on_step
-            for callback in self.callbacks: callback.on_step(self, current_model_state_torch, action_tensor, reward, next_env_state_np, info)
+            for callback in self.callbacks: callback.on_step(self, current_model_state_torch_batched, action_tensor, reward, next_env_state_np, info)
 
             if done:
                 self.global_episode_counter += 1
