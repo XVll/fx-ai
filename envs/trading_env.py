@@ -143,6 +143,7 @@ class TradingEnvironment(gym.Env):
             market_config=self.config.simulation.market_config,
             feature_config=self.config.model.feature_config,
             mode=self.config.env.training_mode,
+            np_random=self.np_random,
             start_time=self.current_session_start_time_utc,
             end_time=self.current_session_end_time_utc,
             logger=self.logger.getChild("MarketSim")
