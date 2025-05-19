@@ -1,1058 +1,937 @@
-# feature_extractor.py
+# feature_extractor.py (Updated with newest MF Volume interpretation)
 import logging
 from collections import deque
 from datetime import datetime, timezone, timedelta, time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from zoneinfo import ZoneInfo
+import ta
+from ta import trend, volatility
 
 from config.config import FeatureConfig
 from simulators.market_simulator import MarketSimulator
 
+ET_TZ = timezone(timedelta(hours=-4))
+
 
 class FeatureExtractor:
-    """
-    Feature extractor for trading environment.
-
-    Extracts features from market data at multiple timeframes:
-    - HF: High-frequency features from 1-second data
-    - MF: Medium-frequency features from 1-minute and 5-minute data
-    - LF: Low-frequency features from daily data
-    - Static: Constant features like time of day, market cap, etc.
-
-    Handles missing data gracefully and provides robust feature calculation.
-    """
-    # Constants
-    EPSILON = 1e-9  # Small value to avoid division by zero
-    ET_TZ = ZoneInfo("America/New_York")  # Exchange timezone
-
-    # Time-of-day constants
-    SESSION_START_HOUR_ET = 4  # 4:00 AM ET
-    SESSION_END_HOUR_ET = 20  # 8:00 PM ET
-    REGULAR_SESSION_START_HOUR_ET = 9.5  # 9:30 AM ET
-    REGULAR_SESSION_END_HOUR_ET = 16  # 4:00 PM ET
+    EPSILON = 1e-9
+    SESSION_START_HOUR_ET = 4
+    SESSION_END_HOUR_ET = 20
+    REGULAR_SESSION_START_HOUR_ET = 9.5
+    REGULAR_SESSION_END_HOUR_ET = 16
     TOTAL_SECONDS_IN_FULL_TRADING_DAY = (SESSION_END_HOUR_ET - SESSION_START_HOUR_ET) * 3600
+    TOTAL_MINUTES_IN_FULL_TRADING_DAY = TOTAL_SECONDS_IN_FULL_TRADING_DAY / 60
 
-    # Feature configuration constants
-    # HF (High-Frequency) settings
     HF_ROLLING_WINDOW_SECONDS = 60
-    HF_LARGE_TRADE_THRESHOLD_MULTIPLIER = 5.0
+    HF_PRICE_CHANGE_BASIS = "Close_1s_bar"
+    HF_BAR_HLC_SOURCE = "Trades_and_Quotes"
+    HF_BAR_MIDPRICE_DENOMINATOR_FOR_SPREAD_REL = "Bar_MidPoint"
+    HF_AGGRESSOR_ID_METHOD = "LeeReady"
+    HF_NORMALIZED_IMBALANCE_DENOMINATOR_TYPE = "SumOfAggressorVolumes"
+    HF_LARGE_TRADE_THRESHOLD_TYPE = "FactorOfRollingAvg"
+    HF_LARGE_TRADE_FACTOR = 5.0
+    HF_LARGE_TRADE_ROLLING_AVG_WINDOW_SECONDS = 60
 
-    # MF (Medium-Frequency) settings
+    MF_PRICE_CHANGE_BASIS = "Close_Xm_bar_vs_PrevClose_Xm_bar"
+    MF_CURRENT_PRICE_SOURCE_FOR_DISTS = "LiveTickPrice"
+    MF_DIST_PCT_DENOMINATOR = "Level"
     MF_EMA_SHORT_PERIOD = 9
     MF_EMA_LONG_PERIOD = 20
+    MF_ROLLING_HF_DATA_WINDOW_SECONDS = 60
     MF_MACD_FAST_PERIOD = 12
     MF_MACD_SLOW_PERIOD = 26
     MF_MACD_SIGNAL_PERIOD = 9
     MF_ATR_PERIOD = 14
+    MF_VOLUME_DAILY_AVG_PROFILE_LOOKBACK_DAYS = 20  # Not used by the re-defined MF bar vol features, but kept for other potential uses or simulator
     MF_VOLUME_AVG_RECENT_BARS_WINDOW = 20
     MF_SWING_LOOKBACK_BARS = 10
     MF_SWING_STRENGTH_BARS = 2
 
-    # LF (Low-Frequency) settings
-    LF_AVG_DAILY_VOLUME_PERIOD_DAYS = 10
+    LF_AVG_DAILY_VOLUME_PERIOD_DAYS = 10  # Used by LF_RVol feature
+    LF_PREV_DAY_HL_SOURCE = "RegularTradingHours"
+    LF_PREV_DAY_CLOSE_SOURCE = "PostMarketClose_8PM"
+    LF_VWAP_SESSION_SCOPE = "FullDay_4AM_Start_NoReset"
+    LF_DAILY_EMA_PRICE_SOURCE = "PostMarketClose_8PM"
+    LF_DAILY_EMA_SHORT_PERIOD = 9
+    LF_DAILY_EMA_MEDIUM_PERIOD = 20
+    LF_DAILY_EMA_LONG_PERIOD = 200
+    LF_LT_SR_LOOKBACK_YEARS = 1
 
-    def __init__(self, symbol: str, market_simulator: MarketSimulator, config: FeatureConfig,
-                 logger: Optional[logging.Logger] = None):
-        """
-        Initialize the feature extractor.
-
-        Args:
-            symbol: Symbol being traded
-            market_simulator: Market simulator providing data
-            config: Feature configuration
-            logger: Optional logger
-        """
+    def __init__(self, symbol: str, market_simulator: MarketSimulator, config: FeatureConfig, logger: Optional[logging.Logger] = None):
         self.symbol = symbol
-        self.market_simulator = market_simulator
-        self.config = config
         self.logger = logger or logging.getLogger(__name__)
+        self.config = config
+        self.market_simulator = market_simulator
 
-        # Get symbol info from market simulator
         try:
             symbol_info = self.market_simulator.get_symbol_info()
-            self.total_shares_outstanding = symbol_info.get('total_shares_outstanding')
-            if self.total_shares_outstanding is None:
-                self.logger.warning("Total shares outstanding not found in symbol info. Market cap feature will be unavailable.")
+            self.total_shares_outstanding: Optional[float] = symbol_info['total_shares_outstanding']
         except Exception as e:
-            self.logger.error(f"Error getting symbol info: {e}")
+            self.logger.error(f"Could not get total_shares_outstanding: {e}. Market cap feature will be NaN.")
             self.total_shares_outstanding = None
 
-        # Define feature names (maintain same dimensions as original)
-        self.static_feature_names = [
+        self.static_feature_names: List[str] = [
             "S_Time_Of_Day_Seconds_Encoded_Sin",
             "S_Time_Of_Day_Seconds_Encoded_Cos",
-            "S_Market_Cap_Million"
+            "S_Market_Cap_Million",
         ]
-
-        self.hf_feature_names = [
-            "HF_1s_PriceChange_Pct", "HF_1s_Volume_Ratio_To_Own_Avg", "HF_1s_Volume_Delta_Pct",
-            "HF_1s_HighLow_Spread_Rel", "HF_Tape_1s_Trades_Count_Ratio_To_Own_Avg",
-            "HF_Tape_1s_Trades_Count_Delta_Pct", "HF_Tape_1s_Normalized_Volume_Imbalance",
-            "HF_Tape_1s_Normalized_Volume_Imbalance_Delta", "HF_Tape_1s_Avg_Trade_Size_Ratio_To_Own_Avg",
-            "HF_Tape_1s_Avg_Trade_Size_Delta_Pct", "HF_Tape_1s_Large_Trade_Count",
-            "HF_Tape_1s_Large_Trade_Net_Volume_Ratio_To_Total_Vol", "HF_Tape_1s_Trades_VWAP",
+        # "S_Initial_PreMarket_Gap_Pct",  # Todo: Removed for now, requires to fetch previous day's data.
+        # "S_Regular_Open_Gap_Pct",
+        self.hf_feature_names: List[str] = [
+            "HF_1s_PriceChange_Pct", "HF_1s_Volume_Ratio_To_Own_Avg", "HF_1s_Volume_Delta_Pct", "HF_1s_HighLow_Spread_Rel",
+            "HF_Tape_1s_Trades_Count_Ratio_To_Own_Avg", "HF_Tape_1s_Trades_Count_Delta_Pct", "HF_Tape_1s_Normalized_Volume_Imbalance",
+            "HF_Tape_1s_Normalized_Volume_Imbalance_Delta", "HF_Tape_1s_Avg_Trade_Size_Ratio_To_Own_Avg", "HF_Tape_1s_Avg_Trade_Size_Delta_Pct",
+            "HF_Tape_1s_Large_Trade_Count", "HF_Tape_1s_Large_Trade_Net_Volume_Ratio_To_Total_Vol", "HF_Tape_1s_Trades_VWAP",
             "HF_Quote_1s_Spread_Rel", "HF_Quote_1s_Spread_Rel_Delta", "HF_Quote_1s_Quote_Imbalance_Value_Ratio",
-            "HF_Quote_1s_Quote_Imbalance_Value_Ratio_Delta", "HF_Quote_1s_Bid_Value_USD_Ratio_To_Own_Avg",
-            "HF_Quote_1s_Ask_Value_USD_Ratio_To_Own_Avg"
+            "HF_Quote_1s_Quote_Imbalance_Value_Ratio_Delta", "HF_Quote_1s_Bid_Value_USD_Ratio_To_Own_Avg", "HF_Quote_1s_Ask_Value_USD_Ratio_To_Own_Avg",
         ]
-
-        self.mf_feature_names = [
-            "MF_1m_PriceChange_Pct", "MF_5m_PriceChange_Pct", "MF_1m_PriceChange_Pct_Delta",
-            "MF_5m_PriceChange_Pct_Delta", "MF_1m_Position_In_CurrentCandle_Range",
-            "MF_5m_Position_In_CurrentCandle_Range", "MF_1m_Position_In_PreviousCandle_Range",
-            "MF_5m_Position_In_PreviousCandle_Range", "MF_1m_Dist_To_EMA9_Pct", "MF_1m_Dist_To_EMA20_Pct",
-            "MF_5m_Dist_To_EMA9_Pct", "MF_5m_Dist_To_EMA20_Pct", "MF_Dist_To_Rolling_HF_High_Pct",
-            "MF_Dist_To_Rolling_HF_Low_Pct", "MF_1m_MACD_Line", "MF_1m_MACD_Signal", "MF_1m_MACD_Hist",
-            "MF_1m_ATR_Pct", "MF_5m_ATR_Pct", "MF_1m_BodySize_Rel", "MF_1m_UpperWick_Rel",
-            "MF_1m_LowerWick_Rel", "MF_5m_BodySize_Rel", "MF_5m_UpperWick_Rel", "MF_5m_LowerWick_Rel",
-            "MF_1m_BarVol_Ratio_To_TodaySoFarVol", "MF_5m_BarVol_Ratio_To_TodaySoFarVol",
+        self.mf_feature_names: List[str] = [
+            "MF_1m_PriceChange_Pct", "MF_5m_PriceChange_Pct", "MF_1m_PriceChange_Pct_Delta", "MF_5m_PriceChange_Pct_Delta",
+            "MF_1m_Position_In_CurrentCandle_Range", "MF_5m_Position_In_CurrentCandle_Range", "MF_1m_Position_In_PreviousCandle_Range",
+            "MF_5m_Position_In_PreviousCandle_Range",
+            "MF_1m_Dist_To_EMA9_Pct", "MF_1m_Dist_To_EMA20_Pct", "MF_5m_Dist_To_EMA9_Pct", "MF_5m_Dist_To_EMA20_Pct",
+            "MF_Dist_To_Rolling_HF_High_Pct", "MF_Dist_To_Rolling_HF_Low_Pct",
+            "MF_1m_MACD_Line", "MF_1m_MACD_Signal", "MF_1m_MACD_Hist", "MF_1m_ATR_Pct", "MF_5m_ATR_Pct",
+            "MF_1m_BodySize_Rel", "MF_1m_UpperWick_Rel", "MF_1m_LowerWick_Rel", "MF_5m_BodySize_Rel", "MF_5m_UpperWick_Rel", "MF_5m_LowerWick_Rel",
+            "MF_1m_BarVol_Ratio_To_TodaySoFarVol",  # RENAMED and logic changed
+            "MF_5m_BarVol_Ratio_To_TodaySoFarVol",  # RENAMED and logic changed
             "MF_1m_Volume_Rel_To_Avg_Recent_Bars", "MF_5m_Volume_Rel_To_Avg_Recent_Bars",
-            "MF_1m_Dist_To_Recent_SwingHigh_Pct", "MF_1m_Dist_To_Recent_SwingLow_Pct",
-            "MF_5m_Dist_To_Recent_SwingHigh_Pct", "MF_5m_Dist_To_Recent_SwingLow_Pct"
+            "MF_1m_Dist_To_Recent_SwingHigh_Pct", "MF_1m_Dist_To_Recent_SwingLow_Pct", "MF_5m_Dist_To_Recent_SwingHigh_Pct",
+            "MF_5m_Dist_To_Recent_SwingLow_Pct",
         ]
-
-        self.lf_feature_names = [
+        self.lf_feature_names: List[str] = [
             "LF_Position_In_Daily_Range", "LF_Position_In_PrevDay_Range", "LF_Pct_Change_From_Prev_Close",
-            "LF_RVol_Pct_From_Avg_10d_Timed", "LF_Dist_To_Session_VWAP_Pct", "LF_Daily_Dist_To_EMA9_Pct",
-            "LF_Daily_Dist_To_EMA20_Pct", "LF_Daily_Dist_To_EMA200_Pct", "LF_Dist_To_Closest_LT_Support_Pct",
-            "LF_Dist_To_Closest_LT_Resistance_Pct"
+            "LF_RVol_Pct_From_Avg_10d_Timed", "LF_Dist_To_Session_VWAP_Pct",
+            "LF_Daily_Dist_To_EMA9_Pct", "LF_Daily_Dist_To_EMA20_Pct", "LF_Daily_Dist_To_EMA200_Pct",
+            "LF_Dist_To_Closest_LT_Support_Pct", "LF_Dist_To_Closest_LT_Resistance_Pct",
         ]
 
-        # Make sure feature dimensions match config
         self.config.static_feat_dim = len(self.static_feature_names)
         self.config.hf_feat_dim = len(self.hf_feature_names)
         self.config.mf_feat_dim = len(self.mf_feature_names)
         self.config.lf_feat_dim = len(self.lf_feature_names)
 
-        # Initialize data buffers
         self.hf_seq_len = self.config.hf_seq_len
         self.mf_seq_len = self.config.mf_seq_len
         self.lf_seq_len = self.config.lf_seq_len
 
-        # History tracking
+        self.market_data: Dict[str, Any] = {}
+
+        self.completed_1m_bars_df = pd.DataFrame()
+        self.completed_5m_bars_df = pd.DataFrame()
+        self.historical_1d_bars_df = pd.DataFrame()
+
         self.hf_features_history = deque(maxlen=self.hf_seq_len)
         self.mf_features_history = deque(maxlen=self.mf_seq_len)
         self.lf_features_history = deque(maxlen=self.lf_seq_len)
 
-        # Track values from the previous step for delta calculations
-        self.prev_values = {
-            "price": None,
-            "volume": None,
-            "trades_count": None,
-            "trade_avg_size": None,
-            "volume_imbalance": None,
-            "spread_rel": None,
-            "quote_imbalance_ratio": None,
-            "1m_price_change_pct": None,
-            "5m_price_change_pct": None
+        self.max_hf_lookback_seconds = max(
+            self.HF_ROLLING_WINDOW_SECONDS,
+            self.HF_LARGE_TRADE_ROLLING_AVG_WINDOW_SECONDS, 1
+        )
+        self.recent_1s_volumes = deque(maxlen=self.max_hf_lookback_seconds)
+        self.recent_1s_trade_counts = deque(maxlen=self.max_hf_lookback_seconds)
+        self.recent_1s_total_trade_shares = deque(maxlen=self.max_hf_lookback_seconds)
+        self.recent_1s_bid_values_usd = deque(maxlen=self.HF_ROLLING_WINDOW_SECONDS)
+        self.recent_1s_ask_values_usd = deque(maxlen=self.HF_ROLLING_WINDOW_SECONDS)
+
+        self.prev_tick_values: Dict[str, Any] = {
+            "HF_1s_PriceChange_basis_value": np.nan, "HF_1s_Volume": np.nan,
+            "HF_Tape_1s_Trades_Count": np.nan, "HF_Tape_1s_Normalized_Volume_Imbalance": np.nan,
+            "HF_Tape_1s_Avg_Trade_Size": np.nan, "HF_Quote_1s_Spread_Rel": np.nan,
+            "HF_Quote_1s_Quote_Imbalance_Value_Ratio": np.nan,
+            "MF_1m_PriceChange_Pct": np.nan, "MF_5m_PriceChange_Pct": np.nan,
         }
 
-        # Session tracking
-        self.daily_cumulative_volume = 0.0
-        self.daily_cumulative_price_volume_product = 0.0
-        self.last_processed_day = None
+        self.s_initial_premarket_gap_pct: Optional[float] = None
+        self.s_regular_open_gap_pct: Optional[float] = None
+        self.prev_day_close_price_for_gaps: Optional[float] = None
+        self.first_tick_price_today: Optional[float] = None
+        self.rth_open_price_today: Optional[float] = None
 
-        # Initialize buffers with NaN values
-        self._initialize_feature_buffers()
+        self.daily_cumulative_volume = 0.0  # Ensure float
+        self.daily_cumulative_price_volume_product = 0.0  # Ensure float
+        self.last_processed_day_for_daily_reset: Optional[datetime.date] = None
 
-        self.logger.info(f"FeatureExtractor initialized for {symbol} with {len(self.static_feature_names)} static features, "
-                         f"{len(self.hf_feature_names)} HF features, {len(self.mf_feature_names)} MF features, "
-                         f"and {len(self.lf_feature_names)} LF features.")
+        self._initialize_buffers_with_nan()
 
-    def _initialize_feature_buffers(self):
-        """Initialize feature history buffers with NaN values."""
-        # Initialize with NaN arrays of the correct shape
-        hf_nan_array = np.full(self.config.hf_feat_dim, np.nan, dtype=np.float32)
-        mf_nan_array = np.full(self.config.mf_feat_dim, np.nan, dtype=np.float32)
-        lf_nan_array = np.full(self.config.lf_feat_dim, np.nan, dtype=np.float32)
+        # Initial fetch of prev_day_close for gap calculations at startup
+        # This ensures that if extract_features is called before a daily reset occurs on the first day,
+        # prev_day_close_price_for_gaps is already populated.
+        # _update_market_data will also call this if a new day is detected.
+        # We need to ensure historical_1d_bars_df is populated before calling _update_prev_day_close_for_gaps.
+        initial_market_state_for_setup = self.market_simulator.get_current_market_state()  # Use a fresh call
+        hist_1d_init = initial_market_state_for_setup.get('historical_1d_bars')
+        if isinstance(hist_1d_init, pd.DataFrame) and not hist_1d_init.empty:
+            self.historical_1d_bars_df = hist_1d_init.copy()
+            if 'timestamp' in self.historical_1d_bars_df.columns and self.historical_1d_bars_df.index.name != 'timestamp':
+                self.historical_1d_bars_df['timestamp'] = pd.to_datetime(self.historical_1d_bars_df['timestamp'])
+                self.historical_1d_bars_df.set_index('timestamp', inplace=True)
+            elif self.historical_1d_bars_df.index.name == 'timestamp' or isinstance(self.historical_1d_bars_df.index, pd.DatetimeIndex):
+                self.historical_1d_bars_df.index = pd.to_datetime(self.historical_1d_bars_df.index)
+            self._update_prev_day_close_for_gaps()
+        else:
+            self.logger.warning("Initial historical_1d_bars not available at __init__. Previous day close might be initially NaN.")
+            self.historical_1d_bars_df = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume', 'close_8pm'])
 
-        # Fill the deques with NaN arrays
-        for _ in range(self.hf_seq_len):
-            self.hf_features_history.append(hf_nan_array.copy())
+    def _initialize_buffers_with_nan(self):
+        self.config.mf_feat_dim = len(self.mf_feature_names)  # Ensure this is set before use
 
-        for _ in range(self.mf_seq_len):
-            self.mf_features_history.append(mf_nan_array.copy())
+        nan_hf = np.full(self.config.hf_feat_dim, np.nan)
+        for _ in range(self.hf_seq_len): self.hf_features_history.append(nan_hf.copy())
+        nan_mf = np.full(self.config.mf_feat_dim, np.nan)
+        for _ in range(self.mf_seq_len): self.mf_features_history.append(nan_mf.copy())
+        nan_lf = np.full(self.config.lf_feat_dim, np.nan)
+        for _ in range(self.lf_seq_len): self.lf_features_history.append(nan_lf.copy())
 
-        for _ in range(self.lf_seq_len):
-            self.lf_features_history.append(lf_nan_array.copy())
+    def _safe_get_from_bar(self, bar_data: Optional[Dict], key: str, default: Any = np.nan) -> Any:
+        if bar_data is None: return default
+        return bar_data.get(key, default)
 
-        self.logger.debug("Feature buffers initialized with NaN values.")
+    def _update_market_data(self):
+        self.market_data = self.market_simulator.get_current_market_state()
+        current_ts_utc = self.market_data.get('timestamp_utc')
 
-    def extract_features(self) -> Dict[str, np.ndarray]:
-        """
-        Extract all features from current market state.
+        if current_ts_utc:
+            current_date = current_ts_utc.date()
+            if self.last_processed_day_for_daily_reset is None or self.last_processed_day_for_daily_reset != current_date:
+                self.logger.info(f"New trading day {current_date}. Resetting daily state.")
+                self.daily_cumulative_volume = 0.0
+                self.daily_cumulative_price_volume_product = 0.0
+                self.s_initial_premarket_gap_pct = None  # Re-evaluate on new day
+                self.s_regular_open_gap_pct = None  # Re-evaluate on new day
+                self.first_tick_price_today = None  # Re-evaluate
+                self.rth_open_price_today = None  # Re-evaluate
+                self.last_processed_day_for_daily_reset = current_date
+                # Update prev_day_close_price_for_gaps for the new day
+                # Ensure historical_1d_bars_df is updated first if it changes daily
+                hist_1d_update = self.market_data.get('historical_1d_bars')
+                if isinstance(hist_1d_update, pd.DataFrame) and not hist_1d_update.empty:
+                    self.historical_1d_bars_df = hist_1d_update.copy()
+                    if 'timestamp' in self.historical_1d_bars_df.columns and self.historical_1d_bars_df.index.name != 'timestamp':
+                        self.historical_1d_bars_df['timestamp'] = pd.to_datetime(self.historical_1d_bars_df['timestamp'])
+                        self.historical_1d_bars_df.set_index('timestamp', inplace=True)
+                    elif self.historical_1d_bars_df.index.name == 'timestamp' or isinstance(self.historical_1d_bars_df.index, pd.DatetimeIndex):
+                        self.historical_1d_bars_df.index = pd.to_datetime(self.historical_1d_bars_df.index)
+                self._update_prev_day_close_for_gaps()
 
-        Returns:
-            Dictionary with feature arrays for each timeframe
-        """
-        # Get current market state
-        market_state = self.market_simulator.get_current_market_state()
-        if market_state is None:
-            self.logger.error("Cannot extract features: market state is None.")
-            return self._get_empty_features()
+        def _df_from_window(window_data, cols):
+            if window_data:
+                df = pd.DataFrame(window_data)
+                if 'timestamp_start' in df.columns:
+                    df['timestamp_start'] = pd.to_datetime(df['timestamp_start'])
+                    df.set_index('timestamp_start', inplace=True, drop=False)  # Keep timestamp_start as column too for ta lib if needed
+                return df
+            return pd.DataFrame(columns=cols + ['timestamp_start']).set_index('timestamp_start', drop=False)
 
-        # Check for new day and reset daily metrics if needed
-        self._check_and_handle_new_day(market_state)
+        self.completed_1m_bars_df = _df_from_window(
+            self.market_data.get('completed_1m_bars_window', []),
+            ['open', 'high', 'low', 'close', 'volume']
+        )
+        self.completed_5m_bars_df = _df_from_window(
+            self.market_data.get('completed_5m_bars_window', []),
+            ['open', 'high', 'low', 'close', 'volume']
+        )
 
-        # Update price-volume for session VWAP
-        self._update_cumulative_price_volume(market_state)
+        # historical_1d_bars_df is already updated at init and potential daily reset
+        # but ensure it's the latest if simulator provides updates frequently
+        hist_1d = self.market_data.get('historical_1d_bars')
+        if isinstance(hist_1d, pd.DataFrame) and not hist_1d.empty:
+            # Only copy if it's different from what we have, to avoid overhead
+            # This check might be too simplistic for real scenarios.
+            if not self.historical_1d_bars_df.equals(hist_1d):
+                self.historical_1d_bars_df = hist_1d.copy()
+                if 'timestamp' in self.historical_1d_bars_df.columns and self.historical_1d_bars_df.index.name != 'timestamp':
+                    self.historical_1d_bars_df['timestamp'] = pd.to_datetime(self.historical_1d_bars_df['timestamp'])
+                    self.historical_1d_bars_df.set_index('timestamp', inplace=True)
+                elif self.historical_1d_bars_df.index.name == 'timestamp' or isinstance(self.historical_1d_bars_df.index, pd.DatetimeIndex):
+                    self.historical_1d_bars_df.index = pd.to_datetime(self.historical_1d_bars_df.index)
+        elif self.historical_1d_bars_df.empty:  # If it was empty and now we got data
+            self.historical_1d_bars_df = pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume', 'close_8pm'])
 
-        # Calculate features for each timeframe
-        static_features = self._calculate_static_features(market_state)
-        hf_features = self._calculate_hf_features(market_state)
-        mf_features = self._calculate_mf_features(market_state)
-        lf_features = self._calculate_lf_features(market_state)
+        current_1s = self.market_data.get('current_1s_bar')
+        rolling_1s_window = self.market_data.get('rolling_1s_data_window', [])
 
-        # Update feature history
-        self.hf_features_history.append(hf_features)
-        self.mf_features_history.append(mf_features)
-        self.lf_features_history.append(lf_features)
+        default_val_deque = 0.0
+        if current_1s:
+            self.recent_1s_volumes.append(float(current_1s.get('volume', default_val_deque)))
+            last_1s_event_data = rolling_1s_window[-1] if rolling_1s_window else None
+            if last_1s_event_data:
+                trades_this_sec = last_1s_event_data.get('trades', [])
+                self.recent_1s_trade_counts.append(float(len(trades_this_sec)))
+                self.recent_1s_total_trade_shares.append(float(sum(t.get('size', 0) for t in trades_this_sec)))
+            else:
+                self.recent_1s_trade_counts.append(default_val_deque)
+                self.recent_1s_total_trade_shares.append(default_val_deque)
 
-        # Debug: Check for NaN values
-        self._debug_check_for_nans(static_features, hf_features, mf_features, lf_features)
+            bid_val = float(self.market_data.get('best_bid_price', 0) * self.market_data.get('best_bid_size', 0))
+            ask_val = float(self.market_data.get('best_ask_price', 0) * self.market_data.get('best_ask_size', 0))
+            self.recent_1s_bid_values_usd.append(bid_val)
+            self.recent_1s_ask_values_usd.append(ask_val)
+        else:  # If no current_1s_bar, append defaults to deques to maintain size
+            self.recent_1s_volumes.append(default_val_deque)
+            self.recent_1s_trade_counts.append(default_val_deque)
+            self.recent_1s_total_trade_shares.append(default_val_deque)
+            self.recent_1s_bid_values_usd.append(default_val_deque)
+            self.recent_1s_ask_values_usd.append(default_val_deque)
 
-        # Return the feature dictionary
-        return {
-            'static': static_features.astype(np.float32),
-            'hf': np.array(list(self.hf_features_history), dtype=np.float32),
-            'mf': np.array(list(self.mf_features_history), dtype=np.float32),
-            'lf': np.array(list(self.lf_features_history), dtype=np.float32)
-        }
+        if self.LF_VWAP_SESSION_SCOPE == "FullDay_4AM_Start_NoReset" and current_1s:
+            vol_1s = float(current_1s.get('volume', 0))
+            vwap_1s = current_1s.get('vwap')
+            if vol_1s > self.EPSILON:  # only add if there's volume
+                price_vol_prod = 0.0
+                if vwap_1s is not None:
+                    price_vol_prod = float(vwap_1s) * vol_1s
+                else:
+                    price_1s = (float(current_1s.get('high', 0)) + float(current_1s.get('low', 0))) / 2.0
+                    if not np.isnan(price_1s):
+                        price_vol_prod = price_1s * vol_1s
 
-    def _get_empty_features(self) -> Dict[str, np.ndarray]:
-        """Return empty feature arrays when no data is available."""
-        return {
-            'static': np.zeros((1, self.config.static_feat_dim), dtype=np.float32),
-            'hf': np.zeros((self.hf_seq_len, self.config.hf_feat_dim), dtype=np.float32),
-            'mf': np.zeros((self.mf_seq_len, self.config.mf_feat_dim), dtype=np.float32),
-            'lf': np.zeros((self.lf_seq_len, self.config.lf_feat_dim), dtype=np.float32)
-        }
+                self.daily_cumulative_price_volume_product += price_vol_prod
+                self.daily_cumulative_volume += vol_1s
 
-    def _debug_check_for_nans(self, static_features, hf_features, mf_features, lf_features):
-        """Check for and log NaN values in feature vectors for debugging."""
-        for name, features, feature_names in [
-            ("static", static_features, self.static_feature_names),
-            ("hf", hf_features, self.hf_feature_names),
-            ("mf", mf_features, self.mf_feature_names),
-            ("lf", lf_features, self.lf_feature_names)
-        ]:
-            nan_indices = np.where(np.isnan(features))[0]
-            if len(nan_indices) > 0:
-                nan_features = [feature_names[i] for i in nan_indices]
-                self.logger.warning(f"NaN values detected in {name} features: {nan_features}")
-
-    def _check_and_handle_new_day(self, market_state: Dict[str, Any]):
-        """Check if it's a new trading day and reset daily metrics if needed."""
-        current_timestamp = market_state.get('timestamp_utc')
-        if current_timestamp is None:
+    def _update_prev_day_close_for_gaps(self):
+        if self.historical_1d_bars_df.empty:
+            self.prev_day_close_price_for_gaps = np.nan
             return
-
-        current_date = current_timestamp.date()
-        if self.last_processed_day is None or current_date != self.last_processed_day:
-            self.logger.info(f"New trading day detected: {current_date}")
-            self.daily_cumulative_volume = 0.0
-            self.daily_cumulative_price_volume_product = 0.0
-            self.last_processed_day = current_date
-
-    def _update_cumulative_price_volume(self, market_state: Dict[str, Any]):
-        """Update cumulative price-volume product for session VWAP calculation."""
-        current_1s_bar = market_state.get('current_1s_bar')
-        if current_1s_bar is None:
-            return
-
-        volume = self._safe_get(current_1s_bar, 'volume', 0.0)
-        if volume <= self.EPSILON:
-            return
-
-        # Use VWAP from the bar if available, otherwise calculate from close price
-        price = self._safe_get(current_1s_bar, 'vwap')
-        if price is None:
-            price = self._safe_get(current_1s_bar, 'close')
-            if price is None:
+        try:
+            # Ensure DataFrame index is DatetimeIndex and sorted if relying on iloc[-1] for "previous day"
+            if not isinstance(self.historical_1d_bars_df.index, pd.DatetimeIndex):
+                self.logger.warning("historical_1d_bars_df index is not DatetimeIndex. Previous day data might be incorrect.")
+                self.prev_day_close_price_for_gaps = np.nan
                 return
 
-        self.daily_cumulative_volume += volume
-        self.daily_cumulative_price_volume_product += price * volume
+            # Assuming the last row is indeed the previous trading day relative to current processing time
+            prev_day_data = self.historical_1d_bars_df.iloc[-1]
+            col_map = {"PostMarketClose_8PM": "close_8pm", "RegularSessionClose_4PM": "close"}
+            close_col = col_map.get(self.LF_PREV_DAY_CLOSE_SOURCE, 'close')
+            self.prev_day_close_price_for_gaps = float(prev_day_data.get(close_col, prev_day_data.get('close', np.nan)))
+        except IndexError:
+            self.prev_day_close_price_for_gaps = np.nan
+            self.logger.warning("IndexError fetching previous day close for gaps.")
+        except Exception as e:
+            self.prev_day_close_price_for_gaps = np.nan
+            self.logger.error(f"Exception fetching previous day close: {e}")
 
-    def _calculate_static_features(self, market_state: Dict[str, Any]) -> np.ndarray:
-        """
-        Calculate static features.
+    def _get_price_for_hf_change_basis(self, bar_data: Optional[Dict]) -> float:
+        if bar_data is None: return np.nan
+        key = 'close' if self.HF_PRICE_CHANGE_BASIS == "Close_1s_bar" else \
+            'vwap' if self.HF_PRICE_CHANGE_BASIS == "VWAP_1s_bar" else None
+        return float(bar_data.get(key, np.nan)) if key else np.nan
 
-        Features:
-        - Time of day (sine and cosine encoding)
-        - Market cap in millions
+    def _get_current_price_for_mf_dists(self) -> float:
+        if self.MF_CURRENT_PRICE_SOURCE_FOR_DISTS == "LiveTickPrice":
+            return float(self.market_data.get('current_price', np.nan))
+        elif self.MF_CURRENT_PRICE_SOURCE_FOR_DISTS == "BarClosePrice":
+            return self._safe_get_from_bar(self.market_data.get('current_1s_bar'), 'close')
+        return np.nan
 
-        Args:
-            market_state: Current market state
+    def _calculate_pct_dist(self, price: float, level: float) -> float:
+        if np.isnan(price) or np.isnan(level): return np.nan
+        denom = level if self.MF_DIST_PCT_DENOMINATOR == "Level" else \
+            price if self.MF_DIST_PCT_DENOMINATOR == "CurrentPrice" else np.nan
+        if np.isnan(denom) or abs(denom) < self.EPSILON: return np.nan
+        return ((price - level) / denom) * 100.0
 
-        Returns:
-            Array of static features
-        """
-        features = np.full(self.config.static_feat_dim, np.nan, dtype=np.float32)
-        current_timestamp = market_state.get('timestamp_utc')
+    def _safe_divide(self, num, den, default_val=np.nan):
+        if den is None or num is None or np.isnan(den) or np.isnan(num) or abs(float(den)) < self.EPSILON:
+            return default_val
+        return float(num) / float(den)
 
-        # Time of Day Encoding (sine/cosine for cyclical representation)
-        if current_timestamp:
+    def _pct_change(self, cur, prev, default_val=np.nan):
+        if prev is None or cur is None or np.isnan(prev) or np.isnan(cur) or abs(float(prev)) < self.EPSILON:
+            return default_val
+        return ((float(cur) - float(prev)) / float(prev)) * 100.0
+
+    def _rolling_mean_deque(self, dq: deque, window: Optional[int] = None) -> float:
+        if not dq: return np.nan
+        elements = list(dq)
+        if window is not None:
+            actual_elements = elements[-window:]
+        else:
+            actual_elements = elements
+        return np.mean([float(x) for x in actual_elements if not np.isnan(x)]) if actual_elements else np.nan
+
+    def _get_daily_bar_value(self, date_offset: int, column_name: str, source_pref: Optional[str] = None) -> float:
+        if self.historical_1d_bars_df.empty: return np.nan
+        try:
+            idx = date_offset
+            if not (0 <= abs(idx) < len(self.historical_1d_bars_df)) and idx < 0:  # Ensure index is valid for negative offset
+                # Check if requested index is within bounds
+                if len(self.historical_1d_bars_df) < abs(idx):
+                    self.logger.debug(f"Not enough historical daily bars for offset {idx}. Have {len(self.historical_1d_bars_df)}")
+                    return np.nan
+            elif idx >= 0 and idx >= len(self.historical_1d_bars_df):  # For positive offset (not typical for prev day)
+                return np.nan
+
+            day_data = self.historical_1d_bars_df.iloc[idx]
+
+            col_to_get = column_name
+            if column_name == 'high':
+                if source_pref == "FullTradingDay_4AM_8PM" and 'full_day_high' in day_data: col_to_get = 'full_day_high'
+            elif column_name == 'low':
+                if source_pref == "FullTradingDay_4AM_8PM" and 'full_day_low' in day_data: col_to_get = 'full_day_low'
+            elif column_name == 'close':
+                col_map = {"PostMarketClose_8PM": "close_8pm", "RegularSessionClose_4PM": "close"}
+                col_to_get = col_map.get(source_pref, 'close')
+
+            val = day_data.get(col_to_get, day_data.get(column_name, np.nan))
+            return float(val) if not pd.isna(val) else np.nan
+        except (IndexError, KeyError) as e:
+            self.logger.warning(f"Error in _get_daily_bar_value for offset {date_offset}, col {column_name}: {e}")
+            return np.nan
+
+    def _find_swing_points(self, prices: pd.Series, strength: int) -> (List[float], List[float]):
+        if prices.empty or len(prices) < (2 * strength + 1): return [], []
+        highs, lows = [], []
+        # Ensure series is float
+        prices = prices.astype(float)
+        for i in range(strength, len(prices) - strength):
+            window = prices.iloc[i - strength: i + strength + 1]
+            current_price_val = prices.iloc[i]
+            if not np.isnan(current_price_val):
+                if current_price_val == window.max(): highs.append(current_price_val)
+                if current_price_val == window.min(): lows.append(current_price_val)
+        return highs, lows
+
+    def extract_features(self) -> Dict[str, np.ndarray]:
+        self._update_market_data()
+
+        static_vec = self._calculate_static_features()
+        hf_vec = self._calculate_hf_features()
+        mf_vec = self._calculate_mf_features()
+        lf_vec = self._calculate_lf_features()
+
+        self.hf_features_history.append(hf_vec)
+        self.mf_features_history.append(mf_vec)
+        self.lf_features_history.append(lf_vec)
+
+        for key, vec in {'hf': hf_vec, 'mf': mf_vec, 'lf': lf_vec, 'static': static_vec}.items():
+            if np.isnan(vec).any():
+                nan_count = np.isnan(vec).sum()
+                self.logger.warning(f"NaN values detected in {key} feature vector: {nan_count}/{len(vec)} features")
+
+        return {
+            'hf': np.array(self.hf_features_history, dtype=np.float32),
+            'mf': np.array(self.mf_features_history, dtype=np.float32),
+            'lf': np.array(self.lf_features_history, dtype=np.float32),
+            'static': static_vec.reshape(1, -1).astype(np.float32),
+        }
+
+    def _calculate_static_features(self) -> np.ndarray:
+        features = np.full(self.config.static_feat_dim, np.nan)
+        current_ts_utc = self.market_data.get('timestamp_utc')
+
+        # Time of Day Encoding
+        if current_ts_utc:
             try:
-                # Convert to exchange timezone
-                current_time_et = current_timestamp.astimezone(self.ET_TZ)
+                current_time_et = current_ts_utc.astimezone(ET_TZ)
+                secs_from_midnight_et = current_time_et.hour * 3600 + current_time_et.minute * 60 + current_time_et.second
+                session_start_secs_et = self.SESSION_START_HOUR_ET * 3600
+                secs_from_session_start = secs_from_midnight_et - session_start_secs_et
 
-                # Calculate seconds from midnight
-                seconds_from_midnight = (current_time_et.hour * 3600 +
-                                         current_time_et.minute * 60 +
-                                         current_time_et.second)
-
-                # Calculate seconds from session start
-                session_start_seconds = self.SESSION_START_HOUR_ET * 3600
-                seconds_from_session_start = max(0, seconds_from_midnight - session_start_seconds)
-
-                # Calculate angle (0 to 2π) based on position in trading day
-                angle = 2 * np.pi * seconds_from_session_start / self.TOTAL_SECONDS_IN_FULL_TRADING_DAY
-
-                # Sine and cosine encoding
+                angle = 2 * np.pi * secs_from_session_start / self.TOTAL_SECONDS_IN_FULL_TRADING_DAY
                 features[0] = np.sin(angle)
                 features[1] = np.cos(angle)
             except Exception as e:
-                self.logger.warning(f"Error calculating time of day features: {e}")
-
-        # Market Cap (in millions)
-        # Need current price and total shares outstanding
-        current_price = market_state.get('current_price')
-        if self.total_shares_outstanding is not None and current_price is not None and not np.isnan(current_price):
-            features[2] = (self.total_shares_outstanding * current_price) / 1_000_000.0
-
-        return features
-
-    def _calculate_hf_features(self, market_state: Dict[str, Any]) -> np.ndarray:
-        """
-        Calculate high-frequency (1-second) features.
-
-        Features include:
-        - Price changes
-        - Volume metrics
-        - Trade metrics
-        - Quote metrics
-
-        Args:
-            market_state: Current market state
-
-        Returns:
-            Array of HF features
-        """
-        features = np.full(self.config.hf_feat_dim, np.nan, dtype=np.float32)
-
-        # Get required data
-        current_1s_bar = market_state.get('current_1s_bar', {})
-        if current_1s_bar is None:
-            current_1s_bar = {}
-
-        rolling_1s_window = market_state.get('rolling_1s_data_window', [])
-
-        # 1. Price Change Percentage (close-to-close)
-        current_close = self._safe_get(current_1s_bar, 'close')
-        if current_close is not None and self.prev_values['price'] is not None:
-            features[0] = self._calculate_pct_change(current_close, self.prev_values['price'])
-        self.prev_values['price'] = current_close
-
-        # 2. Volume Ratio to Average
-        current_volume = self._safe_get(current_1s_bar, 'volume', 0.0)
-        avg_volume = self._calculate_rolling_avg(
-            [self._safe_get(event.get('bar', {}), 'volume', 0.0) for event in rolling_1s_window[-self.HF_ROLLING_WINDOW_SECONDS:]],
-            exclude_current=True
-        )
-        features[1] = 0.0 if avg_volume is None or avg_volume < self.EPSILON else current_volume / avg_volume
-
-        # 3. Volume Delta Percentage
-        if self.prev_values['volume'] is not None:
-            features[2] = self._calculate_pct_change(current_volume, self.prev_values['volume'])
-        self.prev_values['volume'] = current_volume
-
-        # 4. High-Low Spread Relative to Mid
-        high = self._safe_get(current_1s_bar, 'high')
-        low = self._safe_get(current_1s_bar, 'low')
-        if high is not None and low is not None and high > low:
-            spread_abs = high - low
-            mid_price = (high + low) / 2
-            features[3] = 0.0 if mid_price < self.EPSILON else (spread_abs / mid_price) * 100.0
-
-        # Get trades from last second
-        last_event = rolling_1s_window[-1] if rolling_1s_window else {}
-        trades = last_event.get('trades', [])
-
-        # 5-6. Trades Count Ratio and Delta
-        trades_count = len(trades)
-        avg_trades_count = self._calculate_rolling_avg(
-            [len(event.get('trades', [])) for event in rolling_1s_window[-self.HF_ROLLING_WINDOW_SECONDS:]],
-            exclude_current=True
-        )
-        features[4] = 0.0 if avg_trades_count is None or avg_trades_count < self.EPSILON else trades_count / avg_trades_count
-
-        if self.prev_values['trades_count'] is not None:
-            features[5] = self._calculate_pct_change(trades_count, self.prev_values['trades_count'])
-        self.prev_values['trades_count'] = trades_count
-
-        # 7-8. Volume Imbalance
-        buy_volume = sum(self._safe_get(t, 'size', 0.0) for t in trades if self._safe_get(t, 'side') == 'B')
-        sell_volume = sum(self._safe_get(t, 'size', 0.0) for t in trades if self._safe_get(t, 'side') == 'A')
-        total_trade_volume = buy_volume + sell_volume
-
-        current_imbalance = 0.0
-        if total_trade_volume > self.EPSILON:
-            current_imbalance = (buy_volume - sell_volume) / total_trade_volume
-
-        features[6] = current_imbalance
-
-        if self.prev_values['volume_imbalance'] is not None:
-            features[7] = current_imbalance - self.prev_values['volume_imbalance']
-        self.prev_values['volume_imbalance'] = current_imbalance
-
-        # 9-10. Average Trade Size
-        current_avg_trade_size = 0.0
-        if trades_count > 0:
-            current_avg_trade_size = total_trade_volume / trades_count
-
-        # Get historical average trade size
-        historical_trade_sizes = []
-        for event in rolling_1s_window[-self.HF_ROLLING_WINDOW_SECONDS:]:
-            event_trades = event.get('trades', [])
-            if event_trades:
-                event_volume = sum(self._safe_get(t, 'size', 0.0) for t in event_trades)
-                if event_volume > 0 and len(event_trades) > 0:
-                    historical_trade_sizes.append(event_volume / len(event_trades))
-
-        avg_trade_size = self._calculate_avg(historical_trade_sizes, exclude_current=True)
-        features[8] = 0.0 if avg_trade_size is None or avg_trade_size < self.EPSILON else current_avg_trade_size / avg_trade_size
-
-        if self.prev_values['trade_avg_size'] is not None:
-            features[9] = self._calculate_pct_change(current_avg_trade_size, self.prev_values['trade_avg_size'])
-        self.prev_values['trade_avg_size'] = current_avg_trade_size
-
-        # 11-12. Large Trades
-        large_trade_threshold = 0.0
-        if avg_trade_size is not None and avg_trade_size > 0:
-            large_trade_threshold = avg_trade_size * self.HF_LARGE_TRADE_THRESHOLD_MULTIPLIER
-
-        large_trades = [t for t in trades if self._safe_get(t, 'size', 0.0) > large_trade_threshold] if large_trade_threshold > 0 else []
-        features[10] = len(large_trades)
-
-        large_buy_vol = sum(self._safe_get(t, 'size', 0.0) for t in large_trades if self._safe_get(t, 'side') == 'B')
-        large_sell_vol = sum(self._safe_get(t, 'size', 0.0) for t in large_trades if self._safe_get(t, 'side') == 'A')
-
-        if current_volume > self.EPSILON:
-            features[11] = (large_buy_vol - large_sell_vol) / current_volume
-
-        # 13. VWAP from Trades
-        features[12] = self._safe_get(current_1s_bar, 'vwap')
-
-        # 14-15. Quote Spread Relative & Delta
-        bid_price = market_state.get('best_bid_price')
-        ask_price = market_state.get('best_ask_price')
-
-        current_spread_rel = 0.0
-        if bid_price is not None and ask_price is not None and bid_price > self.EPSILON:
-            mid_price = (bid_price + ask_price) / 2
-            if mid_price > self.EPSILON:
-                current_spread_rel = ((ask_price - bid_price) / mid_price) * 100.0
-
-        features[13] = current_spread_rel
-
-        if self.prev_values['spread_rel'] is not None:
-            features[14] = current_spread_rel - self.prev_values['spread_rel']
-        self.prev_values['spread_rel'] = current_spread_rel
-
-        # 16-17. Quote Imbalance Value Ratio & Delta
-        bid_size = market_state.get('best_bid_size', 0)
-        ask_size = market_state.get('best_ask_size', 0)
-
-        bid_value = bid_price * bid_size if bid_price is not None else 0.0
-        ask_value = ask_price * ask_size if ask_price is not None else 0.0
-        total_value = bid_value + ask_value
-
-        current_quote_imbalance = 0.0
-        if total_value > self.EPSILON:
-            current_quote_imbalance = (bid_value - ask_value) / total_value
-
-        features[15] = current_quote_imbalance
-
-        if self.prev_values['quote_imbalance_ratio'] is not None:
-            features[16] = current_quote_imbalance - self.prev_values['quote_imbalance_ratio']
-        self.prev_values['quote_imbalance_ratio'] = current_quote_imbalance
-
-        # 18-19. Bid/Ask Value Ratio to Average
-        historical_bid_values = []
-        historical_ask_values = []
-
-        for event in rolling_1s_window[-self.HF_ROLLING_WINDOW_SECONDS:]:
-            quotes = event.get('quotes', [])
-            if quotes:
-                last_quote = quotes[-1]
-                event_bid_price = self._safe_get(last_quote, 'bid_price')
-                event_ask_price = self._safe_get(last_quote, 'ask_price')
-                event_bid_size = self._safe_get(last_quote, 'bid_size', 0)
-                event_ask_size = self._safe_get(last_quote, 'ask_size', 0)
-
-                if event_bid_price is not None:
-                    historical_bid_values.append(event_bid_price * event_bid_size)
-                if event_ask_price is not None:
-                    historical_ask_values.append(event_ask_price * event_ask_size)
-
-        avg_bid_value = self._calculate_avg(historical_bid_values, exclude_current=True)
-        avg_ask_value = self._calculate_avg(historical_ask_values, exclude_current=True)
-
-        features[17] = 0.0 if avg_bid_value is None or avg_bid_value < self.EPSILON else bid_value / avg_bid_value
-        features[18] = 0.0 if avg_ask_value is None or avg_ask_value < self.EPSILON else ask_value / avg_ask_value
-
-        return features
-
-    def _calculate_mf_features(self, market_state: Dict[str, Any]) -> np.ndarray:
-        """
-        Calculate medium-frequency (1-minute and 5-minute) features.
-
-        Features include:
-        - Price changes
-        - Candle position metrics
-        - Technical indicators
-        - Volume metrics
-
-        Args:
-            market_state: Current market state
-
-        Returns:
-            Array of MF features
-        """
-        features = np.full(self.config.mf_feat_dim, np.nan, dtype=np.float32)
-
-        # Get required data
-        completed_1m_bars = market_state.get('completed_1m_bars_window', [])
-        completed_5m_bars = market_state.get('completed_5m_bars_window', [])
-        current_1m_bar_forming = market_state.get('current_1m_bar_forming')
-        current_5m_bar_forming = market_state.get('current_5m_bar_forming')
-        rolling_1s_window = market_state.get('rolling_1s_data_window', [])
-
-        # Current price for relative calculations
-        current_price = market_state.get('current_price')
-        if current_price is None:
-            current_price = self._safe_get(market_state.get('current_1s_bar', {}), 'close')
-
-        # 1-2. Price Change Percentage for 1m and 5m
-        if completed_1m_bars and len(completed_1m_bars) >= 2:
-            last_bar = completed_1m_bars[-1]
-            prev_bar = completed_1m_bars[-2]
-            last_close = self._safe_get(last_bar, 'close')
-            prev_close = self._safe_get(prev_bar, 'close')
-
-            if last_close is not None and prev_close is not None and prev_close > self.EPSILON:
-                features[0] = ((last_close - prev_close) / prev_close) * 100.0
-
-        if completed_5m_bars and len(completed_5m_bars) >= 2:
-            last_bar = completed_5m_bars[-1]
-            prev_bar = completed_5m_bars[-2]
-            last_close = self._safe_get(last_bar, 'close')
-            prev_close = self._safe_get(prev_bar, 'close')
-
-            if last_close is not None and prev_close is not None and prev_close > self.EPSILON:
-                features[1] = ((last_close - prev_close) / prev_close) * 100.0
-
-        # 3-4. Price Change Delta
-        if features[0] != np.nan and self.prev_values['1m_price_change_pct'] is not None:
-            features[2] = features[0] - self.prev_values['1m_price_change_pct']
-        self.prev_values['1m_price_change_pct'] = features[0]
-
-        if features[1] != np.nan and self.prev_values['5m_price_change_pct'] is not None:
-            features[3] = features[1] - self.prev_values['5m_price_change_pct']
-        self.prev_values['5m_price_change_pct'] = features[1]
-
-        # 5-8. Position in Candle Range
-        def position_in_range(price, bar):
-            if price is None:
-                return None
-
-            high = self._safe_get(bar, 'high')
-            low = self._safe_get(bar, 'low')
-
-            if high is not None and low is not None and high > low:
-                return (price - low) / (high - low)
-            return None
-
-        # Current candles
-        if current_price is not None:
-            if current_1m_bar_forming:
-                features[4] = position_in_range(current_price, current_1m_bar_forming)
-
-            if current_5m_bar_forming:
-                features[5] = position_in_range(current_price, current_5m_bar_forming)
-
-        # Previous completed candles
-        if current_price is not None:
-            if completed_1m_bars:
-                features[6] = position_in_range(current_price, completed_1m_bars[-1])
-
-            if completed_5m_bars:
-                features[7] = position_in_range(current_price, completed_5m_bars[-1])
-
-        # 9-12. Distance to EMAs
-        # 1m EMAs
-        if current_price is not None and completed_1m_bars and len(completed_1m_bars) >= self.MF_EMA_LONG_PERIOD:
-            # Convert to DataFrame for TA calculations
-            df_1m = pd.DataFrame([
-                {
-                    'close': self._safe_get(bar, 'close'),
-                    'timestamp': self._safe_get(bar, 'timestamp_start')
-                }
-                for bar in completed_1m_bars
-            ]).dropna(subset=['close'])
-
-            if not df_1m.empty and len(df_1m) >= self.MF_EMA_SHORT_PERIOD:
-                try:
-                    # Calculate EMAs
-                    ema9 = df_1m['close'].ewm(span=self.MF_EMA_SHORT_PERIOD, adjust=False).mean().iloc[-1]
-                    if not np.isnan(ema9) and ema9 > self.EPSILON:
-                        features[8] = ((current_price - ema9) / ema9) * 100.0
-
-                    if len(df_1m) >= self.MF_EMA_LONG_PERIOD:
-                        ema20 = df_1m['close'].ewm(span=self.MF_EMA_LONG_PERIOD, adjust=False).mean().iloc[-1]
-                        if not np.isnan(ema20) and ema20 > self.EPSILON:
-                            features[9] = ((current_price - ema20) / ema20) * 100.0
-                except Exception as e:
-                    self.logger.warning(f"Error calculating 1m EMAs: {e}")
-
-        # 5m EMAs
-        if current_price is not None and completed_5m_bars and len(completed_5m_bars) >= self.MF_EMA_LONG_PERIOD:
-            # Convert to DataFrame for TA calculations
-            df_5m = pd.DataFrame([
-                {
-                    'close': self._safe_get(bar, 'close'),
-                    'timestamp': self._safe_get(bar, 'timestamp_start')
-                }
-                for bar in completed_5m_bars
-            ]).dropna(subset=['close'])
-
-            if not df_5m.empty and len(df_5m) >= self.MF_EMA_SHORT_PERIOD:
-                try:
-                    # Calculate EMAs
-                    ema9 = df_5m['close'].ewm(span=self.MF_EMA_SHORT_PERIOD, adjust=False).mean().iloc[-1]
-                    if not np.isnan(ema9) and ema9 > self.EPSILON:
-                        features[10] = ((current_price - ema9) / ema9) * 100.0
-
-                    if len(df_5m) >= self.MF_EMA_LONG_PERIOD:
-                        ema20 = df_5m['close'].ewm(span=self.MF_EMA_LONG_PERIOD, adjust=False).mean().iloc[-1]
-                        if not np.isnan(ema20) and ema20 > self.EPSILON:
-                            features[11] = ((current_price - ema20) / ema20) * 100.0
-                except Exception as e:
-                    self.logger.warning(f"Error calculating 5m EMAs: {e}")
-
-        # 13-14. Distance to Rolling HF High/Low
-        if current_price is not None and rolling_1s_window:
-            # Extract high and low values from the rolling window
-            recent_highs = []
-            recent_lows = []
-
-            for event in rolling_1s_window[-60:]:  # Last minute
-                bar = event.get('bar')
-                if bar:
-                    high = self._safe_get(bar, 'high')
-                    low = self._safe_get(bar, 'low')
-                    if high is not None:
-                        recent_highs.append(high)
-                    if low is not None:
-                        recent_lows.append(low)
-
-            if recent_highs:
-                rolling_high = max(recent_highs)
-                if rolling_high > current_price:
-                    features[12] = ((rolling_high - current_price) / current_price) * 100.0
-
-            if recent_lows:
-                rolling_low = min(recent_lows)
-                if rolling_low < current_price:
-                    features[13] = ((current_price - rolling_low) / current_price) * 100.0
-
-        # 15-17. MACD
-        if completed_1m_bars and len(completed_1m_bars) >= self.MF_MACD_SLOW_PERIOD:
-            # Convert to DataFrame for MACD calculation
-            df_1m = pd.DataFrame([
-                {
-                    'close': self._safe_get(bar, 'close'),
-                    'timestamp': self._safe_get(bar, 'timestamp_start')
-                }
-                for bar in completed_1m_bars
-            ]).dropna(subset=['close'])
-
-            if not df_1m.empty and len(df_1m) >= self.MF_MACD_SLOW_PERIOD:
-                try:
-                    # Calculate MACD components
-                    ema_fast = df_1m['close'].ewm(span=self.MF_MACD_FAST_PERIOD, adjust=False).mean()
-                    ema_slow = df_1m['close'].ewm(span=self.MF_MACD_SLOW_PERIOD, adjust=False).mean()
-
-                    macd_line = ema_fast - ema_slow
-                    signal_line = macd_line.ewm(span=self.MF_MACD_SIGNAL_PERIOD, adjust=False).mean()
-                    histogram = macd_line - signal_line
-
-                    features[14] = macd_line.iloc[-1]
-                    features[15] = signal_line.iloc[-1]
-                    features[16] = histogram.iloc[-1]
-                except Exception as e:
-                    self.logger.warning(f"Error calculating MACD: {e}")
-
-        # 18-19. ATR Percentage
-        # 1m ATR
-        if completed_1m_bars and len(completed_1m_bars) >= self.MF_ATR_PERIOD:
-            # Convert to DataFrame for ATR calculation
-            df_1m = pd.DataFrame([
-                {
-                    'high': self._safe_get(bar, 'high'),
-                    'low': self._safe_get(bar, 'low'),
-                    'close': self._safe_get(bar, 'close'),
-                    'timestamp': self._safe_get(bar, 'timestamp_start')
-                }
-                for bar in completed_1m_bars
-            ]).dropna(subset=['high', 'low', 'close'])
-
-            if not df_1m.empty and len(df_1m) >= self.MF_ATR_PERIOD:
-                try:
-                    # Calculate True Range
-                    df_1m['tr0'] = abs(df_1m['high'] - df_1m['low'])
-                    df_1m['tr1'] = abs(df_1m['high'] - df_1m['close'].shift())
-                    df_1m['tr2'] = abs(df_1m['low'] - df_1m['close'].shift())
-                    df_1m['tr'] = df_1m[['tr0', 'tr1', 'tr2']].max(axis=1)
-
-                    # Calculate ATR
-                    atr = df_1m['tr'].rolling(self.MF_ATR_PERIOD).mean().iloc[-1]
-
-                    if current_price is not None and current_price > self.EPSILON:
-                        features[17] = (atr / current_price) * 100.0
-                except Exception as e:
-                    self.logger.warning(f"Error calculating 1m ATR: {e}")
-
-        # 5m ATR
-        if completed_5m_bars and len(completed_5m_bars) >= self.MF_ATR_PERIOD:
-            # Convert to DataFrame for ATR calculation
-            df_5m = pd.DataFrame([
-                {
-                    'high': self._safe_get(bar, 'high'),
-                    'low': self._safe_get(bar, 'low'),
-                    'close': self._safe_get(bar, 'close'),
-                    'timestamp': self._safe_get(bar, 'timestamp_start')
-                }
-                for bar in completed_5m_bars
-            ]).dropna(subset=['high', 'low', 'close'])
-
-            if not df_5m.empty and len(df_5m) >= self.MF_ATR_PERIOD:
-                try:
-                    # Calculate True Range
-                    df_5m['tr0'] = abs(df_5m['high'] - df_5m['low'])
-                    df_5m['tr1'] = abs(df_5m['high'] - df_5m['close'].shift())
-                    df_5m['tr2'] = abs(df_5m['low'] - df_5m['close'].shift())
-                    df_5m['tr'] = df_5m[['tr0', 'tr1', 'tr2']].max(axis=1)
-
-                    # Calculate ATR
-                    atr = df_5m['tr'].rolling(self.MF_ATR_PERIOD).mean().iloc[-1]
-
-                    if current_price is not None and current_price > self.EPSILON:
-                        features[18] = (atr / current_price) * 100.0
-                except Exception as e:
-                    self.logger.warning(f"Error calculating 5m ATR: {e}")
-
-        # 20-25. Candle Shape Metrics
-        def calculate_candle_shape(bar):
-            open_price = self._safe_get(bar, 'open')
-            high = self._safe_get(bar, 'high')
-            low = self._safe_get(bar, 'low')
-            close = self._safe_get(bar, 'close')
-
-            if None in (open_price, high, low, close) or high <= low:
-                return None, None, None
-
-            range_size = high - low
-            body_size = abs(close - open_price)
-            upper_wick = high - max(open_price, close)
-            lower_wick = min(open_price, close) - low
-
-            # Normalize by total range
-            body_rel = body_size / range_size
-            upper_rel = upper_wick / range_size
-            lower_rel = lower_wick / range_size
-
-            return body_rel, upper_rel, lower_rel
-
-        # 1m candle shape
-        if completed_1m_bars:
-            last_1m_bar = completed_1m_bars[-1]
-            body_rel, upper_rel, lower_rel = calculate_candle_shape(last_1m_bar) or (None, None, None)
-            features[19], features[20], features[21] = body_rel, upper_rel, lower_rel
-
-        # 5m candle shape
-        if completed_5m_bars:
-            last_5m_bar = completed_5m_bars[-1]
-            body_rel, upper_rel, lower_rel = calculate_candle_shape(last_5m_bar) or (None, None, None)
-            features[22], features[23], features[24] = body_rel, upper_rel, lower_rel
-
-        # 26-27. Bar Volume Ratio to Today's Volume
-        if self.daily_cumulative_volume > self.EPSILON:
-            # 1m volume ratio
-            if completed_1m_bars:
-                last_1m_vol = self._safe_get(completed_1m_bars[-1], 'volume', 0.0)
-                features[25] = last_1m_vol / self.daily_cumulative_volume
-
-            # 5m volume ratio
-            if completed_5m_bars:
-                last_5m_vol = self._safe_get(completed_5m_bars[-1], 'volume', 0.0)
-                features[26] = last_5m_vol / self.daily_cumulative_volume
-
-        # 28-29. Volume Relative to Average Recent Bars
-        # 1m volume
-        if completed_1m_bars and len(completed_1m_bars) > 1:
-            recent_1m_vols = [
-                self._safe_get(bar, 'volume', 0.0)
-                for bar in completed_1m_bars[-(self.MF_VOLUME_AVG_RECENT_BARS_WINDOW + 1):-1]
-            ]
-            avg_recent_1m_vol = self._calculate_avg(recent_1m_vols)
-
-            if avg_recent_1m_vol is not None and avg_recent_1m_vol > self.EPSILON:
-                last_1m_vol = self._safe_get(completed_1m_bars[-1], 'volume', 0.0)
-                features[27] = last_1m_vol / avg_recent_1m_vol
-
-        # 5m volume
-        if completed_5m_bars and len(completed_5m_bars) > 1:
-            recent_5m_vols = [
-                self._safe_get(bar, 'volume', 0.0)
-                for bar in completed_5m_bars[-(self.MF_VOLUME_AVG_RECENT_BARS_WINDOW + 1):-1]
-            ]
-            avg_recent_5m_vol = self._calculate_avg(recent_5m_vols)
-
-            if avg_recent_5m_vol is not None and avg_recent_5m_vol > self.EPSILON:
-                last_5m_vol = self._safe_get(completed_5m_bars[-1], 'volume', 0.0)
-                features[28] = last_5m_vol / avg_recent_5m_vol
-
-        # 30-33. Distance to Recent Swing High/Low Points
-        def find_swing_points(bars, lookback, strength):
-            if len(bars) < lookback:
-                return [], []
-
-            recent_bars = bars[-lookback:]
-            highs = [self._safe_get(bar, 'high') for bar in recent_bars]
-            lows = [self._safe_get(bar, 'low') for bar in recent_bars]
-
-            # Remove None values
-            highs = [h for h in highs if h is not None]
-            lows = [l for l in lows if l is not None]
-
-            if len(highs) < (2 * strength + 1) or len(lows) < (2 * strength + 1):
-                return [], []
-
-            swing_highs = []
-            swing_lows = []
-
-            # Find swing points
-            for i in range(strength, len(highs) - strength):
-                window = highs[i - strength: i + strength + 1]
-                if highs[i] == max(window):
-                    swing_highs.append(highs[i])
-
-            for i in range(strength, len(lows) - strength):
-                window = lows[i - strength: i + strength + 1]
-                if lows[i] == min(window):
-                    swing_lows.append(lows[i])
-
-            return swing_highs, swing_lows
-
-        if current_price is not None:
-            # 1m swing points
-            swing_highs_1m, swing_lows_1m = find_swing_points(
-                completed_1m_bars,
-                self.MF_SWING_LOOKBACK_BARS,
-                self.MF_SWING_STRENGTH_BARS
-            )
-
-            if swing_highs_1m:
-                closest_high_1m = min(swing_highs_1m, key=lambda h: abs(h - current_price))
-                if closest_high_1m > current_price:
-                    features[29] = ((closest_high_1m - current_price) / current_price) * 100.0
-
-            if swing_lows_1m:
-                closest_low_1m = min(swing_lows_1m, key=lambda l: abs(l - current_price))
-                if closest_low_1m < current_price:
-                    features[30] = ((current_price - closest_low_1m) / current_price) * 100.0
-
-            # 5m swing points
-            swing_highs_5m, swing_lows_5m = find_swing_points(
-                completed_5m_bars,
-                self.MF_SWING_LOOKBACK_BARS,
-                self.MF_SWING_STRENGTH_BARS
-            )
-
-            if swing_highs_5m:
-                closest_high_5m = min(swing_highs_5m, key=lambda h: abs(h - current_price))
-                if closest_high_5m > current_price:
-                    features[31] = ((closest_high_5m - current_price) / current_price) * 100.0
-
-            if swing_lows_5m:
-                closest_low_5m = min(swing_lows_5m, key=lambda l: abs(l - current_price))
-                if closest_low_5m < current_price:
-                    features[32] = ((current_price - closest_low_5m) / current_price) * 100.0
-
-        return features
-
-    def _calculate_lf_features(self, market_state: Dict[str, Any]) -> np.ndarray:
-        """
-        Calculate low-frequency (daily) features.
-
-        Features include:
-        - Position in daily range
-        - Gap metrics
-        - VWAP metrics
-        - Daily EMAs
-        - Support/resistance metrics
-
-        Args:
-            market_state: Current market state
-
-        Returns:
-            Array of LF features
-        """
-        features = np.full(self.config.lf_feat_dim, np.nan, dtype=np.float32)
-
-        # Get required data
-        current_price = market_state.get('current_price')
-        intraday_high = market_state.get('intraday_high')
-        intraday_low = market_state.get('intraday_low')
-        previous_day_close = market_state.get('previous_day_close_price')
-        historical_1d_bars = market_state.get('historical_1d_bars')
-
-        # 1. Position in Daily Range
-        if (current_price is not None and intraday_high is not None and
-                intraday_low is not None and intraday_high > intraday_low):
-            features[0] = (current_price - intraday_low) / (intraday_high - intraday_low)
-
-        # 2. Position in Previous Day Range
-        if current_price is not None and isinstance(historical_1d_bars, pd.DataFrame) and not historical_1d_bars.empty:
-            try:
-                prev_day_data = historical_1d_bars.iloc[-1]
-                prev_day_high = self._safe_get(prev_day_data, 'high')
-                prev_day_low = self._safe_get(prev_day_data, 'low')
-
-                if prev_day_high is not None and prev_day_low is not None and prev_day_high > prev_day_low:
-                    features[1] = (current_price - prev_day_low) / (prev_day_high - prev_day_low)
-            except Exception as e:
-                self.logger.warning(f"Error calculating position in previous day range: {e}")
-
-        # 3. Percentage Change from Previous Close
-        if current_price is not None and previous_day_close is not None and previous_day_close > self.EPSILON:
-            features[2] = ((current_price - previous_day_close) / previous_day_close) * 100.0
-
-        # 4. Relative Volume (Percentage from Average 10-Day Timed)
-        current_timestamp = market_state.get('timestamp_utc')
-        if (current_timestamp is not None and self.daily_cumulative_volume > self.EPSILON and
-                isinstance(historical_1d_bars, pd.DataFrame) and not historical_1d_bars.empty):
-            try:
-                # Calculate seconds elapsed in session
-                current_time_et = current_timestamp.astimezone(self.ET_TZ)
-                seconds_from_midnight = (current_time_et.hour * 3600 +
-                                         current_time_et.minute * 60 +
-                                         current_time_et.second)
-                session_start_seconds = self.SESSION_START_HOUR_ET * 3600
-                seconds_elapsed = max(0, seconds_from_midnight - session_start_seconds)
-                fraction_day_elapsed = seconds_elapsed / self.TOTAL_SECONDS_IN_FULL_TRADING_DAY
-
-                # Get average daily volume from historical data
-                volumes = historical_1d_bars['volume'].tail(self.LF_AVG_DAILY_VOLUME_PERIOD_DAYS)
-                avg_daily_volume = volumes.mean() if not volumes.empty else 0
-
-                if avg_daily_volume > self.EPSILON and fraction_day_elapsed > self.EPSILON:
-                    expected_volume_now = avg_daily_volume * fraction_day_elapsed
-                    relative_volume = (self.daily_cumulative_volume / expected_volume_now) - 1.0
-                    features[3] = relative_volume * 100.0  # Convert to percentage
-            except Exception as e:
-                self.logger.warning(f"Error calculating relative volume: {e}")
-
-        # 5. Distance to Session VWAP
-        if (current_price is not None and self.daily_cumulative_volume > self.EPSILON and
-                self.daily_cumulative_price_volume_product > self.EPSILON):
-            session_vwap = self.daily_cumulative_price_volume_product / self.daily_cumulative_volume
-            if session_vwap > self.EPSILON:
-                features[4] = ((current_price - session_vwap) / session_vwap) * 100.0
-
-        # 6-8. Distance to Daily EMAs
-        if current_price is not None and isinstance(historical_1d_bars, pd.DataFrame) and not historical_1d_bars.empty:
-            try:
-                close_series = historical_1d_bars['close']
-
-                # EMA 9
-                if len(close_series) >= 9:
-                    ema9 = close_series.ewm(span=9, adjust=False).mean().iloc[-1]
-                    if ema9 > self.EPSILON:
-                        features[5] = ((current_price - ema9) / ema9) * 100.0
-
-                # EMA 20
-                if len(close_series) >= 20:
-                    ema20 = close_series.ewm(span=20, adjust=False).mean().iloc[-1]
-                    if ema20 > self.EPSILON:
-                        features[6] = ((current_price - ema20) / ema20) * 100.0
-
-                # EMA 200
-                if len(close_series) >= 200:
-                    ema200 = close_series.ewm(span=200, adjust=False).mean().iloc[-1]
-                    if ema200 > self.EPSILON:
-                        features[7] = ((current_price - ema200) / ema200) * 100.0
-            except Exception as e:
-                self.logger.warning(f"Error calculating daily EMAs: {e}")
-
-        # 9-10. Distance to Closest Support/Resistance
-        if current_price is not None and isinstance(historical_1d_bars, pd.DataFrame) and not historical_1d_bars.empty:
-            try:
-                # Simplified support/resistance identification using highs and lows
-                highs = historical_1d_bars['high'].values
-                lows = historical_1d_bars['low'].values
-
-                # Find levels above current price (resistance)
-                levels_above = [h for h in highs if h > current_price]
-
-                # Find levels below current price (support)
-                levels_below = [l for l in lows if l < current_price]
-
-                if levels_above:
-                    closest_resistance = min(levels_above)
-                    features[9] = ((closest_resistance - current_price) / current_price) * 100.0
-
-                if levels_below:
-                    closest_support = max(levels_below)
-                    features[8] = ((current_price - closest_support) / current_price) * 100.0
-            except Exception as e:
-                self.logger.warning(f"Error calculating support/resistance distances: {e}")
-
-        return features
-
-    def _safe_get(self, obj: Optional[Dict[str, Any]], key: str, default: Any = None) -> Any:
-        """Safely get a value from a dictionary, handling None dictionaries and missing keys."""
-        if obj is None:
-            return default
-        return obj.get(key, default)
-
-    def _calculate_pct_change(self, current: Optional[float], previous: Optional[float]) -> Optional[float]:
-        """Calculate percentage change between two values."""
-        if current is None or previous is None or abs(previous) < self.EPSILON:
-            return None
-        return ((current - previous) / previous) * 100.0
-
-    def _calculate_rolling_avg(self, values: List[Any], exclude_current: bool = False) -> Optional[float]:
-        """Calculate average of values in a rolling window."""
-        if not values:
-            return None
-
-        if exclude_current and len(values) > 1:
-            values = values[:-1]
-
-        # Filter out None values and convert to float
-        valid_values = [float(v) for v in values if v is not None and not np.isnan(v)]
-
-        if not valid_values:
-            return None
-
-        return sum(valid_values) / len(valid_values)
-
-    def _calculate_avg(self, values: List[Any], exclude_current: bool = False) -> Optional[float]:
-        """Calculate simple average of values."""
-        return self._calculate_rolling_avg(values, exclude_current)
+                self.logger.warning(f"Time of day calc error: {e}")
+
+        # Market Cap
+        if self.total_shares_outstanding and self.prev_day_close_price_for_gaps and not np.isnan(self.prev_day_close_price_for_gaps):
+            features[2] = (self.total_shares_outstanding * self.prev_day_close_price_for_gaps) / 1_000_000.0
+        else:
+            if self.total_shares_outstanding is None: self.logger.debug("Market Cap: TotalSharesOutstanding missing from simulator info.")
+            if self.prev_day_close_price_for_gaps is None or np.isnan(self.prev_day_close_price_for_gaps): self.logger.debug(
+                "Market Cap: Prev day close for gaps unavailable.")
+
+        # Gap Calculations using get_state_at_time
+        # if current_ts_utc:
+        # today_et_date = current_ts_utc.astimezone(ET_TZ).date()
+
+        # Initial PreMarket Gap
+        # if self.s_initial_premarket_gap_pct is None:  # Calculate once per day
+        #     if self.first_tick_price_today is None:
+        #         try:
+        #             # Construct datetime for pre-market open in ET, then convert to UTC
+        #             pm_open_time_et = datetime.combine(today_et_date, time(self.SESSION_START_HOUR_ET, 0), tzinfo=ET_TZ)
+        #             pm_open_time_utc = pm_open_time_et.astimezone(timezone.utc)
+        #
+        #             state_at_pm_open = self.market_simulator.get_state_at_time(pm_open_time_utc)
+        #             # Assuming get_state_at_time returns a dict with 'current_1s_bar' or 'current_price'
+        #             bar_at_pm_open = state_at_pm_open.get('current_1s_bar')
+        #             if bar_at_pm_open and 'open' in bar_at_pm_open:
+        #                 self.first_tick_price_today = float(bar_at_pm_open['open'])
+        #             elif 'current_price' in state_at_pm_open:  # Fallback
+        #                 self.first_tick_price_today = float(state_at_pm_open['current_price'])
+        #             else:
+        #                 self.logger.warning("Could not determine pre-market open price from get_state_at_time.")
+        #         except Exception as e:
+        #             self.logger.error(f"Error getting pre-market open state: {e}")
+        #
+        #     if self.first_tick_price_today is not None and self.prev_day_close_price_for_gaps is not None and not np.isnan(
+        #             self.prev_day_close_price_for_gaps):
+        #         self.s_initial_premarket_gap_pct = self._pct_change(self.first_tick_price_today, self.prev_day_close_price_for_gaps)
+        # features[3] = self.s_initial_premarket_gap_pct
+
+        # # Regular Open Gap
+        # if self.s_regular_open_gap_pct is None:  # Calculate once per day
+        #     if self.rth_open_price_today is None:
+        #         try:
+        #             rth_hour = int(self.REGULAR_SESSION_START_HOUR_ET)
+        #             rth_minute = int((self.REGULAR_SESSION_START_HOUR_ET % 1) * 60)
+        #             rth_open_time_et = datetime.combine(today_et_date, time(rth_hour, rth_minute), tzinfo=ET_TZ)
+        #             rth_open_time_utc = rth_open_time_et.astimezone(timezone.utc)
+        #
+        #             state_at_rth_open = self.market_simulator.get_state_at_time(rth_open_time_utc)
+        #             bar_at_rth_open = state_at_rth_open.get('current_1s_bar')
+        #             if bar_at_rth_open and 'open' in bar_at_rth_open:
+        #                 self.rth_open_price_today = float(bar_at_rth_open['open'])
+        #             elif 'current_price' in state_at_rth_open:  # Fallback
+        #                 self.rth_open_price_today = float(state_at_rth_open['current_price'])
+        #             else:
+        #                 self.logger.warning("Could not determine RTH open price from get_state_at_time.")
+        #         except Exception as e:
+        #             self.logger.error(f"Error getting RTH open state: {e}")
+        #
+        #     if self.rth_open_price_today is not None and self.prev_day_close_price_for_gaps is not None and not np.isnan(
+        #             self.prev_day_close_price_for_gaps):
+        #         self.s_regular_open_gap_pct = self._pct_change(self.rth_open_price_today, self.prev_day_close_price_for_gaps)
+        # features[4] = self.s_regular_open_gap_pct
+
+            # Debug NaN values
+            nan_indices = np.where(np.isnan(features))[0]
+            if len(nan_indices) > 0:
+                nan_features = [self.static_feature_names[i] for i in nan_indices]
+                self.logger.warning(f"NaN values detected in HF features: {nan_features}")
+                # Print the actual calculations that led to these NaNs
+                for i in nan_indices:
+                    feature_name = self.static_feature_names[i]
+                    self.logger.warning(f"NaN in {feature_name} calculation")
+
+        return features.astype(np.float32)
+
+    def _calculate_hf_features(self) -> np.ndarray:
+        features = np.full(self.config.hf_feat_dim, np.nan)
+        current_1s = self.market_data.get('current_1s_bar')
+        rolling_1s = self.market_data.get('rolling_1s_data_window', [])
+        if not current_1s:
+            self.logger.warning("HF Features: current_1s_bar missing.")
+            return features.astype(np.float32)
+
+        cur_px_basis = self._get_price_for_hf_change_basis(current_1s)
+        prev_px_basis = self.prev_tick_values["HF_1s_PriceChange_basis_value"]
+        features[0] = self._pct_change(cur_px_basis, prev_px_basis)
+        self.prev_tick_values["HF_1s_PriceChange_basis_value"] = cur_px_basis
+
+        cur_vol = self._safe_get_from_bar(current_1s, 'volume', 0.0)
+        avg_vol_roll = self._rolling_mean_deque(self.recent_1s_volumes, self.HF_ROLLING_WINDOW_SECONDS)
+        features[1] = self._safe_divide(cur_vol, avg_vol_roll)
+
+        prev_vol = self.prev_tick_values["HF_1s_Volume"]
+        features[2] = self._pct_change(cur_vol, prev_vol)
+        self.prev_tick_values["HF_1s_Volume"] = cur_vol
+
+        h, l = self._safe_get_from_bar(current_1s, 'high'), self._safe_get_from_bar(current_1s, 'low')
+        spread_abs = float(h) - float(l) if not (np.isnan(h) or np.isnan(l)) else np.nan
+        den_spread_rel = np.nan
+        if self.HF_BAR_MIDPRICE_DENOMINATOR_FOR_SPREAD_REL == "Bar_MidPoint":
+            if not (np.isnan(h) or np.isnan(l)): den_spread_rel = (float(h) + float(l)) / 2.0
+        elif self.HF_BAR_MIDPRICE_DENOMINATOR_FOR_SPREAD_REL == "Bar_Open":
+            den_spread_rel = self._safe_get_from_bar(current_1s, 'open')
+        elif self.HF_BAR_MIDPRICE_DENOMINATOR_FOR_SPREAD_REL == "Bar_Close":
+            den_spread_rel = self._safe_get_from_bar(current_1s, 'close')
+        features[3] = self._safe_divide(spread_abs, den_spread_rel)
+
+        last_1s_event = rolling_1s[-1] if rolling_1s else {}
+        trades = last_1s_event.get('trades', [])
+        cur_trades_cnt = float(len(trades))
+
+        avg_trades_cnt_roll = self._rolling_mean_deque(self.recent_1s_trade_counts, self.HF_ROLLING_WINDOW_SECONDS)
+        features[4] = self._safe_divide(cur_trades_cnt, avg_trades_cnt_roll)
+
+        prev_trades_cnt = self.prev_tick_values["HF_Tape_1s_Trades_Count"]
+        features[5] = self._pct_change(cur_trades_cnt, prev_trades_cnt)
+        self.prev_tick_values["HF_Tape_1s_Trades_Count"] = cur_trades_cnt
+
+        buy_vol = sum(float(t.get('size', 0)) for t in trades if t.get('side') == 'B')
+        sell_vol = sum(float(t.get('size', 0)) for t in trades if t.get('side') == 'A')
+
+        imbal_num = buy_vol - sell_vol
+        imbal_den = np.nan
+        if self.HF_NORMALIZED_IMBALANCE_DENOMINATOR_TYPE == "SumOfAggressorVolumes":
+            imbal_den = buy_vol + sell_vol
+        elif self.HF_NORMALIZED_IMBALANCE_DENOMINATOR_TYPE == "TotalBarVolume":
+            imbal_den = cur_vol
+        cur_norm_vol_imbal = self._safe_divide(imbal_num, imbal_den)
+        features[6] = cur_norm_vol_imbal
+
+        prev_norm_vol_imbal = self.prev_tick_values["HF_Tape_1s_Normalized_Volume_Imbalance"]
+        features[7] = cur_norm_vol_imbal - prev_norm_vol_imbal if not (np.isnan(cur_norm_vol_imbal) or np.isnan(prev_norm_vol_imbal)) else np.nan
+        self.prev_tick_values["HF_Tape_1s_Normalized_Volume_Imbalance"] = cur_norm_vol_imbal
+
+        total_shares_1s = sum(float(t.get('size', 0)) for t in trades)
+        cur_avg_trade_size = self._safe_divide(total_shares_1s, cur_trades_cnt, 0.0)
+
+        roll_total_shares_list = [float(x) for x in list(self.recent_1s_total_trade_shares)[-self.HF_ROLLING_WINDOW_SECONDS:] if not np.isnan(x)]
+        roll_total_counts_list = [float(x) for x in list(self.recent_1s_trade_counts)[-self.HF_ROLLING_WINDOW_SECONDS:] if not np.isnan(x)]
+        avg_trade_size_roll = self._safe_divide(np.sum(roll_total_shares_list), np.sum(roll_total_counts_list))
+        features[8] = self._safe_divide(cur_avg_trade_size, avg_trade_size_roll)
+
+        prev_avg_trade_size = self.prev_tick_values["HF_Tape_1s_Avg_Trade_Size"]
+        features[9] = self._pct_change(cur_avg_trade_size, prev_avg_trade_size)
+        self.prev_tick_values["HF_Tape_1s_Avg_Trade_Size"] = cur_avg_trade_size
+
+        large_trade_thresh = np.nan
+        if self.HF_LARGE_TRADE_THRESHOLD_TYPE == "FactorOfRollingAvg":
+            roll_total_shares_large_list = [float(x) for x in list(self.recent_1s_total_trade_shares)[-self.HF_LARGE_TRADE_ROLLING_AVG_WINDOW_SECONDS:] if
+                                            not np.isnan(x)]
+            roll_total_counts_large_list = [float(x) for x in list(self.recent_1s_trade_counts)[-self.HF_LARGE_TRADE_ROLLING_AVG_WINDOW_SECONDS:] if
+                                            not np.isnan(x)]
+            avg_trade_size_large_roll = self._safe_divide(np.sum(roll_total_shares_large_list), np.sum(roll_total_counts_large_list))
+
+            if not np.isnan(avg_trade_size_large_roll):
+                large_trade_thresh = self.HF_LARGE_TRADE_FACTOR * avg_trade_size_large_roll
+
+        large_trades_cnt = 0.0
+        large_buy_vol = 0.0
+        large_sell_vol = 0.0
+        if not np.isnan(large_trade_thresh):
+            for t in trades:
+                trade_size = float(t.get('size', 0))
+                if trade_size > large_trade_thresh:
+                    large_trades_cnt += 1
+                    if t.get('side') == 'B':
+                        large_buy_vol += trade_size
+                    elif t.get('side') == 'A':
+                        large_sell_vol += trade_size
+        features[10] = large_trades_cnt
+        features[11] = self._safe_divide(large_buy_vol - large_sell_vol, cur_vol)
+
+        features[12] = self._safe_get_from_bar(current_1s, 'vwap')
+
+        bid_px, ask_px = float(self.market_data.get('best_bid_price', np.nan)), float(self.market_data.get('best_ask_price', np.nan))
+        bid_sz, ask_sz = float(self.market_data.get('best_bid_size', np.nan)), float(self.market_data.get('best_ask_size', np.nan))
+
+        spread_abs_q = ask_px - bid_px if not (np.isnan(ask_px) or np.isnan(bid_px)) else np.nan
+        mid_px_q = (ask_px + bid_px) / 2.0 if not (np.isnan(ask_px) or np.isnan(bid_px)) else np.nan
+        cur_spread_rel_q = self._safe_divide(spread_abs_q, mid_px_q)
+        features[13] = cur_spread_rel_q
+
+        prev_spread_rel_q = self.prev_tick_values["HF_Quote_1s_Spread_Rel"]
+        features[14] = cur_spread_rel_q - prev_spread_rel_q if not (np.isnan(cur_spread_rel_q) or np.isnan(prev_spread_rel_q)) else np.nan
+        self.prev_tick_values["HF_Quote_1s_Spread_Rel"] = cur_spread_rel_q
+
+        bid_val_usd = bid_px * bid_sz if not (np.isnan(bid_px) or np.isnan(bid_sz)) else 0.0
+        ask_val_usd = ask_px * ask_sz if not (np.isnan(ask_px) or np.isnan(ask_sz)) else 0.0
+
+        q_imbal_num = bid_val_usd - ask_val_usd
+        q_imbal_den = bid_val_usd + ask_val_usd
+        cur_q_imbal_ratio = self._safe_divide(q_imbal_num, q_imbal_den)
+        features[15] = cur_q_imbal_ratio
+
+        prev_q_imbal_ratio = self.prev_tick_values["HF_Quote_1s_Quote_Imbalance_Value_Ratio"]
+        features[16] = cur_q_imbal_ratio - prev_q_imbal_ratio if not (np.isnan(cur_q_imbal_ratio) or np.isnan(prev_q_imbal_ratio)) else np.nan
+        self.prev_tick_values["HF_Quote_1s_Quote_Imbalance_Value_Ratio"] = cur_q_imbal_ratio
+
+        avg_bid_val_roll = self._rolling_mean_deque(self.recent_1s_bid_values_usd, self.HF_ROLLING_WINDOW_SECONDS)
+        features[17] = self._safe_divide(bid_val_usd, avg_bid_val_roll)
+
+        avg_ask_val_roll = self._rolling_mean_deque(self.recent_1s_ask_values_usd, self.HF_ROLLING_WINDOW_SECONDS)
+        features[18] = self._safe_divide(ask_val_usd, avg_ask_val_roll)
+
+        # Debug NaN values
+        nan_indices = np.where(np.isnan(features))[0]
+        if len(nan_indices) > 0:
+            nan_features = [self.hf_feature_names[i] for i in nan_indices]
+            self.logger.warning(f"NaN values detected in HF features: {nan_features}")
+            # Print the actual calculations that led to these NaNs
+            for i in nan_indices:
+                feature_name = self.hf_feature_names[i]
+                self.logger.warning(f"NaN in {feature_name} calculation")
+
+        return features.astype(np.float32)
+
+    def _calculate_mf_features(self) -> np.ndarray:
+        features = np.full(self.config.mf_feat_dim, np.nan)
+        cur_px_mf = self._get_current_price_for_mf_dists()
+
+        df_1m, df_5m = self.completed_1m_bars_df, self.completed_5m_bars_df
+
+        # Price Change Pct for 1m and 5m (Indices 0-3)
+        def get_price_change_pct(df, basis):
+            if df.empty or len(df) < 1: return np.nan
+            last_bar = df.iloc[-1]
+            close_t = float(last_bar.get('close', np.nan))
+            if basis == "Close_Xm_bar_vs_PrevClose_Xm_bar":
+                if len(df) < 2: return np.nan
+                prev_close_t_minus_1 = float(df.iloc[-2].get('close', np.nan))
+                return self._pct_change(close_t, prev_close_t_minus_1)
+            elif basis == "Close_Xm_bar_vs_Open_Xm_bar":
+                open_t = float(last_bar.get('open', np.nan))
+                return self._pct_change(close_t, open_t)
+            return np.nan
+
+        mf_1m_px_chg_pct = get_price_change_pct(df_1m, self.MF_PRICE_CHANGE_BASIS)
+        features[0] = mf_1m_px_chg_pct
+        mf_5m_px_chg_pct = get_price_change_pct(df_5m, self.MF_PRICE_CHANGE_BASIS)
+        features[1] = mf_5m_px_chg_pct
+
+        prev_mf_1m_px_chg_pct = self.prev_tick_values["MF_1m_PriceChange_Pct"]
+        features[2] = mf_1m_px_chg_pct - prev_mf_1m_px_chg_pct if not (np.isnan(mf_1m_px_chg_pct) or np.isnan(prev_mf_1m_px_chg_pct)) else np.nan
+        self.prev_tick_values["MF_1m_PriceChange_Pct"] = mf_1m_px_chg_pct
+
+        prev_mf_5m_px_chg_pct = self.prev_tick_values["MF_5m_PriceChange_Pct"]
+        features[3] = mf_5m_px_chg_pct - prev_mf_5m_px_chg_pct if not (np.isnan(mf_5m_px_chg_pct) or np.isnan(prev_mf_5m_px_chg_pct)) else np.nan
+        self.prev_tick_values["MF_5m_PriceChange_Pct"] = mf_5m_px_chg_pct
+
+        # Position in Candle Range (Indices 4-7)
+        def get_pos_in_range(price, bar_h, bar_l):
+            bar_h, bar_l = float(bar_h), float(bar_l)
+            candle_range = bar_h - bar_l if not (np.isnan(bar_h) or np.isnan(bar_l)) else np.nan
+            return self._safe_divide(price - bar_l, candle_range)
+
+        bar_1m_form = self.market_data.get('current_1m_bar_forming')
+        if bar_1m_form and not np.isnan(cur_px_mf):
+            features[4] = get_pos_in_range(cur_px_mf, bar_1m_form.get('high'), bar_1m_form.get('low'))
+        bar_5m_form = self.market_data.get('current_5m_bar_forming')
+        if bar_5m_form and not np.isnan(cur_px_mf):
+            features[5] = get_pos_in_range(cur_px_mf, bar_5m_form.get('high'), bar_5m_form.get('low'))
+
+        if not df_1m.empty and not np.isnan(cur_px_mf):
+            prev_1m = df_1m.iloc[-1]
+            features[6] = get_pos_in_range(cur_px_mf, prev_1m.get('high'), prev_1m.get('low'))
+        if not df_5m.empty and not np.isnan(cur_px_mf):
+            prev_5m = df_5m.iloc[-1]
+            features[7] = get_pos_in_range(cur_px_mf, prev_5m.get('high'), prev_5m.get('low'))
+
+        # EMAs (Indices 8-11)
+        if len(df_1m) >= self.MF_EMA_LONG_PERIOD:
+            c1 = df_1m['close'].astype(float).dropna()
+            if len(c1) >= self.MF_EMA_SHORT_PERIOD: features[8] = self._calculate_pct_dist(cur_px_mf, ta.trend.EMAIndicator(c1,
+                                                                                                                            window=self.MF_EMA_SHORT_PERIOD).ema_indicator().iloc[
+                -1])
+            if len(c1) >= self.MF_EMA_LONG_PERIOD: features[9] = self._calculate_pct_dist(cur_px_mf, ta.trend.EMAIndicator(c1,
+                                                                                                                           window=self.MF_EMA_LONG_PERIOD).ema_indicator().iloc[
+                -1])
+        if len(df_5m) >= self.MF_EMA_LONG_PERIOD:
+            c5 = df_5m['close'].astype(float).dropna()
+            if len(c5) >= self.MF_EMA_SHORT_PERIOD: features[10] = self._calculate_pct_dist(cur_px_mf, ta.trend.EMAIndicator(c5,
+                                                                                                                             window=self.MF_EMA_SHORT_PERIOD).ema_indicator().iloc[
+                -1])
+            if len(c5) >= self.MF_EMA_LONG_PERIOD: features[11] = self._calculate_pct_dist(cur_px_mf, ta.trend.EMAIndicator(c5,
+                                                                                                                            window=self.MF_EMA_LONG_PERIOD).ema_indicator().iloc[
+                -1])
+
+        # Dist to Rolling HF High/Low (Indices 12-13)
+        hf_bars_data = [d.get('bar') for d in self.market_data.get('rolling_1s_data_window', []) if d.get('bar')]
+        if len(hf_bars_data) >= self.MF_ROLLING_HF_DATA_WINDOW_SECONDS:
+            hf_df = pd.DataFrame(hf_bars_data[-self.MF_ROLLING_HF_DATA_WINDOW_SECONDS:])
+            if not hf_df.empty:
+                features[12] = self._calculate_pct_dist(cur_px_mf, hf_df['high'].astype(float).max())
+                features[13] = self._calculate_pct_dist(cur_px_mf, hf_df['low'].astype(float).min())
+
+        # MACD (1m) (Indices 14-16)
+        if len(df_1m) >= self.MF_MACD_SLOW_PERIOD:
+            c1 = df_1m['close'].astype(float).dropna()
+            if len(c1) >= self.MF_MACD_SLOW_PERIOD:  # recheck after dropna
+                macd = ta.trend.MACD(c1, window_slow=self.MF_MACD_SLOW_PERIOD, window_fast=self.MF_MACD_FAST_PERIOD, window_sign=self.MF_MACD_SIGNAL_PERIOD)
+                features[14], features[15], features[16] = macd.macd().iloc[-1], macd.macd_signal().iloc[-1], macd.macd_diff().iloc[-1]
+
+        # ATR (Indices 17-18)
+        def get_atr_pct(df, period, price):
+            if len(df) >= period and all(c in df for c in ['high', 'low', 'close']):
+                hlc = df[['high', 'low', 'close']].astype(float).dropna()
+                if len(hlc) >= period:  # recheck after dropna
+                    atr_val = ta.volatility.AverageTrueRange(high=hlc['high'], low=hlc['low'], close=hlc['close'], window=period).average_true_range().iloc[-1]
+                    return self._safe_divide(atr_val * 100.0, price)
+            return np.nan
+
+        features[17] = get_atr_pct(df_1m, self.MF_ATR_PERIOD, cur_px_mf)
+        features[18] = get_atr_pct(df_5m, self.MF_ATR_PERIOD, cur_px_mf)
+
+        # Candle Shape (Indices 19-24)
+        def get_candle_shape(bar_o, bar_h, bar_l, bar_c):
+            bar_o, bar_h, bar_l, bar_c = float(bar_o), float(bar_h), float(bar_l), float(bar_c)
+            if any(pd.isna([bar_o, bar_h, bar_l, bar_c])): return np.nan, np.nan, np.nan
+            bar_range = bar_h - bar_l
+            body = self._safe_divide(abs(bar_c - bar_o), bar_range)
+            upper = self._safe_divide(bar_h - max(bar_o, bar_c), bar_range)
+            lower = self._safe_divide(min(bar_o, bar_c) - bar_l, bar_range)
+            return body, upper, lower
+
+        if not df_1m.empty:
+            b = df_1m.iloc[-1]
+            features[19], features[20], features[21] = get_candle_shape(b.get('open'), b.get('high'), b.get('low'), b.get('close'))
+        if not df_5m.empty:
+            b = df_5m.iloc[-1]
+            features[22], features[23], features[24] = get_candle_shape(b.get('open'), b.get('high'), b.get('low'), b.get('close'))
+
+        # MF_Xm_BarVol_Ratio_To_TodaySoFarVol (Indices 25-26) - Corrected Logic
+        total_daily_vol_so_far = self.daily_cumulative_volume
+        if not df_1m.empty:
+            actual_1m_bar_volume = float(df_1m.iloc[-1].get('volume', np.nan))
+            features[25] = self._safe_divide(actual_1m_bar_volume, total_daily_vol_so_far)
+
+        if not df_5m.empty:
+            actual_5m_bar_volume = float(df_5m.iloc[-1].get('volume', np.nan))
+            features[26] = self._safe_divide(actual_5m_bar_volume, total_daily_vol_so_far)
+
+        # MF_Xm_Volume_Rel_To_Avg_Recent_Bars (Indices 27-28)
+        if len(df_1m) >= self.MF_VOLUME_AVG_RECENT_BARS_WINDOW and self.MF_VOLUME_AVG_RECENT_BARS_WINDOW > 0:
+            vol1 = df_1m['volume'].astype(float)
+            if len(vol1) > 1:  # Need at least one bar for current, one for mean
+                # Mean of N bars *excluding* the current completed one
+                avg_vol_1m_recent = vol1.iloc[-(self.MF_VOLUME_AVG_RECENT_BARS_WINDOW + 1): -1].mean()
+                features[27] = self._safe_divide(vol1.iloc[-1], avg_vol_1m_recent)
+
+        if len(df_5m) >= self.MF_VOLUME_AVG_RECENT_BARS_WINDOW and self.MF_VOLUME_AVG_RECENT_BARS_WINDOW > 0:
+            vol5 = df_5m['volume'].astype(float)
+            if len(vol5) > 1:
+                avg_vol_5m_recent = vol5.iloc[-(self.MF_VOLUME_AVG_RECENT_BARS_WINDOW + 1): -1].mean()
+                features[28] = self._safe_divide(vol5.iloc[-1], avg_vol_5m_recent)
+
+        # Swing Levels (Indices 29-32)
+        def get_dist_to_swing(df, lookback, strength, price, is_high):
+            # Ensure enough data for lookback window itself, then for swing point detection within that window
+            if len(df) >= lookback:
+                series_for_swings = df['high' if is_high else 'low'].astype(float).iloc[-lookback:].dropna()
+                # _find_swing_points needs at least 2*strength + 1 bars
+                if len(series_for_swings) >= (2 * strength + 1):
+                    swings_h, swings_l = self._find_swing_points(series_for_swings, strength)
+                    points = swings_h if is_high else swings_l
+                    if points:
+                        target_level = max(points) if is_high else min(points)
+                        return self._calculate_pct_dist(price, target_level)
+            return np.nan
+
+        features[29] = get_dist_to_swing(df_1m, self.MF_SWING_LOOKBACK_BARS, self.MF_SWING_STRENGTH_BARS, cur_px_mf, True)
+        features[30] = get_dist_to_swing(df_1m, self.MF_SWING_LOOKBACK_BARS, self.MF_SWING_STRENGTH_BARS, cur_px_mf, False)
+        features[31] = get_dist_to_swing(df_5m, self.MF_SWING_LOOKBACK_BARS, self.MF_SWING_STRENGTH_BARS, cur_px_mf, True)
+        features[32] = get_dist_to_swing(df_5m, self.MF_SWING_LOOKBACK_BARS, self.MF_SWING_STRENGTH_BARS, cur_px_mf, False)
+
+        # Debug NaN values
+        nan_indices = np.where(np.isnan(features))[0]
+        if len(nan_indices) > 0:
+            nan_features = [self.mf_feature_names[i] for i in nan_indices]
+            self.logger.warning(f"NaN values detected in HF features: {nan_features}")
+            # Print the actual calculations that led to these NaNs
+            for i in nan_indices:
+                feature_name = self.mf_feature_names[i]
+                self.logger.warning(f"NaN in {feature_name} calculation")
+
+        return features.astype(np.float32)
+
+    def _calculate_lf_features(self) -> np.ndarray:
+        features = np.full(self.config.lf_feat_dim, np.nan)
+        cur_px_lf = float(self.market_data.get('current_price', np.nan))
+        df_hist_1d = self.historical_1d_bars_df.astype({'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float'}, errors='ignore')
+        if 'close_8pm' in df_hist_1d.columns: df_hist_1d['close_8pm'] = df_hist_1d['close_8pm'].astype(float)
+
+        d_low, d_high = float(self.market_data.get('intraday_low', np.nan)), float(self.market_data.get('intraday_high', np.nan))
+        d_range = d_high - d_low if not (np.isnan(d_high) or np.isnan(d_low)) else np.nan
+        features[0] = self._safe_divide(cur_px_lf - d_low, d_range)
+
+        prev_d_low = self._get_daily_bar_value(-1, 'low', self.LF_PREV_DAY_HL_SOURCE)
+        prev_d_high = self._get_daily_bar_value(-1, 'high', self.LF_PREV_DAY_HL_SOURCE)
+        prev_d_range = prev_d_high - prev_d_low if not (np.isnan(prev_d_high) or np.isnan(prev_d_low)) else np.nan
+        features[1] = self._safe_divide(cur_px_lf - prev_d_low, prev_d_range)
+
+        prev_d_close = self._get_daily_bar_value(-1, 'close', self.LF_PREV_DAY_CLOSE_SOURCE)
+        features[2] = self._pct_change(cur_px_lf, prev_d_close)
+
+        vol_today = self.daily_cumulative_volume
+        avg_d_vol = np.nan
+        if not df_hist_1d.empty and 'volume' in df_hist_1d.columns:
+            lookback_days = self.LF_AVG_DAILY_VOLUME_PERIOD_DAYS
+            if len(df_hist_1d) >= lookback_days:
+                avg_d_vol = df_hist_1d['volume'].iloc[-lookback_days:].mean()
+
+        frac_day_passed = np.nan
+        current_ts_utc = self.market_data.get('timestamp_utc')
+        if current_ts_utc:
+            current_time_et = current_ts_utc.astimezone(ET_TZ)
+            # Use datetime.time for comparison to avoid date part if current_ts_utc is from a different day but within hours
+            session_start_time_obj = time(self.SESSION_START_HOUR_ET, 0, 0)
+            current_time_obj_et = current_time_et.time()
+
+            # Construct full datetime objects for today to calculate difference
+            today_et = current_time_et.date()
+            session_start_dt_et = datetime.combine(today_et, session_start_time_obj, tzinfo=ET_TZ)
+
+            # Ensure current_time_et is also timezone-aware for proper subtraction
+            current_dt_et_aware = datetime.combine(today_et, current_time_obj_et, tzinfo=ET_TZ)
+
+            if current_dt_et_aware >= session_start_dt_et:  # Ensure we are within or past session start
+                secs_in_session = (current_dt_et_aware - session_start_dt_et).total_seconds()
+                if secs_in_session >= 0 and self.TOTAL_SECONDS_IN_FULL_TRADING_DAY > 0:  # secs_in_session could be slightly negative due to DST if not careful
+                    frac_day_passed = min(secs_in_session / self.TOTAL_SECONDS_IN_FULL_TRADING_DAY, 1.0)
+            else:  # Before session start
+                frac_day_passed = 0.0
+
+        if not any(np.isnan([vol_today, avg_d_vol, frac_day_passed])) and frac_day_passed > self.EPSILON and avg_d_vol > self.EPSILON:
+            expected_vol = avg_d_vol * frac_day_passed
+            features[3] = (self._safe_divide(vol_today, expected_vol, default_val=1.0) - 1.0) * 100.0  # Default to 0% RVol if expected_vol is 0
+        else:
+            features[3] = 0.0  # Default to 0% if cannot calculate (e.g. start of day)
+
+        session_vwap = np.nan
+        if self.LF_VWAP_SESSION_SCOPE == "FullDay_4AM_Start_NoReset":
+            if self.daily_cumulative_volume > self.EPSILON:
+                session_vwap = self.daily_cumulative_price_volume_product / self.daily_cumulative_volume
+        features[4] = self._calculate_pct_dist(cur_px_lf, session_vwap)
+
+        close_col_daily = 'close'  # Default
+        if self.LF_DAILY_EMA_PRICE_SOURCE == "PostMarketClose_8PM" and 'close_8pm' in df_hist_1d.columns:
+            close_col_daily = 'close_8pm'
+        elif 'close' not in df_hist_1d.columns:
+            close_col_daily = None  # Cannot proceed if no close columns
+
+        if close_col_daily and not df_hist_1d.empty and close_col_daily in df_hist_1d.columns:
+            d_closes = df_hist_1d[close_col_daily].astype(float).dropna()
+            if len(d_closes) >= self.LF_DAILY_EMA_SHORT_PERIOD: features[5] = self._calculate_pct_dist(cur_px_lf, ta.trend.EMAIndicator(d_closes,
+                                                                                                                                        window=self.LF_DAILY_EMA_SHORT_PERIOD).ema_indicator().iloc[
+                -1])
+            if len(d_closes) >= self.LF_DAILY_EMA_MEDIUM_PERIOD: features[6] = self._calculate_pct_dist(cur_px_lf, ta.trend.EMAIndicator(d_closes,
+                                                                                                                                         window=self.LF_DAILY_EMA_MEDIUM_PERIOD).ema_indicator().iloc[
+                -1])
+            if len(d_closes) >= self.LF_DAILY_EMA_LONG_PERIOD: features[7] = self._calculate_pct_dist(cur_px_lf, ta.trend.EMAIndicator(d_closes,
+                                                                                                                                       window=self.LF_DAILY_EMA_LONG_PERIOD).ema_indicator().iloc[
+                -1])
+
+        # Simplified S/R
+        closest_resistance, closest_support = np.nan, np.nan
+        if not df_hist_1d.empty and not np.isnan(cur_px_lf):
+            # Determine number of days to look back based on LF_LT_SR_LOOKBACK_YEARS
+            num_days_lookback = self.LF_LT_SR_LOOKBACK_YEARS * 252  # Approx trading days
+            relevant_daily_bars = df_hist_1d.iloc[-num_days_lookback:] if len(df_hist_1d) > num_days_lookback else df_hist_1d
+
+            # Iterate backwards from most recent historical day
+            for idx in range(len(relevant_daily_bars) - 1, -1, -1):
+                day_data = relevant_daily_bars.iloc[idx]
+                day_high = float(day_data.get('high', np.nan))
+                day_low = float(day_data.get('low', np.nan))
+
+                if np.isnan(closest_resistance) and not np.isnan(day_high) and day_high > cur_px_lf:
+                    closest_resistance = day_high
+                if np.isnan(closest_support) and not np.isnan(day_low) and day_low < cur_px_lf:
+                    closest_support = day_low
+
+                if not np.isnan(closest_resistance) and not np.isnan(closest_support):
+                    break  # Found both
+
+        features[8] = self._calculate_pct_dist(cur_px_lf, closest_support)
+        features[9] = self._calculate_pct_dist(cur_px_lf, closest_resistance)
+
+        # Debug NaN values
+        nan_indices = np.where(np.isnan(features))[0]
+        if len(nan_indices) > 0:
+            nan_features = [self.lf_feature_names[i] for i in nan_indices]
+            self.logger.warning(f"NaN values detected in HF features: {nan_features}")
+            # Print the actual calculations that led to these NaNs
+            for i in nan_indices:
+                feature_name = self.lf_feature_names[i]
+                self.logger.warning(f"NaN in {feature_name} calculation")
+
+        return features.astype(np.float32)
