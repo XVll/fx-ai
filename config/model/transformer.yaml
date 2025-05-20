@@ -28,7 +28,7 @@ portfolio_heads: 4
 
 # Output parameters
 action_dim: [5, 4]
-continuous_action: true
+continuous_action: false
 
 # Other parameters
 dropout: 0.1
