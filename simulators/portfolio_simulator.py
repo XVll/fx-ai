@@ -91,8 +91,8 @@ class PortfolioManager:
 
         self.initial_capital: float = self.portfolio_config.initial_cash
         self.tradable_assets: List[str] = tradable_assets
-        self.portfolio_seq_len: int = self.model_config.portfolio_seq_len
-        self.portfolio_feat_dim: int = self.model_config.portfolio_feat_dim
+        self.portfolio_seq_len: int = self.model_config.feature_config.portfolio_seq_len
+        self.portfolio_feat_dim: int = self.model_config.feature_config.portfolio_feat_dim
         self.max_position_value_ratio: float = self.portfolio_config.max_position_value_ratio
         self.allow_shorting: bool = self.execution_config.allow_shorting
         self.max_position_holding_seconds = self.portfolio_config.max_position_holding_seconds

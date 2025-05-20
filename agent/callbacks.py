@@ -61,7 +61,7 @@ class ModelCheckpointCallback(TrainingCallback):
             save_dir: Directory to save checkpoints
             save_freq: Save frequency in update iterations
             prefix: Prefix for checkpoint filenames
-            save_best_only: If True, only save models that improve mean reward
+            save_best_only: If True, only save ai that improve mean reward
         """
         self.save_dir = save_dir
         self.save_freq = save_freq
