@@ -192,11 +192,6 @@ class MarketSimulator:
         daily_end = session_premarket_start_utc
         daily_start = daily_end - timedelta(days=self.market_config.get('historical_daily_bars_lookback_days', 730))
 
-        # 5. General data buffer for all timeframes
-        data_load_day_buffer = self.market_config.get('data_load_day_buffer', 2)
-
-        # Apply buffer to HF data
-        hf_start -= timedelta(days=data_load_day_buffer)
 
         return {
             "hf": (hf_start, hf_end),
