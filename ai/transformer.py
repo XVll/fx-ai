@@ -2,7 +2,7 @@ import logging
 
 import torch
 import torch.nn as nn
-from typing import Dict, Tuple, Optional, Union
+from typing import Dict, Tuple, Optional, Union, List
 
 from config.config import ModelConfig
 from ai.layers import (
@@ -43,12 +43,12 @@ class MultiBranchTransformer(nn.Module):
             lf_heads: int,
             portfolio_heads: int,
 
-            action_dim: list,
             continuous_action: bool,
 
             d_model: int,
             d_fused: int,
 
+            action_dim: Union[int, List[int], Tuple[int, ...]] = 1,
             dropout: float = 0.1,
             device: Union[str, torch.device] = None,
 
@@ -71,7 +71,7 @@ class MultiBranchTransformer(nn.Module):
         self.continuous_action = continuous_action
 
         # Handle action dimensions (support both single int and tuple/list)
-        if continuous_action:
+        if self.continuous_action:
             if isinstance(action_dim, (list, tuple)):
                 # For continuous actions, use the first dimension
                 self.action_dim = action_dim[0]
@@ -80,8 +80,8 @@ class MultiBranchTransformer(nn.Module):
         else:
             # For discrete actions, we need to handle tuples
             if isinstance(action_dim, (list, tuple)):
-                self.action_types = action_dim[0]
-                self.action_sizes = action_dim[1]
+                self.action_types = int(action_dim[0])
+                self.action_sizes = int(action_dim[1])
             else:
                 self.action_types = action_dim
                 self.action_sizes = None
