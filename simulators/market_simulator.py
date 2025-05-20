@@ -24,14 +24,13 @@ MARKET_HOURS = {
 
 class MarketSimulator:
     """
-    Optimized market simulator for intraday trading with proper pre/post market handling.
+    Market simulator for intraday trading with proper pre/post market handling.
 
     Features:
-    - Efficient data loading limited to actual trading hours (4:00 AM - 8:00 PM ET)
-    - Smart priming for pre-market sessions using previous day's data when needed
-    - Consistent window sizes for all data frequencies
-    - Simplified timezone handling with clear Eastern Time reference
-    - Optimized memory usage for long simulations
+    - Efficient data loading for full trading hours (4:00 AM - 8:00 PM ET)
+    - Proper handling of previous day's data for early session feature extraction
+    - Uniform timeline construction with 1-second intervals
+    - Clear market session identification
     """
 
     def __init__(
@@ -83,9 +82,18 @@ class MarketSimulator:
         # Raw data storage for different frequencies
         self.raw_trades_df = pd.DataFrame()
         self.raw_quotes_df = pd.DataFrame()
+        self.raw_1s_bars_df = pd.DataFrame()
         self.raw_1m_bars_df = pd.DataFrame()
         self.raw_5m_bars_df = pd.DataFrame()
         self.raw_1d_bars_df = pd.DataFrame()  # Historical daily data
+
+        # Previous day data storage
+        self.prev_day_date = None
+        self.prev_day_open = None
+        self.prev_day_high = None
+        self.prev_day_low = None
+        self.prev_day_close = None
+        self.prev_day_vwap = None
 
         # Initialize simulator
         self._initialize_simulator()
@@ -93,10 +101,10 @@ class MarketSimulator:
     def _ensure_utc_datetime(self, dt_input: Optional[Union[str, datetime]]) -> Optional[datetime]:
         """
         Convert input to a UTC datetime object with consistent handling.
-
+        
         Args:
             dt_input: Input datetime (string, datetime with/without timezone)
-
+            
         Returns:
             Datetime object in UTC timezone, or None if input is None
         """
@@ -134,7 +142,30 @@ class MarketSimulator:
         """Initialize the market simulator by loading necessary data and preparing timeline."""
         self.logger.info(f"Initializing MarketSimulator for {self.symbol} in {self.mode} mode")
 
-        # Load data efficiently based on feature requirements
+        # Load daily data first to find previous trading day
+        session_market_dt = self.session_start_utc.astimezone(self.market_tz)
+        session_date = session_market_dt.date()
+
+        # Load a year of daily data for context
+        try:
+            daily_start_dt = datetime.combine(session_date - timedelta(days=365), time(0, 0, 0), tzinfo=self.market_tz)
+            daily_end_dt = datetime.combine(session_date, time(23, 59, 59), tzinfo=self.market_tz)
+
+            self.raw_1d_bars_df = self.data_manager.get_bars(
+                symbol=self.symbol,
+                timeframe="1d",
+                start_time=daily_start_dt,
+                end_time=daily_end_dt
+            )
+            self.raw_1d_bars_df = self._prepare_dataframe(
+                self.raw_1d_bars_df,
+                ['open', 'high', 'low', 'close', 'volume']
+            )
+            self.logger.info(f"Loaded {len(self.raw_1d_bars_df)} daily bars")
+        except Exception as e:
+            self.logger.error(f"Error loading daily bars: {e}")
+
+        # Now load data for simulation
         self._load_data_for_simulation()
 
         if self.mode == "backtesting":
@@ -149,67 +180,40 @@ class MarketSimulator:
         else:
             raise ValueError(f"Unsupported mode: {self.mode}")
 
-    def _build_efficient_timeline(self):
+    def _find_previous_valid_trading_day(self, reference_date: date) -> Optional[date]:
         """
-        Build an efficient agent timeline considering only market hours.
-        This avoids creating datapoints for the entire 24-hour day.
+        Find the most recent valid trading day before the reference date.
+        
+        Args:
+            reference_date: The date to start searching from
+            
+        Returns:
+            The most recent valid trading day or None if not found
         """
-        if not self.session_start_utc or not self.session_end_utc:
-            self.logger.error("Session start/end times not defined for timeline generation")
-            return
+        # Check if we have daily bars data
+        if self.raw_1d_bars_df.empty:
+            self.logger.warning("No daily bars data available to determine previous trading day")
+            # Fallback: try the day before, but no guarantee it's a trading day
+            return reference_date - timedelta(days=1)
 
-        self.logger.info("Building efficient agent timeline for market hours only")
+        # Get all dates in our daily data
+        trading_dates = sorted(set(self.raw_1d_bars_df.index.date))
 
-        # Initialize timeline list
-        timeline = []
+        # Find the most recent date before reference_date
+        valid_dates = [d for d in trading_dates if d < reference_date]
 
-        # Start with the session start time
-        current_time = self.session_start_utc
+        if not valid_dates:
+            self.logger.warning(f"No valid trading day found before {reference_date}")
+            return None
 
-        # Process each date between start and end
-        while current_time <= self.session_end_utc:
-            # Convert to market timezone to check if in trading hours
-            market_time = current_time.astimezone(self.market_tz)
-            market_date = market_time.date()
-            market_time_of_day = market_time.time()
-
-            # Check if this time is within trading hours
-            if (MARKET_HOURS["PREMARKET_START"] <= market_time_of_day <= MARKET_HOURS["POSTMARKET_END"]):
-                # Add to timeline if within trading hours
-                timeline.append(current_time)
-
-            # Move to next second
-            current_time += timedelta(seconds=1)
-
-            # If we've passed the postmarket end, jump to next day's premarket
-            next_market_time = current_time.astimezone(self.market_tz)
-            if (next_market_time.date() == market_date and
-                    next_market_time.time() > MARKET_HOURS["POSTMARKET_END"]):
-                # Calculate next day's premarket start
-                next_date = market_date + timedelta(days=1)
-                next_premarket_start = datetime.combine(
-                    next_date,
-                    MARKET_HOURS["PREMARKET_START"],
-                    tzinfo=self.market_tz
-                )
-
-                # Convert back to UTC and set as current time
-                current_time = next_premarket_start.astimezone(self.utc_tz)
-
-                self.logger.info(f"Jumping from {market_date} postmarket to {next_date} premarket")
-
-        self._agent_timeline_utc = timeline
-
-        self.logger.info(
-            f"Agent timeline created: {len(timeline)} seconds from "
-            f"{timeline[0] if timeline else 'N/A'} to "
-            f"{timeline[-1] if timeline else 'N/A'}"
-        )
+        prev_trading_day = max(valid_dates)
+        self.logger.info(f"Previous valid trading day for {reference_date} is {prev_trading_day}")
+        return prev_trading_day
 
     def _calculate_data_loading_ranges(self) -> Dict[str, Tuple[datetime, datetime]]:
         """
-        Calculate optimal data loading ranges for different timeframes with proper lookbacks.
-
+        Calculate data loading ranges for both current day and previous day.
+        
         Returns:
             Dictionary with data types as keys and (start_time, end_time) as values
         """
@@ -222,126 +226,123 @@ class MarketSimulator:
         session_end_market = self.session_end_utc.astimezone(self.market_tz)
         session_date = session_start_market.date()
 
-        # Get previous trading day for historical context
-        prev_trading_day = session_date - timedelta(
-            days=1)  # Simplification - actual implementation should handle weekends
+        # Find the previous valid trading day
+        prev_day_date = self._find_previous_valid_trading_day(session_date)
 
-        # Calculate lookback periods with buffers
+        if not prev_day_date:
+            self.logger.warning("Could not determine previous trading day, using single day loading")
+            # Just load current day data if we can't determine previous day
+            return self._calculate_single_day_loading_ranges(session_date)
 
-        # 1. High-frequency data (trades, quotes)
-        hf_lookback_seconds = self.hf_window_size * 2  # Double for safety
+        self.prev_day_date = prev_day_date
 
-        # If session starts near premarket open, we need previous day's data
-        if session_start_market.time() < MARKET_HOURS["PREMARKET_START"] or (
-                session_start_market.time() < time(4, 30, 0) and  # Within 30 min of premarket
-                session_start_market.time() >= MARKET_HOURS["PREMARKET_START"]):
+        # Calculate ranges for both current day and previous day
 
-            # Need to include previous day's post-market for proper priming
-            hf_start_dt = datetime.combine(
-                prev_trading_day,
-                MARKET_HOURS["REGULAR_END"],  # Start from regular close
-                tzinfo=self.market_tz
-            )
-        else:
-            # Normal lookback within the same day
-            hf_start_dt = session_start_market - timedelta(seconds=hf_lookback_seconds)
-
-            # Ensure we don't go before premarket start
-            premarket_start_dt = datetime.combine(
-                session_date,
-                MARKET_HOURS["PREMARKET_START"],
-                tzinfo=self.market_tz
-            )
-
-            if hf_start_dt < premarket_start_dt:
-                # If lookback goes before premarket, use previous day's post-market
-                hf_start_dt = datetime.combine(
-                    prev_trading_day,
-                    MARKET_HOURS["REGULAR_END"],
-                    tzinfo=self.market_tz
-                )
-
-        # 2. Medium-frequency data (1m bars)
-        mf_lookback_minutes = self.mf_window_size  # Now using 2x window size
-
-        # Calculate start time similar to HF data
-        if session_start_market.time() < MARKET_HOURS["PREMARKET_START"] or (
-                session_start_market.time() < time(4, 30, 0) and
-                session_start_market.time() >= MARKET_HOURS["PREMARKET_START"]):
-
-            mf_start_dt = datetime.combine(
-                prev_trading_day,
-                MARKET_HOURS["REGULAR_END"],
-                tzinfo=self.market_tz
-            )
-        else:
-            mf_start_dt = session_start_market - timedelta(minutes=mf_lookback_minutes)
-
-            premarket_start_dt = datetime.combine(
-                session_date,
-                MARKET_HOURS["PREMARKET_START"],
-                tzinfo=self.market_tz
-            )
-
-            if mf_start_dt < premarket_start_dt:
-                mf_start_dt = datetime.combine(
-                    prev_trading_day,
-                    time(16, 0, 0),  # Use 4:00 PM from previous day
-                    tzinfo=self.market_tz
-                )
-
-        # 3. Low-frequency data (5m bars)
-        lf_lookback_minutes = self.lf_window_size * 5  # Now using 2x window size (× 5 for 5m intervals)
-
-        # Similar logic to MF data
-        if session_start_market.time() < MARKET_HOURS["PREMARKET_START"] or (
-                session_start_market.time() < time(4, 30, 0)):
-
-            lf_start_dt = datetime.combine(
-                prev_trading_day,
-                MARKET_HOURS["REGULAR_END"],
-                tzinfo=self.market_tz
-            )
-        else:
-            lf_start_dt = session_start_market - timedelta(minutes=lf_lookback_minutes)
-
-            premarket_start_dt = datetime.combine(
-                session_date,
-                MARKET_HOURS["PREMARKET_START"],
-                tzinfo=self.market_tz
-            )
-
-            if lf_start_dt < premarket_start_dt:
-                lf_start_dt = datetime.combine(
-                    prev_trading_day,
-                    time(16, 0, 0),
-                    tzinfo=self.market_tz
-                )
-
-        # 4. Daily bars for historical context
-        # Get data for several preceding days for adequate context
-        daily_lookback_days = 60  # About 3 months of trading days
-        daily_start_dt = datetime.combine(
-            session_date - timedelta(days=daily_lookback_days),
-            time(0, 0, 0),
+        # 1. Current day full range
+        current_day_start = datetime.combine(
+            session_date,
+            MARKET_HOURS["PREMARKET_START"],
             tzinfo=self.market_tz
         )
-        daily_end_dt = datetime.combine(
+
+        current_day_end = datetime.combine(
+            session_date,
+            MARKET_HOURS["POSTMARKET_END"],
+            tzinfo=self.market_tz
+        )
+
+        # 2. Previous day full range
+        prev_day_start = datetime.combine(
+            prev_day_date,
+            MARKET_HOURS["PREMARKET_START"],
+            tzinfo=self.market_tz
+        )
+
+        prev_day_end = datetime.combine(
+            prev_day_date,
+            MARKET_HOURS["POSTMARKET_END"],
+            tzinfo=self.market_tz
+        )
+
+        # Combine ranges for comprehensive data loading
+        combined_hf_start = prev_day_start.astimezone(self.utc_tz)
+        combined_hf_end = current_day_end.astimezone(self.utc_tz)
+
+        combined_mf_start = prev_day_start.astimezone(self.utc_tz)
+        combined_mf_end = current_day_end.astimezone(self.utc_tz)
+
+        combined_lf_start = prev_day_start.astimezone(self.utc_tz)
+        combined_lf_end = current_day_end.astimezone(self.utc_tz)
+
+        # Daily data range (already loaded earlier)
+        daily_start = datetime.combine(
+            session_date - timedelta(days=365),
+            time(0, 0, 0),
+            tzinfo=self.market_tz
+        ).astimezone(self.utc_tz)
+
+        daily_end = datetime.combine(
             session_date,
             time(23, 59, 59),
             tzinfo=self.market_tz
+        ).astimezone(self.utc_tz)
+
+        return {
+            "hf": (combined_hf_start, combined_hf_end),
+            "mf": (combined_mf_start, combined_mf_end),
+            "lf": (combined_lf_start, combined_lf_end),
+            "daily": (daily_start, daily_end)
+        }
+
+    def _calculate_single_day_loading_ranges(self, session_date: date) -> Dict[str, Tuple[datetime, datetime]]:
+        """
+        Calculate data loading ranges for just the current day.
+        
+        Args:
+            session_date: The current session date
+            
+        Returns:
+            Dictionary with data types as keys and (start_time, end_time) as values
+        """
+        # Current day full range
+        current_day_start = datetime.combine(
+            session_date,
+            MARKET_HOURS["PREMARKET_START"],
+            tzinfo=self.market_tz
         )
 
-        # Convert all datetimes back to UTC for consistent data loading
+        current_day_end = datetime.combine(
+            session_date,
+            MARKET_HOURS["POSTMARKET_END"],
+            tzinfo=self.market_tz
+        )
+
+        # Convert to UTC for data loading
+        hf_start = current_day_start.astimezone(self.utc_tz)
+        hf_end = current_day_end.astimezone(self.utc_tz)
+
+        # Daily data range - convert date objects to timezone-aware datetime objects
+        daily_start = datetime.combine(
+            session_date - timedelta(days=365),  # date object
+            time(0, 0, 0),  # time at midnight
+            tzinfo=self.market_tz  # timezone
+        ).astimezone(self.utc_tz)
+
+        daily_end = datetime.combine(
+            session_date,  # date object
+            time(23, 59, 59),  # end of day
+            tzinfo=self.market_tz  # timezone
+        ).astimezone(self.utc_tz)
+
         return {
-            "hf": (hf_start_dt.astimezone(self.utc_tz), session_end_market.astimezone(self.utc_tz)),
-            "mf": (mf_start_dt.astimezone(self.utc_tz), session_end_market.astimezone(self.utc_tz)),
-            "lf": (lf_start_dt.astimezone(self.utc_tz), session_end_market.astimezone(self.utc_tz)),
-            "daily": (daily_start_dt.astimezone(self.utc_tz), daily_end_dt.astimezone(self.utc_tz))
+            "hf": (hf_start, hf_end),
+            "mf": (hf_start, hf_end),
+            "lf": (hf_start, hf_end),
+            "daily": (daily_start, daily_end)
         }
 
     def _load_data_for_simulation(self):
-        """Load only the required data for simulation efficiently."""
+        """Load required data for simulation."""
         loading_ranges = self._calculate_data_loading_ranges()
         if not loading_ranges:
             self.logger.error("Failed to calculate data loading ranges")
@@ -351,7 +352,7 @@ class MarketSimulator:
         for timeframe, (start, end) in loading_ranges.items():
             self.logger.info(f"  {timeframe}: {start} to {end}")
 
-        # 1. Load high-frequency data (trades, quotes)
+        # Load high-frequency data (trades, quotes)
         hf_start, hf_end = loading_ranges["hf"]
         try:
             hf_data = self.data_manager.load_data(
@@ -375,7 +376,7 @@ class MarketSimulator:
             self.raw_trades_df = pd.DataFrame()
             self.raw_quotes_df = pd.DataFrame()
 
-        # 2. Load 1-minute bars
+        # Load 1-minute bars
         mf_start, mf_end = loading_ranges["mf"]
         try:
             self.raw_1m_bars_df = self.data_manager.get_bars(
@@ -393,7 +394,7 @@ class MarketSimulator:
             self.logger.error(f"Error loading 1-minute bars: {e}")
             self.raw_1m_bars_df = pd.DataFrame()
 
-        # 3. Load 5-minute bars
+        # Load 5-minute bars
         lf_start, lf_end = loading_ranges["lf"]
         try:
             self.raw_5m_bars_df = self.data_manager.get_bars(
@@ -411,32 +412,63 @@ class MarketSimulator:
             self.logger.error(f"Error loading 5-minute bars: {e}")
             self.raw_5m_bars_df = pd.DataFrame()
 
-        # 4. Load daily bars for historical context
-        daily_start, daily_end = loading_ranges["daily"]
-        try:
-            self.raw_1d_bars_df = self.data_manager.get_bars(
-                symbol=self.symbol,
-                timeframe="1d",
-                start_time=daily_start,
-                end_time=daily_end
-            )
-            self.raw_1d_bars_df = self._prepare_dataframe(
-                self.raw_1d_bars_df,
-                ['open', 'high', 'low', 'close', 'volume']
-            )
-            self.logger.info(f"Loaded {len(self.raw_1d_bars_df)} daily bars")
-        except Exception as e:
-            self.logger.error(f"Error loading daily bars: {e}")
-            self.raw_1d_bars_df = pd.DataFrame()
+        # Extract previous day data
+        if self.prev_day_date:
+            self.logger.info(f"Extracting previous day data for {self.prev_day_date}")
+            self.get_previous_day_data()  # This sets the class variables
+
+    def _build_efficient_timeline(self):
+        """
+        Build a uniform timeline from 4:00 AM to 8:00 PM ET with 1-second intervals.
+        Only includes the current session date.
+        """
+        if not self.session_start_utc or not self.session_end_utc:
+            self.logger.error("Session start/end times not defined for timeline generation")
+            return
+
+        # Get the session date in market timezone
+        session_market_dt = self.session_start_utc.astimezone(self.market_tz)
+        session_date = session_market_dt.date()
+
+        self.logger.info(f"Building timeline for session date {session_date} from 4:00 AM to 8:00 PM ET")
+
+        # Define the start and end of the timeline (4:00 AM to 8:00 PM on session date)
+        timeline_start = datetime.combine(
+            session_date,
+            MARKET_HOURS["PREMARKET_START"],
+            tzinfo=self.market_tz
+        ).astimezone(self.utc_tz)
+
+        timeline_end = datetime.combine(
+            session_date,
+            MARKET_HOURS["POSTMARKET_END"],
+            tzinfo=self.market_tz
+        ).astimezone(self.utc_tz)
+
+        # Create a uniform timeline with 1-second intervals
+        timeline = []
+        current_time = timeline_start
+
+        while current_time <= timeline_end:
+            timeline.append(current_time)
+            current_time += timedelta(seconds=1)
+
+        self._agent_timeline_utc = timeline
+
+        self.logger.info(
+            f"Agent timeline created: {len(timeline)} seconds from "
+            f"{timeline[0] if timeline else 'N/A'} to "
+            f"{timeline[-1] if timeline else 'N/A'}"
+        )
 
     def _prepare_dataframe(self, df: Optional[pd.DataFrame], required_cols: List[str]) -> pd.DataFrame:
         """
         Prepare DataFrame for use in simulation with consistent formatting and timezone.
-
+        
         Args:
             df: Input DataFrame (can be None)
             required_cols: List of columns that should be present
-
+            
         Returns:
             Properly formatted DataFrame with UTC timezone and required columns
         """
@@ -477,65 +509,149 @@ class MarketSimulator:
         # Sort by index for consistent access
         return df.sort_index()
 
-    def _get_previous_trading_day_data(self, current_date: date) -> Tuple[Optional[float], Optional[pd.DataFrame]]:
+    def get_previous_day_data(self) -> Dict[str, Any]:
         """
-        Get data from the previous trading day for priming purposes.
-
-        Args:
-            current_date: The current session date
-
+        Get key data points from the previous trading day.
+        
         Returns:
-            Tuple containing (prev_day_close_price, prev_day_postmarket_data)
+            Dictionary with previous day's OHLC, VWAP, and other relevant data
         """
-        # First check if we have daily bars to get previous close
-        prev_close = None
-        if not self.raw_1d_bars_df.empty:
-            try:
-                # Find the most recent bar before current date
-                prev_bars = self.raw_1d_bars_df[self.raw_1d_bars_df.index.date < current_date]
-                if not prev_bars.empty:
-                    prev_close = float(prev_bars.iloc[-1]['close'])
-                    self.logger.debug(f"Found previous day close: {prev_close}")
-            except Exception as e:
-                self.logger.error(f"Error getting previous day close from daily bars: {e}")
+        if not self.prev_day_date:
+            self.logger.warning("Previous day date not set, cannot provide previous day data")
+            return {}
 
-        # Now try to get the previous day's post-market data
-        prev_postmarket_data = None
-        try:
-            # Calculate the previous day's regular market close time
-            prev_day = current_date - timedelta(days=1)
-            prev_market_close_dt = datetime.combine(
-                prev_day,
+        # Return previously stored values if available
+        if self.prev_day_open is not None:
+            return {
+                "date": self.prev_day_date,
+                "open": self.prev_day_open,
+                "high": self.prev_day_high,
+                "low": self.prev_day_low,
+                "close": self.prev_day_close,
+                "vwap": self.prev_day_vwap
+            }
+
+        # Try to extract from 1d bars
+        if not self.raw_1d_bars_df.empty:
+            # Find the bar for the previous day
+            prev_day_bars = self.raw_1d_bars_df[self.raw_1d_bars_df.index.date == self.prev_day_date]
+
+            if not prev_day_bars.empty:
+                # Get the last bar for the day (should only be one)
+                prev_day_bar = prev_day_bars.iloc[-1]
+
+                self.prev_day_open = float(prev_day_bar.get('open', 0.0))
+                self.prev_day_high = float(prev_day_bar.get('high', 0.0))
+                self.prev_day_low = float(prev_day_bar.get('low', 0.0))
+                self.prev_day_close = float(prev_day_bar.get('close', 0.0))
+
+                # Try to calculate VWAP if we have intraday data
+                self.prev_day_vwap = self._calculate_prev_day_vwap()
+
+                return {
+                    "date": self.prev_day_date,
+                    "open": self.prev_day_open,
+                    "high": self.prev_day_high,
+                    "low": self.prev_day_low,
+                    "close": self.prev_day_close,
+                    "vwap": self.prev_day_vwap
+                }
+
+        self.logger.warning("Could not find previous day data in daily bars")
+        return {}
+
+    def _calculate_prev_day_vwap(self) -> Optional[float]:
+        """
+        Calculate VWAP for the previous day using minute bars if available.
+        
+        Returns:
+            VWAP value or None if can't be calculated
+        """
+        if self.prev_day_date is None:
+            return None
+
+        # Try to use 1-minute bars for more accurate VWAP
+        if not self.raw_1m_bars_df.empty:
+            # Filter to previous day's regular market hours
+            prev_day_regular_start = datetime.combine(
+                self.prev_day_date,
+                MARKET_HOURS["REGULAR_START"],
+                tzinfo=self.market_tz
+            ).astimezone(self.utc_tz)
+
+            prev_day_regular_end = datetime.combine(
+                self.prev_day_date,
                 MARKET_HOURS["REGULAR_END"],
                 tzinfo=self.market_tz
             ).astimezone(self.utc_tz)
 
-            prev_postmarket_end_dt = datetime.combine(
-                prev_day,
-                MARKET_HOURS["POSTMARKET_END"],
-                tzinfo=self.market_tz
-            ).astimezone(self.utc_tz)
+            prev_day_bars = self.raw_1m_bars_df[
+                (self.raw_1m_bars_df.index >= prev_day_regular_start) &
+                (self.raw_1m_bars_df.index <= prev_day_regular_end)
+                ]
 
-            # Try to get trades from previous day's post-market
+            if not prev_day_bars.empty:
+                # Calculate VWAP: sum(price * volume) / sum(volume)
+                # Using typical price (H+L+C)/3 as the price
+                typical_prices = (
+                                         prev_day_bars['high'] +
+                                         prev_day_bars['low'] +
+                                         prev_day_bars['close']
+                                 ) / 3
+
+                volume = prev_day_bars['volume']
+
+                # Guard against zero volume
+                if volume.sum() > 0:
+                    vwap = (typical_prices * volume).sum() / volume.sum()
+                    return float(vwap)
+
+        # Fallback: use simple average of OHLC4
+        if self.prev_day_open is not None:
+            return (self.prev_day_open + self.prev_day_high + self.prev_day_low + self.prev_day_close) / 4
+
+        return None
+
+    def _initialize_locf_values(self, last_price, last_bid, last_ask, last_bid_size, last_ask_size):
+        """Initialize Last Observation Carried Forward values from initial data."""
+        try:
+            # Try quotes first for best bid/ask
+            if not self.raw_quotes_df.empty:
+                initial_quotes = self.raw_quotes_df.head(10)
+                if not initial_quotes.empty:
+                    last_quote = initial_quotes.iloc[-1]
+
+                    if 'bid_price' in last_quote and pd.notna(last_quote['bid_price']):
+                        last_bid = float(last_quote['bid_price'])
+
+                    if 'ask_price' in last_quote and pd.notna(last_quote['ask_price']):
+                        last_ask = float(last_quote['ask_price'])
+
+                    if 'bid_size' in last_quote and pd.notna(last_quote['bid_size']):
+                        last_bid_size = int(last_quote['bid_size'])
+
+                    if 'ask_size' in last_quote and pd.notna(last_quote['ask_size']):
+                        last_ask_size = int(last_quote['ask_size'])
+
+            # Get last price from trades
             if not self.raw_trades_df.empty:
-                prev_postmarket_trades = self.raw_trades_df[
-                    (self.raw_trades_df.index >= prev_market_close_dt) &
-                    (self.raw_trades_df.index <= prev_postmarket_end_dt)
-                    ]
-                if not prev_postmarket_trades.empty:
-                    prev_postmarket_data = prev_postmarket_trades
-                    self.logger.debug(f"Found {len(prev_postmarket_data)} previous day post-market trades")
-        except Exception as e:
-            self.logger.error(f"Error getting previous day post-market data: {e}")
+                initial_trades = self.raw_trades_df.head(10)
+                if not initial_trades.empty:
+                    last_trade = initial_trades.iloc[-1]
 
-        return prev_close, prev_postmarket_data
+                    if 'price' in last_trade and pd.notna(last_trade['price']):
+                        last_price = float(last_trade['price'])
+        except Exception as e:
+            self.logger.warning(f"Error initializing LOCF values: {e}")
+
+        return last_price, last_bid, last_ask, last_bid_size, last_ask_size
 
     def _precompute_timeline_states(self):
         """
         Precompute market states for every second in the agent's timeline.
-
-        This builds states for all times in the agent's timeline using the most efficient
-        data structures and search patterns.
+        
+        This builds states for all times in the agent's timeline using data
+        from both the current day and previous day as needed.
         """
         self.logger.info(f"Precomputing timeline states for {self.symbol}")
 
@@ -554,7 +670,10 @@ class MarketSimulator:
         current_day_market = None
         intraday_high = None
         intraday_low = None
-        prev_day_close = None
+
+        # Get previous day data
+        prev_day_data = self.get_previous_day_data()
+        prev_day_close = prev_day_data.get('close')
 
         # Initialize rolling window data structures
         rolling_hf_window = deque(maxlen=self.hf_window_size)
@@ -588,7 +707,15 @@ class MarketSimulator:
                 }
 
         # Try to initialize basic LOCF values from first data
-        self._initialize_locf_values(last_price, last_bid, last_ask, last_bid_size, last_ask_size)
+        if prev_day_close is not None:
+            last_price = prev_day_close
+            # Estimate bid/ask spread as 0.1% of price
+            last_bid = prev_day_close * 0.999
+            last_ask = prev_day_close * 1.001
+            self.logger.debug(f"Using previous day close for initial price: {last_price}")
+        else:
+            # Try to initialize from first available data
+            self._initialize_locf_values(last_price, last_bid, last_ask, last_bid_size, last_ask_size)
 
         # Process each second in the agent's timeline
         total_timeline_len = len(self._agent_timeline_utc)
@@ -606,20 +733,13 @@ class MarketSimulator:
                 intraday_high = None
                 intraday_low = None
 
-                # Get previous day data for priming
-                prev_day_close, prev_postmarket_data = self._get_previous_trading_day_data(current_market_day)
-
-                # If we're at the start of pre-market and have no existing data,
-                # use previous day's close for initial price estimate
-                if (current_market_dt.time() <= time(4, 30, 0) and
-                        (last_price is None or last_bid is None or last_ask is None)):
-
+                # If we're at the start of pre-market and have previous day data, 
+                # use it for initial values
+                if current_market_dt.time() <= MARKET_HOURS["PREMARKET_START"]:
                     if prev_day_close is not None:
                         last_price = prev_day_close
-                        # Estimate bid/ask spread as 0.1% of price if not available
                         last_bid = prev_day_close * 0.999
                         last_ask = prev_day_close * 1.001
-                        self.logger.debug(f"Using previous day close for initial price: {last_price}")
 
             # Get data for this second
             current_trades = []
@@ -730,6 +850,7 @@ class MarketSimulator:
                 'intraday_high': intraday_high,
                 'intraday_low': intraday_low,
                 'previous_day_close': prev_day_close,
+                'previous_day_data': prev_day_data,
                 'current_1s_bar': current_1s_bar,
                 'hf_data_window': list(rolling_hf_window),
                 '1m_bars_window': minute_bars_window,
@@ -745,40 +866,6 @@ class MarketSimulator:
                 )
 
         self.logger.info(f"Finished precomputing {len(self._precomputed_states)} market states")
-
-    def _initialize_locf_values(self, last_price, last_bid, last_ask, last_bid_size, last_ask_size):
-        """Initialize Last Observation Carried Forward values from initial data."""
-        try:
-            # Try quotes first for best bid/ask
-            if not self.raw_quotes_df.empty:
-                initial_quotes = self.raw_quotes_df.head(10)
-                if not initial_quotes.empty:
-                    last_quote = initial_quotes.iloc[-1]
-
-                    if 'bid_price' in last_quote and pd.notna(last_quote['bid_price']):
-                        last_bid = float(last_quote['bid_price'])
-
-                    if 'ask_price' in last_quote and pd.notna(last_quote['ask_price']):
-                        last_ask = float(last_quote['ask_price'])
-
-                    if 'bid_size' in last_quote and pd.notna(last_quote['bid_size']):
-                        last_bid_size = int(last_quote['bid_size'])
-
-                    if 'ask_size' in last_quote and pd.notna(last_quote['ask_size']):
-                        last_ask_size = int(last_quote['ask_size'])
-
-            # Get last price from trades
-            if not self.raw_trades_df.empty:
-                initial_trades = self.raw_trades_df.head(10)
-                if not initial_trades.empty:
-                    last_trade = initial_trades.iloc[-1]
-
-                    if 'price' in last_trade and pd.notna(last_trade['price']):
-                        last_price = float(last_trade['price'])
-        except Exception as e:
-            self.logger.warning(f"Error initializing LOCF values: {e}")
-
-        return last_price, last_bid, last_ask, last_bid_size, last_ask_size
 
     def _get_bars_window(self, current_ts: datetime, bars_dict: Dict,
                          window_size: int, interval_minutes: int) -> List[Dict]:
@@ -1006,7 +1093,6 @@ class MarketSimulator:
             Initial market state
         """
         options = options or {}
-        options['random_start'] = False # Todo : Remove
         self.logger.info(f"Resetting simulation with options: {options}")
 
         if not self._agent_timeline_utc:
@@ -1015,19 +1101,25 @@ class MarketSimulator:
 
         # Handle random start
         if options.get('random_start', False):
-            if len(self._agent_timeline_utc) > 1:
+            # Set a minimum number of seconds into the day to ensure enough lookback data
+            # For example, at least 1 hour (3600 seconds) after premarket start
+            min_offset = self.hf_window_size  # At least enough for high-frequency features
+
+            if len(self._agent_timeline_utc) > (min_offset + 1):
                 self._current_agent_time_idx = self.np_random.integers(
-                    0,  # Start from the very beginning - no buffer needed
+                    min_offset,
                     len(self._agent_timeline_utc) - 1
                 )
                 self.logger.info(f"Random reset to index {self._current_agent_time_idx}")
             else:
-                self._current_agent_time_idx = 0
+                self._current_agent_time_idx = min(min_offset, len(self._agent_timeline_utc) - 1)
         else:
-            # Apply any specified offset, starting from the very beginning
-            offset = options.get('start_time_offset_seconds', 0)
+            # Apply any specified offset, with minimum to ensure enough lookback data
+            min_offset = self.hf_window_size  # Use high-frequency window size as minimum
+            offset = max(min_offset, options.get('start_time_offset_seconds', min_offset))
+
             self._current_agent_time_idx = min(offset, len(self._agent_timeline_utc) - 1)
-            self.logger.info(f"Reset to index {self._current_agent_time_idx}")
+            self.logger.info(f"Reset to index {self._current_agent_time_idx} with offset {offset}")
 
         # Set current timestamp
         self.current_timestamp_utc = self._agent_timeline_utc[self._current_agent_time_idx]

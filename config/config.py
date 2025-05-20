@@ -232,4 +232,4 @@ cs.store(name="callbacks/default", node=CallbacksConfig)  # Added callbacks regi
 
 # Export the Config class and all config components for direct import
 __all__ = ['Config', 'EnvConfig', 'ModelConfig', 'TrainingConfig', 'DataConfig',
-           'WandbConfig', 'SimulationConfig', 'CallbacksConfig', 'RewardConfig']
+           'WandbConfig', 'SimulationConfig', 'CallbacksConfig', 'RewardConfig' ]
