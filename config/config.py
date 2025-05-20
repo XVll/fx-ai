@@ -71,7 +71,7 @@ class ModelConfig:
     portfolio_heads: int = 4
 
     # Output parameters
-    action_dim: int = 1
+    action_dim = [5,4]
     continuous_action: bool = False
 
     # Other parameters
