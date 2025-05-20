@@ -53,17 +53,8 @@ class FeatureConfig:
 
 @dataclass
 class ModelConfig:
-    # Feature dimensions
+    # Feature config
     feature_config: FeatureConfig = field(default_factory=FeatureConfig)
-    hf_seq_len: int = 60
-    hf_feat_dim: int = 20
-    mf_seq_len: int = 30
-    mf_feat_dim: int = 15
-    lf_seq_len: int = 30
-    lf_feat_dim: int = 10
-    static_feat_dim: int = 3
-    portfolio_feat_dim: int = 5
-    portfolio_seq_len: int = 5
 
     # Model dimensions
     d_model: int = 64
@@ -73,9 +64,11 @@ class ModelConfig:
     hf_layers: int = 2
     mf_layers: int = 2
     lf_layers: int = 2
+    portfolio_layers: int = 2
     hf_heads: int = 4
     mf_heads: int = 4
     lf_heads: int = 4
+    portfolio_heads: int = 4
 
     # Output parameters
     action_dim: int = 1
@@ -232,4 +225,4 @@ cs.store(name="callbacks/default", node=CallbacksConfig)  # Added callbacks regi
 
 # Export the Config class and all config components for direct import
 __all__ = ['Config', 'EnvConfig', 'ModelConfig', 'TrainingConfig', 'DataConfig',
-           'WandbConfig', 'SimulationConfig', 'CallbacksConfig', 'RewardConfig' ]
+           'WandbConfig', 'SimulationConfig', 'CallbacksConfig', 'RewardConfig', 'ExecutionConfig', 'MarketConfig', 'PortfolioConfig', 'FeatureConfig']

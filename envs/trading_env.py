@@ -90,18 +90,18 @@ class TradingEnvironment(gym.Env):
         model_cfg = self.config.model
         # Explicitly type self.observation_space to help linters
         self.observation_space: spaces.Dict = spaces.Dict({
-            'hf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.hf_seq_len, model_cfg.hf_feat_dim), dtype=np.float32),
-            'mf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.mf_seq_len, model_cfg.mf_feat_dim), dtype=np.float32),
-            'lf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.lf_seq_len, model_cfg.lf_feat_dim), dtype=np.float32),
-            'portfolio': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.portfolio_seq_len, model_cfg.portfolio_feat_dim), dtype=np.float32),
-            'static': spaces.Box(low=-np.inf, high=np.inf, shape=(1, model_cfg.static_feat_dim), dtype=np.float32),
+            'hf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.feature_config.hf_seq_len, model_cfg.feature_config.hf_feat_dim), dtype=np.float32),
+            'mf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.feature_config.mf_seq_len, model_cfg.feature_config.mf_feat_dim), dtype=np.float32),
+            'lf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.feature_config.lf_seq_len, model_cfg.feature_config.lf_feat_dim), dtype=np.float32),
+            'portfolio': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.feature_config.portfolio_seq_len, model_cfg.feature_config.portfolio_feat_dim), dtype=np.float32),
+            'static': spaces.Box(low=-np.inf, high=np.inf, shape=(1, model_cfg.feature_config.static_feat_dim), dtype=np.float32),
         })
         self.logger.info(f"Observation space defined with shapes: "
-                         f"HF({model_cfg.hf_seq_len},{model_cfg.hf_feat_dim}), "
-                         f"MF({model_cfg.mf_seq_len},{model_cfg.mf_feat_dim}), "
-                         f"LF({model_cfg.lf_seq_len},{model_cfg.lf_feat_dim}), "
-                         f"Portfolio({model_cfg.portfolio_seq_len},{model_cfg.portfolio_feat_dim}), "
-                         f"Static(1,{model_cfg.static_feat_dim})")
+                         f"HF({model_cfg.feature_config.hf_seq_len},{model_cfg.feature_config.hf_feat_dim}), "
+                         f"MF({model_cfg.feature_config.mf_seq_len},{model_cfg.feature_config.mf_feat_dim}), "
+                         f"LF({model_cfg.feature_config.lf_seq_len},{model_cfg.feature_config.lf_feat_dim}), "
+                         f"Portfolio({model_cfg.feature_config.portfolio_seq_len},{model_cfg.feature_config.portfolio_feat_dim}), "
+                         f"Static(1,{model_cfg.feature_config.static_feat_dim})")
 
         # --- Episode State ---
         self.current_session_start_time_utc: Optional[datetime] = None
@@ -206,7 +206,7 @@ class TradingEnvironment(gym.Env):
         if hasattr(self.reward_calculator, 'reset'): self.reward_calculator.reset()
         if hasattr(self.feature_extractor, 'reset'): self.feature_extractor.reset()
 
-        if hasattr(self.market_simulator, 'raw_1d_bars') and self.market_simulator.raw_1d_bars is not None:
+        if hasattr(self.market_simulator, 'raw_1d_bars') and self.market_simulator.raw_1d_bars_df is not None:
             if hasattr(self.feature_extractor, 'update_daily_levels'):
                 self.feature_extractor.update_daily_levels(self.market_simulator.raw_1d_bars, current_sim_time)
         else:
