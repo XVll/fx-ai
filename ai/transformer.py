@@ -5,7 +5,7 @@ import torch.nn as nn
 from typing import Dict, Tuple, Optional, Union
 
 from config.config import ModelConfig
-from models.layers import (
+from ai.layers import (
     PositionalEncoding,
     TransformerEncoderLayer,
     TransformerEncoder,
@@ -252,7 +252,7 @@ class MultiBranchTransformer(nn.Module):
 
         return action_params, value
 
-    # In models/transformer.py - MultiBranchTransformer class
+    # In ai/transformer.py - MultiBranchTransformer class
     def get_action(
             self,
             state_dict: Dict[str, torch.Tensor],

@@ -12,7 +12,7 @@ import torch.nn.functional as nnf
 
 # Assuming these are your custom module imports
 from envs.trading_env import TradingEnvironment  # Your environment class
-from models.transformer import MultiBranchTransformer  # Your model class
+from ai.transformer import MultiBranchTransformer  # Your model class
 from agent.utils import ReplayBuffer, convert_state_dict_to_tensors  # From the rewritten utils
 from agent.callbacks import TrainingCallback  # Your callback base class
 
@@ -73,7 +73,7 @@ class PPOTrainer:
 
         # Output directories
         self.output_dir = output_dir
-        self.model_dir = os.path.join(output_dir, "models")
+        self.model_dir = os.path.join(output_dir, "ai")
         os.makedirs(self.model_dir, exist_ok=True)
 
         # Logging and W&B

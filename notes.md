@@ -39,7 +39,7 @@ python main.py wandb.enabled=true wandb.log_frequency.steps=10 wandb.log_model=t
 ### Comparing multiple models
 
 ```bash
-# Train several models with different configurations
+# Train several ai with different configurations
 python main.py wandb.enabled=true model=transformer_small
 python main.py wandb.enabled=true model=transformer_medium
 python main.py wandb.enabled=true model=transformer_large

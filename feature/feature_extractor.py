@@ -66,5 +66,5 @@ class FeatureExtractor:
 
     def _extract_static_features(self, current_state) -> np.ndarray:
         # Extract static features from the current state
-        features = np.zeros((1, self.static_feat_dim))
+        features = np.zeros((1, self.static_feat_dim)).flatten()
         return features

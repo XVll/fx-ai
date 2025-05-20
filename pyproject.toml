@@ -7,8 +7,9 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-train = "python main.py wandb.enabled=true"
-test = "python -m unittest tests.test_portfolio_simulator"
+backtest = "python run.py backtest --symbol MLGO --start-date 2025-03-27 --end-date 2025-03-27"
+train = "python run.py train --continue-training --symbol MLGO"
+quick = "python run.py train --quick-test --symbol MLGO"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
