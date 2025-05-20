@@ -2,8 +2,9 @@ import logging
 
 import torch
 import torch.nn as nn
-from typing import Dict, Tuple, List, Optional, Union
+from typing import Dict, Tuple, Optional, Union
 
+from config.config import ModelConfig
 from models.layers import (
     PositionalEncoding,
     TransformerEncoderLayer,
@@ -23,36 +24,8 @@ class MultiBranchTransformer(nn.Module):
 
     def __init__(
             self,
-            # Feature dimensions
-            hf_seq_len: int = 60,
-            hf_feat_dim: int = 19,
-            mf_seq_len: int = 30,
-            mf_feat_dim: int = 15,
-            lf_seq_len: int = 30,
-            lf_feat_dim: int = 10,
-            portfolio_seq_len: int = 5,
-            portfolio_feat_dim: int = 5,
-            static_feat_dim: int = 3,
-            feature_config: Optional[Dict[str, int]] = None,
+            model_config: ModelConfig,
 
-            # Model dimensions
-            d_model: int = 64,
-            d_fused: int = 256,
-
-            # Transformer parameters
-            hf_layers: int = 2,
-            mf_layers: int = 2,
-            lf_layers: int = 2,
-            hf_heads: int = 4,
-            mf_heads: int = 4,
-            lf_heads: int = 4,
-            portfolio_heads: int = 4,
-
-            # Output parameters
-            action_dim: Union[int, List[int], Tuple[int, ...]] = 1,
-            continuous_action: bool = True,
-
-            # Other parameters
             dropout: float = 0.1,
             device: Union[str, torch.device] = None,
 
@@ -72,95 +45,95 @@ class MultiBranchTransformer(nn.Module):
             self.device = device
 
         # Store continuous/discrete action selection
-        self.continuous_action = continuous_action
+        self.continuous_action = model_config.continuous_action
 
         # Handle action dimensions (support both single int and tuple/list)
-        if continuous_action:
-            if isinstance(action_dim, (list, tuple)):
-                # For continuous actions, just use the first dimension
-                self.action_dim = action_dim[0]
+        if model_config.continuous_action:
+            if isinstance(model_config.action_dim, (list, tuple)):
+                # For continuous actions, use the first dimension
+                self.action_dim = model_config.action_dim[0]
             else:
-                self.action_dim = action_dim
+                self.action_dim = model_config.action_dim
         else:
             # For discrete actions, we need to handle tuples
-            if isinstance(action_dim, (list, tuple)):
-                self.action_types = action_dim[0]
-                self.action_sizes = action_dim[1]
+            if isinstance(model_config.action_dim, (list, tuple)):
+                self.action_types = model_config.action_dim[0]
+                self.action_sizes = model_config.action_dim[1]
             else:
-                self.action_types = action_dim
+                self.action_types = model_config.action_dim
                 self.action_sizes = None
 
         # Store dimensions for reference
-        self.hf_seq_len = hf_seq_len
-        self.mf_seq_len = mf_seq_len
-        self.lf_seq_len = lf_seq_len
-        self.portfolio_seq_len = portfolio_seq_len
-        self.static_feat_dim = static_feat_dim
+        self.hf_seq_len = model_config.feature_config.hf_seq_len
+        self.mf_seq_len = model_config.feature_config.mf_seq_len
+        self.lf_seq_len = model_config.feature_config.lf_seq_len
+        self.portfolio_seq_len = model_config.feature_config.portfolio_seq_len
+        self.static_feat_dim = model_config.feature_config.static_feat_dim
 
         # Feature dimensions
-        self.hf_feat_dim = hf_feat_dim
-        self.mf_feat_dim = mf_feat_dim
-        self.lf_feat_dim = lf_feat_dim
-        self.portfolio_feat_dim = portfolio_feat_dim
+        self.hf_feat_dim = model_config.feature_config.hf_feat_dim
+        self.mf_feat_dim = model_config.feature_config.mf_feat_dim
+        self.lf_feat_dim = model_config.feature_config.lf_feat_dim
+        self.portfolio_feat_dim = model_config.feature_config.portfolio_feat_dim
 
         # HF Branch (High Frequency)
-        self.hf_proj = nn.Linear(hf_feat_dim, d_model)
-        self.hf_pos_enc = PositionalEncoding(d_model, dropout, max_len=hf_seq_len)
-        encoder_layer_hf = TransformerEncoderLayer(d_model, hf_heads, dim_feedforward=2 * d_model, dropout=dropout)
-        self.hf_encoder = TransformerEncoder(encoder_layer_hf, hf_layers)
+        self.hf_proj = nn.Linear(model_config.feature_config.hf_feat_dim, model_config.d_model)
+        self.hf_pos_enc = PositionalEncoding(model_config.d_model, dropout, max_len=model_config.feature_config.hf_seq_len)
+        encoder_layer_hf = TransformerEncoderLayer(model_config.d_model, model_config.hf_heads, dim_feedforward=2 * model_config.d_model, dropout=dropout)
+        self.hf_encoder = TransformerEncoder(encoder_layer_hf, model_config.hf_layers)
 
         # MF Branch (Medium Frequency)
-        self.mf_proj = nn.Linear(mf_feat_dim, d_model)
-        self.mf_pos_enc = PositionalEncoding(d_model, dropout, max_len=mf_seq_len)
-        encoder_layer_mf = TransformerEncoderLayer(d_model, mf_heads, dim_feedforward=2 * d_model, dropout=dropout)
-        self.mf_encoder = TransformerEncoder(encoder_layer_mf, mf_layers)
+        self.mf_proj = nn.Linear(model_config.feature_config.mf_feat_dim, model_config.d_model)
+        self.mf_pos_enc = PositionalEncoding(model_config.d_model, dropout, max_len=model_config.feature_config.mf_seq_len)
+        encoder_layer_mf = TransformerEncoderLayer(model_config.d_model, model_config.mf_heads, dim_feedforward=2 * model_config.d_model, dropout=dropout)
+        self.mf_encoder = TransformerEncoder(encoder_layer_mf, model_config.mf_layers)
 
         # LF Branch (Low Frequency)
-        self.lf_proj = nn.Linear(lf_feat_dim, d_model)
-        self.lf_pos_enc = PositionalEncoding(d_model, dropout, max_len=lf_seq_len)
-        encoder_layer_lf = TransformerEncoderLayer(d_model, lf_heads, dim_feedforward=2 * d_model, dropout=dropout)
-        self.lf_encoder = TransformerEncoder(encoder_layer_lf, lf_layers)
+        self.lf_proj = nn.Linear(model_config.feature_config.lf_feat_dim, model_config.d_model)
+        self.lf_pos_enc = PositionalEncoding(model_config.d_model, dropout, max_len=model_config.feature_config.lf_seq_len)
+        encoder_layer_lf = TransformerEncoderLayer(model_config.d_model, model_config.lf_heads, dim_feedforward=2 * model_config.d_model, dropout=dropout)
+        self.lf_encoder = TransformerEncoder(encoder_layer_lf, model_config.lf_layers)
 
         # Portfolio Branch (Static features)
-        self.portfolio_proj = nn.Linear(portfolio_feat_dim, d_model)
-        self.portfolio_pos_enc = PositionalEncoding(d_model, dropout, max_len=portfolio_seq_len)
-        encoder_layer_portfolio = TransformerEncoderLayer(d_model, portfolio_heads, dim_feedforward=2 * d_model, dropout=dropout)
-        self.portfolio_encoder = TransformerEncoder(encoder_layer_portfolio, portfolio_seq_len)
+        self.portfolio_proj = nn.Linear(model_config.feature_config.portfolio_feat_dim, model_config.d_model)
+        self.portfolio_pos_enc = PositionalEncoding(model_config.d_model, dropout, max_len=model_config.feature_config.portfolio_seq_len)
+        encoder_layer_portfolio = TransformerEncoderLayer(model_config.d_model, model_config.portfolio_heads, dim_feedforward=2 * model_config.d_model, dropout=dropout)
+        self.portfolio_encoder = TransformerEncoder(encoder_layer_portfolio, model_config.feature_config.portfolio_seq_len)
 
         # Static Branch (Position, S/R, etc.)
         self.static_encoder = nn.Sequential(
-            nn.Linear(static_feat_dim, d_model),
-            nn.LayerNorm(d_model),
+            nn.Linear(model_config.feature_config.static_feat_dim, model_config.d_model),
+            nn.LayerNorm(model_config.d_model),
             nn.GELU(),
-            nn.Linear(d_model, d_model),
-            nn.LayerNorm(d_model),
+            nn.Linear(model_config.d_model, model_config.d_model),
+            nn.LayerNorm(model_config.d_model),
             nn.GELU()
         )
 
         # Fusion Layer
-        self.fusion = AttentionFusion(d_model, 5, d_fused, 4)
+        self.fusion = AttentionFusion(model_config.d_model, 5, model_config.d_fused, 4)
 
         # Output layers - different depending on continuous vs. discrete
-        if continuous_action:
+        if model_config.continuous_action:
             # For continuous actions
-            self.actor_mean = nn.Linear(d_fused, self.action_dim)
+            self.actor_mean = nn.Linear(model_config.d_fused, self.action_dim)
             self.actor_log_std = nn.Parameter(torch.zeros(self.action_dim))
         else:
             # For discrete tuple actions
             if self.action_sizes is not None:
                 # Separate outputs for action type and size
-                self.action_type_head = nn.Linear(d_fused, self.action_types)
-                self.action_size_head = nn.Linear(d_fused, self.action_sizes)
+                self.action_type_head = nn.Linear(model_config.d_fused, self.action_types)
+                self.action_size_head = nn.Linear(model_config.d_fused, self.action_sizes)
             else:
                 # Single discrete output
-                self.action_head = nn.Linear(d_fused, self.action_types)
+                self.action_head = nn.Linear(model_config.d_fused, self.action_types)
 
         # Critic Network (value function)
         self.critic = nn.Sequential(
-            nn.Linear(d_fused, d_fused // 2),
-            nn.LayerNorm(d_fused // 2),
+            nn.Linear(model_config.d_fused, model_config.d_fused // 2),
+            nn.LayerNorm(model_config.d_fused // 2),
             nn.GELU(),
-            nn.Linear(d_fused // 2, 1)
+            nn.Linear(model_config.d_fused // 2, 1)
         )
 
         self.to(self.device)
@@ -194,7 +167,7 @@ class MultiBranchTransformer(nn.Module):
                 nan_count = torch.isnan(tensor).sum().item()
                 self.logger.warning(f"NaN detected in input tensor '{key}': {nan_count} values")
 
-        # Extract features from dict, ensuring their on the right device
+        # Extract features from dict, ensuring they're on the right device
         hf_features = state_dict['hf'].to(self.device)
         mf_features = state_dict['mf'].to(self.device)
         lf_features = state_dict['lf'].to(self.device)

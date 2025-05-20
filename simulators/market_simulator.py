@@ -53,7 +53,7 @@ class MarketSimulator:
         self.mode = mode
         self.np_random = np_random or np.random.default_rng()
 
-        # Use a consistent timezone representation (US Eastern Time for market hours)
+        # Use a consistent timezone representation
         self.market_tz = ZoneInfo(MARKET_HOURS["TIMEZONE"])
         self.utc_tz = ZoneInfo("UTC")
 
@@ -74,6 +74,10 @@ class MarketSimulator:
         # Data storage
         self._precomputed_states = {}
         self._agent_timeline_utc = []
+
+        # Bar timelines - complete expected bar times, even if no data
+        self._one_min_bar_timeline = []
+        self._five_min_bar_timeline = []
 
         # Current state tracking
         self.current_timestamp_utc = None
@@ -101,10 +105,10 @@ class MarketSimulator:
     def _ensure_utc_datetime(self, dt_input: Optional[Union[str, datetime]]) -> Optional[datetime]:
         """
         Convert input to a UTC datetime object with consistent handling.
-        
+
         Args:
             dt_input: Input datetime (string, datetime with/without timezone)
-            
+
         Returns:
             Datetime object in UTC timezone, or None if input is None
         """
@@ -183,10 +187,10 @@ class MarketSimulator:
     def _find_previous_valid_trading_day(self, reference_date: date) -> Optional[date]:
         """
         Find the most recent valid trading day before the reference date.
-        
+
         Args:
             reference_date: The date to start searching from
-            
+
         Returns:
             The most recent valid trading day or None if not found
         """
@@ -213,7 +217,7 @@ class MarketSimulator:
     def _calculate_data_loading_ranges(self) -> Dict[str, Tuple[datetime, datetime]]:
         """
         Calculate data loading ranges for both current day and previous day.
-        
+
         Returns:
             Dictionary with data types as keys and (start_time, end_time) as values
         """
@@ -297,10 +301,10 @@ class MarketSimulator:
     def _calculate_single_day_loading_ranges(self, session_date: date) -> Dict[str, Tuple[datetime, datetime]]:
         """
         Calculate data loading ranges for just the current day.
-        
+
         Args:
             session_date: The current session date
-            
+
         Returns:
             Dictionary with data types as keys and (start_time, end_time) as values
         """
@@ -419,8 +423,8 @@ class MarketSimulator:
 
     def _build_efficient_timeline(self):
         """
-        Build a uniform timeline from 4:00 AM to 8:00 PM ET with 1-second intervals.
-        Only includes the current session date.
+        Build uniform timelines for 1-second, 1-minute, and 5-minute bars
+        for the entire session (4:00 AM to 8:00 PM ET).
         """
         if not self.session_start_utc or not self.session_end_utc:
             self.logger.error("Session start/end times not defined for timeline generation")
@@ -445,30 +449,51 @@ class MarketSimulator:
             tzinfo=self.market_tz
         ).astimezone(self.utc_tz)
 
-        # Create a uniform timeline with 1-second intervals
-        timeline = []
+        # Create 1-second timeline
+        self._agent_timeline_utc = []
         current_time = timeline_start
 
         while current_time <= timeline_end:
-            timeline.append(current_time)
+            self._agent_timeline_utc.append(current_time)
             current_time += timedelta(seconds=1)
 
-        self._agent_timeline_utc = timeline
+        # Create 1-minute bar timeline (every minute on the minute)
+        self._one_min_bar_timeline = []
+        current_time = timeline_start.replace(second=0, microsecond=0)
+
+        while current_time <= timeline_end:
+            self._one_min_bar_timeline.append(current_time)
+            current_time += timedelta(minutes=1)
+
+        # Create 5-minute bar timeline (every 5 minutes)
+        self._five_min_bar_timeline = []
+        # Floor to the nearest 5-minute mark
+        minute = timeline_start.minute
+        floored_minute = (minute // 5) * 5
+        current_time = timeline_start.replace(minute=floored_minute, second=0, microsecond=0)
+
+        while current_time <= timeline_end:
+            self._five_min_bar_timeline.append(current_time)
+            current_time += timedelta(minutes=5)
 
         self.logger.info(
-            f"Agent timeline created: {len(timeline)} seconds from "
-            f"{timeline[0] if timeline else 'N/A'} to "
-            f"{timeline[-1] if timeline else 'N/A'}"
+            f"Agent timeline created: {len(self._agent_timeline_utc)} seconds from "
+            f"{self._agent_timeline_utc[0] if self._agent_timeline_utc else 'N/A'} to "
+            f"{self._agent_timeline_utc[-1] if self._agent_timeline_utc else 'N/A'}"
+        )
+        self.logger.info(
+            f"Created {len(self._one_min_bar_timeline)} 1-minute bars and "
+            f"{len(self._five_min_bar_timeline)} 5-minute bars timelines"
         )
 
     def _prepare_dataframe(self, df: Optional[pd.DataFrame], required_cols: List[str]) -> pd.DataFrame:
         """
         Prepare DataFrame for use in simulation with consistent formatting and timezone.
-        
+
         Args:
             df: Input DataFrame (can be None)
             required_cols: List of columns that should be present
-            
+
         Returns:
             Properly formatted DataFrame with UTC timezone and required columns
         """
@@ -512,7 +537,7 @@ class MarketSimulator:
     def get_previous_day_data(self) -> Dict[str, Any]:
         """
         Get key data points from the previous trading day.
-        
+
         Returns:
             Dictionary with previous day's OHLC, VWAP, and other relevant data
         """
@@ -563,7 +588,7 @@ class MarketSimulator:
     def _calculate_prev_day_vwap(self) -> Optional[float]:
         """
         Calculate VWAP for the previous day using minute bars if available.
-        
+
         Returns:
             VWAP value or None if can't be calculated
         """
@@ -646,10 +671,198 @@ class MarketSimulator:
 
         return last_price, last_bid, last_ask, last_bid_size, last_ask_size
 
+    def _create_synthetic_bar(self,
+                              timestamp: datetime,
+                              prev_bar: Optional[Dict[str, Any]] = None,
+                              prev_price: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Create a synthetic bar when no actual data is available.
+
+        Args:
+            timestamp: Bar timestamp
+            prev_bar: Previous bar values if available
+            prev_price: Previous price if no bar is available
+
+        Returns:
+            Dictionary with synthetic bar data
+        """
+        # Default values
+        bar = {
+            'timestamp': timestamp,
+            'open': None,
+            'high': None,
+            'low': None,
+            'close': None,
+            'volume': 0.0  # No volume for synthetic bars
+        }
+
+        # Use previous bar if available
+        if prev_bar is not None:
+            bar['open'] = prev_bar.get('close')
+            bar['high'] = prev_bar.get('close')
+            bar['low'] = prev_bar.get('close')
+            bar['close'] = prev_bar.get('close')
+            return bar
+
+        # Use previous price if available
+        if prev_price is not None:
+            bar['open'] = prev_price
+            bar['high'] = prev_price
+            bar['low'] = prev_price
+            bar['close'] = prev_price
+            return bar
+
+        # If all else fails, use prev day close if available
+        if self.prev_day_close is not None:
+            bar['open'] = self.prev_day_close
+            bar['high'] = self.prev_day_close
+            bar['low'] = self.prev_day_close
+            bar['close'] = self.prev_day_close
+
+        return bar
+
+    def _create_complete_bar_dictionaries(self):
+        """
+        Create dictionaries of bars for all expected bar timestamps,
+        filling in gaps with synthetic bars.
+        """
+        one_min_bars_dict = {}
+        five_min_bars_dict = {}
+
+        # Create full dictionaries with actual data and synthetic fills
+
+        # Process 1-minute bars
+        prev_1m_bar = None
+
+        # Initialize with actual data from raw bars
+        if not self.raw_1m_bars_df.empty:
+            # Create dict from actual data
+            for idx, row in self.raw_1m_bars_df.iterrows():
+                # Store using the exact same timestamp objects as in the timeline
+                # to avoid floating-point precision issues
+                closest_timeline_ts = self._find_closest_timeline_ts(idx, self._one_min_bar_timeline)
+
+                if closest_timeline_ts:
+                    one_min_bars_dict[closest_timeline_ts] = {
+                        'timestamp': closest_timeline_ts,
+                        'open': row.get('open'),
+                        'high': row.get('high'),
+                        'low': row.get('low'),
+                        'close': row.get('close'),
+                        'volume': row.get('volume', 0),
+                        'is_synthetic': False
+                    }
+                    prev_1m_bar = one_min_bars_dict[closest_timeline_ts]
+                else:
+                    # If no close match in timeline, use original timestamp
+                    one_min_bars_dict[idx] = {
+                        'timestamp': idx,
+                        'open': row.get('open'),
+                        'high': row.get('high'),
+                        'low': row.get('low'),
+                        'close': row.get('close'),
+                        'volume': row.get('volume', 0),
+                        'is_synthetic': False
+                    }
+                    prev_1m_bar = one_min_bars_dict[idx]
+
+        # Fill in missing 1-minute bars using timeline
+        for bar_time in self._one_min_bar_timeline:
+            if bar_time not in one_min_bars_dict:
+                synthetic_bar = self._create_synthetic_bar(
+                    timestamp=bar_time,
+                    prev_bar=prev_1m_bar,
+                    prev_price=self.prev_day_close
+                )
+                synthetic_bar['is_synthetic'] = True
+                one_min_bars_dict[bar_time] = synthetic_bar
+                prev_1m_bar = synthetic_bar
+
+        # Process 5-minute bars
+        prev_5m_bar = None
+
+        # Initialize with actual data from raw bars
+        if not self.raw_5m_bars_df.empty:
+            # Create dict from actual data
+            for idx, row in self.raw_5m_bars_df.iterrows():
+                # Store using the exact same timestamp objects as in the timeline
+                closest_timeline_ts = self._find_closest_timeline_ts(idx, self._five_min_bar_timeline)
+
+                if closest_timeline_ts:
+                    five_min_bars_dict[closest_timeline_ts] = {
+                        'timestamp': closest_timeline_ts,
+                        'open': row.get('open'),
+                        'high': row.get('high'),
+                        'low': row.get('low'),
+                        'close': row.get('close'),
+                        'volume': row.get('volume', 0),
+                        'is_synthetic': False
+                    }
+                    prev_5m_bar = five_min_bars_dict[closest_timeline_ts]
+                else:
+                    # If no close match in timeline, use original timestamp
+                    five_min_bars_dict[idx] = {
+                        'timestamp': idx,
+                        'open': row.get('open'),
+                        'high': row.get('high'),
+                        'low': row.get('low'),
+                        'close': row.get('close'),
+                        'volume': row.get('volume', 0),
+                        'is_synthetic': False
+                    }
+                    prev_5m_bar = five_min_bars_dict[idx]
+
+        # Fill in missing 5-minute bars using timeline
+        for bar_time in self._five_min_bar_timeline:
+            if bar_time not in five_min_bars_dict:
+                synthetic_bar = self._create_synthetic_bar(
+                    timestamp=bar_time,
+                    prev_bar=prev_5m_bar,
+                    prev_price=self.prev_day_close
+                )
+                synthetic_bar['is_synthetic'] = True
+                five_min_bars_dict[bar_time] = synthetic_bar
+                prev_5m_bar = synthetic_bar
+
+        return one_min_bars_dict, five_min_bars_dict
+
+    def _find_closest_timeline_ts(self, timestamp, timeline, max_diff_seconds=5):
+        """
+        Find the closest timestamp in a timeline.
+
+        Args:
+            timestamp: The timestamp to find a match for
+            timeline: List of timeline timestamps
+            max_diff_seconds: Maximum difference allowed in seconds
+
+        Returns:
+            The closest matching timestamp or None if no close match
+        """
+        if not timeline:
+            return None
+
+        # Ensure timestamp is in UTC
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=self.utc_tz)
+        elif timestamp.tzinfo != self.utc_tz:
+            timestamp = timestamp.astimezone(self.utc_tz)
+
+        # Find closest match
+        closest_ts = None
+        min_diff = timedelta(seconds=max_diff_seconds)  # Maximum allowed difference
+
+        for ts in timeline:
+            diff = abs(ts - timestamp)
+            if diff < min_diff:
+                min_diff = diff
+                closest_ts = ts
+
+        return closest_ts
+
     def _precompute_timeline_states(self):
         """
         Precompute market states for every second in the agent's timeline.
-        
+
         This builds states for all times in the agent's timeline using data
         from both the current day and previous day as needed.
         """
@@ -658,6 +871,9 @@ class MarketSimulator:
         if not self._agent_timeline_utc:
             self.logger.error("Agent timeline is empty. Cannot precompute states.")
             return
+
+        # Create complete bar dictionaries (with synthetic fills for missing bars)
+        one_min_bars_dict, five_min_bars_dict = self._create_complete_bar_dictionaries()
 
         # Initialize LOCF (Last Observation Carried Forward) tracking
         last_price = None
@@ -675,36 +891,14 @@ class MarketSimulator:
         prev_day_data = self.get_previous_day_data()
         prev_day_close = prev_day_data.get('close')
 
-        # Initialize rolling window data structures
-        rolling_hf_window = deque(maxlen=self.hf_window_size)
-
-        # Convert bars to dictionaries for O(1) lookup by time
-        one_min_bars_dict = {}
-        five_min_bars_dict = {}
-
-        # Process 1-minute bars
-        if not self.raw_1m_bars_df.empty:
-            for idx, row in self.raw_1m_bars_df.iterrows():
-                one_min_bars_dict[idx] = {
-                    'timestamp': idx,
-                    'open': row.get('open'),
-                    'high': row.get('high'),
-                    'low': row.get('low'),
-                    'close': row.get('close'),
-                    'volume': row.get('volume', 0)
-                }
-
-        # Process 5-minute bars
-        if not self.raw_5m_bars_df.empty:
-            for idx, row in self.raw_5m_bars_df.iterrows():
-                five_min_bars_dict[idx] = {
-                    'timestamp': idx,
-                    'open': row.get('open'),
-                    'high': row.get('high'),
-                    'low': row.get('low'),
-                    'close': row.get('close'),
-                    'volume': row.get('volume', 0)
-                }
+        # Initialize rolling window data structures for high-frequency data
+        empty_hf_entry = {
+            'timestamp': None,
+            'trades': [],
+            'quotes': [],
+            '1s_bar': None
+        }
+        rolling_hf_window = deque([empty_hf_entry] * self.hf_window_size, maxlen=self.hf_window_size)
 
         # Try to initialize basic LOCF values from first data
         if prev_day_close is not None:
@@ -715,7 +909,9 @@ class MarketSimulator:
             self.logger.debug(f"Using previous day close for initial price: {last_price}")
         else:
             # Try to initialize from first available data
-            self._initialize_locf_values(last_price, last_bid, last_ask, last_bid_size, last_ask_size)
+            last_price, last_bid, last_ask, last_bid_size, last_ask_size = self._initialize_locf_values(
+                last_price, last_bid, last_ask, last_bid_size, last_ask_size
+            )
 
         # Process each second in the agent's timeline
         total_timeline_len = len(self._agent_timeline_utc)
@@ -733,7 +929,7 @@ class MarketSimulator:
                 intraday_high = None
                 intraday_low = None
 
-                # If we're at the start of pre-market and have previous day data, 
+                # If we're at the start of pre-market and have previous day data,
                 # use it for initial values
                 if current_market_dt.time() <= MARKET_HOURS["PREMARKET_START"]:
                     if prev_day_close is not None:
@@ -798,6 +994,18 @@ class MarketSimulator:
 
                 if 'ask_size' in latest_quote and pd.notna(latest_quote['ask_size']):
                     last_ask_size = int(latest_quote['ask_size'])
+
+            # Create 1-second bar if none exists (carryforward from last known price)
+            if current_1s_bar is None and last_price is not None:
+                current_1s_bar = {
+                    'timestamp': current_ts,
+                    'open': last_price,
+                    'high': last_price,
+                    'low': last_price,
+                    'close': last_price,
+                    'volume': 0.0,
+                    'is_synthetic': True
+                }
 
             # Update rolling window
             window_entry = {
@@ -881,7 +1089,18 @@ class MarketSimulator:
         Returns:
             List of bar dictionaries in chronological order
         """
-        window = []
+        # Collect bars for the window
+        collected_bars = []
+
+        # Get the appropriate bar timeline
+        if interval_minutes == 1:
+            bar_timeline = self._one_min_bar_timeline
+        else:  # 5-minute
+            bar_timeline = self._five_min_bar_timeline
+
+        if not bar_timeline:
+            self.logger.error(f"No {interval_minutes}-minute bar timeline available")
+            return []
 
         # Calculate the bar start time for current timestamp
         # For 1-minute: floor to the minute
@@ -890,33 +1109,72 @@ class MarketSimulator:
 
         if interval_minutes == 1:
             # Simple minute flooring
-            bar_start = current_market_time.replace(second=0, microsecond=0)
+            bar_time = current_market_time.replace(second=0, microsecond=0)
         else:  # 5-minute
             # Floor to the nearest 5-minute mark
             minute = current_market_time.minute
             floored_minute = (minute // interval_minutes) * interval_minutes
-            bar_start = current_market_time.replace(minute=floored_minute, second=0, microsecond=0)
+            bar_time = current_market_time.replace(minute=floored_minute, second=0, microsecond=0)
 
-        # Convert back to UTC for dictionary lookup
-        bar_start_utc = bar_start.astimezone(self.utc_tz)
+        # Convert back to UTC for timeline comparison
+        bar_time_utc = bar_time.astimezone(self.utc_tz)
 
-        # Collect bars for the window
-        collected_bars = []
+        # Find the index of the current bar in the timeline
+        try:
+            current_bar_idx = bar_timeline.index(bar_time_utc)
+        except ValueError:
+            # If not found (shouldn't happen with complete timelines), find closest
+            for i, t in enumerate(bar_timeline):
+                if t >= bar_time_utc:
+                    current_bar_idx = i
+                    break
+            else:
+                current_bar_idx = len(bar_timeline) - 1
 
-        # Start with the current or most recent bar
-        current_bar_ts = bar_start_utc
+        # Get bars from timeline
+        start_idx = max(0, current_bar_idx - window_size + 1)
+        end_idx = current_bar_idx + 1  # exclusive end
 
-        # Look back through the required number of bars
-        for _ in range(window_size):
-            # Check if this bar exists in the dictionary
-            if current_bar_ts in bars_dict:
-                collected_bars.append(bars_dict[current_bar_ts])
+        for timeline_ts in bar_timeline[start_idx:end_idx]:
+            # Look for exact timestamp match first
+            if timeline_ts in bars_dict:
+                collected_bars.append(bars_dict[timeline_ts])
+                continue
 
-            # Move to previous bar
-            current_bar_ts -= timedelta(minutes=interval_minutes)
+            # If exact match not found, find best match
+            # (this should never happen with our implementation, but just to be safe)
+            best_match = None
+            min_diff = timedelta(minutes=1)  # Maximum allowed difference
 
-        # Return bars in chronological order (oldest first)
-        return list(reversed(collected_bars))
+            for bar_ts in bars_dict:
+                diff = abs(bar_ts - timeline_ts)
+                if diff < min_diff:
+                    min_diff = diff
+                    best_match = bar_ts
+
+            if best_match:
+                collected_bars.append(bars_dict[best_match])
+            else:
+                # Create synthetic bar if needed
+                if collected_bars:
+                    # Use the last bar's close
+                    prev_bar = collected_bars[-1]
+                    synthetic_bar = self._create_synthetic_bar(
+                        timestamp=timeline_ts,
+                        prev_bar=prev_bar
+                    )
+                else:
+                    # Use previous day close if available
+                    synthetic_bar = self._create_synthetic_bar(
+                        timestamp=timeline_ts,
+                        prev_price=self.prev_day_close
+                    )
+
+                synthetic_bar['is_synthetic'] = True
+                collected_bars.append(synthetic_bar)
+
+        # Return in chronological order (should already be in order)
+        return collected_bars
 
     def _aggregate_trades_to_bar(self, trades: List[Dict], bar_end: datetime) -> Optional[Dict]:
         """
@@ -963,7 +1221,8 @@ class MarketSimulator:
                 'low': min(prices),
                 'close': prices[-1],
                 'volume': total_volume,
-                'vwap': vwap
+                'vwap': vwap,
+                'is_synthetic': False
             }
         except Exception as e:
             self.logger.warning(f"Error aggregating trades to bar: {e}")
@@ -1103,7 +1362,7 @@ class MarketSimulator:
         if options.get('random_start', False):
             # Set a minimum number of seconds into the day to ensure enough lookback data
             # For example, at least 1 hour (3600 seconds) after premarket start
-            min_offset = self.hf_window_size  # At least enough for high-frequency features
+            min_offset = max(self.hf_window_size, self.mf_window_size, self.lf_window_size)
 
             if len(self._agent_timeline_utc) > (min_offset + 1):
                 self._current_agent_time_idx = self.np_random.integers(
@@ -1115,7 +1374,7 @@ class MarketSimulator:
                 self._current_agent_time_idx = min(min_offset, len(self._agent_timeline_utc) - 1)
         else:
             # Apply any specified offset, with minimum to ensure enough lookback data
-            min_offset = self.hf_window_size  # Use high-frequency window size as minimum
+            min_offset = max(self.hf_window_size, self.mf_window_size, self.lf_window_size)
             offset = max(min_offset, options.get('start_time_offset_seconds', min_offset))
 
             self._current_agent_time_idx = min(offset, len(self._agent_timeline_utc) - 1)
@@ -1134,6 +1393,8 @@ class MarketSimulator:
         # Clear large data structures
         self._precomputed_states.clear()
         self._agent_timeline_utc.clear()
+        self._one_min_bar_timeline.clear()
+        self._five_min_bar_timeline.clear()
 
         # Delete DataFrames to free memory
         del self.raw_trades_df
