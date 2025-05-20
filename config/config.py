@@ -155,7 +155,7 @@ class EarlyStoppingConfig:
 class CallbacksConfig:
     save_freq: int = 5
     log_freq: int = 10
-    save_best_only: bool = False  # If true, only save models that improve mean reward
+    save_best_only: bool = False  # If true, only save ai that improve mean reward
     early_stopping: EarlyStoppingConfig = field(default_factory=EarlyStoppingConfig)
 
 

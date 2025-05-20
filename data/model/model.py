@@ -1,4 +1,4 @@
-# data/models/data_models.py
+# data/ai/data_models.py
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional

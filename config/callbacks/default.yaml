@@ -3,7 +3,7 @@
 
 save_freq: 5                 # Save model every N updates
 log_freq: 10                 # Log every N steps
-save_best_only: false        # If true, only save models that improve mean reward
+save_best_only: false        # If true, only save ai that improve mean reward
 
 # Early stopping callback
 early_stopping:

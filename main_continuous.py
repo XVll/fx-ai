@@ -1,15 +1,18 @@
 #!/usr/bin/env python
-# main.py
+# main_continuous.py
 import os
 import sys
 import hydra
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import  OmegaConf
+from omegaconf import OmegaConf
 import logging
 import torch
 import wandb
 from datetime import datetime
+import argparse
 
+from agent.continous_training_callback import ContinuousTrainingCallback
+from ai.transformer import MultiBranchTransformer
 # Import custom modules
 from config.config import Config
 from data.data_manager import DataManager
@@ -22,15 +25,15 @@ from data.provider.dummy_data_provider import DummyDataProvider
 from envs.trading_env import TradingEnvironment
 from envs.wrappers.observation_wrapper import NormalizeDictObservation
 
-from ai.transformer import MultiBranchTransformer
 from agent.ppo_agent import PPOTrainer
 from agent.callbacks import ModelCheckpointCallback, EarlyStoppingCallback
 from agent.wandb_callback import WandbCallback
+from utils.medel_manager import ModelManager
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler(f"trading_ai_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
@@ -102,10 +105,65 @@ def create_data_provider(config: Config):
             'base_price': 5.00,  # Start around $5
             'volatility': 0.05,  # Base volatility
             'squeeze_magnitude': 0.30,  # 30% average squeeze magnitude
-            'symbols': ['MLGO']  # Symbol t
+            'symbols': ['MLGO']  # Symbol to use
         })
     else:
         raise ValueError(f"Unknown provider type: {data_cfg.provider_type}")
+
+
+def parse_args():
+    """Parse command line arguments for easier IDE integration."""
+    parser = argparse.ArgumentParser(description="Trading AI Continuous Training")
+
+    # Main operation mode
+    parser.add_argument("--mode", type=str, choices=["train", "test", "backtest", "sweep"],
+                        default="train", help="Operation mode")
+
+    # Continuous training options
+    parser.add_argument("--continue-training", action="store_true",
+                        help="Continue training from previous best model")
+    parser.add_argument("--best-models-dir", type=str, default="./best_models",
+                        help="Directory for storing best models")
+
+    # Symbol and data range
+    parser.add_argument("--symbol", type=str, help="Trading symbol")
+    parser.add_argument("--start-date", type=str, help="Start date for data")
+    parser.add_argument("--end-date", type=str, help="End date for data")
+
+    # Config overrides
+    parser.add_argument("--config", type=str, help="Path to custom config YAML")
+    parser.add_argument("--quick-test", action="store_true", help="Use quick test settings")
+
+    # Convert to Hydra-compatible args (to be added to sys.argv)
+    args, unknown = parser.parse_known_args()
+
+    # Build hydra args from parsed args
+    hydra_args = []
+
+    if args.mode == "train" and args.continue_training:
+        hydra_args.append("training=continuous")
+
+    if args.quick_test:
+        hydra_args.append("quick_test=true")
+
+    if args.symbol:
+        hydra_args.append(f"data.symbol={args.symbol}")
+
+    if args.start_date:
+        hydra_args.append(f"data.start_date={args.start_date}")
+
+    if args.end_date:
+        hydra_args.append(f"data.end_date={args.end_date}")
+
+    if args.best_models_dir:
+        hydra_args.append(f"training.best_models_dir={args.best_models_dir}")
+
+    if args.config:
+        hydra_args.append(f"--config-path={os.path.dirname(args.config)}")
+        hydra_args.append(f"--config-name={os.path.basename(args.config).replace('.yaml', '')}")
+
+    # Return parsed args and hydra-compatible args
+    return args, hydra_args
 
 
 @hydra.main(version_base="1.2", config_path="config", config_name="config")
@@ -122,7 +180,7 @@ def run_training(cfg: Config):
 
     # Get output directory from Hydra
     output_dir = HydraConfig.get().runtime.output_dir
-    model_dir = os.path.join(output_dir, "ai")
+    model_dir = os.path.join(output_dir, "models")
     os.makedirs(model_dir, exist_ok=True)
 
     # Save the config for reference
@@ -132,6 +190,14 @@ def run_training(cfg: Config):
 
     log.info(f"Training run initialized in directory: {output_dir}")
     log.info(f"Configuration saved to: {config_path}")
+
+    # Check if we're in continuous training mode
+    continuous_mode = getattr(config.training, 'enabled', False)
+    load_best_model = getattr(config.training, 'load_best_model', False) if continuous_mode else False
+    best_models_dir = getattr(config.training, 'best_models_dir', "./best_models")
+
+    if continuous_mode:
+        log.info(f"Continuous training mode enabled. Will use/save best models in: {best_models_dir}")
 
     # Initialize W&B if enabled
     if config.wandb.enabled:
@@ -156,12 +222,19 @@ def run_training(cfg: Config):
 
         # Get symbol and date range
         symbol = config.data.symbol
-        #start_date = config.data.start_date
-        #end_date = config.data.end_date
-        # 27.03.2025 premarket start
-        start_date = "2025-03-27T08:00:00Z"
-        # 27.03.2025 post market end
-        end_date = "2025-03-27T20:00:00Z"
+
+        # Set trading dates (use specific dates for reproducibility)
+        start_date = config.data.start_date
+        end_date = config.data.end_date
+
+        # Initialize model manager for continuous training support
+        model_manager = ModelManager(
+            base_dir=model_dir,
+            best_models_dir=best_models_dir,
+            model_prefix=symbol,
+            max_best_models=getattr(config.training, 'max_best_models', 5),
+            symbol=symbol
+        )
 
         # Create environment
         log.info(f"Creating trading environment for {symbol} from {start_date} to {end_date}")
@@ -194,11 +267,40 @@ def run_training(cfg: Config):
         obs, info = env.reset()
 
         try:
-            model = MultiBranchTransformer(**model_config, device=device, logger=log.getChild("Transformer"))
+            model = MultiBranchTransformer(model_config, device=device, logger=log.getChild("Transformer"))
             log.info(f"Model created successfully with config: {model_config}")
         except Exception as e:
             log.error(f"Error creating model: {e}")
             raise
+
+        # For continuous training, load the best model if available
+        loaded_metadata = {}
+        if continuous_mode and load_best_model:
+            best_model_info = model_manager.find_best_model()
+            if best_model_info:
+                log.info(f"Loading best model for continuous training: {best_model_info['path']}")
+
+                # Initialize optimizer before loading
+                # Extract training parameters from config for optimizer
+                training_params = {
+                    "lr": config.training.lr,
+                    "max_grad_norm": config.training.max_grad_norm,
+                }
+
+                # Create a temporary optimizer for loading
+                optimizer = torch.optim.Adam(model.parameters(), lr=training_params["lr"])
+
+                # Load the model weights and state
+                model, training_state = model_manager.load_model(model, optimizer, best_model_info['path'])
+                loaded_metadata = training_state.get('metadata', {})
+
+                log.info(f"Loaded model from {best_model_info['path']}")
+                log.info(f"Training state loaded: "
+                         f"step={training_state.get('global_step', 0)}, "
+                         f"episode={training_state.get('global_episode', 0)}, "
+                         f"update={training_state.get('global_update', 0)}")
+            else:
+                log.info("No previous model found for continuous training. Starting fresh.")
 
         # Set up training callbacks
         log.info("Setting up training callbacks")
@@ -206,7 +308,7 @@ def run_training(cfg: Config):
             ModelCheckpointCallback(
                 save_dir=model_dir,
                 save_freq=config.callbacks.save_freq,
-                prefix=config.data.symbol,
+                prefix=symbol,
                 save_best_only=config.callbacks.save_best_only,
             ),
         ]
@@ -237,8 +339,26 @@ def run_training(cfg: Config):
                 log.error(f"Failed to initialize W&B callback: {e}")
                 log.info("Continuing without W&B callback...")
 
-        # Create trainer
-        log.info("Setting up PPO trainer")
+        # Add continuous training callback if in continuous mode
+        if continuous_mode:
+            try:
+                # Get continuous training settings
+                checkpoint_sync_frequency = getattr(config.training, 'checkpoint_sync_frequency', 5)
+                lr_annealing = getattr(config.training, 'lr_annealing', {})
+
+                # Create the callback
+                continuous_callback = ContinuousTrainingCallback(
+                    model_manager=model_manager,
+                    reward_metric="mean_reward",
+                    checkpoint_sync_frequency=checkpoint_sync_frequency,
+                    lr_annealing=lr_annealing,
+                    load_metadata=loaded_metadata
+                )
+                callbacks.append(continuous_callback)
+                log.info("Continuous training callback added")
+            except Exception as e:
+                log.error(f"Failed to initialize continuous training callback: {e}")
+                log.info("Continuing without continuous training callback...")
 
         # Extract training parameters from config
         training_params = {
@@ -256,6 +376,7 @@ def run_training(cfg: Config):
 
         log.info(f"Training parameters: {training_params}")
 
+        # Create trainer
         trainer = PPOTrainer(
             env=env,
             model=model,
@@ -267,16 +388,24 @@ def run_training(cfg: Config):
             **training_params
         )
 
-        global_best_model_dir = os.path.join(os.getcwd(), config.training.best_model_path)
-        global_best_model_path = os.path.join(global_best_model_dir, f"{config.data.symbol}_best_model.pt")
-
         # Train the model
-        total_steps = config.training.total_updates * config.training.buffer_size
+        total_updates = config.training.total_updates
+        total_steps = total_updates * config.training.buffer_size
         log.info(f"Starting training for approximately {total_steps} steps "
-                 f"({config.training.total_updates} updates)")
+                 f"({total_updates} updates)")
+
+        # Evaluate the model before training if in continuous mode
+        if continuous_mode and getattr(config.training, 'startup_evaluation', False) and load_best_model:
+            log.info("Performing initial evaluation...")
+            eval_stats = trainer.evaluate(n_episodes=5)
+            log.info(f"Initial evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}")
+
+            # Log to W&B if enabled
+            if config.wandb.enabled and wandb.run:
+                wandb.log({"initial_eval": eval_stats})
 
         try:
-            training_stats = trainer.train(config.training.total_updates)
+            training_stats = trainer.train(total_updates)
 
             # Log final statistics
             log.info("Training completed")
@@ -287,21 +416,20 @@ def run_training(cfg: Config):
             if 'best_model_path' in training_stats:
                 log.info(f"Best model saved to: {training_stats['best_model_path']}")
 
-            # Evaluate the best model if requested
-            if config.get('evaluate_after_training', True):
-                log.info("Evaluating best model")
-                # Load the best model
-                best_model_path = training_stats.get('best_model_path')
-                if best_model_path and os.path.exists(best_model_path):
-                    trainer.load_model(best_model_path)
-                    eval_stats = trainer.evaluate(n_episodes=10)
-                    log.info(f"Evaluation results: {eval_stats}")
+            # Evaluate the best model
+            log.info("Evaluating best model")
+            # Load the best model if available
+            best_model_info = model_manager.find_best_model()
+            if best_model_info:
+                model, _ = model_manager.load_model(model, None, best_model_info['path'])
+                log.info(f"Loaded best model for evaluation: {best_model_info['path']}")
 
-                    # Log to W&B if enabled
-                    if config.wandb.enabled and wandb.run:
-                        wandb.log({"final_eval": eval_stats})
-                else:
-                    log.warning("Best model not found, skipping evaluation")
+            eval_stats = trainer.evaluate(n_episodes=10)
+            log.info(f"Evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}")
+
+            # Log to W&B if enabled
+            if config.wandb.enabled and wandb.run:
+                wandb.log({"final_eval": eval_stats})
 
             return training_stats
 
@@ -311,6 +439,17 @@ def run_training(cfg: Config):
             interrupted_model_path = os.path.join(model_dir, "interrupted_model.pt")
             trainer.save_model(interrupted_model_path)
             log.info(f"Saved interrupted model to: {interrupted_model_path}")
+
+            # Try to save to best_models as well for continuity
+            if continuous_mode:
+                try:
+                    model_manager.save_best_model(
+                        interrupted_model_path,
+                        {"interrupted": True, "timestamp": datetime.now().timestamp()},
+                        -9999.0  # Low priority for interrupted models
+                    )
+                except Exception as e:
+                    log.warning(f"Failed to save interrupted model to best_models: {e}")
 
         except Exception as e:
             log.exception(f"Error during training: {e}")
@@ -337,37 +476,29 @@ def run_training(cfg: Config):
             wandb.finish()
 
 
-def run_sweep():
-    """
-    Run a hyperparameter sweep using W&B.
-    This is a separate entry point that can be called to run a sweep
-    instead of a single training run.
-    """
-    try:
-        # Import here to avoid circular imports
-        from run_sweep import main as sweep_main
-
-        # Run the sweep
-        sweep_main()
-    except ImportError:
-        log.error("run_sweep.py not found. Cannot run hyperparameter sweep.")
-    except Exception as e:
-        log.exception(f"Error during sweep: {e}")
-
-
 if __name__ == "__main__":
+    # Parse command line arguments
+    args, hydra_args = parse_args()
+
+    # Add hydra args to sys.argv
+    for arg in hydra_args:
+        if arg not in sys.argv:
+            sys.argv.append(arg)
+
     # Set environment variable for detailed error messages
     os.environ["HYDRA_FULL_ERROR"] = "1"
 
-    # Check for special command line flags
-    if len(sys.argv) > 1 and sys.argv[1] == "--sweep":
-        # Remove the --sweep flag and run sweep
-        sys.argv.pop(1)
-        run_sweep()
-    else:
-        # For quick testing, add default.yaml arg if not present
-        if len(sys.argv) == 1 and "quick_test" not in "".join(sys.argv):
-            sys.argv.extend(["quick_test=true"])
+    # Run appropriate mode
+    if args.mode == "sweep":
+        try:
+            # Import here to avoid circular imports
+            from run_sweep import main as sweep_main
 
+            sweep_main()
+        except ImportError:
+            log.error("run_sweep.py not found. Cannot run hyperparameter sweep.")
+        except Exception as e:
+            log.exception(f"Error during sweep: {e}")
+    else:
         # Run normal training
         run_training()
