@@ -261,7 +261,7 @@ def run_training(cfg: Config):
 
         # Create model
         log.info("Creating multi-branch transformer model")
-        model_config = OmegaConf.to_container(cfg.model, resolve=True)
+        model_config = cfg.model
 
         # Make an initial reset to get observation shape for sanity check
         obs, info = env.reset()
