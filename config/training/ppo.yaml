@@ -10,6 +10,8 @@ clip_eps: 0.2
 critic_coef: 0.5
 entropy_coef: 0.01
 max_grad_norm: 0.5
+best_model_path: "best_model"
+best_model_metric: "best_model_metric.json"
 
 # Training process
 n_epochs: 10

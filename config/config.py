@@ -100,6 +100,8 @@ class TrainingConfig:
     n_episodes_per_update: int = 8
     total_updates: int = 100
     device: str = "auto"
+    best_model_path: str = "best_model"
+    best_model_metrics: str = "reward"
 
 
 @dataclass
