@@ -97,9 +97,12 @@ def create_data_provider(config: Config):
         # For quick testing
         return DummyDataProvider(config={
             'debug_window_mins': 300,  # 5 hours of data
-            'data_sparsity': 5,  # Every 5th second
-            'num_squeezes': 3,  # 3 squeeze events
-            'symbols': [data_cfg.symbol]
+            'data_sparsity': 5,  # Generate data every 5 seconds
+            'num_squeezes': 3,  # 3 momentum squeezes
+            'base_price': 5.00,  # Start around $5
+            'volatility': 0.05,  # Base volatility
+            'squeeze_magnitude': 0.30,  # 30% average squeeze magnitude
+            'symbols': ['MLGO']  # Symbol t
         })
     else:
         raise ValueError(f"Unknown provider type: {data_cfg.provider_type}")
