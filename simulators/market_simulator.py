@@ -8,7 +8,7 @@ import pandas as pd
 import bisect
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from config.config import MarketConfig, FeatureConfig
+from config.config import MarketConfig, ModelConfig
 from data.data_manager import DataManager
 
 # MARKET HOURS CONFIGURATION (Eastern Time)
@@ -38,7 +38,7 @@ class MarketSimulator:
             symbol: str,
             data_manager: DataManager,
             market_config: MarketConfig,
-            feature_config: FeatureConfig,
+            model_config: ModelConfig,
             mode: str = "backtesting",
             np_random: Optional[np.random.Generator] = None,
             start_time: Optional[Union[str, datetime]] = None,
@@ -49,7 +49,7 @@ class MarketSimulator:
         self.symbol = symbol
         self.data_manager = data_manager
         self.market_config = market_config
-        self.feature_config = feature_config
+        self.model_config = model_config
         self.mode = mode
         self.np_random = np_random or np.random.default_rng()
 
@@ -58,9 +58,9 @@ class MarketSimulator:
         self.utc_tz = ZoneInfo("UTC")
 
         # Window sizes for data buffering (all consistent with seq_len * 2 for safety)
-        self.hf_window_size = max(1, self.feature_config.hf_seq_len * 2)
-        self.mf_window_size = max(1, self.feature_config.mf_seq_len * 2)
-        self.lf_window_size = max(1, self.feature_config.lf_seq_len * 2)
+        self.hf_window_size = max(1, self.model_config.hf_seq_len * 2)
+        self.mf_window_size = max(1, self.model_config.mf_seq_len * 2)
+        self.lf_window_size = max(1, self.model_config.lf_seq_len * 2)
 
         # Convert and validate time boundaries
         self.session_start_utc = self._ensure_utc_datetime(start_time)

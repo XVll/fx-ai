@@ -261,13 +261,13 @@ def run_training(cfg: Config):
 
         # Create model
         log.info("Creating multi-branch transformer model")
-        model_config = cfg.model
+        model_config = OmegaConf.to_container(cfg.model, resolve=True)
 
         # Make an initial reset to get observation shape for sanity check
         obs, info = env.reset()
 
         try:
-            model = MultiBranchTransformer(model_config, device=device, logger=log.getChild("Transformer"))
+            model = MultiBranchTransformer(**model_config, device=device, logger=log.getChild("Transformer"))
             log.info(f"Model created successfully with config: {model_config}")
         except Exception as e:
             log.error(f"Error creating model: {e}")

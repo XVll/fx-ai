@@ -38,9 +38,9 @@ class EnvConfig:
     position_multipliers: List[float] = field(default_factory=lambda: [0.25, 0.5, 0.75, 1.0])
     reward: RewardConfig = field(default_factory=RewardConfig)
 
-
 @dataclass
-class FeatureConfig:
+class ModelConfig:
+    # Feature config
     hf_seq_len: int = 60
     hf_feat_dim: int = 20
     mf_seq_len: int = 30
@@ -50,11 +50,6 @@ class FeatureConfig:
     static_feat_dim: int = 3
     portfolio_feat_dim: int = 5
     portfolio_seq_len: int = 5
-
-@dataclass
-class ModelConfig:
-    # Feature config
-    feature_config: FeatureConfig = field(default_factory=FeatureConfig)
 
     # Model dimensions
     d_model: int = 64
@@ -232,4 +227,4 @@ cs.store(name="callbacks/default", node=CallbacksConfig)  # Added callbacks regi
 
 # Export the Config class and all config components for direct import
 __all__ = ['Config', 'EnvConfig', 'ModelConfig', 'TrainingConfig', 'DataConfig',
-           'WandbConfig', 'SimulationConfig', 'CallbacksConfig', 'RewardConfig', 'ExecutionConfig', 'MarketConfig', 'PortfolioConfig', 'FeatureConfig']
+           'WandbConfig', 'SimulationConfig', 'CallbacksConfig', 'RewardConfig', 'ExecutionConfig', 'MarketConfig', 'PortfolioConfig']

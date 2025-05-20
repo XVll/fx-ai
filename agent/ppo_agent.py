@@ -10,6 +10,7 @@ import wandb  # Assuming wandb is used
 from omegaconf import DictConfig
 import torch.nn.functional as nnf
 
+from config.config import ModelConfig
 # Assuming these are your custom module imports
 from envs.trading_env import TradingEnvironment  # Your environment class
 from ai.transformer import MultiBranchTransformer  # Your model class
@@ -24,7 +25,7 @@ class PPOTrainer:
             self,
             env: TradingEnvironment,
             model: MultiBranchTransformer,  # Expects MultiBranchTransformer specifically
-            model_config: Optional[Union[Dict[str, Any], DictConfig]] = None,  # For model details if needed elsewhere
+            model_config: ModelConfig = None,  # For model details if needed elsewhere
             lr: float = 3e-4,
             gamma: float = 0.99,
             gae_lambda: float = 0.95,
