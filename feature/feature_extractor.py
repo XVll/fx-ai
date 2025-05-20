@@ -3,11 +3,11 @@ import logging
 import numpy as np
 from typing import Dict
 
-from config.config import FeatureConfig
+from config.config import ModelConfig
 
 
 class FeatureExtractor:
-    def __init__(self, symbol: str, market_simulator, config: FeatureConfig, logger=None):
+    def __init__(self, symbol: str, market_simulator, config: ModelConfig, logger=None):
         self.logger = logger or logging.getLogger(__name__)
 
         self.symbol = symbol
