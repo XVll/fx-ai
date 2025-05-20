@@ -44,10 +44,10 @@ class ModelConfig:
     hf_seq_len: int = 60
     hf_feat_dim: int = 20
     mf_seq_len: int = 30
-    mf_feat_dim: int = 15
+    mf_feat_dim: int = 20
     lf_seq_len: int = 30
-    lf_feat_dim: int = 10
-    static_feat_dim: int = 3
+    lf_feat_dim: int = 20
+    static_feat_dim: int = 5
     portfolio_feat_dim: int = 5
     portfolio_seq_len: int = 5
 
