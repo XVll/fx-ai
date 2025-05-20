@@ -36,6 +36,15 @@ class FeatureExtractor:
         lf_features = self._extract_low_frequency_features(current_state)
         static_features = self._extract_static_features(current_state)
 
+        assert hf_features.shape == (self.hf_seq_len, self.hf_feat_dim), \
+            f"HF features have incorrect shape: {hf_features.shape}, expected ({self.hf_seq_len}, {self.hf_feat_dim})"
+        assert static_features.shape == (self.static_feat_dim,), \
+            f"Static features have incorrect shape: {static_features.shape}, expected ({self.static_feat_dim},)"
+        assert mf_features.shape == (self.mf_seq_len, self.mf_feat_dim), \
+            f"MF features have incorrect shape: {mf_features.shape}, expected ({self.mf_seq_len}, {self.mf_feat_dim})"
+        assert lf_features.shape == (self.lf_seq_len, self.lf_feat_dim), \
+            f"LF features have incorrect shape: {lf_features.shape}, expected ({self.lf_seq_len}, {self.lf_feat_dim})"
+
         return {
             'hf': hf_features,
             'mf': mf_features,
