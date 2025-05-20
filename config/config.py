@@ -72,7 +72,7 @@ class ModelConfig:
 
     # Output parameters
     action_dim: int = 1
-    continuous_action: bool = True
+    continuous_action: bool = False
 
     # Other parameters
     dropout: float = 0.1
@@ -95,6 +95,13 @@ class TrainingConfig:
     device: str = "auto"
     best_model_path: str = "best_model"
     best_model_metrics: str = "reward"
+
+    enabled: bool = False
+    load_best_model: bool = False
+    best_models_dir: str = "./best_models"
+    checkpoint_sync_frequency: int = 2
+    startup_evaluation: bool = False
+    max_best_models: int = 5
 
 
 @dataclass

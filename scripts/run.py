@@ -112,9 +112,9 @@ def run_training(args, script_path):
     # Continuous training
     if args.continue_training:
         cmd.append("training=continuous")
-        cmd.append("training.enabled=true")
-        cmd.append("training.load_best_model=true")
-        cmd.append(f"training.best_models_dir={args.models_dir}")
+        cmd.append("+training.enabled=true")
+        cmd.append("+training.load_best_model=true")
+        cmd.append(f"+training.best_models_dir={args.models_dir}")
 
     # Symbol and dates
     if args.symbol:
