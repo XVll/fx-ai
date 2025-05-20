@@ -153,8 +153,12 @@ def run_training(cfg: Config):
 
         # Get symbol and date range
         symbol = config.data.symbol
-        start_date = config.data.start_date
-        end_date = config.data.end_date
+        #start_date = config.data.start_date
+        #end_date = config.data.end_date
+        # 27.03.2025 premarket start
+        start_date = "2025-03-27T08:00:00Z"
+        # 27.03.2025 post market end
+        end_date = "2025-03-27T20:00:00Z"
 
         # Create environment
         log.info(f"Creating trading environment for {symbol} from {start_date} to {end_date}")
