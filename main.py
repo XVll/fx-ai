@@ -260,6 +260,9 @@ def run_training(cfg: Config):
             **training_params
         )
 
+        global_best_model_dir = os.path.join(os.getcwd(), config.training.best_model_path)
+        global_best_model_path = os.path.join(global_best_model_dir, f"{config.data.symbol}_best_model.pt")
+
         # Train the model
         total_steps = config.training.total_updates * config.training.buffer_size
         log.info(f"Starting training for approximately {total_steps} steps "
