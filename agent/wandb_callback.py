@@ -142,10 +142,21 @@ class WandbCallback(TrainingCallback):
                     log_freq=max(100, self.log_freq * 10)
                 )
 
-        # Reset step counters
-        self._monotonic_step = 0
-        self._last_logged_step = 0
-        self.global_step = 0
+        # Initialize step counters
+        # If this is a resumed run, we need to ensure our step counters
+        # are at least as large as the wandb run's current step
+        if wandb.run and hasattr(wandb.run, 'step'):
+            current_wandb_step = wandb.run.step
+            self._monotonic_step = max(current_wandb_step + 1, self._monotonic_step)
+            self._last_logged_step = max(current_wandb_step, self._last_logged_step)
+            self.global_step = max(current_wandb_step, self.global_step)
+        else:
+            # For new runs, we can start from 0
+            self._monotonic_step = 0
+            self._last_logged_step = 0
+            self.global_step = 0
+
+        # These counters can always start from 0 as they're just for tracking
         self.episode_count = 0
         self.update_count = 0
 
@@ -502,6 +513,10 @@ class WandbCallback(TrainingCallback):
         if step <= self._last_logged_step:
             step = self._last_logged_step + 1
 
+            # Increment _monotonic_step if needed to stay ahead of explicit steps
+        if step >= self._monotonic_step:
+            self._monotonic_step = step + 1
+
         try:
             # Clean metrics dict to ensure all values are loggable
             clean_metrics = {}
@@ -726,9 +741,6 @@ class WandbCallback(TrainingCallback):
     def _create_final_visualizations(self):
         """Create comprehensive final visualizations at the end of training."""
         try:
-            # Create standard visualizations
-            self._create_episode_visualizations()
-
             # Create training summary visualization
             if self.episode_rewards and self.episode_lengths:
                 fig, axes = plt.subplots(2, 2, figsize=(14, 10))
@@ -738,12 +750,19 @@ class WandbCallback(TrainingCallback):
                 ep_range = list(range(1, len(self.episode_rewards) + 1))
                 ax_rew.plot(ep_range, self.episode_rewards, color='blue')
 
-                # Add moving average
-                window_size = min(10, len(self.episode_rewards))
-                if window_size > 1:
-                    rewards_ma = pd.Series(self.episode_rewards).rolling(window_size).mean().values
-                    ax_rew.plot(ep_range[window_size - 1:], rewards_ma[window_size - 1:],
-                                color='red', linewidth=2, label=f'MA-{window_size}')
+                # Safe moving average - ensure x and y have same length
+                if len(self.episode_rewards) > 2:
+                    window_size = min(10, len(self.episode_rewards))
+                    rewards_series = pd.Series(self.episode_rewards)
+                    rewards_ma = rewards_series.rolling(window_size, min_periods=1).mean().values
+                    # Ensure ep_range and rewards_ma have the same length
+                    if len(ep_range) == len(rewards_ma):
+                        ax_rew.plot(ep_range, rewards_ma, color='red', linewidth=2, label=f'MA-{window_size}')
+                    else:
+                        self.logger.warning(f"Skipping MA plot: x and y have different lengths ({len(ep_range)} vs {len(rewards_ma)})")
+
+                # We don't need this second moving average calculation as it's redundant and could cause issues
+                # The first calculation above with min_periods=1 already provides a moving average for all points
 
                 ax_rew.set_title('Episode Rewards')
                 ax_rew.set_xlabel('Episode')
@@ -753,7 +772,14 @@ class WandbCallback(TrainingCallback):
 
                 # 2. Episode Lengths
                 ax_len = axes[0, 1]
-                ax_len.plot(ep_range, self.episode_lengths, color='green')
+                # Ensure ep_range and episode_lengths have the same length
+                if len(ep_range) == len(self.episode_lengths):
+                    ax_len.plot(ep_range, self.episode_lengths, color='green')
+                else:
+                    self.logger.warning(f"Skipping episode lengths plot: x and y have different lengths ({len(ep_range)} vs {len(self.episode_lengths)})")
+                    # Create a new ep_range that matches the length of episode_lengths
+                    ep_range_lengths = list(range(1, len(self.episode_lengths) + 1))
+                    ax_len.plot(ep_range_lengths, self.episode_lengths, color='green')
                 ax_len.set_title('Episode Lengths')
                 ax_len.set_xlabel('Episode')
                 ax_len.set_ylabel('Steps')
