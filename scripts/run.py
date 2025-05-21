@@ -102,7 +102,7 @@ def main():
 
 def run_training(args, script_path):
     """Run training with the specified arguments."""
-    cmd = ["python", script_path]
+    cmd = [sys.executable, script_path]
 
     # Add Hydra args
     # Basic configs
@@ -133,7 +133,7 @@ def run_training(args, script_path):
 
 def run_backtest(args, script_path):
     """Run backtest with the specified arguments."""
-    cmd = ["python", script_path]
+    cmd = [sys.executable, script_path]
 
     # Add standard Hydra overrides
     cmd.append("env.training_mode=backtesting")
