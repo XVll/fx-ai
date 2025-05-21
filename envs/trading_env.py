@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd  # For pd.Timestamp
 import gymnasium as gym  # type: ignore
 from gymnasium import spaces  # type: ignore
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -641,6 +642,7 @@ class TradingEnvironment(gym.Env):
     def render(self, info_dict: Optional[Dict[str, Any]] = None):
         """
         Enhanced rendering method using Rich library for terminal-friendly display.
+        Fills are integrated into the main panel with color coding and consistent sizing.
 
         Args:
             info_dict: Dictionary containing step information
@@ -651,142 +653,256 @@ class TradingEnvironment(gym.Env):
         console = Console()
 
         try:
-            # Create tables for different sections
-            # Step and Time Information
-            step_table = Table(show_header=False, show_lines=False, box=None)
-            step_table.add_row("Step", str(info_dict.get('step', 'N/A')))
-            step_table.add_row("Timestamp", str(info_dict.get('timestamp_iso', 'N/A')))
+            # Create a consistent layout with fixed heights
+            layout_grid = Table.grid(expand=True)
 
-            # Action Information
-            action_table = Table(title="Action", show_header=False, show_lines=False, box=None)
+            # Top row: Header with step info and main indicators
+            header = Table.grid(padding=(0, 1))
 
-            # Safe action info processing
-            action_type = 'N/A'
+            # Step info in a stylish format
+            timestamp_iso = info_dict.get('timestamp_iso')
+            time_str = 'N/A'
+            if timestamp_iso and isinstance(timestamp_iso, str):
+                try:
+                    time_str = timestamp_iso.split('T')[1].split('.')[0]
+                except IndexError:
+                    time_str = 'N/A'  # Handle cases where split doesn't work as expected
+
+            step_info = Text.assemble(
+                ("STEP ", "bold cyan"),
+                (f"{info_dict.get('step', 'N/A')}", "cyan"),
+                " | ",
+                ("TIME ", "bold cyan"),
+                (time_str, "cyan")
+            )
+
+            # Current price and PnL indicators (key metrics)
+            current_price = None
+            if self.market_simulator:  # Check if market_simulator exists
+                try:
+                    market_state = self.market_simulator.get_current_market_state()
+                    if market_state:  # Ensure market_state is not None
+                        current_price = market_state.get('current_price')
+                        if current_price is None:
+                            current_price = market_state.get('best_bid_price') or market_state.get('best_ask_price')
+                except Exception as e:
+                    self.logger.warning(f"Error getting market state: {e}")
+            else:
+                self.logger.warning("Market simulator not available for price lookup.")
+
+            unreal_pnl = info_dict.get('portfolio_unrealized_pnl', 0.0)
+            real_pnl = info_dict.get('portfolio_realized_pnl_session_net', 0.0)
+
+            price_text = Text.assemble(
+                ("PRICE ", "bold yellow"),
+                (f"${current_price:.2f}" if current_price is not None else "N/A", "yellow"),
+                " | ",
+                ("UNREAL PNL ", "bold"),
+                (f"${unreal_pnl:.2f}", "green" if unreal_pnl > 0 else "red" if unreal_pnl < 0 else "white"),
+                " | ",
+                ("REAL PNL ", "bold"),
+                (f"${real_pnl:.2f}", "green" if real_pnl > 0 else "red" if real_pnl < 0 else "white")
+            )
+
+            header.add_row(step_info, price_text)
+            layout_grid.add_row(Panel(header, border_style="cyan", padding=(0, 0)))
+
+            # Main content in a 2x2 grid
+            content_grid = Table.grid(expand=True)
+
+            # 1. Action panel
+            action_panel = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+            action_text_display = 'N/A'
             size_info = 'N/A'
-            decoded_action = info_dict.get('action_decoded', {}) or {}
+            invalid_reason_text = ""  # Default to empty string
+
+            decoded_action = info_dict.get('action_decoded', {})  # Ensure it's a dict, or empty dict
+            if not isinstance(decoded_action, dict):  # Additional safety
+                decoded_action = {}
 
             try:
-                # Safer way to get action type name
                 action_type_obj = decoded_action.get('type')
                 if action_type_obj:
-                    action_type = str(action_type_obj) if not hasattr(action_type_obj, 'name') else action_type_obj.name
+                    if hasattr(action_type_obj, 'name'):
+                        name_val = action_type_obj.name
+                        action_text_display = str(name_val) if name_val is not None else 'N/A'
+                    else:
+                        action_text_display = str(action_type_obj)
 
-                # Safer way to get size info
                 size_enum = decoded_action.get('size_enum')
                 if size_enum:
-                    size_name = str(size_enum) if not hasattr(size_enum, 'name') else size_enum.name
-                    size_pct = decoded_action.get('size_float', 0) * 100
+                    size_name_val = getattr(size_enum, 'name', None)  # Get name if exists
+                    size_name = str(size_name_val) if size_name_val is not None else str(size_enum)
+                    size_pct = decoded_action.get('size_float', 0.0) * 100
                     size_info = f"{size_name} ({size_pct:.0f}%)"
+
+                raw_invalid_reason = decoded_action.get('invalid_reason')
+                invalid_reason_text = str(raw_invalid_reason) if raw_invalid_reason is not None else ""
+
             except Exception as e:
                 self.logger.warning(f"Error processing action info: {e}")
 
-            action_table.add_row("Type", action_type)
-            action_table.add_row("Size", size_info)
+            action_panel.add_row("Type", Text(action_text_display, style="bold magenta"))
+            action_panel.add_row("Size", Text(size_info, style="magenta"))
+            action_panel.add_row("Invalid", Text(invalid_reason_text, style="bold red" if invalid_reason_text else ""))
 
-            if decoded_action.get('invalid_reason'):
-                action_table.add_row("Invalid Reason", str(decoded_action['invalid_reason']))
-
-            # Market and Position Information
-            market_table = Table(title="Market & Position", show_header=False, show_lines=False, box=None)
-
-            # Get current market state for price information
-            current_price = None
-            try:
-                market_state = self.market_simulator.get_current_market_state()
-                current_price = market_state.get('current_price') if market_state else None
-                if current_price is None:
-                    current_price = market_state.get('best_bid_price') or market_state.get('best_ask_price')
-            except Exception as e:
-                self.logger.warning(f"Error getting market state: {e}")
-
-            pos_qty = info_dict.get(f'position_{self.primary_asset}_qty', 0)
+            # 2. Position panel
+            pos_panel = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+            pos_qty = info_dict.get(f'position_{self.primary_asset}_qty', 0.0)
             pos_side = info_dict.get(f'position_{self.primary_asset}_side', 'FLAT')
             pos_avg_entry = info_dict.get(f'position_{self.primary_asset}_avg_entry', 0.0)
 
-            # Compute price difference and percentage
-            price_diff = 0
-            price_diff_pct = 0
-            if current_price is not None and pos_qty > 0 and pos_avg_entry > 0:
+            price_diff = 0.0
+            price_diff_pct = 0.0
+            if current_price is not None and pos_qty != 0 and pos_avg_entry != 0:  # Check pos_qty != 0 and pos_avg_entry != 0
                 price_diff = current_price - pos_avg_entry
-                price_diff_pct = (price_diff / pos_avg_entry) * 100 if pos_avg_entry != 0 else 0
+                price_diff_pct = (price_diff / pos_avg_entry) * 100
 
-            market_table.add_row("Current Price", f"${current_price:.2f}" if current_price is not None else "N/A")
-            market_table.add_row("Position", f"{self.primary_asset} {pos_side}")
-            market_table.add_row("Quantity", f"{pos_qty:.2f}")
-            market_table.add_row("Avg Entry", f"${pos_avg_entry:.2f}")
+            pos_side_text = str(pos_side) if pos_side is not None else 'N/A'
 
-            # Simplified color handling
-            def color_text(value: float, text: str) -> str:
-                if value > 0:
-                    return f"[green]{text}[/green]"
-                elif value < 0:
-                    return f"[red]{text}[/red]"
-                return text
+            pos_panel.add_row("Symbol", Text(f"{self.primary_asset} {pos_side_text}", style="bold blue"))
+            pos_panel.add_row("Quantity", Text(f"{pos_qty:.2f}", style="blue"))
+            pos_panel.add_row("Avg Entry", Text(f"${pos_avg_entry:.2f}", style="blue"))
 
-            market_table.add_row("Price Diff",
-                                 color_text(price_diff, f"${price_diff:.2f} ({price_diff_pct:+.2f}%)") if pos_qty > 0 else "N/A")
+            diff_style = "green" if price_diff > 0 else "red" if price_diff < 0 else ""
+            diff_text = f"${price_diff:.2f} ({price_diff_pct:+.2f}%)" if pos_qty != 0 and current_price is not None else "N/A"
+            pos_panel.add_row("P/L vs Entry", Text(diff_text, style=diff_style))
 
-            # Portfolio Information
-            portfolio_table = Table(title="Portfolio", show_header=False, show_lines=False, box=None)
-            portfolio_table.add_row("Total Equity", f"${info_dict.get('portfolio_equity', 0):.2f}")
-            portfolio_table.add_row("Cash", f"${info_dict.get('portfolio_cash', 0):.2f}")
+            # 3. Portfolio panel
+            portfolio_panel = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+            portfolio_equity = info_dict.get('portfolio_equity', 0.0)
+            portfolio_cash = info_dict.get('portfolio_cash', 0.0)
+            reward_step = info_dict.get('reward_step', 0.0)
+            episode_cumulative_reward = info_dict.get('episode_cumulative_reward', 0.0)
 
-            # Compute and color PnL
-            unreal_pnl = info_dict.get('portfolio_unrealized_pnl', 0)
-            real_pnl = info_dict.get('portfolio_realized_pnl_session_net', 0)
+            portfolio_panel.add_row("Total Equity", Text(f"${portfolio_equity:.2f}", style="bold green"))
+            portfolio_panel.add_row("Cash", Text(f"${portfolio_cash:.2f}", style="green"))
+            portfolio_panel.add_row("Step Reward", Text(f"{reward_step:.4f}",
+                                                        style="green" if reward_step > 0 else "red" if reward_step < 0 else ""))
+            portfolio_panel.add_row("Total Reward", Text(f"{episode_cumulative_reward:.4f}",
+                                                         style="bold green" if episode_cumulative_reward > 0 else "bold red" if episode_cumulative_reward < 0 else "bold"))
 
-            portfolio_table.add_row("Unrealized PnL", color_text(unreal_pnl, f"${unreal_pnl:.2f}"))
-            portfolio_table.add_row("Realized PnL", color_text(real_pnl, f"${real_pnl:.2f}"))
-
-            # Reward Information
-            reward_table = Table(title="Reward", show_header=False, show_lines=False, box=None)
-            reward_table.add_row("Step Reward", f"{info_dict.get('reward_step', 0):.4f}")
-            reward_table.add_row("Episode Total", f"{info_dict.get('episode_cumulative_reward', 0):.4f}")
-
-            # Combine tables
-            panel_content = Table.grid(expand=True)
-            panel_content.add_row(step_table, action_table, market_table, portfolio_table, reward_table)
-
-            # Render the panel
-            main_panel = Panel(panel_content, title=f"Trading Environment: {self.primary_asset}", expand=False)
-            console.print(main_panel)
-
-            # Optional: Print trade fills if available
+            # 4. Fills panel
+            fills_panel = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
             fills_info = info_dict.get('fills_step', [])
-            if fills_info:
-                fills_table = Table(title="Trade Fills", show_header=True)
-                fills_table.add_column("Side")
-                fills_table.add_column("Quantity")
-                fills_table.add_column("Price")
-                fills_table.add_column("Commission")
-                fills_table.add_column("Fees")
+            if not isinstance(fills_info, list):  # Ensure fills_info is a list
+                fills_info = []
+
+            if not fills_info:
+                fills_panel.add_row("Status", Text("No fills this step", style="dim"))
+                fills_panel.add_row("", "")  # Empty row for spacing
+                fills_panel.add_row("", "")  # Empty row for spacing
+                fills_panel.add_row("", "")  # Empty row for spacing
+            else:
+                # Assuming OrderSideEnum is imported (e.g., from simulators.portfolio_simulator import OrderSideEnum)
+                # and is available in the current scope.
+                # The line "OrderSideEnum = self.OrderSideEnum" was removed to address the AttributeError.
+                # Ensure `OrderSideEnum` is properly imported at the module level.
+
+                total_commission = 0.0
+                total_fees = 0.0
+                total_value = 0.0
+                fills_display_texts = []
 
                 for fill in fills_info:
-                    fills_table.add_row(
-                        str(fill.get('order_side', 'N/A')),
-                        f"{fill.get('executed_quantity', 0):.4f}",
-                        f"${fill.get('executed_price', 0):.2f}",
-                        f"${fill.get('commission', 0):.2f}",
-                        f"${fill.get('fees', 0):.2f}"
-                    )
+                    if not isinstance(fill, dict):  # Skip if fill is not a dict
+                        self.logger.warning(f"Skipping non-dict fill item: {fill}")
+                        continue
 
-                console.print(fills_table)
+                    side = fill.get('order_side')
+                    # Handle both string and enum comparison for side
+                    # This now relies on OrderSideEnum being available from an import.
+                    is_buy = (isinstance(side, str) and side.upper() == OrderSideEnum.BUY) or \
+                             (hasattr(side, 'value') and side.value == OrderSideEnum.BUY) or \
+                             (side == OrderSideEnum.BUY)  # Direct enum comparison
 
-            # Termination Information
-            if info_dict.get('termination_reason'):
-                console.print(f"[bold red]TERMINATED: {info_dict['termination_reason']}[/bold red]")
-            elif info_dict.get('TimeLimit.truncated'):
-                console.print("[bold yellow]TRUNCATED by Max Steps[/bold yellow]")
+                    color = "green" if is_buy else "red"
+                    side_text = "BUY" if is_buy else "SELL"
+
+                    qty = fill.get('executed_quantity', 0.0)
+                    price = fill.get('executed_price', 0.0)
+                    commission = fill.get('commission', 0.0)
+                    fees = fill.get('fees', 0.0)
+
+                    # Ensure numeric types before calculation
+                    if not all(isinstance(v, (int, float)) for v in [qty, price, commission, fees]):
+                        self.logger.warning(f"Non-numeric value in fill data: {fill}")
+                        continue  # Skip this fill if data is not numeric
+
+                    value = qty * price
+                    total_commission += commission
+                    total_fees += fees
+                    total_value += value
+
+                    fills_display_texts.append(f"[{color}]{side_text}[/{color}] {qty:.2f} @ ${price:.2f}")
+
+                for i, text_markup in enumerate(fills_display_texts):
+                    fills_panel.add_row("Trade" if i == 0 and fills_display_texts else "", Text.from_markup(text_markup))
+
+                if not fills_display_texts:
+                    fills_panel.add_row("Status", Text("No valid fills this step", style="dim"))
+                    for _ in range(3): fills_panel.add_row("", "")
+
+                if fills_display_texts or total_commission or total_fees or total_value:
+                    fills_panel.add_row("Commission", Text(f"${total_commission:.2f}", style="red"))
+                    fills_panel.add_row("Fees", Text(f"${total_fees:.2f}", style="red"))
+                    fills_panel.add_row("Value", Text(f"${total_value:.2f}", style="bold"))
+
+                min_fill_rows = 4
+                while fills_panel.row_count < min_fill_rows and fills_display_texts:
+                    fills_panel.add_row("", "")
+
+            # Add all panels to the content grid
+            content_grid.add_row(
+                Panel(action_panel, title="[bold]Action", border_style="magenta", padding=(0, 0)),
+                Panel(pos_panel, title="[bold]Position", border_style="blue", padding=(0, 0))
+            )
+            content_grid.add_row(
+                Panel(portfolio_panel, title="[bold]Portfolio", border_style="green", padding=(0, 0)),
+                Panel(fills_panel, title="[bold]Fills", border_style="yellow", padding=(0, 0))
+            )
+
+            # Add content grid to main layout
+            layout_grid.add_row(content_grid)
+
+            # Add footer for status messages
+            footer_text_content = ""
+            termination_reason = info_dict.get('termination_reason')
+            time_limit_truncated = info_dict.get('TimeLimit.truncated')
+
+            if termination_reason:
+                footer_text_content = f"TERMINATED: {str(termination_reason)}"
+            elif time_limit_truncated:
+                footer_text_content = "TRUNCATED by Max Steps"
+
+            if footer_text_content:
+                style = "bold red" if "TERMINATED" in footer_text_content else "bold yellow"
+                layout_grid.add_row(Panel(
+                    Text(footer_text_content, style=style),
+                    border_style="red" if "TERMINATED" in footer_text_content else "yellow",
+                    padding=(0, 0)
+                ))
+
+            # Render the complete layout
+            console.print(Panel(
+                layout_grid,
+                title=f"[bold]Trading Environment: {str(self.primary_asset)}[/bold]",
+                border_style="white",
+                padding=(0, 1)
+            ))
 
         except Exception as e:
-            # Extreme fallback render method
             try:
-                console.print(Panel(f"Rendering Error: {str(e)}",
-                                    title="Trading Environment",
+                console.print(Panel(f"Rendering Error: {str(e)}\nTraceback available in logs.",
+                                    title="[bold red]Trading Environment - Render Error[/bold red]",
                                     style="bold red",
                                     border_style="red"))
-            except Exception:
-                print(f"Critical rendering error: {e}")
+                self.logger.exception("Critical rendering error in render method:")
+            except Exception as fallback_e:
+                print(f"CRITICAL RENDERING ERROR: {e}")
+                print(f"FALLBACK RENDERER FAILED: {fallback_e}")
+                import traceback
+                traceback.print_exc()
 
     def close(self):
         if self.market_simulator and hasattr(self.market_simulator, 'close'):

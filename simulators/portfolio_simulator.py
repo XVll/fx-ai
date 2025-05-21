@@ -218,12 +218,41 @@ class PortfolioManager:
                     self.logger.warning(
                         f"Cannot scale into {asset_id}. Fill side {fill['order_side'].value} mismatches position side {pos_data['current_side'].value} or no open trade.")
 
-        # --- Handle Closing/Reducing ---
+            # --- Handle Closing/Reducing ---
         elif (fill['order_side'] == OrderSideEnum.SELL and pos_data['current_side'] == PositionSideEnum.LONG) or \
                 (fill['order_side'] == OrderSideEnum.BUY and pos_data['current_side'] == PositionSideEnum.SHORT and self.allow_shorting):
 
-            self.cash += fill_value if fill['order_side'] == OrderSideEnum.SELL else -fill_value  # Sell increases cash, Buy (to cover short) decreases
+            # Cash calculation - unchanged
+            self.cash += fill_value if fill['order_side'] == OrderSideEnum.SELL else -fill_value
 
+            # Get fill details
+            fill_price = fill['executed_price']
+            fill_qty = fill['executed_quantity']
+            entry_price = pos_data['avg_entry_price']
+
+            # Calculate realized PnL for this specific fill
+            realized_pnl_for_this_fill = 0.0
+
+            if pos_data['current_side'] == PositionSideEnum.LONG:
+                # For long positions: (sell_price - entry_price) * quantity
+                realized_pnl_for_this_fill = (fill_price - entry_price) * fill_qty
+            else:  # SHORT
+                # For short positions: (entry_price - cover_price) * quantity
+                realized_pnl_for_this_fill = (entry_price - fill_price) * fill_qty
+
+            # Deduct costs
+            realized_pnl_for_this_fill -= (fill['commission'] + fill['fees'])
+
+            # Update session realized PnL (this is key - update even for partial closes)
+            self.realized_pnl_session += realized_pnl_for_this_fill
+
+            self.logger.debug(
+                f"Realized PnL for {'SELL' if fill['order_side'] == OrderSideEnum.SELL else 'BUY'}: "
+                f"${realized_pnl_for_this_fill:.2f} - Entry: ${entry_price:.2f}, Exit: ${fill_price:.2f}, "
+                f"Qty: {fill_qty:.2f}, Session Total: ${self.realized_pnl_session:.2f}"
+            )
+
+            # Update trade record if it exists
             if pos_data['open_trade_id'] and pos_data['open_trade_id'] in self.open_trades:
                 open_trade = self.open_trades[pos_data['open_trade_id']]
                 open_trade['exit_fills'].append(fill)
@@ -236,11 +265,19 @@ class PortfolioManager:
                 if open_trade.get('avg_exit_price') is None or current_exit_qty < 1e-9:
                     open_trade['avg_exit_price'] = fill_price
                 else:
-                    total_exit_value = (open_trade['avg_exit_price'] * current_exit_qty) + fill_value
-                    open_trade['avg_exit_price'] = total_exit_value / (current_exit_qty + qty_change)
-                open_trade['exit_quantity_total'] += qty_change
+                    total_exit_value = (open_trade['avg_exit_price'] * current_exit_qty) + (fill_price * fill_qty)
+                    open_trade['avg_exit_price'] = total_exit_value / (current_exit_qty + fill_qty)
 
-                pos_data['quantity'] -= qty_change  # Reduce position quantity
+                open_trade['exit_quantity_total'] = open_trade.get('exit_quantity_total', 0.0) + fill_qty
+
+                # Update the trade's realized PnL (even for partial closes)
+                if 'realized_pnl' not in open_trade:
+                    open_trade['realized_pnl'] = realized_pnl_for_this_fill
+                else:
+                    open_trade['realized_pnl'] += realized_pnl_for_this_fill
+
+                # Reduce position quantity
+                pos_data['quantity'] -= fill_qty
 
                 if pos_data['quantity'] < 1e-9:  # Position fully closed
                     pos_data['quantity'] = 0.0
@@ -249,27 +286,10 @@ class PortfolioManager:
                     pos_data['entry_value_total'] = 0.0  # Reset cost basis
 
                     open_trade['exit_timestamp'] = fill['fill_timestamp']
-                    # Ensure entry_quantity_total is used for PnL basis if exits were partial over time
-                    # This assumes avg_entry_price and avg_exit_price are correctly tracking the *entire* trade's flow
-                    trade_basis_qty = open_trade['entry_quantity_total']
-                    trade_avg_entry = open_trade['avg_entry_price']
-                    trade_avg_exit = open_trade.get('avg_exit_price', 0.0) or 0.0  # Ensure float
-
-                    if open_trade['side'] == PositionSideEnum.LONG:
-                        gross_pnl_prices = (trade_avg_exit - trade_avg_entry) * trade_basis_qty
-                    elif open_trade['side'] == PositionSideEnum.SHORT:
-                        gross_pnl_prices = (trade_avg_entry - trade_avg_exit) * trade_basis_qty
-                    else:
-                        gross_pnl_prices = 0.0
-
-                    net_pnl = gross_pnl_prices - open_trade['commission_total'] - open_trade['fees_total']
-                    open_trade['realized_pnl'] = net_pnl
-                    self.realized_pnl_session += net_pnl
                     open_trade['holding_period_seconds'] = (open_trade['exit_timestamp'] - open_trade['entry_timestamp']).total_seconds()
 
-                    # MFE/MAE should have been updated by update_market_value, now finalize them
-                    # The pct versions are calculated relative to initial trade value
-                    initial_trade_value = trade_avg_entry * trade_basis_qty
+                    # MFE/MAE calculations - unchanged
+                    initial_trade_value = open_trade['avg_entry_price'] * open_trade['entry_quantity_total']
                     if abs(initial_trade_value) > 1e-9:
                         open_trade['max_favorable_excursion_pct'] = open_trade['max_favorable_excursion_usd'] / initial_trade_value
                         open_trade['max_adverse_excursion_pct'] = open_trade['max_adverse_excursion_usd'] / initial_trade_value
@@ -279,6 +299,11 @@ class PortfolioManager:
 
                     self.trade_log.append(open_trade)
                     del self.open_trades[open_trade['trade_id']]
+
+                    self.logger.info(
+                        f"Position closed for {asset_id}: Total Realized PnL=${open_trade['realized_pnl']:.2f}, "
+                        f"Session PnL=${self.realized_pnl_session:.2f}"
+                    )
             else:
                 self.logger.warning(f"Cannot process closing fill for {asset_id}. No matching open trade found.")
         else:
