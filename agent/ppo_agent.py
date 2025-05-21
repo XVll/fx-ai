@@ -236,7 +236,7 @@ class PPOTrainer:
     def _compute_advantages_and_returns(self):
         """Computes GAE advantages and returns, storing them in the buffer."""
         if self.buffer.rewards is None or self.buffer.values is None or self.buffer.dones is None:
-            logger.error("Cannot compute advantages: buffer data (rewards, values, dones) not prepared.")
+            logger.error("Cannot compute advantages: buffer data not prepared.")
             return
 
         rewards = self.buffer.rewards
@@ -244,94 +244,68 @@ class PPOTrainer:
         dones = self.buffer.dones
         num_steps = len(rewards)
 
-        # Debug shapes to help diagnose issues
+        # Debug information
         logger.debug(
-            f"Computing advantages - shapes: rewards:{rewards.shape}, values:{values.shape}, dones:{dones.shape}")
+            f"Computing advantages with shapes - rewards: {rewards.shape}, values: {values.shape}, dones: {dones.shape}")
 
-        # Initialize advantages to zeros with the same shape as rewards
+        # Initialize properly shaped advantages
         advantages = torch.zeros_like(rewards, device=self.device)
         last_gae_lam = 0
 
+        # Compute GAE recursively
         for t in reversed(range(num_steps)):
-            # Determine next value based on whether episode is done or not
-            if t == num_steps - 1:  # Last step in the buffer
+            # Handle terminal states
+            if t == num_steps - 1:
                 if dones[t]:
                     next_value = torch.tensor([0.0], device=self.device)
                 else:
-                    # Bootstrap with the value of the state *after* the last action of the rollout
-                    # This requires proper tensor shape handling to avoid dimension errors
-                    last_exp_next_state_dict = self.buffer.buffer[-1]['next_state']
-
-                    # Create properly batched state dict for the model
-                    batched_state_dict = {}
-                    for key, tensor_val in last_exp_next_state_dict.items():
-                        if key in ['hf', 'mf', 'lf', 'portfolio']:  # Sequential features
-                            if tensor_val.ndim == 2:  # [sequence_length, feature_dimension]
-                                batched_state_dict[key] = tensor_val.unsqueeze(0)
-                            elif tensor_val.ndim == 3:  # Already has batch dim
-                                batched_state_dict[key] = tensor_val
-                            else:
-                                logger.warning(f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}'")
-                                batched_state_dict[key] = tensor_val
-                        elif key == 'static':  # Static features
-                            if tensor_val.ndim == 1:  # [feature_dimension]
-                                batched_state_dict[key] = tensor_val.unsqueeze(0)
-                            elif tensor_val.ndim == 2:  # Already has batch dim
-                                batched_state_dict[key] = tensor_val
-                            else:
-                                logger.warning(f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}'")
-                                batched_state_dict[key] = tensor_val
-                        else:
-                            batched_state_dict[key] = tensor_val
-
-                    try:
-                        # Get value from model
-                        with torch.no_grad():
-                            _, next_value = self.model(batched_state_dict)
-                            # Make next_value a scalar-like tensor
-                            if next_value.ndim > 0:
-                                next_value = next_value.squeeze()
-                                if next_value.ndim > 0:  # Still has dimensions
-                                    next_value = next_value[0]  # Take first element if multi-dimensional
-                    except Exception as e:
-                        logger.error(f"Error computing bootstrap value: {e}")
-                        next_value = torch.tensor([0.0], device=self.device)
+                    # Bootstrap with end-state value (simplified)
+                    next_value = values[t].clone().detach()
             else:
                 if dones[t]:
                     next_value = torch.tensor([0.0], device=self.device)
                 else:
                     next_value = values[t + 1]
-                    # Handle next_value dimensions
-                    if next_value.ndim > 0:
-                        next_value = next_value.squeeze()
-                        if next_value.ndim > 0:  # Still has dimensions
-                            next_value = next_value[0]  # Take first element
 
-            # Calculate TD error (delta)
+            # Ensure scalar values are handled correctly
+            if next_value.ndim > 1 and next_value.size(1) > 1:
+                next_value = next_value[:, 0]
+
+            # Delta: r + γV(s') - V(s)
             delta = rewards[t] + self.gamma * next_value * (1.0 - dones[t].float()) - values[t]
 
+            # GAE: δ + γλA(s',a')
             # Update advantage using GAE formula
             advantages[t] = last_gae_lam = delta + self.gamma * self.gae_lambda * (
-                        1.0 - dones[t].float()) * last_gae_lam
+                    1.0 - dones[t].float()) * last_gae_lam
 
-        # Ensure advantages has the correct shape before setting
-        if advantages.ndim > 1 and advantages.shape[1] > 1:
-            # If advantages has multiple columns, aggregate (take mean or first column)
-            logger.warning(f"Advantages has multiple columns: {advantages.shape}. Taking first column.")
-            advantages = advantages[:, 0:1]  # Keep as 2D with shape [num_steps, 1]
+        # Compute returns correctly
+        self.buffer.advantages = advantages
 
-        # Ensure values has correct shape for returns calculation
+        # Ensure values has correct shape
         if values.ndim > 1 and values.shape[1] > 1:
             logger.warning(f"Values has multiple columns: {values.shape}. Taking first column.")
-            values = values[:, 0:1]  # Keep as 2D with shape [num_steps, 1]
+            values = values[:, 0:1]
 
-        # Compute returns as advantages + value estimates
-        self.buffer.advantages = advantages
-        self.buffer.returns = advantages + values  # Rt = At + Vt
+        # Ensure advantages has the same shape as values for proper addition
+        if advantages.shape != values.shape:
+            logger.warning(f"Advantages shape {advantages.shape} doesn't match values shape {values.shape}. Reshaping advantages.")
+            if advantages.ndim == 1:
+                advantages = advantages.unsqueeze(1)
+            elif advantages.ndim > 1 and advantages.shape[1] > 1:
+                advantages = advantages[:, 0:1]
 
-        # Log final shapes
-        logger.debug(f"Computed advantages shape: {self.buffer.advantages.shape}")
-        logger.debug(f"Computed returns shape: {self.buffer.returns.shape}")
+        # Critical fix: ensure returns has the correct shape [num_steps, 1]
+        returns = advantages + values
+
+        # Final shape check for returns
+        if returns.ndim > 1 and returns.shape[1] > 1:
+            logger.warning(f"Returns has unexpected shape: {returns.shape}. Taking first column.")
+            returns = returns[:, 0:1]
+
+        self.buffer.returns = returns
+
+        logger.debug(f"Final shapes - advantages: {self.buffer.advantages.shape}, returns: {self.buffer.returns.shape}")
 
     def update_policy(self) -> Dict[str, float]:
         """Performs PPO updates for ppo_epochs using data in the buffer."""
@@ -367,7 +341,7 @@ class PPOTrainer:
         num_updates_in_epoch = 0
 
         for epoch in range(self.ppo_epochs):
-            np.random.shuffle(indices)  # Shuffle for each epoch
+            np.random.shuffle(indices)
 
             for start_idx in range(0, num_samples, self.batch_size):
                 batch_indices = indices[start_idx: start_idx + self.batch_size]
@@ -382,9 +356,15 @@ class PPOTrainer:
                 # Get new log probs, entropy, and values from current policy
                 action_params, current_values = self.model(batch_states)
 
-                # FIXED: Ensure current_values is the right shape
-                if current_values.ndim > 1 and current_values.size(-1) == 1:
-                    current_values = current_values.squeeze(-1)  # Remove last dimension if it's 1
+                # Print batch shape information for debugging
+                if epoch == 0 and start_idx == 0:
+                    logger.debug(
+                        f"Batch shapes - actions: {batch_actions.shape}, old_log_probs: {batch_old_log_probs.shape}, "
+                        f"advantages: {batch_advantages.shape}, returns: {batch_returns.shape}")
+
+                # Fix batch returns shape before loss calculation
+                if batch_returns.ndim > 1 and batch_returns.shape[1] > 1:
+                    batch_returns = batch_returns[:, 0]
 
                 # Calculate new log probabilities and entropy
                 if self.model.continuous_action:
