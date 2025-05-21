@@ -25,8 +25,6 @@ class ActionTypeEnum(Enum):
     HOLD = 0
     BUY = 1  # Enter a new long position or flip from short to long
     SELL = 2  # Enter a new short position (if allowed) or flip from long to short / exit long
-    SCALEIN = 3  # Increase an existing position (long or short) or open new if flat
-    SCALEOUT = 4  # Decrease an existing position (long or short)
 
 
 class PositionSizeTypeEnum(Enum):
@@ -330,11 +328,7 @@ class TradingEnvironment(gym.Env):
             "invalid_reason": None
         }
 
-    def _translate_agent_action_to_order(self,
-                                         decoded_action: Dict[str, Any],
-                                         portfolio_state: PortfolioState,
-                                         market_state: Dict[str, Any]
-                                         ) -> Optional[Dict[str, Any]]:
+    def _translate_agent_action_to_order(self, decoded_action: Dict[str, Any], portfolio_state: PortfolioState, market_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         action_type = decoded_action['type']
         size_float = decoded_action['size_float']
 
@@ -365,7 +359,6 @@ class TradingEnvironment(gym.Env):
             self.invalid_action_count_episode += 1
             return None
 
-        order_params: Optional[Dict[str, Any]] = None
         pos_data = portfolio_state['positions'].get(asset_id)
         if not pos_data:
             decoded_action['invalid_reason'] = f"Position data for asset {asset_id} not found."
@@ -381,6 +374,7 @@ class TradingEnvironment(gym.Env):
         max_pos_value_abs = total_equity * self.portfolio_manager.max_position_value_ratio
         available_buying_power = cash
         allow_shorting = self.portfolio_manager.allow_shorting
+        default_pos_value = self.portfolio_manager.default_position_value
 
         quantity_to_trade = 0.0
         order_side: Optional[OrderSideEnum] = None
@@ -389,7 +383,7 @@ class TradingEnvironment(gym.Env):
             return None
 
         elif action_type == ActionTypeEnum.BUY:
-            target_buy_value = size_float * available_buying_power
+            target_buy_value = size_float * default_pos_value / 100
             target_buy_value = min(target_buy_value, max_pos_value_abs, cash)
             if target_buy_value > 1e-9 and ideal_ask > 1e-9:
                 quantity_to_trade = target_buy_value / ideal_ask
@@ -401,10 +395,10 @@ class TradingEnvironment(gym.Env):
 
         elif action_type == ActionTypeEnum.SELL:
             if current_pos_side == PositionSideEnum.LONG:
-                quantity_to_trade = size_float * current_qty
+                quantity_to_trade = size_float * current_qty / 100
                 order_side = OrderSideEnum.SELL
             elif allow_shorting:
-                target_short_value = size_float * total_equity
+                target_short_value = size_float * total_equity / 100
                 target_short_value = min(target_short_value, max_pos_value_abs)
                 if target_short_value > 1e-9 and ideal_bid > 1e-9:
                     quantity_to_trade = target_short_value / ideal_bid
@@ -416,57 +410,6 @@ class TradingEnvironment(gym.Env):
             else:
                 decoded_action['invalid_reason'] = "SELL action invalid: Not holding long and shorting disallowed."
 
-        elif action_type == ActionTypeEnum.SCALEIN:
-            if current_pos_side == PositionSideEnum.FLAT:
-                target_value = size_float * available_buying_power
-                target_value = min(target_value, max_pos_value_abs, cash)
-                if target_value > 1e-9 and ideal_ask > 1e-9:
-                    quantity_to_trade = target_value / ideal_ask
-                    order_side = OrderSideEnum.BUY
-                else:
-                    if allow_shorting:
-                        target_value = size_float * total_equity
-                        target_value = min(target_value, max_pos_value_abs)
-                        if target_value > 1e-9 and ideal_bid > 1e-9:
-                            quantity_to_trade = target_value / ideal_bid
-                            order_side = OrderSideEnum.SELL
-                        else:
-                            decoded_action['invalid_reason'] = "SCALEIN (from flat): Insufficient power or invalid price for BUY/SELL."
-                    else:
-                        decoded_action['invalid_reason'] = "SCALEIN (as BUY from flat): Insufficient buying power or invalid price."
-            elif current_pos_side == PositionSideEnum.LONG:
-                additional_qty = size_float * current_qty
-                additional_value_needed = additional_qty * ideal_ask
-                if additional_value_needed <= available_buying_power:
-                    current_value = current_qty * ideal_ask
-                    if current_value + additional_value_needed <= max_pos_value_abs:
-                        quantity_to_trade = additional_qty
-                        order_side = OrderSideEnum.BUY
-                    else:
-                        decoded_action['invalid_reason'] = "SCALEIN Long: Exceeds max position value."
-                else:
-                    decoded_action['invalid_reason'] = "SCALEIN Long: Insufficient cash for additional shares."
-            elif current_pos_side == PositionSideEnum.SHORT and allow_shorting:
-                additional_qty = size_float * current_qty
-                current_short_value_abs = current_qty * ideal_bid
-                additional_short_value_abs = additional_qty * ideal_bid
-                if current_short_value_abs + additional_short_value_abs <= max_pos_value_abs:
-                    quantity_to_trade = additional_qty
-                    order_side = OrderSideEnum.SELL
-                else:
-                    decoded_action['invalid_reason'] = "SCALEIN Short: Exceeds margin/max position value."
-            else:
-                decoded_action['invalid_reason'] = f"SCALEIN invalid for current position side {current_pos_side} (shorting allowed: {allow_shorting})."
-
-        elif action_type == ActionTypeEnum.SCALEOUT:
-            if current_pos_side == PositionSideEnum.LONG:
-                quantity_to_trade = size_float * current_qty
-                order_side = OrderSideEnum.SELL
-            elif current_pos_side == PositionSideEnum.SHORT and allow_shorting:
-                quantity_to_trade = size_float * current_qty
-                order_side = OrderSideEnum.BUY
-            else:
-                decoded_action['invalid_reason'] = "SCALEOUT invalid: No open position or wrong side."
 
         if quantity_to_trade > 1e-9 and order_side is not None:
             quantity_to_trade = abs(quantity_to_trade)
@@ -692,58 +635,155 @@ class TradingEnvironment(gym.Env):
         return info
 
     def render(self, info_dict: Optional[Dict[str, Any]] = None):
-        if self.render_mode == 'none' or info_dict is None or not self.primary_asset: return
+        """
+        Enhanced rendering method with more structured and detailed output.
 
-        log_lines = [f"--- Step: {info_dict.get('step', self.current_step)} | Symbol: {self.primary_asset} | Time: {info_dict.get('timestamp_iso', 'N/A')} ---"]
-        decoded_action = info_dict.get('action_decoded')
+        Args:
+            info_dict: Dictionary containing step information
+        """
+        if self.render_mode == 'none' or info_dict is None or not self.primary_asset:
+            return
+
+        # Prepare separator line
+        separator = "=" * 80
+
+        # Prepare columns for better readability
+        def format_column(title: str, content: str, width: int = 25) -> str:
+            """Helper to create formatted column."""
+            return f"{title.ljust(15)}: {str(content).ljust(width)}"
+
+        # Prepare log lines
+        log_lines = [
+            separator,
+            f"Trading Environment Render | Symbol: {self.primary_asset}",
+            separator
+        ]
+
+        # Step and Time Information
+        time_info = [
+            format_column("Step", info_dict.get('step', 'N/A')),
+            format_column("Timestamp", info_dict.get('timestamp_iso', 'N/A'))
+        ]
+        log_lines.append(" | ".join(time_info))
+
+        # Action Information
+        decoded_action = info_dict.get('action_decoded', {})
         if decoded_action:
-            log_lines.append(
-                f"Action: {decoded_action.get('type').name}, Size: {decoded_action.get('size_enum').name} ({decoded_action.get('size_float') * 100:.0f}%)")
-            if 'translated_order' in decoded_action and decoded_action['translated_order']:
-                log_lines.append(f"  Order: {decoded_action['translated_order']}")
+            action_info = [
+                format_column("Action Type", decoded_action.get('type', 'N/A').name),
+                format_column("Size", f"{decoded_action.get('size_enum', 'N/A').name} ({decoded_action.get('size_float', 0) * 100:.0f}%)")
+            ]
             if decoded_action.get('invalid_reason'):
-                log_lines.append(f"  Invalid Action Reason: {decoded_action['invalid_reason']}")
+                action_info.append(format_column("Invalid Reason", decoded_action['invalid_reason']))
+            log_lines.append(" | ".join(action_info))
 
-        if 'fills_step' in info_dict and info_dict['fills_step']:
-            for fill in info_dict['fills_step']:
-                log_lines.append(
-                    f"  Fill: {fill['order_side'].value} {fill['executed_quantity']:.4f}@{fill['executed_price']:.2f} "
-                    f"Comm:{fill['commission']:.2f} Fees:{fill['fees']:.2f} SlipCost:{fill.get('slippage_cost_total', 0):.2f}")
+        # Trade Fill Information
+        fills_info = info_dict.get('fills_step', [])
+        if fills_info:
+            log_lines.append(separator)
+            log_lines.append("Trade Fills:")
+            for fill in fills_info:
+                fill_details = [
+                    format_column("Side", fill.get('order_side', 'N/A')),
+                    format_column("Qty", f"{fill.get('executed_quantity', 0):.4f}"),
+                    format_column("Price", f"${fill.get('executed_price', 0):.2f}"),
+                    format_column("Comm", f"${fill.get('commission', 0):.2f}"),
+                    format_column("Fees", f"${fill.get('fees', 0):.2f}")
+                ]
+                log_lines.append(" | ".join(fill_details))
 
-        log_lines.append(
-            f"Portfolio: Equity ${info_dict.get('portfolio_equity', 0):.2f}, Cash ${info_dict.get('portfolio_cash', 0):.2f}, "
-            f"UnrealPnL ${info_dict.get('portfolio_unrealized_pnl', 0):.2f}, RealPnL ${info_dict.get('portfolio_realized_pnl_session_net', 0):.2f}")
-        log_lines.append(f"  Position[{self.primary_asset}]: Qty {info_dict.get(f'position_{self.primary_asset}_qty', 0):.4f}, "
-                         f"Side {info_dict.get(f'position_{self.primary_asset}_side', 'FLAT')}, "
-                         f"AvgEntry ${info_dict.get(f'position_{self.primary_asset}_avg_entry', 0):.2f}")
-        log_lines.append(f"Reward: Step {info_dict.get('reward_step', 0):.4f}, Episode Total {info_dict.get('episode_cumulative_reward', 0):.4f}")
+        # Portfolio Information
+        log_lines.append(separator)
+        portfolio_info = [
+            format_column("Total Equity", f"${info_dict.get('portfolio_equity', 0):.2f}"),
+            format_column("Cash", f"${info_dict.get('portfolio_cash', 0):.2f}"),
+            format_column("Unrealized PnL", f"${info_dict.get('portfolio_unrealized_pnl', 0):.2f}"),
+            format_column("Realized PnL", f"${info_dict.get('portfolio_realized_pnl_session_net', 0):.2f}")
+        ]
+        log_lines.append(" | ".join(portfolio_info))
 
-        if info_dict.get('termination_reason'): log_lines.append(f"TERMINATED: {info_dict['termination_reason']}")
-        if info_dict.get('TimeLimit.truncated'): log_lines.append("TRUNCATED by Max Steps")
+        # Position Information
+        if self.primary_asset:
+            # Get current market state to get current price
+            market_state = None
+            try:
+                market_state = self.market_simulator.get_current_market_state()
+            except Exception:
+                pass
 
+            current_price = market_state.get('current_price') if market_state else None
+            if current_price is None:
+                current_price = market_state.get('best_bid_price') or market_state.get('best_ask_price')
+
+            pos_qty = info_dict.get(f'position_{self.primary_asset}_qty', 0)
+            pos_side = info_dict.get(f'position_{self.primary_asset}_side', 'FLAT')
+            pos_avg_entry = info_dict.get(f'position_{self.primary_asset}_avg_entry', 0.0)
+
+            # Compute price difference and percentage
+            if current_price is not None and pos_qty > 0 and pos_avg_entry > 0:
+                price_diff = current_price - pos_avg_entry
+                price_diff_pct = (price_diff / pos_avg_entry) * 100 if pos_avg_entry != 0 else 0
+
+                position_info = [
+                    format_column("Position", f"{self.primary_asset} {pos_side}"),
+                    format_column("Quantity", f"{pos_qty:.2f}"),
+                    format_column("Avg Entry", f"${pos_avg_entry:.2f}"),
+                    format_column("Current Price", f"${current_price:.2f}"),
+                    format_column("Price Diff", f"${price_diff:.2f} ({price_diff_pct:+.2f}%)")
+                ]
+                log_lines.append(" | ".join(position_info))
+
+        # Reward Information
+        reward_info = [
+            format_column("Step Reward", f"{info_dict.get('reward_step', 0):.4f}"),
+            format_column("Episode Total Reward", f"{info_dict.get('episode_cumulative_reward', 0):.4f}")
+        ]
+        log_lines.append(" | ".join(reward_info))
+
+        # Termination Information
+        if info_dict.get('termination_reason'):
+            log_lines.append(f"TERMINATED: {info_dict['termination_reason']}")
+        elif info_dict.get('TimeLimit.truncated'):
+            log_lines.append("TRUNCATED by Max Steps")
+
+        log_lines.append(separator)
+
+        # Output the log
         output_str = "\n".join(log_lines)
         if self.render_mode == 'human':
             print(output_str)
         elif self.render_mode == 'logs':
             self.logger.info(output_str)
 
+        # Episode Summary at the end if available
         if (info_dict.get('termination_reason') or info_dict.get('TimeLimit.truncated')) and 'episode_summary' in info_dict:
-            summary_log = [f"--- EPISODE SUMMARY ({self.primary_asset}) ---"]
-            for k, v_item in info_dict['episode_summary'].items():
-                if isinstance(v_item, float):
-                    summary_log.append(f"  {k}: {v_item:.4f}")
-                elif isinstance(v_item, dict):
-                    summary_log.append(f"  {k}:")
-                    for sub_k, sub_v in v_item.items():
-                        summary_log.append(f"    {sub_k}: {sub_v:.4f}" if isinstance(sub_v, float) else f"    {sub_k}: {sub_v}")
-                else:
-                    summary_log.append(f"  {k}: {v_item}")
+            episode_summary_lines = [
+                "\n" + separator,
+                "--- EPISODE SUMMARY ---"
+            ]
+            summary = info_dict['episode_summary']
 
-            final_output_str = "\n".join(summary_log)
+            # Intelligently format summary metrics
+            for key, value in summary.items():
+                # Skip metadata-like keys or deeply nested structures
+                if isinstance(value, dict):
+                    continue
+
+                # Format numeric values
+                if isinstance(value, float):
+                    formatted_value = f"{value:.4f}"
+                else:
+                    formatted_value = str(value)
+
+                episode_summary_lines.append(f"{key.replace('_', ' ').title()}: {formatted_value}")
+
+            episode_summary_lines.append(separator)
+            summary_output = "\n".join(episode_summary_lines)
+
             if self.render_mode == 'human':
-                print(final_output_str)
+                print(summary_output)
             elif self.render_mode == 'logs':
-                self.logger.info(final_output_str)
+                self.logger.info(summary_output)
 
     def close(self):
         if self.market_simulator and hasattr(self.market_simulator, 'close'):

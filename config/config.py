@@ -196,7 +196,8 @@ class ExecutionConfig:
 
 @dataclass
 class PortfolioConfig:
-    initial_cash: float = 100000.0
+    initial_cash: float = 25000.0
+    default_position_value= 10000.0  # Default position value for each asset
     max_position_value_ratio: float = 2.0  # Fixed: removed the comma - Example: Up to 2x leverage on equity
     max_position_holding_seconds: int = 300
 
