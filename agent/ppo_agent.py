@@ -247,52 +247,49 @@ class PPOTrainer:
         advantages = torch.zeros_like(rewards, device=self.device)
         last_gae_lam = 0
 
-        # Estimate the value of the last state if not done, otherwise 0
-        # This requires getting the value of the *very last* next_state encountered in rollout
-        # For simplicity, if the last step was 'done', next_value is 0.
-        # If not, we would ideally compute model.value(last_next_state).
-        # Common practice: if rollout ends not due to 'done', bootstrap from the last value.
-        # Here, we assume the value tensor already includes V(s_t) for all t in rollout.
-        # So V(s_{t+1}) is values[t+1] effectively.
-
         for t in reversed(range(num_steps)):
             if t == num_steps - 1:  # Last step in the buffer
-                # If the episode was not 'done' at this last step, we might need V(s_T+1)
-                # For simplicity, if it's not done, the advantage calculation can use V(s_T) as if it were terminal,
-                # or we'd need to have stored V(s_T+1) from the model.
-                # Assuming values contains V(s_0)...V(s_T-1).
-                # So, next_value for rewards[T-1] would be 0 if dones[T-1] is true, or V(s_T) if we had it.
-                # A common simplification: if dones[t] is true, next_val_for_delta is 0.
-                # If not, it's values[t+1] if t+1 is in buffer, or bootstrap V(s_last_next_state)
-
-                # Let's assume values are V(s_t).
-                # For the last element rewards[num_steps-1], delta uses V(s_{num_steps-1})
-                # and needs a next_value. If dones[num_steps-1] is true, next_value = 0.
-                # If dones[num_steps-1] is false, we'd ideally use the value of the *actual next state* after the rollout.
-                # For PPO rollouts, the 'values' are V(s_t).
-                # The 'next_value' for delta at step 't' is V(s_{t+1}).
-                # So for the last step 'num_steps-1', the next_value for delta would be from V(s_{num_steps}).
-                # We use the value of the state *after* the last action in the buffer.
-                # This is usually handled by getting the value of `last_next_env_state_np` if the episode didn't end.
-
-                # A practical way: `values` stores V(s_0)...V(s_N-1)
-                # For GAE at step N-1, we need V(s_N).
-                # If done[N-1] is true, V(s_N) = 0.
-                # If done[N-1] is false, V(s_N) is estimated by the model on the actual next state s_N.
-                # Since we are operating on a fixed buffer, if not done, the next_value is values[t+1]
-                # For the last step in buffer:
                 if dones[t]:
                     next_value = torch.tensor([0.0], device=self.device)
                 else:
                     # Bootstrap with the value of the state *after* the last action of the rollout
-                    # This requires `self.buffer.buffer[-1]['next_state']` to be evaluated by the critic
-                    # For simplicity, let's assume it if not done, we use the value estimate of the last *next_state*
-                    # that was stored alongside the last experience in the buffer before `prepare_data_for_training`.
-                    # This value is NOT in self.buffer.values (which are V(s_t) for t in buffer).
-                    # We need to compute it.
-                    last_exp_next_state_torch = self.buffer.buffer[-1]['next_state']  # This is Dict[str, Tensor]
+                    # This requires proper tensor shape handling to avoid dimension errors
+                    last_exp_next_state_dict = self.buffer.buffer[-1]['next_state']
+
+                    # Ensure proper tensor shapes with batch dimension for the model
+                    batched_state_dict = {}
+                    for key, tensor_val in last_exp_next_state_dict.items():
+                        if key in ['hf', 'mf', 'lf', 'portfolio']:  # Sequential features
+                            if tensor_val.ndim == 2:  # [sequence_length, feature_dimension]
+                                batched_state_dict[key] = tensor_val.unsqueeze(
+                                    0)  # Add batch dim: [1, sequence_length, feature_dimension]
+                            elif tensor_val.ndim == 3 and tensor_val.shape[0] == 1:  # Already batched
+                                batched_state_dict[key] = tensor_val
+                            else:
+                                logger.warning(
+                                    f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}'. Shape: {tensor_val.shape}")
+                                # Fallback handling for unusual dimensions
+                                if tensor_val.ndim == 1:  # [feature_dimension]
+                                    batched_state_dict[key] = tensor_val.unsqueeze(0).unsqueeze(
+                                        0)  # [1, 1, feature_dimension]
+                                else:
+                                    batched_state_dict[key] = tensor_val  # Pass as is
+                        elif key == 'static':  # Static features
+                            if tensor_val.ndim == 1:  # [feature_dimension]
+                                batched_state_dict[key] = tensor_val.unsqueeze(
+                                    0)  # Add batch dim: [1, feature_dimension]
+                            elif tensor_val.ndim == 2 and tensor_val.shape[0] == 1:  # Already correctly batched
+                                batched_state_dict[key] = tensor_val
+                            else:
+                                logger.warning(
+                                    f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}' (static). Shape: {tensor_val.shape}")
+                                batched_state_dict[key] = tensor_val  # Pass as is
+                        else:
+                            batched_state_dict[key] = tensor_val  # Pass through other keys
+
+                    # Now use the properly batched state dict for model inference
                     with torch.no_grad():
-                        _, next_value_container = self.model(last_exp_next_state_torch)  # Get value V(s_N)
+                        _, next_value_container = self.model(batched_state_dict)  # Get value V(s_N)
                         next_value = next_value_container
             else:
                 if dones[t]:
@@ -301,7 +298,8 @@ class PPOTrainer:
                     next_value = values[t + 1]  # V(s_{t+1})
 
             delta = rewards[t] + self.gamma * next_value * (1.0 - dones[t].float()) - values[t]
-            advantages[t] = last_gae_lam = delta + self.gamma * self.gae_lambda * (1.0 - dones[t].float()) * last_gae_lam
+            advantages[t] = last_gae_lam = delta + self.gamma * self.gae_lambda * (
+                        1.0 - dones[t].float()) * last_gae_lam
 
         self.buffer.advantages = advantages
         self.buffer.returns = advantages + values  # Rt = At + Vt

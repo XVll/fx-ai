@@ -2,11 +2,9 @@
 # Data configuration - synchronized with DataConfig
 
 # Provider settings
-provider_type: "file"
-data_dir: "${hydra:runtime.cwd}/dnb/mlgo"
-
-# Symbol settings
-symbol_info_file: "${hydra:runtime.cwd}/dnb/mlgo/symbols.json"
+provider_type: "dummy"
+data_dir: "./dnb/mlgo"
+symbol_info_file: "./dnb/mlgo/symbols.json"
 symbol: "MLGO"
 start_date: "2025-03-27"
 end_date: "2025-03-28"

@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional
 import numpy as np
 
 from config.config import ExecutionConfig
@@ -20,27 +20,27 @@ class ExecutionSimulator:
         self.market_simulator = market_simulator
 
         # Latency parameters
-        self.mean_latency_ms = self.config.get('mean_latency_ms', 50)
-        self.latency_std_dev_ms = self.config.get('latency_std_dev_ms', 10)
+        self.mean_latency_ms = self.config.mean_latency_ms
+        self.latency_std_dev_ms = self.config.latency_std_dev_ms
 
         # Slippage parameters
-        self.base_slippage_bps = self.config.get('base_slippage_bps', 1.0)  # For crossing spread, market friction
-        self.size_impact_slippage_bps_per_unit = self.config.get('size_impact_slippage_bps_per_unit', 0.05)
-        self.max_total_slippage_bps = self.config.get('max_total_slippage_bps', 100.0)
+        self.base_slippage_bps = self.config.base_slippage_bps
+        self.size_impact_slippage_bps_per_unit = self.config.size_impact_slippage_bps_per_unit
+        self.max_total_slippage_bps = self.config.max_total_slippage_bps
 
         # NEW: Per-share commission and fee parameters
-        self.commission_per_share = self.config.get('commission_per_share', 0.005)  # e.g., $0.005 per share
-        self.fee_per_share = self.config.get('fee_per_share', 0.0005)  # e.g., $0.0005 per share
-        self.min_commission_per_order = self.config.get('min_commission_per_order', None)  # e.g., 1.00 for $1 minimum
+        self.commission_per_share = self.config.commission_per_share
+        self.fee_per_share = self.config.fee_per_share
+        self.min_commission_per_order = self.config.min_commission_per_order
         # Optional: Cap commission as a percentage of trade value
-        self.max_commission_pct_of_value = self.config.get('max_commission_pct_of_value', None)  # e.g., 1.0 for 1%
+        self.max_commission_pct_of_value = self.config.max_commission_pct_of_value
 
     def _simulate_latency(self) -> timedelta:
         if self.latency_std_dev_ms <= 1e-9:
             latency_ms = self.mean_latency_ms
         else:
             latency_ms = self.np_random.normal(self.mean_latency_ms, self.latency_std_dev_ms)
-        return timedelta(milliseconds=max(0, latency_ms))
+        return timedelta(milliseconds=max(0, round(latency_ms)))
 
     def execute_order(self,
                       asset_id: str,

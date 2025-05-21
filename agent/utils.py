@@ -32,7 +32,10 @@ class ReplayBuffer:
         logger.info(f"ReplayBuffer initialized with capacity {self.capacity} on device {self.device}")
 
     def _process_state_dict(self, state_dict_np: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
-        """Converts a dictionary of NumPy arrays to a dictionary of PyTorch tensors."""
+        """
+        Converts a dictionary of NumPy arrays to a dictionary of PyTorch tensors,
+        preserving the original tensor structure.
+        """
         processed_tensors = {}
         for key, array_val in state_dict_np.items():
             # Ensure the numpy array is not an object array if it contains numerical data
@@ -44,16 +47,20 @@ class ReplayBuffer:
                     # Fallback: try to convert as is, or handle error more gracefully
                     pass
 
-            # Convert to float32 tensor, assuming numerical data
-            # The environment should already provide states with a batch-like dimension of 1
-            # e.g., (1, seq_len, feat_dim) or (1, feat_dim)
+            # Convert to float32 tensor, preserving the original dimensions
             try:
+                # Convert to PyTorch tensor, preserving the original shape
                 tensor_val = torch.from_numpy(array_val).float().to(self.device)
                 processed_tensors[key] = tensor_val
+
+                # Log the shape for debugging
+                logger.debug(f"Processed tensor '{key}' with shape: {tensor_val.shape}")
             except TypeError as e:
-                logger.error(f"TypeError converting key '{key}' to tensor: {e}. Value: {array_val}, Dtype: {array_val.dtype}")
+                logger.error(
+                    f"TypeError converting key '{key}' to tensor: {e}. Value: {array_val}, Dtype: {array_val.dtype}")
                 # Handle or re-raise depending on how critical this is
                 raise
+
         return processed_tensors
 
     def add(self,
@@ -90,14 +97,14 @@ class ReplayBuffer:
 
     def prepare_data_for_training(self) -> None:
         """
-        Converts the list of experiences into batched tensors for training.
-        This should be called when the buffer is full or a rollout is complete.
+        Converts the list of experiences into batched tensors for training,
+        preserving the original tensor dimensions for each component.
         """
         if not self.buffer:
             logger.warning("Buffer is empty, cannot prepare data for training.")
             return
 
-        # Initialize lists for each component
+        # Initialize structures for each component
         all_states_components: Dict[str, List[torch.Tensor]] = {
             key: [] for key in self.buffer[0]['state'].keys()
         }
@@ -116,11 +123,43 @@ class ReplayBuffer:
             all_rewards.append(exp['reward'])
             all_dones.append(exp['done'])
 
-        # Batch all components
-        self.states = {
-            key: torch.cat(tensors_list, dim=0)
-            for key, tensors_list in all_states_components.items()
-        }
+        # Batch all components, preserving dimensions
+        self.states = {}
+
+        # For each component type, properly concatenate along batch dimension
+        for key, tensors_list in all_states_components.items():
+            # Determine the dimensions for proper concatenation
+            first_tensor = tensors_list[0]
+            if key in ['hf', 'mf', 'lf', 'portfolio']:
+                # These should be [seq_len, feat_dim] tensors stacked into [batch_size, seq_len, feat_dim]
+                if first_tensor.ndim == 2:  # [seq_len, feat_dim]
+                    self.states[key] = torch.stack(tensors_list, dim=0)
+                    logger.debug(f"Stacked {key} tensors to shape: {self.states[key].shape}")
+                elif first_tensor.ndim == 3:  # Already [1, seq_len, feat_dim]
+                    self.states[key] = torch.cat(tensors_list, dim=0)
+                    logger.debug(f"Concatenated {key} tensors to shape: {self.states[key].shape}")
+                else:
+                    logger.warning(
+                        f"Unexpected shape for {key}: {first_tensor.shape}. Attempting default concatenation.")
+                    self.states[key] = torch.cat(tensors_list, dim=0)
+            elif key == 'static':
+                # Static should be [feat_dim] tensors stacked into [batch_size, feat_dim]
+                if first_tensor.ndim == 1:  # [feat_dim]
+                    self.states[key] = torch.stack(tensors_list, dim=0)
+                    logger.debug(f"Stacked {key} tensors to shape: {self.states[key].shape}")
+                elif first_tensor.ndim == 2 and first_tensor.shape[0] == 1:  # [1, feat_dim]
+                    self.states[key] = torch.cat(tensors_list, dim=0)
+                    logger.debug(f"Concatenated {key} tensors to shape: {self.states[key].shape}")
+                else:
+                    logger.warning(
+                        f"Unexpected shape for {key}: {first_tensor.shape}. Attempting default concatenation.")
+                    self.states[key] = torch.cat(tensors_list, dim=0)
+            else:
+                # Other components: default to concatenation
+                logger.debug(f"Default concatenation for {key} tensors")
+                self.states[key] = torch.cat(tensors_list, dim=0)
+
+        # Process other components
         self.actions = torch.cat(all_actions, dim=0)
         self.log_probs = torch.cat(all_log_probs, dim=0)
         self.values = torch.cat(all_values, dim=0)
@@ -131,6 +170,15 @@ class ReplayBuffer:
         self.advantages = None
         self.returns = None
         logger.info(f"Buffer data prepared for training. Buffer size: {len(self.buffer)}")
+
+        # Log shapes for debugging
+        for key, tensor in self.states.items():
+            logger.debug(f"State component '{key}' shape: {tensor.shape}")
+        logger.debug(f"Actions shape: {self.actions.shape}")
+        logger.debug(f"Log_probs shape: {self.log_probs.shape}")
+        logger.debug(f"Values shape: {self.values.shape}")
+        logger.debug(f"Rewards shape: {self.rewards.shape}")
+        logger.debug(f"Dones shape: {self.dones.shape}")
 
     def get_training_data(self) -> Optional[Dict[str, Any]]:
         """Returns all necessary data for a PPO update epoch if prepared."""

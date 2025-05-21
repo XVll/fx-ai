@@ -184,8 +184,7 @@ class MultiBranchTransformer(nn.Module):
             - For discrete single actions: (logits)
             - value: Value estimate tensor
         """
-
-        # Todo Delete me for debugs
+        # Check for NaNs in input tensors
         for key, tensor in state_dict.items():
             if torch.isnan(tensor).any():
                 nan_count = torch.isnan(tensor).sum().item()
@@ -197,6 +196,47 @@ class MultiBranchTransformer(nn.Module):
         lf_features = state_dict['lf'].to(self.device)
         static_features = state_dict['static'].to(self.device)
         portfolio_features = state_dict['portfolio'].to(self.device)
+
+        # Add missing dimensions if needed - this makes the model more robust
+        # HF features
+        if hf_features.ndim < 3:
+            self.logger.warning(f"hf_features has unexpected shape: {hf_features.shape}. Adding missing dimensions.")
+            if hf_features.ndim == 1:  # [feat_dim]
+                hf_features = hf_features.unsqueeze(0).unsqueeze(0)  # [1, 1, feat_dim]
+            elif hf_features.ndim == 2:  # [seq_len, feat_dim]
+                hf_features = hf_features.unsqueeze(0)  # [1, seq_len, feat_dim]
+
+        # MF features
+        if mf_features.ndim < 3:
+            self.logger.warning(f"mf_features has unexpected shape: {mf_features.shape}. Adding missing dimensions.")
+            if mf_features.ndim == 1:  # [feat_dim]
+                mf_features = mf_features.unsqueeze(0).unsqueeze(0)  # [1, 1, feat_dim]
+            elif mf_features.ndim == 2:  # [seq_len, feat_dim]
+                mf_features = mf_features.unsqueeze(0)  # [1, seq_len, feat_dim]
+
+        # LF features
+        if lf_features.ndim < 3:
+            self.logger.warning(f"lf_features has unexpected shape: {lf_features.shape}. Adding missing dimensions.")
+            if lf_features.ndim == 1:  # [feat_dim]
+                lf_features = lf_features.unsqueeze(0).unsqueeze(0)  # [1, 1, feat_dim]
+            elif lf_features.ndim == 2:  # [seq_len, feat_dim]
+                lf_features = lf_features.unsqueeze(0)  # [1, seq_len, feat_dim]
+
+        # Portfolio features
+        if portfolio_features.ndim < 3:
+            self.logger.warning(
+                f"portfolio_features has unexpected shape: {portfolio_features.shape}. Adding missing dimensions.")
+            if portfolio_features.ndim == 1:  # [feat_dim]
+                portfolio_features = portfolio_features.unsqueeze(0).unsqueeze(0)  # [1, 1, feat_dim]
+            elif portfolio_features.ndim == 2:  # [seq_len, feat_dim]
+                portfolio_features = portfolio_features.unsqueeze(0)  # [1, seq_len, feat_dim]
+
+        # Static features
+        if static_features.ndim < 2:
+            self.logger.warning(
+                f"static_features has unexpected shape: {static_features.shape}. Adding missing dimensions.")
+            if static_features.ndim == 1:  # [feat_dim]
+                static_features = static_features.unsqueeze(0)  # [1, feat_dim]
 
         # Process HF Branch
         # Shape: (batch_size, hf_seq_len, d_model)
@@ -244,7 +284,7 @@ class MultiBranchTransformer(nn.Module):
 
         # Fusion via attention
         # Prepares all branches for fusion
-        # Shape: (batch_size, 4, d_model)
+        # Shape: (batch_size, 5, d_model)
         features_to_fuse = torch.stack([hf_rep, mf_rep, lf_rep, portfolio_rep, static_rep], dim=1)
 
         # Fuse all-branches
