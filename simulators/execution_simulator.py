@@ -56,79 +56,69 @@ class ExecutionSimulator:
             self.logger.warning(f"Only MARKET orders currently supported. Received: {order_type}")
             return None
 
+        # Validate inputs
         if requested_quantity <= 1e-9:
             self.logger.debug("Requested quantity too small, no execution.")
             return None
 
-        latency_duration = self._simulate_latency()
-        execution_attempt_timestamp = decision_timestamp + latency_duration
-        market_state_at_exec = self.market_simulator.get_state_at_time(execution_attempt_timestamp)
+        # Precise fee and commission calculation
+        # Fees: $0.003 per share
+        fees = requested_quantity * self.fee_per_share
 
-        if not market_state_at_exec or \
-                market_state_at_exec.get('best_bid_price') is None or \
-                market_state_at_exec.get('best_ask_price') is None:
-            self.logger.warning(f"No valid BBO at execution time {execution_attempt_timestamp} for {asset_id}. Order fails.")
-            return None
+        # Commission: $0.0007 per share
+        commission = requested_quantity * self.commission_per_share
 
-        current_exec_bid_price = market_state_at_exec['best_bid_price']
-        current_exec_ask_price = market_state_at_exec['best_ask_price']
+        # Total transaction value
+        total_transaction_value = requested_quantity * (ideal_decision_price_ask if order_side == OrderSideEnum.BUY else ideal_decision_price_bid)
 
-        # --- Slippage Calculation (same as before) ---
-        total_slippage_bps = self.base_slippage_bps
-        total_slippage_bps += self.size_impact_slippage_bps_per_unit * requested_quantity
-        total_slippage_bps = min(total_slippage_bps, self.max_total_slippage_bps)
-        slippage_factor = total_slippage_bps / 10000.0
-        executed_price = 0.0
-
-        if order_side == OrderSideEnum.BUY:
-            executed_price = current_exec_ask_price * (1 + slippage_factor)
-        elif order_side == OrderSideEnum.SELL:
-            executed_price = current_exec_bid_price * (1 - slippage_factor)
-
-        executed_quantity = requested_quantity
-
-        slippage_cost_total = 0.0
-        if order_side == OrderSideEnum.BUY:
-            slippage_cost_total = (executed_price - ideal_decision_price_ask) * executed_quantity
-        elif order_side == OrderSideEnum.SELL:
-            slippage_cost_total = (ideal_decision_price_bid - executed_price) * executed_quantity
-        slippage_cost_total = max(0, slippage_cost_total)
-        # --- End Slippage Calculation ---
-
-        commission = executed_quantity * self.commission_per_share
-
+        # Optional: Apply minimum commission if set
         if self.min_commission_per_order is not None:
             commission = max(commission, self.min_commission_per_order)
 
+        # Optional: Cap commission as a percentage of trade value
         if self.max_commission_pct_of_value is not None:
-            trade_value = executed_quantity * executed_price
-            max_comm_by_value = trade_value * (self.max_commission_pct_of_value / 100.0)
-            # Ensure the commission doesn't exceed this cap, but also respect min_commission if both are set
-            # If min_commission_per_order is higher than max_comm_by_value, min_commission would typically take precedence,
-            # or the broker might have specific rules. For simplicity here, we'll take the capped value if it's lower
-            # than the per-share calc but ensure min_commission is still met.
-            if commission > max_comm_by_value:
-                commission = max_comm_by_value
-                if self.min_commission_per_order is not None:  # Re-check min if capped by %
-                    commission = max(commission, self.min_commission_per_order)
+            max_comm_by_value = total_transaction_value * (self.max_commission_pct_of_value / 100.0)
+            commission = min(commission, max_comm_by_value)
 
-        fees = executed_quantity * self.fee_per_share
-        # --- End Commission and Fee Calculation ---
+        # Ensure non-negative values
+        commission = max(0, commission)
+        fees = max(0, fees)
 
-        fill_details = FillDetails(
+        # Simulate execution price with slippage
+        slippage_factor = self.base_slippage_bps / 10000.0
+        if order_side == OrderSideEnum.BUY:
+            executed_price = ideal_decision_price_ask * (1 + slippage_factor)
+        else:  # SELL
+            executed_price = ideal_decision_price_bid * (1 - slippage_factor)
+
+        # Calculate slippage cost
+        slippage_cost_total = abs(
+            executed_price - (ideal_decision_price_ask if order_side == OrderSideEnum.BUY else ideal_decision_price_bid)) * requested_quantity
+
+        # Detailed logging for verification
+        # self.logger.info(
+        #     f"Order Execution Details:\n"
+        #     f"  Side       : {order_side}\n"
+        #     f"  Quantity   : {requested_quantity:.2f}\n"
+        #     f"  Ideal Price: ${ideal_decision_price_ask if order_side == OrderSideEnum.BUY else ideal_decision_price_bid:.2f}\n"
+        #     f"  Exec Price : ${executed_price:.2f}\n"
+        #     f"  Fees       : ${fees:.2f} (${self.fee_per_share:.4f} per share)\n"
+        #     f"  Commission : ${commission:.2f} (${self.commission_per_share:.4f} per share)\n"
+        #     f"  Slippage   : ${slippage_cost_total:.2f}"
+        # )
+        #
+        return FillDetails(
             asset_id=asset_id,
-            fill_timestamp=execution_attempt_timestamp,
+            fill_timestamp=decision_timestamp,
             order_type=order_type,
             order_side=order_side,
             requested_quantity=requested_quantity,
-            executed_quantity=executed_quantity,
+            executed_quantity=requested_quantity,
             executed_price=executed_price,
             commission=commission,
             fees=fees,
             slippage_cost_total=slippage_cost_total
         )
-        self.logger.debug(f"Fill generated: {fill_details}")
-        return fill_details
 
     def reset(self, np_random_seed_source: Optional[np.random.Generator] = None):
         if np_random_seed_source:
