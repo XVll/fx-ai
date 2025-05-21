@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 import numpy as np
 
 from agent.callbacks import TrainingCallback
-from utils.medel_manager import ModelManager
+from utils.model_manager import ModelManager
 
 
 class ContinuousTrainingCallback(TrainingCallback):
