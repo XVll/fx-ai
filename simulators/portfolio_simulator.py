@@ -456,6 +456,7 @@ class PortfolioManager:
             total_slippage_cost_session=self.total_slippage_cost_session,
             total_volume_traded_session=self.total_volume_traded_session,
             total_turnover_session=self.total_turnover_session,
+            default_position_value=self.default_position_value
         )
 
     def _calculate_max_drawdown(self, equity_series_values: np.ndarray) -> Tuple[float, float]:

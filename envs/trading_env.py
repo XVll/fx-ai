@@ -7,6 +7,10 @@ import numpy as np
 import pandas as pd  # For pd.Timestamp
 import gymnasium as gym  # type: ignore
 from gymnasium import spaces  # type: ignore
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from config.config import Config  # Assuming your Config class is here
 from data.data_manager import DataManager
@@ -383,7 +387,7 @@ class TradingEnvironment(gym.Env):
             return None
 
         elif action_type == ActionTypeEnum.BUY:
-            target_buy_value = size_float * default_pos_value / 100
+            target_buy_value = round(size_float * max(default_pos_value,cash) / 100)
             target_buy_value = min(target_buy_value, max_pos_value_abs, cash)
             if target_buy_value > 1e-9 and ideal_ask > 1e-9:
                 quantity_to_trade = target_buy_value / ideal_ask
@@ -636,154 +640,153 @@ class TradingEnvironment(gym.Env):
 
     def render(self, info_dict: Optional[Dict[str, Any]] = None):
         """
-        Enhanced rendering method with more structured and detailed output.
+        Enhanced rendering method using Rich library for terminal-friendly display.
 
         Args:
             info_dict: Dictionary containing step information
         """
-        if self.render_mode == 'none' or info_dict is None or not self.primary_asset:
+        if self.render_mode not in ['human', 'logs'] or info_dict is None or not self.primary_asset:
             return
 
-        # Prepare separator line
-        separator = "=" * 80
+        console = Console()
 
-        # Prepare columns for better readability
-        def format_column(title: str, content: str, width: int = 25) -> str:
-            """Helper to create formatted column."""
-            return f"{title.ljust(15)}: {str(content).ljust(width)}"
+        try:
+            # Create tables for different sections
+            # Step and Time Information
+            step_table = Table(show_header=False, show_lines=False, box=None)
+            step_table.add_row("Step", str(info_dict.get('step', 'N/A')))
+            step_table.add_row("Timestamp", str(info_dict.get('timestamp_iso', 'N/A')))
 
-        # Prepare log lines
-        log_lines = [
-            separator,
-            f"Trading Environment Render | Symbol: {self.primary_asset}",
-            separator
-        ]
+            # Action Information
+            action_table = Table(title="Action", show_header=False, show_lines=False, box=None)
 
-        # Step and Time Information
-        time_info = [
-            format_column("Step", info_dict.get('step', 'N/A')),
-            format_column("Timestamp", info_dict.get('timestamp_iso', 'N/A'))
-        ]
-        log_lines.append(" | ".join(time_info))
+            # Safe action info processing
+            action_type = 'N/A'
+            size_info = 'N/A'
+            decoded_action = info_dict.get('action_decoded', {}) or {}
 
-        # Action Information
-        decoded_action = info_dict.get('action_decoded', {})
-        if decoded_action:
-            action_info = [
-                format_column("Action Type", decoded_action.get('type', 'N/A').name),
-                format_column("Size", f"{decoded_action.get('size_enum', 'N/A').name} ({decoded_action.get('size_float', 0) * 100:.0f}%)")
-            ]
+            try:
+                # Safer way to get action type name
+                action_type_obj = decoded_action.get('type')
+                if action_type_obj:
+                    action_type = str(action_type_obj) if not hasattr(action_type_obj, 'name') else action_type_obj.name
+
+                # Safer way to get size info
+                size_enum = decoded_action.get('size_enum')
+                if size_enum:
+                    size_name = str(size_enum) if not hasattr(size_enum, 'name') else size_enum.name
+                    size_pct = decoded_action.get('size_float', 0) * 100
+                    size_info = f"{size_name} ({size_pct:.0f}%)"
+            except Exception as e:
+                self.logger.warning(f"Error processing action info: {e}")
+
+            action_table.add_row("Type", action_type)
+            action_table.add_row("Size", size_info)
+
             if decoded_action.get('invalid_reason'):
-                action_info.append(format_column("Invalid Reason", decoded_action['invalid_reason']))
-            log_lines.append(" | ".join(action_info))
+                action_table.add_row("Invalid Reason", str(decoded_action['invalid_reason']))
 
-        # Trade Fill Information
-        fills_info = info_dict.get('fills_step', [])
-        if fills_info:
-            log_lines.append(separator)
-            log_lines.append("Trade Fills:")
-            for fill in fills_info:
-                fill_details = [
-                    format_column("Side", fill.get('order_side', 'N/A')),
-                    format_column("Qty", f"{fill.get('executed_quantity', 0):.4f}"),
-                    format_column("Price", f"${fill.get('executed_price', 0):.2f}"),
-                    format_column("Comm", f"${fill.get('commission', 0):.2f}"),
-                    format_column("Fees", f"${fill.get('fees', 0):.2f}")
-                ]
-                log_lines.append(" | ".join(fill_details))
+            # Market and Position Information
+            market_table = Table(title="Market & Position", show_header=False, show_lines=False, box=None)
 
-        # Portfolio Information
-        log_lines.append(separator)
-        portfolio_info = [
-            format_column("Total Equity", f"${info_dict.get('portfolio_equity', 0):.2f}"),
-            format_column("Cash", f"${info_dict.get('portfolio_cash', 0):.2f}"),
-            format_column("Unrealized PnL", f"${info_dict.get('portfolio_unrealized_pnl', 0):.2f}"),
-            format_column("Realized PnL", f"${info_dict.get('portfolio_realized_pnl_session_net', 0):.2f}")
-        ]
-        log_lines.append(" | ".join(portfolio_info))
-
-        # Position Information
-        if self.primary_asset:
-            # Get current market state to get current price
-            market_state = None
+            # Get current market state for price information
+            current_price = None
             try:
                 market_state = self.market_simulator.get_current_market_state()
-            except Exception:
-                pass
-
-            current_price = market_state.get('current_price') if market_state else None
-            if current_price is None:
-                current_price = market_state.get('best_bid_price') or market_state.get('best_ask_price')
+                current_price = market_state.get('current_price') if market_state else None
+                if current_price is None:
+                    current_price = market_state.get('best_bid_price') or market_state.get('best_ask_price')
+            except Exception as e:
+                self.logger.warning(f"Error getting market state: {e}")
 
             pos_qty = info_dict.get(f'position_{self.primary_asset}_qty', 0)
             pos_side = info_dict.get(f'position_{self.primary_asset}_side', 'FLAT')
             pos_avg_entry = info_dict.get(f'position_{self.primary_asset}_avg_entry', 0.0)
 
             # Compute price difference and percentage
+            price_diff = 0
+            price_diff_pct = 0
             if current_price is not None and pos_qty > 0 and pos_avg_entry > 0:
                 price_diff = current_price - pos_avg_entry
                 price_diff_pct = (price_diff / pos_avg_entry) * 100 if pos_avg_entry != 0 else 0
 
-                position_info = [
-                    format_column("Position", f"{self.primary_asset} {pos_side}"),
-                    format_column("Quantity", f"{pos_qty:.2f}"),
-                    format_column("Avg Entry", f"${pos_avg_entry:.2f}"),
-                    format_column("Current Price", f"${current_price:.2f}"),
-                    format_column("Price Diff", f"${price_diff:.2f} ({price_diff_pct:+.2f}%)")
-                ]
-                log_lines.append(" | ".join(position_info))
+            market_table.add_row("Current Price", f"${current_price:.2f}" if current_price is not None else "N/A")
+            market_table.add_row("Position", f"{self.primary_asset} {pos_side}")
+            market_table.add_row("Quantity", f"{pos_qty:.2f}")
+            market_table.add_row("Avg Entry", f"${pos_avg_entry:.2f}")
 
-        # Reward Information
-        reward_info = [
-            format_column("Step Reward", f"{info_dict.get('reward_step', 0):.4f}"),
-            format_column("Episode Total Reward", f"{info_dict.get('episode_cumulative_reward', 0):.4f}")
-        ]
-        log_lines.append(" | ".join(reward_info))
+            # Simplified color handling
+            def color_text(value: float, text: str) -> str:
+                if value > 0:
+                    return f"[green]{text}[/green]"
+                elif value < 0:
+                    return f"[red]{text}[/red]"
+                return text
 
-        # Termination Information
-        if info_dict.get('termination_reason'):
-            log_lines.append(f"TERMINATED: {info_dict['termination_reason']}")
-        elif info_dict.get('TimeLimit.truncated'):
-            log_lines.append("TRUNCATED by Max Steps")
+            market_table.add_row("Price Diff",
+                                 color_text(price_diff, f"${price_diff:.2f} ({price_diff_pct:+.2f}%)") if pos_qty > 0 else "N/A")
 
-        log_lines.append(separator)
+            # Portfolio Information
+            portfolio_table = Table(title="Portfolio", show_header=False, show_lines=False, box=None)
+            portfolio_table.add_row("Total Equity", f"${info_dict.get('portfolio_equity', 0):.2f}")
+            portfolio_table.add_row("Cash", f"${info_dict.get('portfolio_cash', 0):.2f}")
 
-        # Output the log
-        output_str = "\n".join(log_lines)
-        if self.render_mode == 'human':
-            print(output_str)
-        elif self.render_mode == 'logs':
-            self.logger.info(output_str)
+            # Compute and color PnL
+            unreal_pnl = info_dict.get('portfolio_unrealized_pnl', 0)
+            real_pnl = info_dict.get('portfolio_realized_pnl_session_net', 0)
 
-        # Episode Summary at the end if available
-        if (info_dict.get('termination_reason') or info_dict.get('TimeLimit.truncated')) and 'episode_summary' in info_dict:
-            episode_summary_lines = [
-                "\n" + separator,
-                "--- EPISODE SUMMARY ---"
-            ]
-            summary = info_dict['episode_summary']
+            portfolio_table.add_row("Unrealized PnL", color_text(unreal_pnl, f"${unreal_pnl:.2f}"))
+            portfolio_table.add_row("Realized PnL", color_text(real_pnl, f"${real_pnl:.2f}"))
 
-            # Intelligently format summary metrics
-            for key, value in summary.items():
-                # Skip metadata-like keys or deeply nested structures
-                if isinstance(value, dict):
-                    continue
+            # Reward Information
+            reward_table = Table(title="Reward", show_header=False, show_lines=False, box=None)
+            reward_table.add_row("Step Reward", f"{info_dict.get('reward_step', 0):.4f}")
+            reward_table.add_row("Episode Total", f"{info_dict.get('episode_cumulative_reward', 0):.4f}")
 
-                # Format numeric values
-                if isinstance(value, float):
-                    formatted_value = f"{value:.4f}"
-                else:
-                    formatted_value = str(value)
+            # Combine tables
+            panel_content = Table.grid(expand=True)
+            panel_content.add_row(step_table, action_table, market_table, portfolio_table, reward_table)
 
-                episode_summary_lines.append(f"{key.replace('_', ' ').title()}: {formatted_value}")
+            # Render the panel
+            main_panel = Panel(panel_content, title=f"Trading Environment: {self.primary_asset}", expand=False)
+            console.print(main_panel)
 
-            episode_summary_lines.append(separator)
-            summary_output = "\n".join(episode_summary_lines)
+            # Optional: Print trade fills if available
+            fills_info = info_dict.get('fills_step', [])
+            if fills_info:
+                fills_table = Table(title="Trade Fills", show_header=True)
+                fills_table.add_column("Side")
+                fills_table.add_column("Quantity")
+                fills_table.add_column("Price")
+                fills_table.add_column("Commission")
+                fills_table.add_column("Fees")
 
-            if self.render_mode == 'human':
-                print(summary_output)
-            elif self.render_mode == 'logs':
-                self.logger.info(summary_output)
+                for fill in fills_info:
+                    fills_table.add_row(
+                        str(fill.get('order_side', 'N/A')),
+                        f"{fill.get('executed_quantity', 0):.4f}",
+                        f"${fill.get('executed_price', 0):.2f}",
+                        f"${fill.get('commission', 0):.2f}",
+                        f"${fill.get('fees', 0):.2f}"
+                    )
+
+                console.print(fills_table)
+
+            # Termination Information
+            if info_dict.get('termination_reason'):
+                console.print(f"[bold red]TERMINATED: {info_dict['termination_reason']}[/bold red]")
+            elif info_dict.get('TimeLimit.truncated'):
+                console.print("[bold yellow]TRUNCATED by Max Steps[/bold yellow]")
+
+        except Exception as e:
+            # Extreme fallback render method
+            try:
+                console.print(Panel(f"Rendering Error: {str(e)}",
+                                    title="Trading Environment",
+                                    style="bold red",
+                                    border_style="red"))
+            except Exception:
+                print(f"Critical rendering error: {e}")
 
     def close(self):
         if self.market_simulator and hasattr(self.market_simulator, 'close'):
