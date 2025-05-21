@@ -112,10 +112,10 @@ def run_training(args, script_path):
     # Continuous training
     if args.continue_training:
         cmd.append("training=continuous")
-        # Use + prefix for fields that might not exist in the base struct
-        cmd.append("+training.enabled=true")
-        cmd.append("+training.load_best_model=true")
-        cmd.append(f"+training.best_models_dir={args.models_dir}")
+        # Use ++ prefix to override fields that already exist in the config
+        # Note: training.enabled is already defined in continuous.yaml and doesn't need to be set
+        cmd.append("++training.load_best_model=true")
+        cmd.append(f"++training.best_models_dir={args.models_dir}")
 
     # Symbol and dates
     if args.symbol:

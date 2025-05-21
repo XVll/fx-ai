@@ -201,12 +201,7 @@ class PPOTrainer:
                 episode_lengths_in_rollout.append(current_episode_length)
                 logger.info(
                     f"Episode {self.global_episode_counter} finished. Reward: {current_episode_reward:.2f}, Length: {current_episode_length}, Global Steps: {self.global_step_counter}")
-                if self.use_wandb:
-                    wandb.log({
-                        "rollout/episode_reward": current_episode_reward,
-                        "rollout/episode_length": current_episode_length,
-                        "global_step": self.global_step_counter
-                    }, step=self.global_update_counter)  # Log against PPO updates
+                # Removed direct wandb.log call - using callbacks instead for consistent step counting
 
                 # For callback on_episode_end
                 for callback in self.callbacks: callback.on_episode_end(self, current_episode_reward, current_episode_length, info)
@@ -248,8 +243,8 @@ class PPOTrainer:
         logger.debug(
             f"Computing advantages with shapes - rewards: {rewards.shape}, values: {values.shape}, dones: {dones.shape}")
 
-        # Initialize properly shaped advantages
-        advantages = torch.zeros_like(rewards, device=self.device)
+        # Initialize advantages with the same shape as values to avoid shape mismatch
+        advantages = torch.zeros_like(values, device=self.device)
         last_gae_lam = 0
 
         # Compute GAE recursively
@@ -287,13 +282,10 @@ class PPOTrainer:
             logger.warning(f"Values has multiple columns: {values.shape}. Taking first column.")
             values = values[:, 0:1]
 
-        # Ensure advantages has the same shape as values for proper addition
+        # Advantages should already have the same shape as values since we initialized it that way
+        # Just a sanity check
         if advantages.shape != values.shape:
-            logger.warning(f"Advantages shape {advantages.shape} doesn't match values shape {values.shape}. Reshaping advantages.")
-            if advantages.ndim == 1:
-                advantages = advantages.unsqueeze(1)
-            elif advantages.ndim > 1 and advantages.shape[1] > 1:
-                advantages = advantages[:, 0:1]
+            logger.warning(f"Unexpected: Advantages shape {advantages.shape} doesn't match values shape {values.shape} despite initialization.")
 
         # Critical fix: ensure returns has the correct shape [num_steps, 1]
         returns = advantages + values
@@ -362,9 +354,21 @@ class PPOTrainer:
                         f"Batch shapes - actions: {batch_actions.shape}, old_log_probs: {batch_old_log_probs.shape}, "
                         f"advantages: {batch_advantages.shape}, returns: {batch_returns.shape}")
 
-                # Fix batch returns shape before loss calculation
+                # Ensure batch_returns has the correct shape [batch_size, 1]
                 if batch_returns.ndim > 1 and batch_returns.shape[1] > 1:
-                    batch_returns = batch_returns[:, 0]
+                    # If it has multiple columns, take only the first column
+                    batch_returns = batch_returns[:, 0:1]
+                elif batch_returns.ndim == 1:
+                    # If it's flattened, add the second dimension
+                    batch_returns = batch_returns.unsqueeze(1)
+
+                # Ensure batch_advantages has the correct shape [batch_size, 1]
+                if batch_advantages.ndim > 1 and batch_advantages.shape[1] > 1:
+                    # If it has multiple columns, take only the first column
+                    batch_advantages = batch_advantages[:, 0:1]
+                elif batch_advantages.ndim == 1:
+                    # If it's flattened, add the second dimension
+                    batch_advantages = batch_advantages.unsqueeze(1)
 
                 # Calculate new log probabilities and entropy
                 if self.model.continuous_action:
@@ -400,10 +404,10 @@ class PPOTrainer:
                     f"Shape check - current_values: {current_values.shape}, batch_returns: {batch_returns.shape}")
 
                 # Ensure both are of compatible shapes for MSE loss
-                # First, make sure they're both 1D or both 2D with shape [batch_size, 1]
+                # First, make sure they're both 2D with shape [batch_size, 1]
                 if batch_returns.ndim > 1 and batch_returns.size(1) > 1:
                     logger.warning(f"Unexpected batch_returns shape: {batch_returns.shape}. Taking first column.")
-                    batch_returns = batch_returns[:, 0]  # Take just the first column
+                    batch_returns = batch_returns[:, 0:1]  # Keep it as [batch_size, 1]
 
                 # Now reshape both to [batch_size, 1] for consistent calculation
                 current_values_shaped = current_values.view(-1, 1)
@@ -458,19 +462,7 @@ class PPOTrainer:
         for callback in self.callbacks: callback.on_update_end(self, update_metrics)
 
         logger.info(f"PPO Update {self.global_update_counter}: {update_metrics}")
-        if self.use_wandb:
-            wandb.log({f"update/{k}": v for k, v in update_metrics.items()}, step=self.global_update_counter)
-            wandb.log({"global_step": self.global_step_counter}, step=self.global_update_counter)
-
-        return update_metrics
-
-        # For callback on_update_end
-        for callback in self.callbacks: callback.on_update_end(self, update_metrics)
-
-        logger.info(f"PPO Update {self.global_update_counter}: {update_metrics}")
-        if self.use_wandb:
-            wandb.log({f"update/{k}": v for k, v in update_metrics.items()}, step=self.global_update_counter)
-            wandb.log({"global_step": self.global_step_counter}, step=self.global_update_counter)
+        # Removed direct wandb.log calls - using callbacks instead for consistent step counting
 
         return update_metrics
 
@@ -502,12 +494,14 @@ class PPOTrainer:
                     eval_freq_steps // self.rollout_steps) == 0 or self.global_step_counter >= total_training_steps):  # Approx eval freq
                 eval_stats = self.evaluate(n_episodes=10)  # Number of eval episodes
                 logger.info(f"Evaluation at step {self.global_step_counter}: Mean Reward: {eval_stats['mean_reward']:.2f}")
-                if self.use_wandb:
-                    wandb.log({
-                        "eval/mean_reward": eval_stats['mean_reward'],
-                        "eval/mean_length": eval_stats['mean_length'],
-                        "global_step": self.global_step_counter
-                    }, step=self.global_update_counter)
+                # Pass evaluation results to callbacks instead of direct wandb logging
+                for callback in self.callbacks:
+                    # Use on_update_iteration_end to pass eval results
+                    # Add eval_stats to update_metrics with eval/ prefix
+                    eval_metrics = {f"eval/{k}": v for k, v in eval_stats.items() if k != 'episode_rewards' and k != 'episode_lengths'}
+                    # Include global step for reference
+                    eval_metrics["global_step"] = self.global_step_counter
+                    callback.on_update_iteration_end(self, self.global_update_counter, eval_metrics, {})
 
                 if eval_stats['mean_reward'] > best_eval_reward:
                     best_eval_reward = eval_stats['mean_reward']

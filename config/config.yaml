@@ -3,7 +3,7 @@ defaults:
   - model: transformer            # Main model configuration
   - env: trading                  # Environment configuration
   - data: databento               # Data source configuration
-  - training: ppo                 # PPO algorithm parameters
+  - training: continuous          # Continuous training with PPO
   - wandb: default                # Weights & Biases integration
   - simulation: default           # Simulation parameters
   - callbacks: default            # Callbacks configuration
