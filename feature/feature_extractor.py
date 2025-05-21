@@ -29,17 +29,6 @@ class FeatureExtractor:
     # In feature/feature_extractor.py
 
     def extract_features(self) -> Dict[str, np.ndarray]:
-        """
-        Extract features from the current market state.
-
-        Returns:
-            Dictionary with properly shaped feature arrays:
-                - hf: High frequency features shape (hf_seq_len, hf_feat_dim)
-                - mf: Medium frequency features shape (mf_seq_len, mf_feat_dim)
-                - lf: Low frequency features shape (lf_seq_len, lf_feat_dim)
-                - portfolio: Portfolio features shape (portfolio_seq_len, portfolio_feat_dim)
-                - static: Static features shape (static_feat_dim,)
-        """
         current_state = self.market_simulator.get_current_market_state()
         if current_state is None:
             self.logger.warning("No current market state available for feature extraction")

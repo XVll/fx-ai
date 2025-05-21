@@ -16,9 +16,9 @@ best_model_metric: "best_model_metric.json"
 # Training process
 n_epochs: 10
 batch_size: 64
-buffer_size: 2048
+buffer_size: 4096
 n_episodes_per_update: 8
-total_updates: 1
+total_updates: 100
 
 # Device and performance
 device: "auto"  # "auto", "cuda", "cpu", or "mps"
