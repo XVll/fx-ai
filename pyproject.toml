@@ -2,7 +2,7 @@
 name = "fx-ai"
 version = "0.1.0"
 description = ""
-authors = ["XVll <onur@onurx.com>"] # Poetry uses this string format for authors
+authors = ["XVll <onur@onurx.com>"]
 readme = "README.md"
 package-mode = false
 
@@ -25,9 +25,9 @@ poetry-core = ">=1.0.0"
 ta = "^0.11.0"
 torch = "^2.7.0"
 
-[tool.poetry.group.dev.dependencies] # For development-only dependencies
+[tool.poetry.group.dev.dependencies]
 # pytest = "^7.0"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"] # This is the more standard requirement for poetry-core
+requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"

@@ -26,24 +26,40 @@ class FeatureExtractor:
     def reset(self):
         self.logger.info("FeatureExtractor reset")
 
+    # In feature/feature_extractor.py
+
     def extract_features(self) -> Dict[str, np.ndarray]:
+        """
+        Extract features from the current market state.
+
+        Returns:
+            Dictionary with properly shaped feature arrays:
+                - hf: High frequency features shape (hf_seq_len, hf_feat_dim)
+                - mf: Medium frequency features shape (mf_seq_len, mf_feat_dim)
+                - lf: Low frequency features shape (lf_seq_len, lf_feat_dim)
+                - portfolio: Portfolio features shape (portfolio_seq_len, portfolio_feat_dim)
+                - static: Static features shape (static_feat_dim,)
+        """
         current_state = self.market_simulator.get_current_market_state()
         if current_state is None:
             self.logger.warning("No current market state available for feature extraction")
 
+        # Extract features - keeping non-batched dimensions as per design
         hf_features = self._extract_high_frequency_features(current_state)
         mf_features = self._extract_medium_frequency_features(current_state)
         lf_features = self._extract_low_frequency_features(current_state)
         static_features = self._extract_static_features(current_state)
 
+
+        # Validate the shapes to ensure they match expected dimensions
         assert hf_features.shape == (self.hf_seq_len, self.hf_feat_dim), \
             f"HF features have incorrect shape: {hf_features.shape}, expected ({self.hf_seq_len}, {self.hf_feat_dim})"
-        assert static_features.shape == (self.static_feat_dim,), \
-            f"Static features have incorrect shape: {static_features.shape}, expected ({self.static_feat_dim},)"
         assert mf_features.shape == (self.mf_seq_len, self.mf_feat_dim), \
             f"MF features have incorrect shape: {mf_features.shape}, expected ({self.mf_seq_len}, {self.mf_feat_dim})"
         assert lf_features.shape == (self.lf_seq_len, self.lf_feat_dim), \
             f"LF features have incorrect shape: {lf_features.shape}, expected ({self.lf_seq_len}, {self.lf_feat_dim})"
+        assert static_features.shape == (self.static_feat_dim,), \
+            f"Static features have incorrect shape: {static_features.shape}, expected ({self.static_feat_dim},)"
 
         return {
             'hf': hf_features,
@@ -66,5 +82,5 @@ class FeatureExtractor:
 
     def _extract_static_features(self, current_state) -> np.ndarray:
         # Extract static features from the current state
-        features = np.zeros((1, self.static_feat_dim)).flatten()
+        features = np.zeros(self.static_feat_dim,)
         return features

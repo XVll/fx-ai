@@ -102,8 +102,9 @@ def main():
 
 def run_training(args, script_path):
     """Run training with the specified arguments."""
-    cmd = [sys.executable, script_path]
+    cmd = [sys.executable, script_path, "--config-path=config", "--config-name=config"]
 
+    # Add hydra initialization flag to ensure Hydra is properly set up
     # Basic configs
     if args.quick_test:
         cmd.append("quick_test=true")

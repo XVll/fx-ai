@@ -3,13 +3,13 @@
 import os
 import sys
 import logging
+
+import hydra
 import torch
 import wandb
 from datetime import datetime
-import argparse
-from typing import Dict, Any, Optional
+from typing import Dict
 
-from hydra.core.config_store import ConfigStore
 from hydra.core.hydra_config import HydraConfig
 from hydra import initialize, compose, initialize_config_module
 from omegaconf import OmegaConf, DictConfig
@@ -30,7 +30,7 @@ from envs.wrappers.observation_wrapper import NormalizeDictObservation
 from agent.ppo_agent import PPOTrainer
 from agent.callbacks import ModelCheckpointCallback, EarlyStoppingCallback
 from agent.wandb_callback import WandbCallback
-from utils.medel_manager import ModelManager
+from utils.model_manager import ModelManager
 
 # Configure logging
 logging.basicConfig(
@@ -101,19 +101,19 @@ def create_data_provider(config: Config):
     elif data_cfg.provider_type == "dummy":
         # For quick testing
         return DummyDataProvider(config={
-            'debug_window_mins': 300,  # 5 hours of data
-            'data_sparsity': 5,  # Generate data every 5 seconds
-            'num_squeezes': 3,  # 3 momentum squeezes
+            'debug_window_mins': 120,  # 5 hours of data
+            'data_sparsity': 1,  # Generate data every 5 seconds
+            'num_squeezes': 2,  # 3 momentum squeezes
             'base_price': 5.00,  # Start around $5
-            'volatility': 0.05,  # Base volatility
+            'volatility': 0.03,  # Base volatility
             'squeeze_magnitude': 0.30,  # 30% average squeeze magnitude
             'symbols': ['MLGO']  # Symbol to use
         })
     else:
         raise ValueError(f"Unknown provider type: {data_cfg.provider_type}")
 
-
-def run_training(cfg: Optional[Config] = None):
+@hydra.main(version_base="1.2", config_path="config", config_name="config")
+def run_training(cfg: Config):
     """
     Main training function.
 
@@ -429,23 +429,21 @@ def run_training(cfg: Optional[Config] = None):
             log.info("Finalizing W&B run")
             wandb.finish()
 
-
 def main():
-    """
-    Initialize Hydra and run the training process.
-    """
-    # Set environment variables for Hydra
     os.environ["HYDRA_FULL_ERROR"] = "1"
     os.environ["HYDRA_STRICT_CFG"] = "0"  # Allow fields not in struct
 
-    with initialize(version_base="1.2", config_path="config"):
-        # Compose the config
-        cfg = compose(config_name="config")
-
-        # Convert to our Config class if needed
-        config = Config(**OmegaConf.to_container(cfg, resolve=True)) if not isinstance(cfg, Config) else cfg
-
-        # Run the training
+    try:
+        run_training()
+    except Exception as e:
+        log.exception(f"Error initializing Hydra: {e}")
+        # Provide a fallback option with default paths
+        log.info("Trying to continue with default configuration...")
+        from config.config import Config
+        config = Config()
+        # Override with hard-coded values instead of Hydra interpolation
+        config.data.data_dir = "./dnb/mlgo"
+        config.data.symbol_info_file = "./dnb/mlgo/symbols.json"
         run_training(config)
 
 

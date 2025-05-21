@@ -66,7 +66,8 @@ class ModelConfig:
     portfolio_heads: int = 4
 
     # Output parameters
-    action_dim = [5,4]
+    action_dim: List[int] = field(default_factory=lambda: [5, 4])
+
     continuous_action: bool = False
 
     # Other parameters
