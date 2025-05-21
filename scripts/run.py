@@ -46,37 +46,37 @@ def main():
     # Train command
     train_parser = subparsers.add_parser("train", help="Train a model")
     train_parser.add_argument("--continue-training", action="store_true",
-                              help="Continue training from best model")
+                             help="Continue training from best model")
     train_parser.add_argument("--symbol", type=str, default="MLGO",
-                              help="Symbol to train on")
+                             help="Symbol to train on")
     train_parser.add_argument("--start-date", type=str,
-                              help="Start date (YYYY-MM-DD)")
+                             help="Start date (YYYY-MM-DD)")
     train_parser.add_argument("--end-date", type=str,
-                              help="End date (YYYY-MM-DD)")
+                             help="End date (YYYY-MM-DD)")
     train_parser.add_argument("--days", type=int, default=1,
-                              help="Number of trading days to use")
+                             help="Number of trading days to use")
     train_parser.add_argument("--quick-test", action="store_true",
-                              help="Use quick test configuration")
+                             help="Use quick test configuration")
     train_parser.add_argument("--models-dir", type=str, default="./best_models",
-                              help="Directory for best models")
+                             help="Directory for best models")
 
     # Backtest command
     backtest_parser = subparsers.add_parser("backtest", help="Backtest a model")
     backtest_parser.add_argument("--symbol", type=str, required=True,
-                                 help="Symbol to backtest on")
+                                help="Symbol to backtest on")
     backtest_parser.add_argument("--model-path", type=str,
-                                 help="Path to model file")
+                                help="Path to model file")
     backtest_parser.add_argument("--start-date", type=str, required=True,
-                                 help="Start date (YYYY-MM-DD)")
+                                help="Start date (YYYY-MM-DD)")
     backtest_parser.add_argument("--end-date", type=str, required=True,
-                                 help="End date (YYYY-MM-DD)")
+                                help="End date (YYYY-MM-DD)")
 
     # Sweep command
     sweep_parser = subparsers.add_parser("sweep", help="Run hyperparameter sweep")
     sweep_parser.add_argument("--count", type=int, default=20,
-                              help="Number of sweep runs")
+                             help="Number of sweep runs")
     sweep_parser.add_argument("--project", type=str, default="fx-ai",
-                              help="W&B project name")
+                             help="W&B project name")
 
     # Parse arguments
     args = parser.parse_args()
@@ -86,7 +86,7 @@ def main():
         parser.print_help()
         return
 
-    # Determine which script to use (main.py or main_continuous.py)
+    # Determine which script to use
     script_path = "main_continuous.py" if os.path.exists("main_continuous.py") else "main.py"
 
     # Run the appropriate command
@@ -104,7 +104,6 @@ def run_training(args, script_path):
     """Run training with the specified arguments."""
     cmd = [sys.executable, script_path]
 
-    # Add Hydra args
     # Basic configs
     if args.quick_test:
         cmd.append("quick_test=true")
@@ -112,9 +111,10 @@ def run_training(args, script_path):
     # Continuous training
     if args.continue_training:
         cmd.append("training=continuous")
-        cmd.append("++training.enabled=true")
-        cmd.append("++training.load_best_model=true")
-        cmd.append(f"++training.best_models_dir={args.models_dir}")
+        # Use + prefix for fields that might not exist in the base struct
+        cmd.append("+training.enabled=true")
+        cmd.append("+training.load_best_model=true")
+        cmd.append(f"+training.best_models_dir={args.models_dir}")
 
     # Symbol and dates
     if args.symbol:
@@ -126,9 +126,14 @@ def run_training(args, script_path):
     if args.end_date:
         cmd.append(f"data.end_date={args.end_date}")
 
+    # Set environment variables for Hydra
+    env = os.environ.copy()
+    env["HYDRA_FULL_ERROR"] = "1"
+    env["HYDRA_STRICT_CFG"] = "0"  # Allow adding new fields
+
     # Run the command
     logger.info(f"Running command: {' '.join(cmd)}")
-    subprocess.run(cmd)
+    subprocess.run(cmd, env=env)
 
 
 def run_backtest(args, script_path):
@@ -142,11 +147,16 @@ def run_backtest(args, script_path):
     cmd.append(f"data.end_date={args.end_date}")
 
     if args.model_path:
-        cmd.append(f"eval.model_path={args.model_path}")
+        cmd.append(f"+eval.model_path={args.model_path}")
+
+    # Set environment variables for Hydra
+    env = os.environ.copy()
+    env["HYDRA_FULL_ERROR"] = "1"
+    env["HYDRA_STRICT_CFG"] = "0"
 
     # Run the command
     logger.info(f"Running command: {' '.join(cmd)}")
-    subprocess.run(cmd)
+    subprocess.run(cmd, env=env)
 
 
 def run_sweep(args):

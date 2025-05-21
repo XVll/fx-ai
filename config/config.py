@@ -75,6 +75,7 @@ class ModelConfig:
 
 @dataclass
 class TrainingConfig:
+    # Standard PPO parameters
     lr: float = 3e-4
     gamma: float = 0.99
     gae_lambda: float = 0.95
@@ -91,12 +92,22 @@ class TrainingConfig:
     best_model_path: str = "best_model"
     best_model_metrics: str = "reward"
 
+    # Continuous training parameters
     enabled: bool = False
     load_best_model: bool = False
     best_models_dir: str = "./best_models"
-    checkpoint_sync_frequency: int = 2
-    startup_evaluation: bool = False
+    model_prefix: str = ""
     max_best_models: int = 5
+    version_tracking: bool = True
+    startup_evaluation: bool = False
+    checkpoint_sync_frequency: int = 2
+
+    # Learning rate annealing for continuous training
+    lr_annealing: Dict[str, Any] = field(default_factory=lambda: {
+        "enabled": False,
+        "min_lr": 1e-5,
+        "decay_factor": 0.7
+    })
 
 
 @dataclass
