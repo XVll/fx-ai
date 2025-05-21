@@ -62,10 +62,10 @@ class FeatureExtractor:
             f"Static features have incorrect shape: {static_features.shape}, expected ({self.static_feat_dim},)"
 
         return {
-            'hf': hf_features,
-            'mf': mf_features,
-            'lf': lf_features,
-            'static': static_features
+            'hf': self._ensure_shape(hf_features,(self.hf_seq_len, self.hf_feat_dim), 'hf'),
+            'mf': self._ensure_shape(mf_features,(self.mf_seq_len, self.mf_feat_dim), 'mf'),
+            'lf': self._ensure_shape(lf_features,(self.lf_seq_len, self.lf_feat_dim), 'lf'),
+            'static': self._ensure_shape(static_features,(self.static_feat_dim,), 'static'),
         }
 
     def _extract_high_frequency_features(self, current_state) -> np.ndarray:
@@ -84,3 +84,26 @@ class FeatureExtractor:
         # Extract static features from the current state
         features = np.zeros(self.static_feat_dim,)
         return features
+
+    def _ensure_shape(self, arr: np.ndarray, expected_shape: tuple, name: str) -> np.ndarray:
+        """Ensure array has the expected shape, fix if needed."""
+        if arr.shape != expected_shape:
+            self.logger.warning(f"{name} features have shape {arr.shape}, expected {expected_shape}. Reshaping.")
+            if len(expected_shape) == 1:  # 1D array
+                # Resize, pad, or truncate to match expected size
+                result = np.zeros(expected_shape)
+                copy_size = min(arr.size, expected_shape[0])
+                result[:copy_size] = arr[:copy_size]
+                return result
+            else:  # 2D array
+                result = np.zeros(expected_shape)
+                # Copy as much as possible
+                copy_rows = min(arr.shape[0], expected_shape[0])
+                copy_cols = min(arr.shape[1] if arr.ndim > 1 else 1, expected_shape[1])
+                if arr.ndim == 1:
+                    for i in range(min(arr.size, copy_rows)):
+                        result[i, 0] = arr[i]
+                else:
+                    result[:copy_rows, :copy_cols] = arr[:copy_rows, :copy_cols]
+                return result
+        return arr
