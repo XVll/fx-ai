@@ -2,7 +2,8 @@
 # main_continuous.py
 import os
 import sys
-import hydra
+
+from hydra import main
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 import logging
@@ -166,7 +167,7 @@ def parse_args():
     return args, hydra_args
 
 
-@hydra.main(version_base="1.2", config_path="config", config_name="config")
+@main(version_base="1.2", config_path="config", config_name="config")
 def run_training(cfg: Config):
     """
     Main training function using Hydra configuration.
