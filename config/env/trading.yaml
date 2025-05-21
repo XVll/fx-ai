@@ -3,13 +3,13 @@
 
 # General parameters
 training_mode: "backtesting"
-render_interval: 3600
+render_interval: 10
 max_episode_loss_percent: 0.9
 bankruptcy_threshold_factor: 0.9
 max_invalid_actions_per_episode: 50000
 
 state_dimension: 6000  # Increased to accommodate the actual state size
-max_steps: 50000
+max_steps: 2048
 normalize_state: true
 random_reset: true
 max_position: 1.0
