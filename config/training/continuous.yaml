@@ -17,7 +17,8 @@ startup_evaluation: true
 checkpoint_sync_frequency: 2  # How often to sync checkpoints to best_models directory
 
 # Set to higher value than regular PPO to enable longer continued training
-total_updates: 200
+# Number of episodes to train on
+total_updates: 1
 
 # Learning rate decay for continued training
 lr_annealing:
