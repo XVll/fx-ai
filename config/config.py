@@ -25,9 +25,9 @@ class RewardConfig:
 class EnvConfig:
     training_mode: str= "backtesting"  # Training mode (training, validation, testing)
     render_interval: int = 10  # Interval for rendering (in steps)
-    max_episode_loss_percent: float = 0.5  # Maximum loss percentage per episode
-    bankruptcy_threshold_factor: float = 0.5  # Bankruptcy threshold as a factor of initial capital
-    max_invalid_actions_per_episode: int = 20  # Maximum invalid actions allowed per episode
+    max_episode_loss_percent: float = 0.9  # Maximum loss percentage per episode
+    bankruptcy_threshold_factor: float = 0.9  # Bankruptcy threshold as a factor of initial capital
+    max_invalid_actions_per_episode: int = 100  # Maximum invalid actions allowed per episode
 
     state_dimension: int = 1000  # State dimensions, size of feature vectors
     max_steps: int = 500  # Maximum number of steps in an episode

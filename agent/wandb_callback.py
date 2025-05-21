@@ -503,19 +503,15 @@ class WandbCallback(TrainingCallback):
                 self.logger.warning("W&B not initialized. Skipping logging.")
             return
 
-        # Determine step to use
-        if step is None:
-            # Increment monotonic step counter to ensure unique steps
-            step = self._monotonic_step
-            self._monotonic_step += 1
+        # Always use the monotonic step counter to ensure unique, increasing steps
+        # Ignore any provided step parameter to avoid conflicts
+        step = self._monotonic_step
+        self._monotonic_step += 1
 
-        # Ensure step is monotonically increasing
+        # Extra safety check to ensure we're always ahead of the last logged step
         if step <= self._last_logged_step:
             step = self._last_logged_step + 1
-
-            # Increment _monotonic_step if needed to stay ahead of explicit steps
-        if step >= self._monotonic_step:
-            self._monotonic_step = step + 1
+            self._monotonic_step = step + 1  # Update monotonic step to stay ahead
 
         try:
             # Clean metrics dict to ensure all values are loggable
@@ -759,7 +755,10 @@ class WandbCallback(TrainingCallback):
                     if len(ep_range) == len(rewards_ma):
                         ax_rew.plot(ep_range, rewards_ma, color='red', linewidth=2, label=f'MA-{window_size}')
                     else:
-                        self.logger.warning(f"Skipping MA plot: x and y have different lengths ({len(ep_range)} vs {len(rewards_ma)})")
+                        if self.logger:
+                            self.logger.warning(f"Skipping MA plot: x and y have different lengths ({len(ep_range)} vs {len(rewards_ma)})")
+                        else:
+                            print(f"Skipping MA plot: x and y have different lengths ({len(ep_range)} vs {len(rewards_ma)})")
 
                 # We don't need this second moving average calculation as it's redundant and could cause issues
                 # The first calculation above with min_periods=1 already provides a moving average for all points
@@ -772,14 +771,15 @@ class WandbCallback(TrainingCallback):
 
                 # 2. Episode Lengths
                 ax_len = axes[0, 1]
-                # Ensure ep_range and episode_lengths have the same length
-                if len(ep_range) == len(self.episode_lengths):
-                    ax_len.plot(ep_range, self.episode_lengths, color='green')
-                else:
-                    self.logger.warning(f"Skipping episode lengths plot: x and y have different lengths ({len(ep_range)} vs {len(self.episode_lengths)})")
-                    # Create a new ep_range that matches the length of episode_lengths
-                    ep_range_lengths = list(range(1, len(self.episode_lengths) + 1))
-                    ax_len.plot(ep_range_lengths, self.episode_lengths, color='green')
+                # Always create a new ep_range that matches the length of episode_lengths
+                # This ensures we always have matching lengths
+                ep_range_lengths = list(range(1, len(self.episode_lengths) + 1))
+                ax_len.plot(ep_range_lengths, self.episode_lengths, color='green')
+
+                # Log the lengths for debugging
+                if self.logger and len(ep_range) != len(self.episode_lengths):
+                    self.logger.debug(f"Note: episode_rewards length ({len(ep_range)}) differs from episode_lengths ({len(self.episode_lengths)})")
+                    self.logger.debug(f"Using separate range for episode lengths plot to ensure correct visualization")
                 ax_len.set_title('Episode Lengths')
                 ax_len.set_xlabel('Episode')
                 ax_len.set_ylabel('Steps')
