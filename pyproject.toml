@@ -7,9 +7,10 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-backtest = "python scripts/run.py backtest --symbol MLGO --start-date 2025-03-27 --end-date 2025-03-27"
-train = "python scripts/run.py train --continue-training --symbol MLGO"
-quick = "python scripts/run.py train --quick-test --symbol MLGO"
+backtest = "poetry run python scripts/run.py backtest --symbol MLGO --start-date 2025-03-27 --end-date 2025-03-27"
+train = "poetry run python scripts/run.py train --continue-training --symbol MLGO"
+init = "poetry run python scripts/run.py train --symbol MLGO"
+quick = "poetry run python scripts/run.py train --quick-test --symbol MLGO"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
@@ -22,6 +23,7 @@ matplotlib = "^3.10.3"
 databento = "^0.54.0"
 poetry-core = ">=1.0.0"
 ta = "^0.11.0"
+torch = "^2.7.0"
 
 [tool.poetry.group.dev.dependencies] # For development-only dependencies
 # pytest = "^7.0"
