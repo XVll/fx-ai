@@ -18,7 +18,7 @@ n_epochs: 10
 batch_size: 64
 buffer_size: 2048
 n_episodes_per_update: 8
-total_updates: 100
+total_updates: 1
 
 # Device and performance
 device: "auto"  # "auto", "cuda", "cpu", or "mps"
