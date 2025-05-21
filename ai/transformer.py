@@ -197,6 +197,26 @@ class MultiBranchTransformer(nn.Module):
         static_features = state_dict['static'].to(self.device)
         portfolio_features = state_dict['portfolio'].to(self.device)
 
+        # HF features: should be [batch_size, hf_seq_len, hf_feat_dim]
+        if hf_features.ndim == 2:  # [seq_len, feat_dim]
+            hf_features = hf_features.unsqueeze(0)  # Add batch dim
+
+        # MF features: should be [batch_size, mf_seq_len, mf_feat_dim]
+        if mf_features.ndim == 2:  # [seq_len, feat_dim]
+            mf_features = mf_features.unsqueeze(0)  # Add batch dim
+
+        # LF features: should be [batch_size, lf_seq_len, lf_feat_dim]
+        if lf_features.ndim == 2:  # [seq_len, feat_dim]
+            lf_features = lf_features.unsqueeze(0)  # Add batch dim
+
+        # Portfolio features: should be [batch_size, portfolio_seq_len, portfolio_feat_dim]
+        if portfolio_features.ndim == 2:  # [seq_len, feat_dim]
+            portfolio_features = portfolio_features.unsqueeze(0)  # Add batch dim
+
+        # Static features: should be [batch_size, static_feat_dim]
+        if static_features.ndim == 1:  # [feat_dim]
+            static_features = static_features.unsqueeze(0)  # Add batch dim
+
         # Add missing dimensions if needed - this makes the model more robust
         # HF features
         if hf_features.ndim < 3:
