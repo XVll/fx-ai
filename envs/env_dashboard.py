@@ -1,4 +1,4 @@
-# envs/dashboard.py
+# envs/env_dashboard.py
 import logging
 from collections import deque
 from datetime import datetime
@@ -31,6 +31,7 @@ class DashboardState:
     timestamp: str = "N/A"
     symbol: str = "N/A"
     episode_reward: float = 0.0
+    step_reward: float = 0.0  # NEW: Added step reward
     total_reward: float = 0.0
 
     # Market data
@@ -71,7 +72,7 @@ class DashboardState:
     # Recent history
     recent_actions: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=10))
     recent_fills: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=10))
-    recent_logs: Deque[str] = field(default_factory=lambda: deque(maxlen=20))
+    recent_logs: Deque[str] = field(default_factory=lambda: deque(maxlen=30))
 
     # Status
     is_terminated: bool = False
@@ -94,14 +95,14 @@ class LogCapture(logging.Handler):
     def __init__(self, dashboard_state: DashboardState):
         super().__init__()
         self.dashboard_state = dashboard_state
-        self.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        self.setFormatter(logging.Formatter('%(levelname)s - %(name)s - %(message)s'))
 
     def emit(self, record):
         try:
             msg = self.format(record)
             # Truncate very long messages
-            if len(msg) > 120:
-                msg = msg[:117] + "..."
+            if len(msg) > 100:
+                msg = msg[:97] + "..."
             self.dashboard_state.recent_logs.append(msg)
         except Exception:
             pass  # Don't let logging errors break the dashboard
@@ -110,7 +111,7 @@ class LogCapture(logging.Handler):
 class TradingDashboard:
     """
     A live dashboard for monitoring trading environment using Rich Live display.
-    Now with improved updates, log display, and error handling.
+    Fixed version with proper updates and 3-column layout with logs.
     """
 
     def __init__(self, console: Optional[Console] = None, show_logs: bool = True):
@@ -144,43 +145,35 @@ class TradingDashboard:
         self._setup_layout()
 
     def _setup_layout(self):
-        """Create the dashboard layout structure"""
+        """Create the dashboard layout structure with 3 columns"""
         self.layout = Layout()
 
-        if self.show_logs:
-            # Split into header, main content, logs, and footer
-            self.layout.split_column(
-                Layout(name="header", size=3),
-                Layout(name="main", ratio=2),
-                Layout(name="logs", size=8),
-                Layout(name="footer", size=3)
-            )
-        else:
-            # Split into header, main content, and footer
-            self.layout.split_column(
-                Layout(name="header", size=3),
-                Layout(name="main", ratio=1),
-                Layout(name="footer", size=3)
-            )
-
-        # Split main area into left and right sections
-        self.layout["main"].split_row(
-            Layout(name="left", ratio=2),
-            Layout(name="right", ratio=3)
+        # Main structure: header, body with 3 columns, footer
+        self.layout.split_column(
+            Layout(name="header", size=3),
+            Layout(name="body", ratio=1),
+            Layout(name="footer", size=3)
         )
 
-        # Split left into market data and position
-        self.layout["left"].split_column(
-            Layout(name="market", size=8),
-            Layout(name="position", size=8),
+        # Split body into 3 equal columns
+        self.layout["body"].split_row(
+            Layout(name="left_column", ratio=1),
+            Layout(name="center_column", ratio=1),
+            Layout(name="logs", ratio=1)  # FIXED: Name it "logs" directly
+        )
+
+        # Left column: Market data, Position, Costs
+        self.layout["left_column"].split_column(
+            Layout(name="market", size=9),
+            Layout(name="position", size=9),
             Layout(name="costs", size=6)
         )
 
-        # Split right into portfolio, actions, and fills
-        self.layout["right"].split_column(
-            Layout(name="portfolio", size=8),
-            Layout(name="actions", ratio=1),
-            Layout(name="fills", ratio=1)
+        # Center column: Portfolio, Actions, Fills
+        self.layout["center_column"].split_column(
+            Layout(name="portfolio", size=9),
+            Layout(name="actions", size=8),
+            Layout(name="fills", size=7)
         )
 
     def start(self):
@@ -194,7 +187,7 @@ class TradingDashboard:
             self.live = Live(
                 self.layout,
                 console=self.console,
-                refresh_per_second=4,  # Refresh 4 times per second
+                refresh_per_second=2,  # Reduced to prevent flicker
                 screen=True,
                 auto_refresh=True
             )
@@ -251,10 +244,7 @@ class TradingDashboard:
             self.layout["portfolio"].update(self._create_portfolio_panel())
             self.layout["actions"].update(self._create_actions_panel())
             self.layout["fills"].update(self._create_fills_panel())
-
-            if self.show_logs:
-                self.layout["logs"].update(self._create_logs_panel())
-
+            self.layout["logs"].update(self._create_logs_panel())  # NEW: Logs in right column
             self.layout["footer"].update(self._create_footer())
 
             self._force_update = False
@@ -265,16 +255,17 @@ class TradingDashboard:
     def update_state(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
         """
         Update dashboard state with new information from the environment.
-        Now updates immediately every time it's called.
+        Fixed to properly update all fields every call.
         """
         try:
-            # Basic environment info
-            self.state.step = info_dict.get('step', 0)
+            # Basic environment info - ALWAYS UPDATE
+            self.state.step = info_dict.get('step', self.state.step)
             self.state.timestamp = info_dict.get('timestamp_iso', 'N/A')
-            self.state.episode_reward = info_dict.get('reward_step', 0.0)
-            self.state.total_reward = info_dict.get('episode_cumulative_reward', 0.0)
+            self.state.episode_reward = info_dict.get('episode_cumulative_reward', 0.0)
+            self.state.step_reward = info_dict.get('reward_step', 0.0)  # NEW: Step reward
+            self.state.total_reward = self.state.episode_reward  # Same as episode reward
 
-            # Portfolio metrics
+            # Portfolio metrics - ALWAYS UPDATE
             self.state.total_equity = info_dict.get('portfolio_equity', 0.0)
             self.state.cash = info_dict.get('portfolio_cash', 0.0)
             self.state.unrealized_pnl = info_dict.get('portfolio_unrealized_pnl', 0.0)
@@ -285,14 +276,14 @@ class TradingDashboard:
             if self.state.initial_capital > 0:
                 self.state.session_pnl_pct = (self.state.session_pnl / self.state.initial_capital) * 100
 
-            # Position data
+            # Position data - ALWAYS UPDATE
             symbol = self.state.symbol
             if symbol != "N/A":
                 self.state.position_qty = info_dict.get(f'position_{symbol}_qty', 0.0)
                 self.state.position_side = info_dict.get(f'position_{symbol}_side', 'FLAT')
                 self.state.position_avg_entry = info_dict.get(f'position_{symbol}_avg_entry', 0.0)
 
-            # Action info
+            # Action info - ALWAYS UPDATE
             action_decoded = info_dict.get('action_decoded', {})
             if action_decoded:
                 action_type = action_decoded.get('type')
@@ -316,7 +307,7 @@ class TradingDashboard:
 
             self.state.invalid_actions_count = info_dict.get('invalid_actions_total_episode', 0)
 
-            # Market data
+            # Market data - ALWAYS UPDATE if available
             if market_state:
                 self.state.current_price = market_state.get('current_price')
                 self.state.bid_price = market_state.get('best_bid_price')
@@ -325,7 +316,7 @@ class TradingDashboard:
                 self.state.ask_size = market_state.get('best_ask_size', 0)
                 self.state.market_session = market_state.get('market_session', 'UNKNOWN')
 
-            # Fills
+            # Fills - ALWAYS UPDATE
             fills_step = info_dict.get('fills_step', [])
             if fills_step:
                 for fill in fills_step:
@@ -352,7 +343,14 @@ class TradingDashboard:
             self.state.is_terminated = info_dict.get('termination_reason') is not None
             self.state.is_truncated = info_dict.get('TimeLimit.truncated', False)
 
-            # Force immediate update
+            # Add log entry for this step
+            if self.state.step > 0:  # Don't log step 0
+                log_entry = f"Step {self.state.step}: {self.state.last_action_type} | Reward: {self.state.step_reward:.4f}"
+                if self.state.last_action_invalid:
+                    log_entry += f" | INVALID: {self.state.last_action_reason}"
+                self.state.recent_logs.append(log_entry)
+
+            # ALWAYS update display after state changes
             self._update_display()
 
         except Exception as e:
@@ -395,10 +393,13 @@ class TradingDashboard:
         header_table.add_column(justify="center")
         header_table.add_column(justify="right")
 
+        # NEW: Show both episode and step reward
+        reward_text = f"[bold green]EPISODE: {self.state.episode_reward:.4f}[/bold green] | [yellow]STEP: {self.state.step_reward:.4f}[/yellow]"
+
         header_table.add_row(
             f"[bold cyan]STEP {self.state.step}[/bold cyan] | [cyan]{time_str}[/cyan]",
             f"[bold white]{self.state.symbol}[/bold white] | {status}",
-            f"[bold green]REWARD: {self.state.total_reward:.4f}[/bold green] | {update_info}"
+            f"{reward_text} | {update_info}"
         )
 
         return Panel(header_table, style="bright_blue", box=box.HEAVY)
@@ -408,12 +409,12 @@ class TradingDashboard:
         table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
 
         # Current price
-        price_text = f"${self.state.current_price:.2f}" if self.state.current_price else "N/A"
+        price_text = f"${self.state.current_price:.4f}" if self.state.current_price else "N/A"
         table.add_row("Price", Text(price_text, style="bold yellow"))
 
         # Bid/Ask
-        bid_text = f"${self.state.bid_price:.2f}" if self.state.bid_price else "N/A"
-        ask_text = f"${self.state.ask_price:.2f}" if self.state.ask_price else "N/A"
+        bid_text = f"${self.state.bid_price:.4f}" if self.state.bid_price else "N/A"
+        ask_text = f"${self.state.ask_price:.4f}" if self.state.ask_price else "N/A"
         table.add_row("Bid", Text(bid_text, style="red"))
         table.add_row("Ask", Text(ask_text, style="green"))
 
@@ -445,7 +446,7 @@ class TradingDashboard:
         table.add_row("Quantity", Text(f"{self.state.position_qty:.2f}", style="white"))
 
         # Average entry price
-        entry_text = f"${self.state.position_avg_entry:.2f}" if self.state.position_avg_entry > 0 else "N/A"
+        entry_text = f"${self.state.position_avg_entry:.4f}" if self.state.position_avg_entry > 0 else "N/A"
         table.add_row("Avg Entry", Text(entry_text, style="white"))
 
         # Current P&L vs entry
@@ -457,7 +458,7 @@ class TradingDashboard:
             price_diff_pct = (price_diff / self.state.position_avg_entry) * 100
 
             diff_style = "green" if price_diff > 0 else "red" if price_diff < 0 else "white"
-            diff_text = f"${price_diff:.2f} ({price_diff_pct:+.2f}%)"
+            diff_text = f"${price_diff:.4f} ({price_diff_pct:+.2f}%)"
             table.add_row("P&L vs Entry", Text(diff_text, style=diff_style))
         else:
             table.add_row("P&L vs Entry", "N/A")
@@ -475,13 +476,13 @@ class TradingDashboard:
         """Create costs breakdown panel"""
         table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
 
-        table.add_row("Commissions", Text(f"${self.state.total_commissions:.2f}", style="red"))
-        table.add_row("Fees", Text(f"${self.state.total_fees:.2f}", style="red"))
-        table.add_row("Slippage", Text(f"${self.state.total_slippage:.2f}", style="red"))
+        table.add_row("Commissions", Text(f"${self.state.total_commissions:.4f}", style="red"))
+        table.add_row("Fees", Text(f"${self.state.total_fees:.4f}", style="red"))
+        table.add_row("Slippage", Text(f"${self.state.total_slippage:.4f}", style="red"))
 
         # Total costs
         total_costs = self.state.total_commissions + self.state.total_fees + self.state.total_slippage
-        table.add_row("Total Costs", Text(f"${total_costs:.2f}", style="bold red"))
+        table.add_row("Total Costs", Text(f"${total_costs:.4f}", style="bold red"))
 
         return Panel(table, title="[bold]Costs", border_style="red")
 
@@ -498,20 +499,16 @@ class TradingDashboard:
 
         # Unrealized PnL
         unreal_style = "green" if self.state.unrealized_pnl > 0 else "red" if self.state.unrealized_pnl < 0 else "white"
-        table.add_row("Unrealized P&L", Text(f"${self.state.unrealized_pnl:.2f}", style=unreal_style))
+        table.add_row("Unrealized P&L", Text(f"${self.state.unrealized_pnl:.4f}", style=unreal_style))
 
         # Realized PnL
         real_style = "green" if self.state.realized_pnl > 0 else "red" if self.state.realized_pnl < 0 else "white"
-        table.add_row("Realized P&L", Text(f"${self.state.realized_pnl:.2f}", style=real_style))
+        table.add_row("Realized P&L", Text(f"${self.state.realized_pnl:.4f}", style=real_style))
 
         # Session PnL
         session_style = "bold green" if self.state.session_pnl > 0 else "bold red" if self.state.session_pnl < 0 else "bold white"
         table.add_row("Session P&L",
-                      Text(f"${self.state.session_pnl:.2f} ({self.state.session_pnl_pct:+.2f}%)", style=session_style))
-
-        # Step reward
-        reward_style = "green" if self.state.episode_reward > 0 else "red" if self.state.episode_reward < 0 else "white"
-        table.add_row("Step Reward", Text(f"{self.state.episode_reward:.4f}", style=reward_style))
+                      Text(f"${self.state.session_pnl:.4f} ({self.state.session_pnl_pct:+.2f}%)", style=session_style))
 
         return Panel(table, title="[bold]Portfolio", border_style="green")
 
@@ -524,7 +521,8 @@ class TradingDashboard:
         table.add_column("Status", width=8)
 
         # Add recent actions (most recent first)
-        for action in list(self.state.recent_actions)[-5:]:  # Last 5 actions
+        recent_actions = list(self.state.recent_actions)[-5:]  # Last 5 actions
+        for action in recent_actions:
             step = str(action['step'])
             action_type = action['type']
             size = action['size']
@@ -556,10 +554,10 @@ class TradingDashboard:
         table.add_column("Side", width=6)
         table.add_column("Qty", width=8)
         table.add_column("Price", width=10)
-        table.add_column("Costs", width=8)
 
         # Add recent fills (most recent first)
-        for fill in list(self.state.recent_fills)[-5:]:  # Last 5 fills
+        recent_fills = list(self.state.recent_fills)[-5:]  # Last 5 fills
+        for fill in recent_fills:
             step = str(fill['step'])
 
             # Side with color
@@ -572,50 +570,49 @@ class TradingDashboard:
             side_style = "green" if side_text == "BUY" else "red" if side_text == "SELL" else "white"
             side = Text(side_text, style=side_style)
 
-            qty = f"{fill['quantity']:.1f}"
-            price = f"${fill['price']:.2f}"
+            qty = f"{fill['quantity']:.2f}"
+            price = f"${fill['price']:.4f}"
 
-            # Total costs
-            total_cost = fill['commission'] + fill['fees'] + fill['slippage']
-            costs = f"${total_cost:.2f}"
-
-            table.add_row(step, side, qty, price, costs)
+            table.add_row(step, side, qty, price)
 
         # If no fills, show placeholder
         if not self.state.recent_fills:
-            table.add_row("", "No fills yet", "", "", "")
+            table.add_row("", "No fills yet", "", "")
 
         return Panel(table, title="[bold]Recent Fills", border_style="yellow")
 
     def _create_logs_panel(self) -> Panel:
-        """Create logs panel"""
-        if not self.show_logs:
-            return Panel("Logs disabled", title="[bold]Logs", border_style="dim")
-
+        """Create logs panel for the right column"""
         table = Table(box=box.SIMPLE, show_header=False, show_edge=False, padding=(0, 1))
         table.add_column("Log Message", ratio=1)
 
         # Add recent logs
-        recent_logs = list(self.state.recent_logs)[-15:]  # Last 15 log messages
+        recent_logs = list(self.state.recent_logs)[-25:]  # Last 25 log messages
 
         for log_msg in recent_logs:
-            # Color code by log level
+            # Color code by log level and content
             style = "white"
-            if " ERROR " in log_msg:
+            if " ERROR " in log_msg or "ERROR" in log_msg:
                 style = "red"
-            elif " WARNING " in log_msg:
+            elif " WARNING " in log_msg or "WARNING" in log_msg:
                 style = "yellow"
-            elif " INFO " in log_msg:
+            elif " INFO " in log_msg or "INFO" in log_msg:
                 style = "cyan"
-            elif " DEBUG " in log_msg:
+            elif " DEBUG " in log_msg or "DEBUG" in log_msg:
                 style = "dim"
+            elif "Step" in log_msg and "Reward" in log_msg:
+                style = "green"
+            elif "INVALID" in log_msg:
+                style = "red"
 
             table.add_row(Text(log_msg, style=style))
 
         if not recent_logs:
-            table.add_row(Text("No logs yet...", style="dim"))
+            table.add_row(Text("Logs will appear here...", style="dim"))
+            table.add_row(Text(f"Current step: {self.state.step}", style="cyan"))
+            table.add_row(Text(f"Action: {self.state.last_action_type}", style="green"))
 
-        return Panel(table, title="[bold]Recent Logs", border_style="cyan")
+        return Panel(table, title="[bold]Activity Log", border_style="cyan")
 
     def _create_footer(self) -> Panel:
         """Create footer with status and alerts"""
@@ -632,7 +629,7 @@ class TradingDashboard:
             footer_text = "[green]Environment running normally[/green]"
 
         # Add refresh info
-        refresh_info = f" | Last update: {time.strftime('%H:%M:%S')}"
+        refresh_info = f" | Last update: {time.strftime('%H:%M:%S')} | Step: {self.state.step}"
         footer_text += refresh_info
 
         return Panel(
