@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional, Deque
 from dataclasses import dataclass, field
 import threading
 import time
+import sys
+from io import StringIO
 
 from rich.console import Console
 from rich.live import Live
@@ -15,8 +17,8 @@ from rich.table import Table
 from rich.text import Text
 from rich.align import Align
 from rich import box
-from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.columns import Columns
+from rich.logging import RichHandler
 
 from simulators.portfolio_simulator import PositionSideEnum, OrderSideEnum
 
@@ -69,6 +71,7 @@ class DashboardState:
     # Recent history
     recent_actions: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=10))
     recent_fills: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=10))
+    recent_logs: Deque[str] = field(default_factory=lambda: deque(maxlen=20))
 
     # Status
     is_terminated: bool = False
@@ -80,37 +83,63 @@ class DashboardState:
     session_pnl: float = 0.0
     session_pnl_pct: float = 0.0
 
+    # Update tracking
+    last_update_time: float = 0.0
+    update_count: int = 0
+
+
+class LogCapture(logging.Handler):
+    """Custom log handler to capture logs for dashboard display"""
+
+    def __init__(self, dashboard_state: DashboardState):
+        super().__init__()
+        self.dashboard_state = dashboard_state
+        self.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            # Truncate very long messages
+            if len(msg) > 120:
+                msg = msg[:117] + "..."
+            self.dashboard_state.recent_logs.append(msg)
+        except Exception:
+            pass  # Don't let logging errors break the dashboard
+
 
 class TradingDashboard:
     """
     A live dashboard for monitoring trading environment using Rich Live display.
-
-    Features:
-    - Real-time updates without scrolling
-    - Comprehensive trading information
-    - Recent actions and fills history
-    - Cost breakdown and performance metrics
-    - Clean, organized layout
+    Now with improved updates, log display, and error handling.
     """
 
-    def __init__(self, console: Optional[Console] = None, update_frequency: float = 0.1):
+    def __init__(self, console: Optional[Console] = None, show_logs: bool = True):
         """
         Initialize the trading dashboard.
 
         Args:
             console: Rich console instance (creates new if None)
-            update_frequency: How often to refresh the display (seconds)
+            show_logs: Whether to show logs in the dashboard
         """
         self.console = console or Console()
-        self.update_frequency = update_frequency
+        self.show_logs = show_logs
         self.state = DashboardState()
         self.live: Optional[Live] = None
         self.layout: Optional[Layout] = None
         self.logger = logging.getLogger(__name__)
 
-        # Threading for smooth updates
+        # Log capture
+        self.log_handler: Optional[LogCapture] = None
+        if self.show_logs:
+            self.log_handler = LogCapture(self.state)
+            self.log_handler.setLevel(logging.INFO)
+            # Add to root logger to capture all logs
+            logging.getLogger().addHandler(self.log_handler)
+
+        # State management
         self._running = False
-        self._update_thread: Optional[threading.Thread] = None
+        self._last_update = 0
+        self._force_update = False
 
         self._setup_layout()
 
@@ -118,12 +147,21 @@ class TradingDashboard:
         """Create the dashboard layout structure"""
         self.layout = Layout()
 
-        # Split into header, main content, and footer
-        self.layout.split_column(
-            Layout(name="header", size=3),
-            Layout(name="main", ratio=1),
-            Layout(name="footer", size=3)
-        )
+        if self.show_logs:
+            # Split into header, main content, logs, and footer
+            self.layout.split_column(
+                Layout(name="header", size=3),
+                Layout(name="main", ratio=2),
+                Layout(name="logs", size=8),
+                Layout(name="footer", size=3)
+            )
+        else:
+            # Split into header, main content, and footer
+            self.layout.split_column(
+                Layout(name="header", size=3),
+                Layout(name="main", ratio=1),
+                Layout(name="footer", size=3)
+            )
 
         # Split main area into left and right sections
         self.layout["main"].split_row(
@@ -151,44 +189,47 @@ class TradingDashboard:
             return
 
         self._running = True
-        self.live = Live(
-            self.layout,
-            console=self.console,
-            refresh_per_second=10,
-            screen=True,
-            auto_refresh=True
-        )
 
-        # Start the live display
-        self.live.start()
+        try:
+            self.live = Live(
+                self.layout,
+                console=self.console,
+                refresh_per_second=4,  # Refresh 4 times per second
+                screen=True,
+                auto_refresh=True
+            )
 
-        # Start update thread
-        self._update_thread = threading.Thread(target=self._update_loop, daemon=True)
-        self._update_thread.start()
+            # Start the live display
+            self.live.start()
+            self._update_display()  # Initial update
 
-        self.logger.info("Trading dashboard started")
+            self.logger.info("Trading dashboard started")
+
+        except Exception as e:
+            self.logger.error(f"Failed to start dashboard: {e}")
+            self._running = False
 
     def stop(self):
         """Stop the live dashboard"""
         self._running = False
 
-        if self._update_thread:
-            self._update_thread.join(timeout=1.0)
-
         if self.live:
-            self.live.stop()
+            try:
+                self.live.stop()
+            except Exception as e:
+                self.logger.error(f"Error stopping dashboard: {e}")
+
+        # Remove log handler
+        if self.log_handler:
+            logging.getLogger().removeHandler(self.log_handler)
 
         self.logger.info("Trading dashboard stopped")
 
-    def _update_loop(self):
-        """Main update loop for the dashboard"""
-        while self._running:
-            try:
-                self._update_display()
-                time.sleep(self.update_frequency)
-            except Exception as e:
-                self.logger.error(f"Dashboard update error: {e}")
-                time.sleep(1.0)  # Longer sleep on error
+    def force_update(self):
+        """Force an immediate update of the dashboard"""
+        self._force_update = True
+        if self._running:
+            self._update_display()
 
     def _update_display(self):
         """Update all dashboard components"""
@@ -196,6 +237,12 @@ class TradingDashboard:
             return
 
         try:
+            current_time = time.time()
+
+            # Update state tracking
+            self.state.last_update_time = current_time
+            self.state.update_count += 1
+
             # Update each section
             self.layout["header"].update(self._create_header())
             self.layout["market"].update(self._create_market_panel())
@@ -204,17 +251,21 @@ class TradingDashboard:
             self.layout["portfolio"].update(self._create_portfolio_panel())
             self.layout["actions"].update(self._create_actions_panel())
             self.layout["fills"].update(self._create_fills_panel())
+
+            if self.show_logs:
+                self.layout["logs"].update(self._create_logs_panel())
+
             self.layout["footer"].update(self._create_footer())
+
+            self._force_update = False
+
         except Exception as e:
             self.logger.error(f"Error updating display components: {e}")
 
     def update_state(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
         """
         Update dashboard state with new information from the environment.
-
-        Args:
-            info_dict: Info dictionary from environment step
-            market_state: Current market state data
+        Now updates immediately every time it's called.
         """
         try:
             # Basic environment info
@@ -301,16 +352,23 @@ class TradingDashboard:
             self.state.is_terminated = info_dict.get('termination_reason') is not None
             self.state.is_truncated = info_dict.get('TimeLimit.truncated', False)
 
+            # Force immediate update
+            self._update_display()
+
         except Exception as e:
             self.logger.error(f"Error updating dashboard state: {e}")
+            # Still try to update display to show error
+            self._update_display()
 
     def set_symbol(self, symbol: str):
         """Set the trading symbol"""
         self.state.symbol = symbol
+        self._update_display()
 
     def set_initial_capital(self, capital: float):
         """Set the initial capital for PnL calculations"""
         self.state.initial_capital = capital
+        self._update_display()
 
     def _create_header(self) -> Panel:
         """Create the header panel with basic info"""
@@ -329,6 +387,9 @@ class TradingDashboard:
         elif self.state.is_truncated:
             status = "🟡 TRUNCATED"
 
+        # Update info
+        update_info = f"Updates: {self.state.update_count}"
+
         header_table = Table.grid(padding=1)
         header_table.add_column(justify="left")
         header_table.add_column(justify="center")
@@ -337,7 +398,7 @@ class TradingDashboard:
         header_table.add_row(
             f"[bold cyan]STEP {self.state.step}[/bold cyan] | [cyan]{time_str}[/cyan]",
             f"[bold white]{self.state.symbol}[/bold white] | {status}",
-            f"[bold green]REWARD: {self.state.total_reward:.4f}[/bold green]"
+            f"[bold green]REWARD: {self.state.total_reward:.4f}[/bold green] | {update_info}"
         )
 
         return Panel(header_table, style="bright_blue", box=box.HEAVY)
@@ -526,6 +587,36 @@ class TradingDashboard:
 
         return Panel(table, title="[bold]Recent Fills", border_style="yellow")
 
+    def _create_logs_panel(self) -> Panel:
+        """Create logs panel"""
+        if not self.show_logs:
+            return Panel("Logs disabled", title="[bold]Logs", border_style="dim")
+
+        table = Table(box=box.SIMPLE, show_header=False, show_edge=False, padding=(0, 1))
+        table.add_column("Log Message", ratio=1)
+
+        # Add recent logs
+        recent_logs = list(self.state.recent_logs)[-15:]  # Last 15 log messages
+
+        for log_msg in recent_logs:
+            # Color code by log level
+            style = "white"
+            if " ERROR " in log_msg:
+                style = "red"
+            elif " WARNING " in log_msg:
+                style = "yellow"
+            elif " INFO " in log_msg:
+                style = "cyan"
+            elif " DEBUG " in log_msg:
+                style = "dim"
+
+            table.add_row(Text(log_msg, style=style))
+
+        if not recent_logs:
+            table.add_row(Text("No logs yet...", style="dim"))
+
+        return Panel(table, title="[bold]Recent Logs", border_style="cyan")
+
     def _create_footer(self) -> Panel:
         """Create footer with status and alerts"""
         footer_text = ""
@@ -540,6 +631,10 @@ class TradingDashboard:
         else:
             footer_text = "[green]Environment running normally[/green]"
 
+        # Add refresh info
+        refresh_info = f" | Last update: {time.strftime('%H:%M:%S')}"
+        footer_text += refresh_info
+
         return Panel(
             Align.center(Text.from_markup(footer_text)),
             style="bright_white"
@@ -547,6 +642,6 @@ class TradingDashboard:
 
 
 # Convenience function for easy integration
-def create_dashboard(console: Optional[Console] = None) -> TradingDashboard:
+def create_dashboard(console: Optional[Console] = None, show_logs: bool = True) -> TradingDashboard:
     """Create and return a new trading dashboard instance"""
-    return TradingDashboard(console=console)
+    return TradingDashboard(console=console, show_logs=show_logs)
