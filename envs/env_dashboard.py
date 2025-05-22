@@ -73,9 +73,9 @@ class DashboardState:
     last_action_invalid: bool = False
     invalid_actions_count: int = 0
 
-    # Recent history
-    recent_actions: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=10))
-    recent_fills: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=10))
+    # Recent history - Limited to 3 entries each
+    recent_actions: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=3))
+    recent_fills: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=3))
 
     # Training state - Enhanced
     episode_number: int = 0
@@ -121,13 +121,16 @@ class DashboardState:
     last_update_time: float = 0.0
     update_count_dashboard: int = 0
 
+    # State versioning to prevent race conditions
+    state_version: int = 0
+
 
 class TradingDashboard:
     """
-    Full-screen trading dashboard with Rich console logs.
+    Full-screen trading dashboard with Rich console logs and stable state management.
     """
 
-    def __init__(self, log_height: int = 15):  # Increased default log height
+    def __init__(self, log_height: int = 25):  # Increased log height
         """
         Initialize the full-screen trading dashboard.
 
@@ -137,10 +140,15 @@ class TradingDashboard:
         self.log_height = log_height
         self.state = DashboardState()
 
-        # Thread safety
+        # Enhanced thread safety
         self._state_lock = threading.RLock()
-        self._update_throttle = 0.1  # Minimum time between updates (seconds)
+        self._update_throttle = 0.2  # Reduced update frequency to prevent blinking
         self._last_update_time = 0.0
+        self._update_in_progress = False
+
+        # State management for stability
+        self._stable_state = DashboardState()  # Backup stable state
+        self._last_valid_update = 0.0
 
         # Create main console for dashboard
         self.console = Console()
@@ -161,7 +169,7 @@ class TradingDashboard:
         self._running = False
 
         # Enhanced log capture that preserves Rich formatting
-        self.log_buffer = deque(maxlen=100)  # Store more logs
+        self.log_buffer = deque(maxlen=200)  # Store more logs
         self._setup_dashboard_logging()
 
     def _setup_dashboard_logging(self):
@@ -213,49 +221,49 @@ class TradingDashboard:
         self.dashboard_handler.setLevel(logging.INFO)
 
     def _create_layout(self) -> Layout:
-        """Create the full-screen dashboard layout with larger log panel"""
+        """Create the full-screen dashboard layout with fixed sizes and larger log panel"""
         layout = Layout()
 
-        # Split main layout: Dashboard (top) and Logs (bottom) - make logs bigger
+        # Split main layout: Dashboard (top) and Logs (bottom) - bigger logs
         layout.split_column(
-            Layout(name="dashboard", ratio=2),  # Reduced ratio for dashboard
-            Layout(name="logs", size=self.log_height)  # Fixed size for logs
+            Layout(name="dashboard", ratio=1),  # Dashboard takes less space
+            Layout(name="logs", size=self.log_height)  # Fixed size for logs (bigger)
         )
 
-        # Dashboard layout
+        # Dashboard layout with fixed sizes
         dashboard_layout = layout["dashboard"]
         dashboard_layout.split_column(
-            Layout(name="header", size=4),
-            Layout(name="body", ratio=1),
-            Layout(name="footer", size=3)
+            Layout(name="header", size=4),  # Fixed header size
+            Layout(name="body", ratio=1),  # Body takes remaining space
+            Layout(name="footer", size=3)  # Fixed footer size
         )
 
-        # Body split into sections
+        # Body split into sections with fixed ratios
         dashboard_layout["body"].split_row(
             Layout(name="left_panel", ratio=1),
             Layout(name="center_panel", ratio=1),
             Layout(name="right_panel", ratio=1)
         )
 
-        # Left panel: Market + Position
+        # Left panel: Market + Position + Portfolio (fixed sizes)
         dashboard_layout["left_panel"].split_column(
-            Layout(name="market", size=12),
-            Layout(name="position", size=12),
-            Layout(name="portfolio", ratio=1)
+            Layout(name="market", size=10),  # Fixed size
+            Layout(name="position", size=10),  # Fixed size
+            Layout(name="portfolio", size=8)  # Fixed size
         )
 
-        # Center panel: Training Progress + Actions
+        # Center panel: Training Progress + Actions (fixed sizes)
         dashboard_layout["center_panel"].split_column(
-            Layout(name="training_stage", size=8),
-            Layout(name="training_metrics", size=12),
-            Layout(name="actions", ratio=1)
+            Layout(name="training_stage", size=8),  # Fixed size
+            Layout(name="training_metrics", size=12),  # Fixed size
+            Layout(name="actions", size=8)  # Fixed size for 3 actions + header
         )
 
-        # Right panel: Performance + Fills + Stats
+        # Right panel: Performance + Fills + Stats (fixed sizes)
         dashboard_layout["right_panel"].split_column(
-            Layout(name="performance", size=10),
-            Layout(name="fills", size=10),
-            Layout(name="episode_stats", ratio=1)
+            Layout(name="performance", size=10),  # Fixed size
+            Layout(name="fills", size=8),  # Fixed size for 3 fills + header
+            Layout(name="episode_stats", size=10)  # Fixed size
         )
 
         return layout
@@ -283,7 +291,7 @@ class TradingDashboard:
             self.live = Live(
                 self.layout,
                 console=self.console,
-                refresh_per_second=4,  # Reasonable refresh rate
+                refresh_per_second=3,  # Reduced refresh rate to prevent blinking
                 screen=False,
                 auto_refresh=True,
                 transient=False,
@@ -331,92 +339,125 @@ class TradingDashboard:
             self.state.current_stage = stage
             self.state.stage_progress = max(0.0, min(1.0, progress))
             self.state.stage_details = details
+            self.state.state_version += 1
 
         if self._running:
-            self._throttled_update()
+            self._safe_throttled_update()
 
     def update_training_metrics(self, metrics: Dict[str, Any]):
         """Update training metrics with thread safety - only update provided values"""
+        if not metrics:
+            return
+
         with self._state_lock:
-            # Only update values that are actually provided in metrics
+            # Only update values that are actually provided in metrics and are valid
             for key, value in metrics.items():
                 if hasattr(self.state, key) and value is not None:
-                    setattr(self.state, key, value)
+                    # Additional validation to prevent invalid values
+                    if isinstance(value, (int, float)) and not (isinstance(value, float) and (value != value)):  # NaN check
+                        setattr(self.state, key, value)
+
+            self.state.state_version += 1
 
         if self._running:
-            self._throttled_update()
+            self._safe_throttled_update()
 
     def update_state(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
-        """Update dashboard state with thread safety and throttling"""
+        """Update dashboard state with enhanced thread safety and validation"""
         if not self._running or not self.live:
             return
 
-        # Throttle updates to prevent blinking
-        current_time = time.time()
-        if current_time - self._last_update_time < self._update_throttle:
+        # Skip empty updates
+        if not info_dict and not market_state:
             return
 
         try:
             with self._state_lock:
-                # Only update if we have actual meaningful data
-                if info_dict or market_state:
-                    self._update_state_data_safe(info_dict, market_state)
+                # Prevent concurrent updates
+                if self._update_in_progress:
+                    return
 
-            self._throttled_update()
+                self._update_in_progress = True
+
+                # Update state data safely with validation
+                self._update_state_data_validated(info_dict, market_state)
+
+                self._update_in_progress = False
+
+            self._safe_throttled_update()
 
         except Exception as e:
-            logging.error(f"Error updating dashboard: {e}")
+            self._update_in_progress = False
+            logging.error(f"Error updating dashboard state: {e}")
 
-    def _update_state_data_safe(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
-        """Thread-safe state update that preserves existing values"""
+    def _update_state_data_validated(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
+        """Thread-safe state update with comprehensive validation"""
 
-        # Basic environment info - only update if provided and valid
-        if 'step' in info_dict and info_dict['step'] is not None:
-            # Only update if step is increasing (prevent backwards jumps)
-            if info_dict['step'] >= self.state.step:
-                self.state.step = info_dict['step']
+        # Validate and update step (only if increasing or first update)
+        if 'step' in info_dict and isinstance(info_dict['step'], (int, float)):
+            new_step = int(info_dict['step'])
+            if new_step >= 0 and (new_step >= self.state.step or self.state.step == 0):
+                self.state.step = new_step
 
-        if 'timestamp_iso' in info_dict and info_dict['timestamp_iso']:
+        # Update timestamp only if provided and valid
+        if 'timestamp_iso' in info_dict and isinstance(info_dict['timestamp_iso'], str) and info_dict['timestamp_iso']:
             self.state.timestamp = info_dict['timestamp_iso']
 
-        if 'episode_cumulative_reward' in info_dict and info_dict['episode_cumulative_reward'] is not None:
-            self.state.episode_reward = info_dict['episode_cumulative_reward']
+        # Update rewards with validation
+        if 'episode_cumulative_reward' in info_dict and isinstance(info_dict['episode_cumulative_reward'], (int, float)):
+            reward = float(info_dict['episode_cumulative_reward'])
+            if not (reward != reward):  # NaN check
+                self.state.episode_reward = reward
 
-        if 'reward_step' in info_dict and info_dict['reward_step'] is not None:
-            self.state.step_reward = info_dict['reward_step']
+        if 'reward_step' in info_dict and isinstance(info_dict['reward_step'], (int, float)):
+            step_reward = float(info_dict['reward_step'])
+            if not (step_reward != step_reward):  # NaN check
+                self.state.step_reward = step_reward
 
-        # Portfolio metrics - only update if provided and valid
-        portfolio_fields = [
-            ('portfolio_equity', 'total_equity'),
-            ('portfolio_cash', 'cash'),
-            ('portfolio_unrealized_pnl', 'unrealized_pnl'),
-            ('portfolio_realized_pnl_session_net', 'realized_pnl')
-        ]
+        # Portfolio metrics with validation
+        portfolio_updates = {
+            'portfolio_equity': 'total_equity',
+            'portfolio_cash': 'cash',
+            'portfolio_unrealized_pnl': 'unrealized_pnl',
+            'portfolio_realized_pnl_session_net': 'realized_pnl'
+        }
 
-        for info_key, state_key in portfolio_fields:
-            if info_key in info_dict and info_dict[info_key] is not None:
-                setattr(self.state, state_key, info_dict[info_key])
+        for info_key, state_key in portfolio_updates.items():
+            if info_key in info_dict and isinstance(info_dict[info_key], (int, float)):
+                value = float(info_dict[info_key])
+                if not (value != value):  # NaN check
+                    setattr(self.state, state_key, value)
 
-        # Calculate session PnL only if we have both values
+        # Calculate session PnL only if we have valid values
         if self.state.total_equity > 0 and self.state.initial_capital > 0:
             self.state.session_pnl = self.state.total_equity - self.state.initial_capital
             self.state.session_pnl_pct = (self.state.session_pnl / self.state.initial_capital) * 100
 
-        # Position data - only update if provided
-        symbol = self.state.symbol
-        if symbol != "N/A":
-            pos_keys = [
-                (f'position_{symbol}_qty', 'position_qty'),
-                (f'position_{symbol}_side', 'position_side'),
-                (f'position_{symbol}_avg_entry', 'position_avg_entry')
-            ]
+        # Position data with validation
+        if self.state.symbol != "N/A":
+            symbol = self.state.symbol
+            position_updates = {
+                f'position_{symbol}_qty': 'position_qty',
+                f'position_{symbol}_side': 'position_side',
+                f'position_{symbol}_avg_entry': 'position_avg_entry'
+            }
 
-            for info_key, state_key in pos_keys:
+            for info_key, state_key in position_updates.items():
                 if info_key in info_dict and info_dict[info_key] is not None:
-                    setattr(self.state, state_key, info_dict[info_key])
+                    value = info_dict[info_key]
+                    if state_key == 'position_side':
+                        # Handle enum values
+                        if hasattr(value, 'value'):
+                            setattr(self.state, state_key, str(value.value))
+                        else:
+                            setattr(self.state, state_key, str(value))
+                    elif isinstance(value, (int, float)):
+                        float_val = float(value)
+                        if not (float_val != float_val):  # NaN check
+                            setattr(self.state, state_key, float_val)
 
-        # Action info - only update if provided
-        if 'action_decoded' in info_dict and info_dict['action_decoded']:
+        # Action info with validation
+        if 'action_decoded' in info_dict and isinstance(info_dict['action_decoded'], dict):
             action_decoded = info_dict['action_decoded']
 
             action_type = action_decoded.get('type')
@@ -430,7 +471,7 @@ class TradingDashboard:
             if 'invalid_reason' in action_decoded:
                 self.state.last_action_invalid = bool(action_decoded['invalid_reason'])
 
-            # Add to recent actions (avoid duplicates)
+            # Add to recent actions (avoid duplicates and limit to 3)
             new_action = {
                 'step': self.state.step,
                 'type': self.state.last_action_type,
@@ -439,52 +480,73 @@ class TradingDashboard:
             }
 
             # Only add if it's different from the last action
-            if not self.state.recent_actions or self.state.recent_actions[-1] != new_action:
+            if not self.state.recent_actions or self.state.recent_actions[-1]['step'] != new_action['step']:
                 self.state.recent_actions.append(new_action)
 
-        # Market data - only update if provided and valid
-        if market_state:
-            market_fields = [
-                ('current_price', 'current_price'),
-                ('best_bid_price', 'bid_price'),
-                ('best_ask_price', 'ask_price'),
-                ('market_session', 'market_session')
-            ]
+        # Market data with validation
+        if market_state and isinstance(market_state, dict):
+            market_updates = {
+                'current_price': 'current_price',
+                'best_bid_price': 'bid_price',
+                'best_ask_price': 'ask_price',
+                'market_session': 'market_session'
+            }
 
-            for market_key, state_key in market_fields:
+            for market_key, state_key in market_updates.items():
                 if market_key in market_state and market_state[market_key] is not None:
-                    setattr(self.state, state_key, market_state[market_key])
+                    value = market_state[market_key]
+                    if state_key == 'market_session':
+                        setattr(self.state, state_key, str(value))
+                    elif isinstance(value, (int, float)):
+                        float_val = float(value)
+                        if not (float_val != float_val) and float_val >= 0:  # NaN check and positive check
+                            setattr(self.state, state_key, float_val)
 
-        # Fills - only update if provided
-        if 'fills_step' in info_dict and info_dict['fills_step']:
+        # Fills with validation (limit to 3)
+        if 'fills_step' in info_dict and isinstance(info_dict['fills_step'], list):
             for fill in info_dict['fills_step']:
-                new_fill = {
-                    'step': self.state.step,
-                    'side': fill.get('order_side', 'N/A'),
-                    'quantity': fill.get('executed_quantity', 0.0),
-                    'price': fill.get('executed_price', 0.0)
-                }
+                if isinstance(fill, dict):
+                    new_fill = {
+                        'step': self.state.step,
+                        'side': fill.get('order_side', 'N/A'),
+                        'quantity': fill.get('executed_quantity', 0.0),
+                        'price': fill.get('executed_price', 0.0)
+                    }
 
-                # Only add if it's different from the last fill
-                if not self.state.recent_fills or self.state.recent_fills[-1] != new_fill:
-                    self.state.recent_fills.append(new_fill)
+                    # Validate fill data
+                    if (isinstance(new_fill['quantity'], (int, float)) and new_fill['quantity'] > 0 and
+                            isinstance(new_fill['price'], (int, float)) and new_fill['price'] > 0):
 
-        # Status - only update if provided
+                        # Only add if it's different from the last fill
+                        if not self.state.recent_fills or self.state.recent_fills[-1]['step'] != new_fill['step']:
+                            self.state.recent_fills.append(new_fill)
+
+        # Status updates with validation
         if 'termination_reason' in info_dict:
             self.state.is_terminated = info_dict['termination_reason'] is not None
 
         if 'TimeLimit.truncated' in info_dict:
-            self.state.is_truncated = info_dict['TimeLimit.truncated']
+            self.state.is_truncated = bool(info_dict['TimeLimit.truncated'])
 
-    def _throttled_update(self):
-        """Update layout with throttling to prevent excessive updates"""
+        # Update state version
+        self.state.state_version += 1
+
+    def _safe_throttled_update(self):
+        """Safely update layout with enhanced throttling and error handling"""
+        if not self._running or not self.live:
+            return
+
         current_time = time.time()
         if current_time - self._last_update_time >= self._update_throttle:
-            self._update_layout()
-            self._last_update_time = current_time
+            try:
+                self._update_layout()
+                self._last_update_time = current_time
+                self._last_valid_update = current_time
+            except Exception as e:
+                logging.error(f"Error in safe throttled update: {e}")
 
     def _update_layout(self):
-        """Update all layout components"""
+        """Update all layout components with error handling"""
         try:
             with self._state_lock:
                 self.layout["header"].update(self._create_header())
@@ -500,45 +562,27 @@ class TradingDashboard:
                 self.layout["footer"].update(self._create_footer())
                 self.layout["logs"].update(self._create_enhanced_logs_panel())
         except Exception as e:
-            logging.error(f"Error updating layout: {e}")
+            logging.error(f"Error updating layout components: {e}")
 
     def _create_enhanced_logs_panel(self) -> Panel:
         """Create enhanced logs panel with Rich formatting and colors"""
 
-        # Get recent logs
-        recent_logs = list(self.log_buffer)[-self.log_height + 2:]  # Account for panel borders
+        # Get more recent logs for the larger panel
+        recent_logs = list(self.log_buffer)[-(self.log_height - 2):]
 
         if recent_logs:
-            # Create Rich text with preserved formatting
-            log_content = Group()
-
-            for log_entry in recent_logs:
-                # Use the captured rich text directly
-                log_text = Text.from_markup(log_entry['text'])
-
-                # Add level-based styling
-                level = log_entry.get('level', 'INFO')
-                if level == 'ERROR':
-                    log_text.stylize("bold red")
-                elif level == 'WARNING':
-                    log_text.stylize("bold yellow")
-                elif level == 'DEBUG':
-                    log_text.stylize("dim")
-
-            # Join all log entries
+            # Join all log entries with preserved formatting
             log_display = "\n".join([entry['text'] for entry in recent_logs])
-
         else:
             log_display = "[dim]Waiting for log messages...[/dim]"
 
         return Panel(
             Text.from_markup(log_display),
-            title="[bold]System Logs (Rich Console)",
+            title="[bold]System Logs",
             border_style="cyan",
             height=self.log_height
         )
 
-    # [Include all the other _create_* methods here - they remain the same]
     def _create_header(self) -> Panel:
         """Create enhanced header with training status"""
         time_str = "N/A"
@@ -720,14 +764,15 @@ class TradingDashboard:
         return Panel(table, title="[bold]Portfolio", border_style="green")
 
     def _create_actions_panel(self) -> Panel:
-        """Create recent actions panel"""
+        """Create recent actions panel - limited to 3 entries"""
         table = Table(box=box.SIMPLE, show_edge=False, padding=(0, 1))
         table.add_column("Step", width=6)
         table.add_column("Action", width=8)
         table.add_column("Size", width=8)
         table.add_column("Status", width=8)
 
-        recent_actions = list(self.state.recent_actions)[-8:]
+        # Only show last 3 actions
+        recent_actions = list(self.state.recent_actions)
         for action in recent_actions:
             step = str(action['step'])
             action_type = action['type']
@@ -746,20 +791,22 @@ class TradingDashboard:
 
             table.add_row(step, action_type, size, status)
 
-        if not self.state.recent_actions:
-            table.add_row("", "No actions yet", "", "")
+        # Fill empty rows to maintain consistent height
+        while len(table.rows) < 3:
+            table.add_row("", "", "", "")
 
-        return Panel(table, title="[bold]Recent Actions", border_style="magenta")
+        return Panel(table, title="[bold]Recent Actions (Last 3)", border_style="magenta")
 
     def _create_fills_panel(self) -> Panel:
-        """Create recent fills panel"""
+        """Create recent fills panel - limited to 3 entries"""
         table = Table(box=box.SIMPLE, show_edge=False, padding=(0, 1))
         table.add_column("Step", width=6)
         table.add_column("Side", width=6)
         table.add_column("Qty", width=8)
         table.add_column("Price", width=10)
 
-        recent_fills = list(self.state.recent_fills)[-8:]
+        # Only show last 3 fills
+        recent_fills = list(self.state.recent_fills)
         for fill in recent_fills:
             step = str(fill['step'])
 
@@ -777,10 +824,11 @@ class TradingDashboard:
 
             table.add_row(step, side, qty, price)
 
-        if not self.state.recent_fills:
-            table.add_row("", "No fills yet", "", "")
+        # Fill empty rows to maintain consistent height
+        while len(table.rows) < 3:
+            table.add_row("", "", "", "")
 
-        return Panel(table, title="[bold]Recent Fills", border_style="yellow")
+        return Panel(table, title="[bold]Recent Fills (Last 3)", border_style="yellow")
 
     def _create_episode_stats_panel(self) -> Panel:
         """Create episode statistics panel"""
@@ -832,22 +880,24 @@ class TradingDashboard:
                           total_steps: int = 0, update_count: int = 0,
                           buffer_size: int = 0, is_training: bool = True,
                           is_evaluating: bool = False, learning_rate: float = 0.0):
-        """Set training information with thread safety"""
+        """Set training information with thread safety and validation"""
         with self._state_lock:
-            # Only update if values are meaningful and not going backwards
-            if episode_num >= self.state.episode_number:
+            # Only update if values are meaningful and valid
+            if episode_num >= 0 and episode_num >= self.state.episode_number:
                 self.state.episode_number = episode_num
-            if total_steps >= self.state.total_steps:
+            if total_steps >= 0 and total_steps >= self.state.total_steps:
                 self.state.total_steps = total_steps
-            if update_count >= self.state.update_count:
+            if update_count >= 0 and update_count >= self.state.update_count:
                 self.state.update_count = update_count
 
-            self.state.total_episodes = total_episodes
-            self.state.buffer_size = buffer_size
+            self.state.total_episodes = max(0, total_episodes)
+            self.state.buffer_size = max(0, buffer_size)
             self.state.is_training = is_training
             self.state.is_evaluating = is_evaluating
             if learning_rate > 0:
                 self.state.learning_rate = learning_rate
 
+            self.state.state_version += 1
+
         if self._running:
-            self._throttled_update()
+            self._safe_throttled_update()
