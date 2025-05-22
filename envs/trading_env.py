@@ -58,7 +58,7 @@ class TerminationReasonEnum(Enum):
 class TradingEnvironment(gym.Env):
     metadata = {'render_modes': ['human', 'logs', 'dashboard', 'none'], 'render_fps': 10}
 
-    def __init__(self, config: Config, data_manager: DataManager, logger: Optional[logging.Logger] = None, dashboard:Optional[TradingDashboard]=None):
+    def __init__(self, config: Config, data_manager: DataManager, logger: Optional[logging.Logger] = None, dashboard: Optional[TradingDashboard] = None):
         super().__init__()
         self.config = config
 
@@ -497,7 +497,7 @@ class TradingEnvironment(gym.Env):
 
         elif action_type == ActionTypeEnum.BUY:
             # IMPROVED BUY LOGIC: Use percentage of current equity, not cash
-            target_buy_value = (size_float / 100) * total_equity  # Use size_float as percentage
+            target_buy_value = (size_float/100) * total_equity  # Use size_float as percentage
             target_buy_value = min(target_buy_value, max_pos_value_abs, cash)
 
             if target_buy_value > 1e-9 and ideal_ask > 1e-9:
@@ -511,11 +511,11 @@ class TradingEnvironment(gym.Env):
         elif action_type == ActionTypeEnum.SELL:
             if current_pos_side == PositionSideEnum.LONG:
                 # Sell percentage of current position
-                quantity_to_trade = (size_float / 100) * current_qty
+                quantity_to_trade = (size_float/100) * current_qty
                 order_side = OrderSideEnum.SELL
             elif allow_shorting:
                 # IMPROVED SHORT LOGIC: Use percentage of equity
-                target_short_value = (size_float / 100) * total_equity
+                target_short_value = (size_float/100) * total_equity
                 target_short_value = min(target_short_value, max_pos_value_abs)
                 if target_short_value > 1e-9 and ideal_bid > 1e-9:
                     quantity_to_trade = target_short_value / ideal_bid
@@ -703,10 +703,12 @@ class TradingEnvironment(gym.Env):
         self.episode_total_reward += reward
 
         info = self._get_current_info(
-            reward=reward, fill_details_list=fill_details_list,
+            reward=reward,
+            fill_details_list=fill_details_list,
             current_portfolio_state_for_info=portfolio_state_next_t,
             termination_reason_enum=termination_reason,
-            is_terminated=terminated, is_truncated=truncated
+            is_terminated=terminated,
+            is_truncated=truncated
         )
 
         # Update dashboard with enhanced throttling - less frequent updates during regular steps
@@ -771,9 +773,9 @@ class TradingEnvironment(gym.Env):
             'portfolio_cash': current_portfolio_state_for_info['cash'],
             'portfolio_unrealized_pnl': current_portfolio_state_for_info['unrealized_pnl'],
             'portfolio_realized_pnl_session_net': current_portfolio_state_for_info['realized_pnl_session'],
-            'invalid_action_in_step': bool(
-                self._last_decoded_action.get('invalid_reason')) if self._last_decoded_action else False,
+            'invalid_action_in_step': bool(self._last_decoded_action.get('invalid_reason')) if self._last_decoded_action else False,
             'invalid_actions_total_episode': self.invalid_action_count_episode,
+            'episode_action_counts' : self.action_debug_counts.copy()
         }
         if self.primary_asset:
             pos_detail = current_portfolio_state_for_info['positions'].get(self.primary_asset, {})

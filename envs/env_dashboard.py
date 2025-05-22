@@ -46,6 +46,7 @@ class DashboardState:
     episode_reward: float = 0.0
     step_reward: float = 0.0  # Added step reward
     total_reward: float = 0.0
+    episode_action_counts: Dict[str, int] = field(default_factory=lambda: {"BUY": 0, "SELL": 0, "HOLD": 0})
 
     # Market data
     current_price: Optional[float] = None
@@ -401,16 +402,13 @@ class TradingDashboard:
 
         # Update global step (always increases across episodes)
         if 'step' in info_dict and isinstance(info_dict['step'], (int, float)):
-            new_step = int(info_dict['step'])
-            if new_step >= 0:
-                # Use global step from total_steps if available, otherwise episode step
-                if hasattr(self, '_last_total_steps') and self.state.total_steps > self._last_total_steps:
-                    self.state.step = self.state.total_steps
-                else:
-                    self.state.episode_step = new_step  # Track episode step separately
-                    # For display, combine episode number * max_steps + episode_step for global view
-                    estimated_global_step = self.state.episode_number * 2048 + new_step
-                    self.state.step = estimated_global_step
+            new_episode_step = int(info_dict['step'])
+            if new_episode_step >= 0:
+                self.state.episode_step = new_episode_step  # Track episode step separately
+        if 'global_step_counter' in info_dict and isinstance(info_dict['global_step_counter'], (int, float)):
+            global_step = int(info_dict.get('global_step_counter'))
+            if global_step >= 0:
+                self.state.step = global_step
 
         # Update timestamp only if provided and valid
         if 'timestamp_iso' in info_dict and isinstance(info_dict['timestamp_iso'], str) and info_dict['timestamp_iso']:
@@ -428,6 +426,8 @@ class TradingDashboard:
             if not (step_reward != step_reward):  # NaN check
                 self.state.step_reward = step_reward
 
+        if 'episode_action_counts' in info_dict and isinstance(info_dict['episode_action_counts'], dict):  # Add this block
+            self.state.episode_action_counts = info_dict['episode_action_counts']
         # Portfolio metrics with validation
         portfolio_updates = {
             'portfolio_equity': 'total_equity',
@@ -653,7 +653,7 @@ class TradingDashboard:
         header_table.add_column(justify="center")
         header_table.add_column(justify="right")
 
-        left_info = f"[bold cyan]{self.state.symbol}[/bold cyan] | Episode {self.state.episode_number} | Step {self.state.step}"
+        left_info = f"[bold cyan]{self.state.symbol}[/bold cyan] | Episode {self.state.episode_number} | eStep {self.state.episode_step} | gStep {self.state.step} | Time {time_str}"
         center_info = status
         right_info = f"[bold]Equity: ${self.state.total_equity:.2f}[/bold] | Episode Reward: {self.state.episode_reward:.4f} | Step Reward: {self.state.step_reward:.4f}"
 
@@ -898,15 +898,15 @@ class TradingDashboard:
 
         # Action distribution from recent actions
         if self.state.recent_actions:
-            total_actions = len(self.state.recent_actions)
-            buy_count = sum(1 for a in self.state.recent_actions if a['type'] == 'BUY')
-            sell_count = sum(1 for a in self.state.recent_actions if a['type'] == 'SELL')
-            hold_count = total_actions - buy_count - sell_count
+            buy_count = self.state.episode_action_counts.get("BUY", 0)
+            sell_count = self.state.episode_action_counts.get("SELL", 0)
+            hold_count = self.state.episode_action_counts.get("HOLD", 0)
+            total_episode_actions = buy_count + sell_count + hold_count
 
-            if total_actions > 0:
-                table.add_row("Buy %", Text(f"{(buy_count / total_actions) * 100:.1f}%", style="green"))
-                table.add_row("Sell %", Text(f"{(sell_count / total_actions) * 100:.1f}%", style="red"))
-                table.add_row("Hold %", Text(f"{(hold_count / total_actions) * 100:.1f}%", style="white"))
+            if total_episode_actions > 0:
+                table.add_row("Buy %", Text(f"{(buy_count / total_episode_actions) * 100:.1f}%", style="green"))
+                table.add_row("Sell %", Text(f"{(sell_count / total_episode_actions) * 100:.1f}%", style="red"))
+                table.add_row("Hold %", Text(f"{(hold_count / total_episode_actions) * 100:.1f}%", style="white"))
         else:
             table.add_row("Buy %", Text("0.0%", style="green"))
             table.add_row("Sell %", Text("0.0%", style="red"))
