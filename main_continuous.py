@@ -3,6 +3,7 @@ import sys
 import signal
 import threading
 import logging
+import time
 from datetime import datetime
 
 import hydra
@@ -41,8 +42,8 @@ current_env = None
 current_data_manager = None
 dashboard = None
 
-# Setup Rich logging at module level
-logger = setup_rich_logging()
+# Setup Rich logging at module level but with a simple handler that won't conflict
+logger = logging.getLogger(__name__)
 
 
 def signal_handler(signum, frame):
@@ -208,6 +209,9 @@ def run_training(cfg: Config):
         signal.signal(signal.SIGTERM, signal_handler)
 
     try:
+        # Setup basic logging first (will be reconfigured by dashboard)
+        setup_rich_logging(level=logging.INFO, show_time=True, show_path=False)
+
         # Get output directory
         if HydraConfig.initialized():
             output_dir = HydraConfig.get().runtime.output_dir
@@ -229,10 +233,13 @@ def run_training(cfg: Config):
             f.write(OmegaConf.to_yaml(cfg))
         logging.info(f"💾 Configuration saved to: {config_path}")
 
-        # Initialize dashboard
+        # Initialize dashboard early and start it immediately
         dashboard = TradingDashboard(log_height=10)
-        dashboard.start()
         dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.1, "Setting up system...")
+
+        # Start dashboard immediately to take over logging
+        dashboard.start()
+        logging.info("Dashboard started and logging configured")
 
         # Check continuous training mode
         continuous_mode = getattr(cfg.training, 'enabled', False)
@@ -273,7 +280,7 @@ def run_training(cfg: Config):
         logging.info(f"📈 Trading symbol: {symbol}")
         logging.info(f"📅 Date range: {start_date} to {end_date}")
 
-        # Set dashboard symbol
+        # Set dashboard symbol and capital
         dashboard.set_symbol(symbol)
         dashboard.set_initial_capital(cfg.simulation.portfolio_config.initial_cash)
 
@@ -440,7 +447,19 @@ def run_training(cfg: Config):
             **training_params
         )
 
-        # Update dashboard with training info
+        # Update dashboard with initial training info
+        dashboard.set_training_info(
+            episode_num=0,
+            total_episodes=0,
+            total_steps=0,
+            update_count=0,
+            buffer_size=cfg.training.buffer_size,
+            is_training=False,
+            is_evaluating=False,
+            learning_rate=cfg.training.lr
+        )
+
+        # Update dashboard with training metrics
         dashboard.update_training_metrics({
             'learning_rate': cfg.training.lr,
             'batch_size': cfg.training.batch_size,
@@ -488,16 +507,31 @@ def run_training(cfg: Config):
             # Enhanced training loop with dashboard updates
             training_stats = {}
             update_counter = 0
+            last_dashboard_update = 0
 
             while update_counter < total_updates and not training_interrupted:
                 try:
-                    # Update dashboard for rollout collection
+                    # Update dashboard for rollout collection (less frequent updates)
                     progress = update_counter / total_updates
-                    dashboard.set_training_stage(
-                        TrainingStage.COLLECTING_ROLLOUT,
-                        progress,
-                        f"Update {update_counter + 1}/{total_updates} - Collecting rollout..."
-                    )
+                    if update_counter - last_dashboard_update >= 1:  # Update every iteration
+                        dashboard.set_training_stage(
+                            TrainingStage.COLLECTING_ROLLOUT,
+                            progress,
+                            f"Update {update_counter + 1}/{total_updates} - Collecting rollout..."
+                        )
+
+                        # Update training info on dashboard
+                        dashboard.set_training_info(
+                            episode_num=getattr(current_trainer, 'global_episode_counter', 0),
+                            total_episodes=0,
+                            total_steps=getattr(current_trainer, 'global_step_counter', 0),
+                            update_count=update_counter,
+                            buffer_size=cfg.training.buffer_size,
+                            is_training=True,
+                            is_evaluating=False,
+                            learning_rate=cfg.training.lr
+                        )
+                        last_dashboard_update = update_counter
 
                     if training_interrupted:
                         break
@@ -518,14 +552,18 @@ def run_training(cfg: Config):
                     # Update policy
                     update_metrics = current_trainer.update_policy()
 
-                    # Update dashboard with metrics
-                    dashboard.update_training_metrics({
-                        **rollout_stats,
-                        **update_metrics,
-                        'update_count': update_counter + 1,
-                        'total_updates': total_updates,
-                        'progress': progress
-                    })
+                    # Update dashboard with metrics (only pass provided metrics, less frequently)
+                    if update_counter % 2 == 0:  # Update metrics every other iteration
+                        combined_metrics = {}
+                        combined_metrics.update(rollout_stats)
+                        combined_metrics.update(update_metrics)
+                        combined_metrics.update({
+                            'update_count': update_counter + 1,
+                            'total_updates': total_updates,
+                            'progress': progress
+                        })
+
+                        dashboard.update_training_metrics(combined_metrics)
 
                     # Call callbacks
                     for callback in current_trainer.callbacks:
@@ -534,8 +572,8 @@ def run_training(cfg: Config):
 
                     update_counter += 1
 
-                    # Log progress
-                    if update_counter % 5 == 0:
+                    # Log progress less frequently to avoid spam
+                    if update_counter % 10 == 0:
                         logging.info(f"📈 Completed {update_counter}/{total_updates} updates. "
                                      f"Mean reward: {rollout_stats.get('mean_reward', 0):.2f}")
 
