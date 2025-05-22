@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# main_continuous.py - Updated with Rich logging and enhanced dashboard
 import os
 import sys
 import signal

@@ -1,4 +1,4 @@
-# envs/trading_env.py - Updated with fixed dashboard integration
+# envs/trading_env.py - Updated with Rich logging
 import logging
 from datetime import datetime
 from enum import Enum
@@ -11,7 +11,7 @@ from gymnasium import spaces
 
 from config.config import Config
 from data.data_manager import DataManager
-from envs.env_dashboard import TradingDashboard  # Updated import
+from envs.env_dashboard import TradingDashboard
 from envs.reward import RewardCalculator
 from feature.feature_extractor import FeatureExtractor
 from simulators.execution_simulator import ExecutionSimulator
@@ -20,7 +20,6 @@ from simulators.portfolio_simulator import (
     PortfolioManager, PortfolioState, OrderTypeEnum, OrderSideEnum,
     PositionSideEnum, FillDetails
 )
-from utils.logger import get_logger, log_info, log_warning, log_error, log_debug
 
 
 class ActionTypeEnum(Enum):
@@ -61,9 +60,9 @@ class TradingEnvironment(gym.Env):
         super().__init__()
         self.config = config
 
-        # Use centralized logger if not provided
+        # Use standard logging with Rich formatting
         if logger is None:
-            self.logger = get_logger().get_logger("TradingEnv")
+            self.logger = logging.getLogger(f"{__name__}.TradingEnv")
         else:
             self.logger = logger
 
@@ -71,13 +70,12 @@ class TradingEnvironment(gym.Env):
         env_cfg = self.config.env
         self.primary_asset: Optional[str] = None
 
-        # Fixed dashboard setup
+        # Dashboard setup
         self.dashboard: Optional[TradingDashboard] = None
         self.use_dashboard = env_cfg.render_mode == "dashboard"
-        self.logger_manager = get_logger()  # Get centralized logger manager
 
         if self.use_dashboard:
-            log_info("Trading dashboard mode enabled - will start after session setup", "env")
+            logging.info("Trading dashboard mode enabled - will start after session setup")
 
         self.max_steps_per_episode: int = env_cfg.max_steps
         self.random_reset_within_session: bool = env_cfg.random_reset
@@ -101,9 +99,9 @@ class TradingEnvironment(gym.Env):
         self.action_debug_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
         self.step_count_for_debug = 0
 
-        log_info(f"Action space: {self.action_space} "
-                 f"(ActionTypes: {[a.name for a in self.action_types]}, "
-                 f"PositionSizes: {[s.name for s in self.position_size_types]})", "env")
+        logging.info(f"Action space: {self.action_space} "
+                     f"(ActionTypes: {[a.name for a in self.action_types]}, "
+                     f"PositionSizes: {[s.name for s in self.position_size_types]})")
 
         # Observation Space
         model_cfg = self.config.model
@@ -142,7 +140,7 @@ class TradingEnvironment(gym.Env):
     def setup_session(self, symbol: str, start_time: Union[str, datetime], end_time: Union[str, datetime]):
         """Configures the environment for a specific trading session."""
         if not symbol or not isinstance(symbol, str):
-            log_error("A valid symbol (string) must be provided to setup_session.", "env")
+            logging.error("A valid symbol (string) must be provided to setup_session.")
             raise ValueError("A valid symbol (string) must be provided to setup_session.")
 
         self.primary_asset = symbol
@@ -151,16 +149,16 @@ class TradingEnvironment(gym.Env):
             self.current_session_start_time_utc = pd.Timestamp(start_time, tz='UTC').to_pydatetime()
             self.current_session_end_time_utc = pd.Timestamp(end_time, tz='UTC').to_pydatetime()
         except Exception as e:
-            log_error(f"Error parsing session start/end times: {start_time}, {end_time}. Error: {e}", "env")
+            logging.error(f"Error parsing session start/end times: {start_time}, {end_time}. Error: {e}")
             raise ValueError(f"Invalid session start/end times: {e}")
 
-        log_info(f"Setting up session for symbol '{self.primary_asset}' "
-                 f"from {self.current_session_start_time_utc} to {self.current_session_end_time_utc}.", "env")
+        logging.info(f"Setting up session for symbol '{self.primary_asset}' "
+                     f"from {self.current_session_start_time_utc} to {self.current_session_end_time_utc}.")
 
         if self.np_random is None:
             _, _ = super().reset(seed=None)
 
-        # Initialize components with centralized logging
+        # Initialize components with standard logging
         self.market_simulator = MarketSimulator(
             symbol=self.primary_asset,
             data_manager=self.data_manager,
@@ -170,11 +168,11 @@ class TradingEnvironment(gym.Env):
             np_random=self.np_random,
             start_time=self.current_session_start_time_utc,
             end_time=self.current_session_end_time_utc,
-            logger=get_logger().get_logger("MarketSim")
+            logger=logging.getLogger(f"{__name__}.MarketSim")
         )
 
         self.portfolio_manager = PortfolioManager(
-            logger=get_logger().get_logger("PortfolioMgr"),
+            logger=logging.getLogger(f"{__name__}.PortfolioMgr"),
             config=self.config,
             tradable_assets=[self.primary_asset]
         )
@@ -183,30 +181,30 @@ class TradingEnvironment(gym.Env):
             symbol=self.primary_asset,
             market_simulator=self.market_simulator,
             config=self.config.model,
-            logger=get_logger().get_logger("FeatureExt")
+            logger=logging.getLogger(f"{__name__}.FeatureExt")
         )
 
         self.reward_calculator = RewardCalculator(
             config=self.config,
-            logger=get_logger().get_logger("RewardCalc")
+            logger=logging.getLogger(f"{__name__}.RewardCalc")
         )
 
         self.execution_manager = ExecutionSimulator(
-            logger=get_logger().get_logger("ExecSim"),
+            logger=logging.getLogger(f"{__name__}.ExecSim"),
             config_exec=self.config.simulation.execution_config,
             np_random=self.np_random,
             market_simulator=self.market_simulator
         )
 
-        # Initialize fixed dashboard if using it
+        # Initialize dashboard if using it
         if self.use_dashboard:
-            log_info("Creating trading dashboard (right side)", "env")
-            self.dashboard = TradingDashboard(logger_manager=self.logger_manager)
+            logging.info("Creating trading dashboard (right side)")
+            self.dashboard = TradingDashboard()
             self.dashboard.set_symbol(symbol)
             self.dashboard.set_initial_capital(self.config.simulation.portfolio_config.initial_cash)
-            log_info(f"Trading dashboard configured for {symbol}", "env")
+            logging.info(f"Trading dashboard configured for {symbol}")
 
-        log_info("All simulators and managers initialized for the session.", "env")
+        logging.info("All simulators and managers initialized for the session.")
 
     def set_training_info(self, episode_num: int = 0, total_episodes: int = 0,
                           total_steps: int = 0, update_count: int = 0,
@@ -239,7 +237,7 @@ class TradingEnvironment(gym.Env):
         if not self.primary_asset or not self.market_simulator or \
                 not self.portfolio_manager or not self.feature_extractor or \
                 not self.reward_calculator or not self.execution_manager:
-            log_error("Session not properly set up. Call `setup_session(symbol, start, end)` before `reset()`.", "env")
+            logging.error("Session not properly set up. Call `setup_session(symbol, start, end)` before `reset()`.")
             dummy_obs = self._get_dummy_observation()
             return dummy_obs, {"error": "Session not set up. Call setup_session first.",
                                "termination_reason": TerminationReasonEnum.SETUP_FAILURE.value}
@@ -254,7 +252,7 @@ class TradingEnvironment(gym.Env):
         self.action_debug_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
         self.step_count_for_debug = 0
 
-        log_info(f"Resetting environment for episode {self.episode_number}", "env")
+        logging.info(f"Resetting environment for episode {self.episode_number}")
 
         # Reset simulators
         self.execution_manager.reset(np_random_seed_source=self.np_random)
@@ -265,9 +263,8 @@ class TradingEnvironment(gym.Env):
 
         initial_market_state = self.market_simulator.reset(options=market_reset_options)
         if initial_market_state is None or 'timestamp_utc' not in initial_market_state:
-            log_error(
-                "Market simulator failed to reset or provide initial state. Check data availability for the session.",
-                "env")
+            logging.error(
+                "Market simulator failed to reset or provide initial state. Check data availability for the session.")
             dummy_obs = self._get_dummy_observation()
             return dummy_obs, {"error": "Market simulator reset failed.",
                                "termination_reason": TerminationReasonEnum.SETUP_FAILURE.value}
@@ -284,7 +281,7 @@ class TradingEnvironment(gym.Env):
 
         self._last_observation = self._get_observation(initial_market_state, current_sim_time)
         if self._last_observation is None:
-            log_error("Failed to get initial observation. Ensure sufficient data/lookback at episode start.", "env")
+            logging.error("Failed to get initial observation. Ensure sufficient data/lookback at episode start.")
             dummy_obs = self._get_dummy_observation()
             return dummy_obs, {"error": "Initial observation failed.",
                                "termination_reason": TerminationReasonEnum.OBSERVATION_FAILURE.value}
@@ -295,18 +292,18 @@ class TradingEnvironment(gym.Env):
 
         # Start dashboard if using it
         if self.use_dashboard and self.dashboard and not self.dashboard._running:
-            log_info("Starting trading dashboard...", "env")
+            logging.info("Starting trading dashboard...")
             self.dashboard.start()
-            log_info("Trading dashboard started successfully", "env")
+            logging.info("Trading dashboard started successfully")
 
         # Update dashboard with initial state
         if self.use_dashboard and self.dashboard and self.dashboard._running:
             market_state = self._get_current_market_state_safe()
             self.dashboard.update_state(initial_info, market_state)
 
-        log_info(f"Environment reset complete for {self.primary_asset}. "
-                 f"Agent Start Time: {current_sim_time}, "
-                 f"Initial Equity: ${self.initial_capital_for_session:.2f}", "env")
+        logging.info(f"Environment reset complete for {self.primary_asset}. "
+                     f"Agent Start Time: {current_sim_time}, "
+                     f"Initial Equity: ${self.initial_capital_for_session:.2f}")
         return self._last_observation, initial_info
 
     def _get_dummy_observation(self) -> Dict[str, np.ndarray]:
@@ -316,23 +313,22 @@ class TradingEnvironment(gym.Env):
                 space_item = self.observation_space[key]
                 dummy_obs[key] = np.zeros(space_item.shape, dtype=space_item.dtype)
         else:
-            log_error("Observation space is not a gymnasium.spaces.Dict. Cannot create dummy observation.", "env")
+            logging.error("Observation space is not a gymnasium.spaces.Dict. Cannot create dummy observation.")
         return dummy_obs
 
     def _get_observation(self, market_state_now: Dict[str, Any], current_sim_time: datetime) -> Optional[
         Dict[str, np.ndarray]]:
         if market_state_now is None:
-            log_warning(f"Market state is None at {current_sim_time} during observation generation.", "env")
+            logging.warning(f"Market state is None at {current_sim_time} during observation generation.")
             return None
         try:
             current_portfolio_state = self.portfolio_manager.get_portfolio_state(current_sim_time)
             market_features_dict = self.feature_extractor.extract_features()
             if market_features_dict is None:
-                log_warning(f"FeatureExtractor returned None at {current_sim_time}. Not enough data for lookbacks?",
-                            "env")
+                logging.warning(f"FeatureExtractor returned None at {current_sim_time}. Not enough data for lookbacks?")
                 return None
         except Exception as e:
-            log_error(f"Error during feature extraction at {current_sim_time}: {e}", "env")
+            logging.error(f"Error during feature extraction at {current_sim_time}: {e}")
             return None
 
         portfolio_obs_component = self.portfolio_manager.get_portfolio_observation()
@@ -351,25 +347,25 @@ class TradingEnvironment(gym.Env):
             if arr is not None:
                 nan_count = np.isnan(arr).sum()
                 if nan_count > 0:
-                    log_warning(f"NaN values detected in {key} features: {nan_count} values", "env")
+                    logging.warning(f"NaN values detected in {key} features: {nan_count} values")
                     obs[key] = np.nan_to_num(arr, nan=0.0)
 
         if not isinstance(self.observation_space, spaces.Dict):
-            log_error("Observation space is not a gymnasium.spaces.Dict. Cannot validate observation.", "env")
+            logging.error("Observation space is not a gymnasium.spaces.Dict. Cannot validate observation.")
             return None
 
         for key in self.observation_space.keys():
             space_item = self.observation_space[key]
             if obs.get(key) is None:
-                log_error(f"Observation missing key '{key}'. Filling with zeros.", "env")
+                logging.error(f"Observation missing key '{key}'. Filling with zeros.")
                 obs[key] = np.zeros(space_item.shape, dtype=space_item.dtype)
 
             if key == 'static' and obs[key].ndim == 1:
                 obs[key] = obs[key].reshape(1, -1)
 
             if obs[key].shape != space_item.shape:
-                log_error(f"Shape mismatch for observation key '{key}'. "
-                          f"Expected {space_item.shape}, Got {obs[key].shape}.", "env")
+                logging.error(f"Shape mismatch for observation key '{key}'. "
+                              f"Expected {space_item.shape}, Got {obs[key].shape}.")
                 return None
         return obs
 
@@ -383,7 +379,7 @@ class TradingEnvironment(gym.Env):
             action_type_idx, size_type_idx = raw_action
             raw_action_list = raw_action.tolist()
         else:
-            log_error(f"Unexpected action type: {type(raw_action)}", "env")
+            logging.error(f"Unexpected action type: {type(raw_action)}")
             action_type_idx, size_type_idx = 0, 0
             raw_action_list = [0, 0]
 
@@ -405,9 +401,8 @@ class TradingEnvironment(gym.Env):
                 buy_pct = (self.action_debug_counts["BUY"] / total_actions) * 100
                 sell_pct = (self.action_debug_counts["SELL"] / total_actions) * 100
                 hold_pct = (self.action_debug_counts["HOLD"] / total_actions) * 100
-                log_info(
-                    f"ACTION DISTRIBUTION (Last 100 steps): BUY {buy_pct:.1f}% | SELL {sell_pct:.1f}% | HOLD {hold_pct:.1f}%",
-                    "env")
+                logging.info(
+                    f"ACTION DISTRIBUTION (Last 100 steps): BUY {buy_pct:.1f}% | SELL {sell_pct:.1f}% | HOLD {hold_pct:.1f}%")
 
         return {
             "type": action_type,
@@ -424,7 +419,7 @@ class TradingEnvironment(gym.Env):
 
         if not self.primary_asset:
             decoded_action['invalid_reason'] = "Primary asset not set in environment."
-            log_error("Attempted to translate action to order but primary_asset is not set.", "env")
+            logging.error("Attempted to translate action to order but primary_asset is not set.")
             self.invalid_action_count_episode += 1
             return None
         asset_id = self.primary_asset
@@ -528,14 +523,13 @@ class TradingEnvironment(gym.Env):
             if self.market_simulator:
                 return self.market_simulator.get_current_market_state()
         except Exception as e:
-            log_debug(f"Error getting market state: {e}", "env")
+            logging.debug(f"Error getting market state: {e}")
         return None
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
         if self._last_observation is None or self.primary_asset is None:
-            log_error(
-                "Step called with _last_observation as None or primary_asset not set. Resetting or critical error.",
-                "env")
+            logging.error(
+                "Step called with _last_observation as None or primary_asset not set. Resetting or critical error.")
             dummy_obs = self._get_dummy_observation()
             return dummy_obs, 0.0, True, False, {
                 "error": "Critical: _last_observation was None or primary_asset not set.",
@@ -544,7 +538,7 @@ class TradingEnvironment(gym.Env):
         self.current_step += 1
         market_state_at_decision = self.market_simulator.get_current_market_state()
         if market_state_at_decision is None or 'timestamp_utc' not in market_state_at_decision:
-            log_error("Market simulator returned None or invalid state for current market state. Terminating.", "env")
+            logging.error("Market simulator returned None or invalid state for current market state. Terminating.")
             return self._last_observation, 0.0, True, False, {"error": "Market state unavailable at decision.",
                                                               "termination_reason": TerminationReasonEnum.OBSERVATION_FAILURE.value}
         current_sim_time_decision = market_state_at_decision['timestamp_utc']
@@ -566,9 +560,8 @@ class TradingEnvironment(gym.Env):
             if fill:
                 fill_details_list.append(fill)
                 self.portfolio_manager.update_fill(fill)
-                log_debug(
-                    f"Fill executed: {fill['order_side'].value} {fill['executed_quantity']:.2f} @ ${fill['executed_price']:.4f}",
-                    "env")
+                logging.debug(
+                    f"Fill executed: {fill['order_side'].value} {fill['executed_quantity']:.2f} @ ${fill['executed_price']:.4f}")
 
         time_for_pf_update_after_fill = fill_details_list[-1][
             'fill_timestamp'] if fill_details_list else current_sim_time_decision
@@ -638,32 +631,31 @@ class TradingEnvironment(gym.Env):
         if current_equity <= self.initial_capital_for_session * self.bankruptcy_threshold_factor:
             terminated = True
             termination_reason = TerminationReasonEnum.BANKRUPTCY
-            log_warning(f"Episode terminated: BANKRUPTCY (Equity: ${current_equity:.2f})", "env")
+            logging.warning(f"Episode terminated: BANKRUPTCY (Equity: ${current_equity:.2f})")
         elif current_equity <= self.initial_capital_for_session * (1 - self.max_session_loss_percentage):
             terminated = True
             termination_reason = TerminationReasonEnum.MAX_LOSS_REACHED
-            log_warning(f"Episode terminated: MAX_LOSS_REACHED (Equity: ${current_equity:.2f})", "env")
+            logging.warning(f"Episode terminated: MAX_LOSS_REACHED (Equity: ${current_equity:.2f})")
 
         if terminated_by_obs_failure and not terminated:
             terminated = True
             termination_reason = TerminationReasonEnum.OBSERVATION_FAILURE
-            log_warning("Episode terminated: OBSERVATION_FAILURE", "env")
+            logging.warning("Episode terminated: OBSERVATION_FAILURE")
 
         if not market_advanced and not terminated:
             terminated = True
             termination_reason = TerminationReasonEnum.END_OF_SESSION_DATA
-            log_info("Episode terminated: END_OF_SESSION_DATA", "env")
+            logging.info("Episode terminated: END_OF_SESSION_DATA")
 
         if self.invalid_action_count_episode >= self.max_invalid_actions_per_episode and not terminated:
             terminated = True
             termination_reason = TerminationReasonEnum.INVALID_ACTION_LIMIT_REACHED
-            log_warning(
-                f"Episode terminated: INVALID_ACTION_LIMIT_REACHED ({self.invalid_action_count_episode} invalid actions)",
-                "env")
+            logging.warning(
+                f"Episode terminated: INVALID_ACTION_LIMIT_REACHED ({self.invalid_action_count_episode} invalid actions)")
 
         if not terminated and self.current_step >= self.max_steps_per_episode:
             truncated = True
-            log_info(f"Episode truncated: MAX_STEPS_REACHED ({self.current_step} steps)", "env")
+            logging.info(f"Episode truncated: MAX_STEPS_REACHED ({self.current_step} steps)")
 
         reward = self.reward_calculator.calculate(
             portfolio_state_before_action=self._last_portfolio_state_before_action,
@@ -691,7 +683,7 @@ class TradingEnvironment(gym.Env):
                 market_state = self._get_current_market_state_safe()
                 self.dashboard.update_state(info, market_state)
             except Exception as e:
-                log_error(f"Error updating dashboard: {e}", "env")
+                logging.error(f"Error updating dashboard: {e}")
 
         if terminated or truncated:
             final_metrics = self.portfolio_manager.get_trader_vue_metrics()
@@ -718,11 +710,11 @@ class TradingEnvironment(gym.Env):
                 sell_pct = (self.action_debug_counts["SELL"] / total_actions) * 100
                 hold_pct = (self.action_debug_counts["HOLD"] / total_actions) * 100
 
-                log_info(
+                logging.info(
                     f"EPISODE END ({self.primary_asset}). Reason: {info['episode_summary']['termination_reason']}. "
                     f"Net Profit (Equity Change): ${info['episode_summary']['session_net_profit_equity_change']:.2f}. "
                     f"Total Reward: {self.episode_total_reward:.4f}. Steps: {self.current_step}. "
-                    f"Actions: BUY {buy_pct:.1f}% | SELL {sell_pct:.1f}% | HOLD {hold_pct:.1f}%", "env")
+                    f"Actions: BUY {buy_pct:.1f}% | SELL {sell_pct:.1f}% | HOLD {hold_pct:.1f}%")
 
         return observation_next_t, reward, terminated, truncated, info
 
@@ -772,8 +764,8 @@ class TradingEnvironment(gym.Env):
     def close(self):
         # Stop dashboard if running
         if self.dashboard and self.dashboard._running:
-            log_info("Stopping trading dashboard...", "env")
+            logging.info("Stopping trading dashboard...")
             self.dashboard.stop()
         if self.market_simulator and hasattr(self.market_simulator, 'close'):
             self.market_simulator.close()
-        log_info("TradingEnvironment closed.", "env")
+        logging.info("TradingEnvironment closed.")
