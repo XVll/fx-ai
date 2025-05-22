@@ -10,6 +10,7 @@ import wandb
 import torch.nn.functional as nnf
 
 from config.config import ModelConfig
+from envs.env_dashboard import TrainingStage
 from envs.trading_env import TradingEnvironment
 from ai.transformer import MultiBranchTransformer
 from agent.utils import ReplayBuffer, convert_state_dict_to_tensors
@@ -146,6 +147,15 @@ class PPOTrainer:
                 for k, v in current_env_state_np.items()
             }
 
+            if self.dashboard:
+                stage_progress_detail = collected_steps / self.rollout_steps
+                if self.dashboard.state.current_stage == TrainingStage.COLLECTING_ROLLOUT:
+                    self.dashboard.set_training_stage(
+                        TrainingStage.COLLECTING_ROLLOUT,  # Keep current stage
+                        self.dashboard.state.stage_progress,  # Keep overall progress
+                        stage_progress_detail  # Update details
+                    )
+
             current_model_state_torch_batched = {}
             for key, tensor_val in single_step_tensors.items():
                 if key in ['hf', 'mf', 'lf', 'portfolio']:
@@ -162,7 +172,8 @@ class PPOTrainer:
                     elif tensor_val.ndim == 1:
                         current_model_state_torch_batched[key] = tensor_val.unsqueeze(0)
                     else:
-                        logging.error(f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}' (static). Expected 1D or 2D (1,F). Shape: {tensor_val.shape}")
+                        logging.error(
+                            f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}' (static). Expected 1D or 2D (1,F). Shape: {tensor_val.shape}")
                         current_model_state_torch_batched[key] = tensor_val
                 else:
                     current_model_state_torch_batched[key] = tensor_val
@@ -205,9 +216,9 @@ class PPOTrainer:
                 episode_lengths_in_rollout.append(current_episode_length)
 
                 logging.info(f"🏁 Episode {self.global_episode_counter} finished. "
-                            f"Reward: {current_episode_reward:.2f}, "
-                            f"Length: {current_episode_length}, "
-                            f"Global Steps: {self.global_step_counter}")
+                             f"Reward: {current_episode_reward:.2f}, "
+                             f"Length: {current_episode_length}, "
+                             f"Global Steps: {self.global_step_counter}")
 
                 for callback in self.callbacks:
                     callback.on_episode_end(self, current_episode_reward, current_episode_length, info)
@@ -319,6 +330,14 @@ class PPOTrainer:
         logging.info(f"🔄 Starting PPO update for {self.ppo_epochs} epochs with {num_samples} samples")
 
         for epoch in range(self.ppo_epochs):
+            if self.dashboard:
+                stage_progress_detail = epoch + 1 / self.ppo_epochs
+                if self.dashboard.state.current_stage == TrainingStage.UPDATING_POLICY:
+                    self.dashboard.set_training_stage(
+                        TrainingStage.UPDATING_POLICY,
+                        self.dashboard.state.stage_progress,
+                        stage_progress_detail
+                    )
             np.random.shuffle(indices)
 
             for start_idx in range(0, num_samples, self.batch_size):
@@ -334,7 +353,7 @@ class PPOTrainer:
 
                 if epoch == 0 and start_idx == 0:
                     logging.debug(f"Batch shapes - actions: {batch_actions.shape}, old_log_probs: {batch_old_log_probs.shape}, "
-                                 f"advantages: {batch_advantages.shape}, returns: {batch_returns.shape}")
+                                  f"advantages: {batch_advantages.shape}, returns: {batch_returns.shape}")
 
                 if batch_returns.ndim > 1 and batch_returns.shape[1] > 1:
                     batch_returns = batch_returns[:, 0:1]
@@ -416,9 +435,9 @@ class PPOTrainer:
             callback.on_update_end(self, update_metrics)
 
         logging.info(f"📈 PPO Update {self.global_update_counter}: "
-                    f"Actor Loss: {avg_actor_loss:.4f}, "
-                    f"Critic Loss: {avg_critic_loss:.4f}, "
-                    f"Entropy: {avg_entropy:.4f}")
+                     f"Actor Loss: {avg_actor_loss:.4f}, "
+                     f"Critic Loss: {avg_critic_loss:.4f}, "
+                     f"Entropy: {avg_entropy:.4f}")
 
         return update_metrics
 
@@ -437,7 +456,7 @@ class PPOTrainer:
 
             if self.buffer.get_size() < self.rollout_steps and self.buffer.get_size() < self.batch_size:
                 logging.warning(f"Buffer size {self.buffer.get_size()} is less than rollout_steps {self.rollout_steps} "
-                               f"or batch_size {self.batch_size} after collection. Might be due to early episode ends. Skipping update if too small.")
+                                f"or batch_size {self.batch_size} after collection. Might be due to early episode ends. Skipping update if too small.")
                 if self.buffer.get_size() < self.batch_size:
                     continue
 
@@ -527,7 +546,7 @@ class PPOTrainer:
             episode_rewards.append(current_episode_reward)
             episode_lengths.append(current_episode_length)
             logging.debug(f"Eval Episode {i + 1}/{n_episodes} finished. "
-                         f"Reward: {current_episode_reward:.2f}, Length: {current_episode_length}")
+                          f"Reward: {current_episode_reward:.2f}, Length: {current_episode_length}")
 
         # Reset model to training mode
         self.model.train()
@@ -573,7 +592,7 @@ class PPOTrainer:
 
             self.model.to(self.device)
             logging.info(f"📂 Model loaded from {path}. "
-                        f"Resuming from step {self.global_step_counter}, "
-                        f"update {self.global_update_counter}.")
+                         f"Resuming from step {self.global_step_counter}, "
+                         f"update {self.global_update_counter}.")
         except Exception as e:
             logging.error(f"Error loading model from {path}: {e}")
