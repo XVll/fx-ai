@@ -7,16 +7,11 @@ import numpy as np
 import pandas as pd  # For pd.Timestamp
 import gymnasium as gym  # type: ignore
 from gymnasium import spaces  # type: ignore
-from rich import box
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
 
-from config.config import Config  # Assuming your Config class is here
+from config.config import Config
 from data.data_manager import DataManager
 from envs.env_dashboard import TradingDashboard
-from envs.reward import RewardCalculator  # Ensure this imports types correctly
+from envs.reward import RewardCalculator
 from feature.feature_extractor import FeatureExtractor
 from simulators.execution_simulator import ExecutionSimulator
 from simulators.market_simulator import MarketSimulator
@@ -58,7 +53,7 @@ class TerminationReasonEnum(Enum):
 
 
 class TradingEnvironment(gym.Env):
-    metadata = {'render_modes': ['human', 'logs', 'none'], 'render_fps': 10}
+    metadata = {'render_modes': ['human', 'logs', 'dashboard', 'none'], 'render_fps': 10}
 
     def __init__(self, config: Config, data_manager: DataManager, logger: Optional[logging.Logger] = None):
         super().__init__()
@@ -69,12 +64,12 @@ class TradingEnvironment(gym.Env):
         env_cfg = self.config.env
         self.primary_asset: Optional[str] = None
 
-        self.dashboard : Optional[TradingDashboard] = None
+        # Dashboard setup
+        self.dashboard: Optional[TradingDashboard] = None
         self.use_dashboard = env_cfg.render_mode == "dashboard"
         if self.use_dashboard:
             self.dashboard = TradingDashboard()
-            self.logger.info("Dashboard mode enabled with log display")
-
+            self.logger.info("Dashboard mode enabled")
 
         self.max_steps_per_episode: int = env_cfg.max_steps
         self.random_reset_within_session: bool = env_cfg.random_reset
@@ -99,7 +94,6 @@ class TradingEnvironment(gym.Env):
 
         # --- Observation Space (from config.model) ---
         model_cfg = self.config.model
-        # Explicitly type self.observation_space to help linters
         self.observation_space: spaces.Dict = spaces.Dict({
             'hf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.hf_seq_len, model_cfg.hf_feat_dim),
                              dtype=np.float32),
@@ -199,8 +193,6 @@ class TradingEnvironment(gym.Env):
         Dict[str, np.ndarray], Dict[str, Any]]:
         super().reset(seed=seed)
         options = options or {}
-        if self.dashboard and not self.dashboard._running:
-            self.dashboard.start()
 
         if not self.primary_asset or not self.market_simulator or \
                 not self.portfolio_manager or not self.feature_extractor or \
@@ -254,27 +246,16 @@ class TradingEnvironment(gym.Env):
         initial_info = self._get_current_info(reward=0.0,
                                               current_portfolio_state_for_info=self._last_portfolio_state_before_action)
 
-        # Handle rendering/dashboard - START DASHBOARD IMMEDIATELY
+        # Start dashboard if using it
         if self.use_dashboard and self.dashboard:
-            # Always start dashboard on reset
             if not self.dashboard._running:
                 self.dashboard.start()
                 self.logger.info("Dashboard started")
 
-            # Get market state for dashboard
-            market_state = None
-            try:
-                if self.market_simulator:
-                    market_state = self.market_simulator.get_current_market_state()
-            except Exception as e:
-                self.logger.error(f"Error getting market state for dashboard: {e}")
-
-            # Update dashboard immediately
+            # Update dashboard with initial state
+            market_state = self._get_current_market_state_safe()
             self.dashboard.update_state(initial_info, market_state)
-            self.logger.info("Dashboard updated with initial state")
-
-        elif self.render_mode in ['human', 'logs']:
-            self.render(info_dict=initial_info)
+            self.logger.debug("Dashboard updated with initial state")
 
         self.logger.info(
             f"Environment reset for {self.primary_asset}. Agent Start Time: {current_sim_time}, Initial Equity: ${self.initial_capital_for_session:.2f}")
@@ -282,15 +263,12 @@ class TradingEnvironment(gym.Env):
 
     def _get_dummy_observation(self) -> Dict[str, np.ndarray]:
         dummy_obs = {}
-        if isinstance(self.observation_space, spaces.Dict):  # Type guard
-            for key in self.observation_space.keys():  # Iterate using keys()
-                space_item = self.observation_space[key]  # Access sub-space by key
+        if isinstance(self.observation_space, spaces.Dict):
+            for key in self.observation_space.keys():
+                space_item = self.observation_space[key]
                 dummy_obs[key] = np.zeros(space_item.shape, dtype=space_item.dtype)
         else:
             self.logger.error("Observation space is not a gymnasium.spaces.Dict. Cannot create dummy observation.")
-            # Fallback: create based on a predefined structure if possible, or raise error
-            # This part depends on how you want to handle an unexpected observation_space type
-            # For now, returning an empty dict, which will likely cause issues downstream if this path is hit.
         return dummy_obs
 
     def _get_observation(self, market_state_now: Dict[str, Any], current_sim_time: datetime) -> Optional[
@@ -319,25 +297,21 @@ class TradingEnvironment(gym.Env):
             'static': market_features_dict.get('static'),
             'portfolio': portfolio_features_array
         }
-        # Todo : Diagnostic logging for NaN values, can be removed.
+
+        # Handle NaN values
         for key, arr in obs.items():
             if arr is not None:
                 nan_count = np.isnan(arr).sum()
                 if nan_count > 0:
                     self.logger.warning(f"NaN values detected in {key} features: {nan_count} values")
-                    # Log specific indices where NaNs occur to help with debugging
-                    nan_indices = np.where(np.isnan(arr))
-                    self.logger.debug(f"NaN indices in {key}: {nan_indices}")
-
-                    # Replace NaNs with zeros for safety
                     obs[key] = np.nan_to_num(arr, nan=0.0)
 
         if not isinstance(self.observation_space, spaces.Dict):
             self.logger.error("Observation space is not a gymnasium.spaces.Dict. Cannot validate observation.")
-            return None  # Or handle error appropriately
+            return None
 
-        for key in self.observation_space.keys():  # Iterate using keys()
-            space_item = self.observation_space[key]  # Access sub-space by key
+        for key in self.observation_space.keys():
+            space_item = self.observation_space[key]
             if obs.get(key) is None:
                 self.logger.error(f"Observation missing key '{key}'. Filling with zeros.")
                 obs[key] = np.zeros(space_item.shape, dtype=space_item.dtype)
@@ -354,21 +328,17 @@ class TradingEnvironment(gym.Env):
         return obs
 
     def _decode_action(self, raw_action) -> Dict[str, Any]:
-        """
-        Decode the agent's action into a structured format the environment can use.
-        Now handles both numpy arrays and tuples.
-        """
+        """Decode the agent's action into a structured format the environment can use."""
         # Extract action components, handling both tuples and arrays
         if isinstance(raw_action, (tuple, list)):
             action_type_idx, size_type_idx = raw_action
-            raw_action_list = list(raw_action)  # Convert to list for consistent handling
+            raw_action_list = list(raw_action)
         elif hasattr(raw_action, 'tolist'):  # NumPy array or PyTorch tensor
             action_type_idx, size_type_idx = raw_action
             raw_action_list = raw_action.tolist()
         else:
             self.logger.error(f"Unexpected action type: {type(raw_action)}")
-            # Fallback to sensible defaults
-            action_type_idx, size_type_idx = 0, 0  # HOLD action, smallest size
+            action_type_idx, size_type_idx = 0, 0
             raw_action_list = [0, 0]
 
         # Ensure indices are integers and within valid range
@@ -491,6 +461,15 @@ class TradingEnvironment(gym.Env):
 
         if decoded_action['invalid_reason']:
             self.invalid_action_count_episode += 1
+        return None
+
+    def _get_current_market_state_safe(self) -> Optional[Dict[str, Any]]:
+        """Safely get current market state without throwing exceptions"""
+        try:
+            if self.market_simulator:
+                return self.market_simulator.get_current_market_state()
+        except Exception as e:
+            self.logger.debug(f"Error getting market state: {e}")
         return None
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
@@ -649,6 +628,19 @@ class TradingEnvironment(gym.Env):
             is_terminated=terminated, is_truncated=truncated
         )
 
+        # Update dashboard every step if using it
+        if self.use_dashboard and self.dashboard and self.dashboard._running:
+            try:
+                market_state = self._get_current_market_state_safe()
+                self.dashboard.update_state(info, market_state)
+
+                # Occasional debug logging
+                if self.current_step % 100 == 0:
+                    self.logger.debug(f"Dashboard updated at step {self.current_step}")
+
+            except Exception as e:
+                self.logger.error(f"Error updating dashboard: {e}")
+
         if terminated or truncated:
             final_metrics = self.portfolio_manager.get_trader_vue_metrics()
             info['episode_summary'] = {
@@ -669,30 +661,6 @@ class TradingEnvironment(gym.Env):
                 f"EPISODE END ({self.primary_asset}). Reason: {info['episode_summary']['termination_reason']}. "
                 f"Net Profit (Equity Change): ${info['episode_summary']['session_net_profit_equity_change']:.2f}. "
                 f"Total Reward: {self.episode_total_reward:.4f}. Steps: {self.current_step}.")
-
-            # ALWAYS UPDATE DASHBOARD IF ACTIVE
-            if self.use_dashboard and self.dashboard and self.dashboard._running:
-                try:
-                    # Get current market state
-                    market_state = None
-                    if self.market_simulator:
-                        market_state = self.market_simulator.get_current_market_state()
-
-                    # Update dashboard - this should happen every step
-                    self.dashboard.update_state(info, market_state)
-
-                    # Log every few steps to confirm updates
-                    if self.current_step % 10 == 0:
-                        self.logger.debug(f"Dashboard updated at step {self.current_step}")
-
-                except Exception as e:
-                    self.logger.error(f"Error updating dashboard: {e}")
-                    # Don't let dashboard errors stop training
-
-            elif self.render_mode in ['human', 'logs']:
-                # Only use original render for non-dashboard modes
-                if (self.current_step % self.config.env.render_interval == 0 or terminated or truncated):
-                    self.render(info_dict=info)
 
         return observation_next_t, reward, terminated, truncated, info
 
@@ -727,100 +695,16 @@ class TradingEnvironment(gym.Env):
         return info
 
     def render(self, info_dict: Optional[Dict[str, Any]] = None):
-        """
-        Rendering method - now handles dashboard mode properly.
-        """
-        # If using dashboard, don't do anything here - dashboard handles its own updates
-        if self.use_dashboard:
+        """Render method - delegates to dashboard if using dashboard mode"""
+        if self.use_dashboard and self.dashboard:
+            # Dashboard handles its own rendering
             return
 
-        # Original render code for non-dashboard modes
-        if self.render_mode not in ['human', 'logs'] or info_dict is None or not self.primary_asset:
-            return
-
-        # ... keep ALL the existing render implementation for human/logs modes ...
-        console = Console()
-
-        try:
-            # ... ALL the existing Rich rendering code stays exactly the same ...
-            # (I'm not repeating it here to save space, but keep everything)
-
-            # Create a consistent layout with fixed heights
-            layout_grid = Table.grid(expand=True)
-
-            # Top row: Header with step info and main indicators
-            header = Table.grid(padding=(0, 1))
-
-            # Step info in a stylish format
-            timestamp_iso = info_dict.get('timestamp_iso')
-            time_str = 'N/A'
-            if timestamp_iso and isinstance(timestamp_iso, str):
-                try:
-                    time_str = timestamp_iso.split('T')[1].split('.')[0]
-                except IndexError:
-                    time_str = 'N/A'
-
-            step_info = Text.assemble(
-                ("STEP ", "bold cyan"),
-                (f"{info_dict.get('step', 'N/A')}", "cyan"),
-                " | ",
-                ("TIME ", "bold cyan"),
-                (time_str, "cyan")
-            )
-
-            # Current price and PnL indicators (key metrics)
-            current_price = None
-            if self.market_simulator:
-                try:
-                    market_state = self.market_simulator.get_current_market_state()
-                    if market_state:
-                        current_price = market_state.get('current_price')
-                        if current_price is None:
-                            current_price = market_state.get('best_bid_price') or market_state.get('best_ask_price')
-                except Exception as e:
-                    self.logger.warning(f"Error getting market state: {e}")
-            else:
-                self.logger.warning("Market simulator not available for price lookup.")
-
-            unreal_pnl = info_dict.get('portfolio_unrealized_pnl', 0.0)
-            real_pnl = info_dict.get('portfolio_realized_pnl_session_net', 0.0)
-
-            price_text = Text.assemble(
-                ("PRICE ", "bold yellow"),
-                (f"${current_price:.2f}" if current_price is not None else "N/A", "yellow"),
-                " | ",
-                ("UNREAL PNL ", "bold"),
-                (f"${unreal_pnl:.2f}", "green" if unreal_pnl > 0 else "red" if unreal_pnl < 0 else "white"),
-                " | ",
-                ("REAL PNL ", "bold"),
-                (f"${real_pnl:.2f}", "green" if real_pnl > 0 else "red" if real_pnl < 0 else "white")
-            )
-
-            header.add_row(step_info, price_text)
-            layout_grid.add_row(Panel(header, border_style="cyan", padding=(0, 0)))
-
-            # ... rest of the original render code ...
-
-            # Render the complete layout
-            console.print(Panel(
-                layout_grid,
-                title=f"[bold]Trading Environment: {str(self.primary_asset)}[/bold]",
-                border_style="white",
-                padding=(0, 1)
-            ))
-
-        except Exception as e:
-            try:
-                console.print(Panel(f"Rendering Error: {str(e)}\nTraceback available in logs.",
-                                    title="[bold red]Trading Environment - Render Error[/bold red]",
-                                    style="bold red",
-                                    border_style="red"))
-                self.logger.exception("Critical rendering error in render method:")
-            except Exception as fallback_e:
-                print(f"CRITICAL RENDERING ERROR: {e}")
-                print(f"FALLBACK RENDERER FAILED: {fallback_e}")
-                import traceback
-                traceback.print_exc()
+        # For other render modes, could implement basic console output here
+        if self.render_mode in ['human', 'logs'] and info_dict:
+            print(f"Step {info_dict.get('step', 'N/A')}: "
+                  f"Reward {info_dict.get('reward_step', 0.0):.4f}, "
+                  f"Equity ${info_dict.get('portfolio_equity', 0.0):.2f}")
 
     def close(self):
         # Stop dashboard if running
