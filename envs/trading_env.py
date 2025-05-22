@@ -1,12 +1,13 @@
+# envs/trading_env.py - Updated with dashboard integration
 import logging
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Tuple, Optional, Union
 
 import numpy as np
-import pandas as pd  # For pd.Timestamp
-import gymnasium as gym  # type: ignore
-from gymnasium import spaces  # type: ignore
+import pandas as pd
+import gymnasium as gym
+from gymnasium import spaces
 
 from config.config import Config
 from data.data_manager import DataManager
@@ -24,8 +25,8 @@ from simulators.portfolio_simulator import (
 class ActionTypeEnum(Enum):
     """Defines the type of action the agent can take."""
     HOLD = 0
-    BUY = 1  # Enter a new long position or flip from short to long
-    SELL = 2  # Enter a new short position (if allowed) or flip from long to short / exit long
+    BUY = 1
+    SELL = 2
 
 
 class PositionSizeTypeEnum(Enum):
@@ -46,7 +47,7 @@ class TerminationReasonEnum(Enum):
     END_OF_SESSION_DATA = "END_OF_SESSION_DATA"
     MAX_LOSS_REACHED = "MAX_LOSS_REACHED"
     BANKRUPTCY = "BANKRUPTCY"
-    MAX_STEPS_REACHED = "MAX_STEPS_REACHED"  # Truncation
+    MAX_STEPS_REACHED = "MAX_STEPS_REACHED"
     OBSERVATION_FAILURE = "OBSERVATION_FAILURE"
     SETUP_FAILURE = "SETUP_FAILURE"
     INVALID_ACTION_LIMIT_REACHED = "INVALID_ACTION_LIMIT_REACHED"
@@ -60,7 +61,7 @@ class TradingEnvironment(gym.Env):
         self.config = config
         self.logger = logger or logging.getLogger(self.__class__.__name__)
 
-        # --- Environment Configuration ---
+        # Environment Configuration
         env_cfg = self.config.env
         self.primary_asset: Optional[str] = None
 
@@ -84,15 +85,20 @@ class TradingEnvironment(gym.Env):
         self.feature_extractor: Optional[FeatureExtractor] = None
         self.reward_calculator: Optional[RewardCalculator] = None
 
-        # --- Action Space ---
+        # Action Space
         self.action_types = list(ActionTypeEnum)
         self.position_size_types = list(PositionSizeTypeEnum)
         self.action_space = spaces.MultiDiscrete([len(self.action_types), len(self.position_size_types)])
+
+        # Debug action distribution to identify bias
+        self.action_debug_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
+        self.step_count_for_debug = 0
+
         self.logger.info(f"Action space: {self.action_space} "
                          f"(ActionTypes: {[a.name for a in self.action_types]}, "
                          f"PositionSizes: {[s.name for s in self.position_size_types]})")
 
-        # --- Observation Space (from config.model) ---
+        # Observation Space
         model_cfg = self.config.model
         self.observation_space: spaces.Dict = spaces.Dict({
             'hf': spaces.Box(low=-np.inf, high=np.inf, shape=(model_cfg.hf_seq_len, model_cfg.hf_feat_dim),
@@ -106,14 +112,8 @@ class TradingEnvironment(gym.Env):
                                     dtype=np.float32),
             'static': spaces.Box(low=-np.inf, high=np.inf, shape=(1, model_cfg.static_feat_dim), dtype=np.float32),
         })
-        self.logger.info(f"Observation space defined with shapes: "
-                         f"HF({model_cfg.hf_seq_len},{model_cfg.hf_feat_dim}), "
-                         f"MF({model_cfg.mf_seq_len},{model_cfg.mf_feat_dim}), "
-                         f"LF({model_cfg.lf_seq_len},{model_cfg.lf_feat_dim}), "
-                         f"Portfolio({model_cfg.portfolio_seq_len},{model_cfg.portfolio_feat_dim}), "
-                         f"Static(1,{model_cfg.static_feat_dim})")
 
-        # --- Episode State ---
+        # Episode State
         self.current_session_start_time_utc: Optional[datetime] = None
         self.current_session_end_time_utc: Optional[datetime] = None
         self.current_step: int = 0
@@ -124,10 +124,16 @@ class TradingEnvironment(gym.Env):
         self._last_decoded_action: Optional[Dict[str, Any]] = None
         self.initial_capital_for_session: float = 0.0
 
+        # Training state tracking for dashboard
+        self.episode_number: int = 0
+        self.total_episodes: int = 0
+        self.total_steps: int = 0
+        self.update_count: int = 0
+
         self.render_mode = env_cfg.render_mode
 
     def setup_session(self, symbol: str, start_time: Union[str, datetime], end_time: Union[str, datetime]):
-        """Configures the environment for a specific trading session (e.g., one day)."""
+        """Configures the environment for a specific trading session."""
         if not symbol or not isinstance(symbol, str):
             self.logger.error("A valid symbol (string) must be provided to setup_session.")
             raise ValueError("A valid symbol (string) must be provided to setup_session.")
@@ -147,6 +153,7 @@ class TradingEnvironment(gym.Env):
         if self.np_random is None:
             _, _ = super().reset(seed=None)
 
+        # Initialize components
         self.market_simulator = MarketSimulator(
             symbol=self.primary_asset,
             data_manager=self.data_manager,
@@ -158,21 +165,25 @@ class TradingEnvironment(gym.Env):
             end_time=self.current_session_end_time_utc,
             logger=self.logger.getChild("MarketSim")
         )
+
         self.portfolio_manager = PortfolioManager(
             logger=self.logger.getChild("PortfolioMgr"),
             config=self.config,
             tradable_assets=[self.primary_asset]
         )
+
         self.feature_extractor = FeatureExtractor(
             symbol=self.primary_asset,
             market_simulator=self.market_simulator,
             config=self.config.model,
             logger=self.logger.getChild("FeatureExt")
         )
+
         self.reward_calculator = RewardCalculator(
             config=self.config,
             logger=self.logger.getChild("RewardCalc")
         )
+
         self.execution_manager = ExecutionSimulator(
             logger=self.logger.getChild("ExecSim"),
             config_exec=self.config.simulation.execution_config,
@@ -189,6 +200,22 @@ class TradingEnvironment(gym.Env):
 
         self.logger.info("All simulators and managers initialized for the session.")
 
+    def set_training_info(self, episode_num: int = 0, total_episodes: int = 0,
+                          total_steps: int = 0, update_count: int = 0,
+                          buffer_size: int = 0, is_training: bool = True,
+                          is_evaluating: bool = False, learning_rate: float = 0.0):
+        """Set training information for dashboard display"""
+        self.episode_number = episode_num
+        self.total_episodes = total_episodes
+        self.total_steps = total_steps
+        self.update_count = update_count
+
+        if self.dashboard:
+            self.dashboard.set_training_info(
+                episode_num, total_episodes, total_steps, update_count,
+                buffer_size, is_training, is_evaluating, learning_rate
+            )
+
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[
         Dict[str, np.ndarray], Dict[str, Any]]:
         super().reset(seed=seed)
@@ -202,11 +229,17 @@ class TradingEnvironment(gym.Env):
             return dummy_obs, {"error": "Session not set up. Call setup_session first.",
                                "termination_reason": TerminationReasonEnum.SETUP_FAILURE.value}
 
+        # Reset episode counters
         self.current_step = 0
         self.invalid_action_count_episode = 0
         self.episode_total_reward = 0.0
         self._last_decoded_action = None
 
+        # Reset debug counters
+        self.action_debug_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
+        self.step_count_for_debug = 0
+
+        # Reset simulators
         self.execution_manager.reset(np_random_seed_source=self.np_random)
 
         market_reset_options = {'random_start': self.random_reset_within_session}
@@ -225,15 +258,11 @@ class TradingEnvironment(gym.Env):
 
         self.portfolio_manager.reset(episode_start_timestamp=current_sim_time)
         self.initial_capital_for_session = self.portfolio_manager.initial_capital
-        if hasattr(self.reward_calculator, 'reset'): self.reward_calculator.reset()
-        if hasattr(self.feature_extractor, 'reset'): self.feature_extractor.reset()
 
-        if hasattr(self.market_simulator, 'raw_1d_bars') and self.market_simulator.raw_1d_bars_df is not None:
-            if hasattr(self.feature_extractor, 'update_daily_levels'):
-                self.feature_extractor.update_daily_levels(self.market_simulator.raw_1d_bars, current_sim_time)
-        else:
-            self.logger.warning(
-                "raw_1d_bars not available from market_simulator for feature_extractor.update_daily_levels.")
+        if hasattr(self.reward_calculator, 'reset'):
+            self.reward_calculator.reset()
+        if hasattr(self.feature_extractor, 'reset'):
+            self.feature_extractor.reset()
 
         self._last_observation = self._get_observation(initial_market_state, current_sim_time)
         if self._last_observation is None:
@@ -255,7 +284,6 @@ class TradingEnvironment(gym.Env):
             # Update dashboard with initial state
             market_state = self._get_current_market_state_safe()
             self.dashboard.update_state(initial_info, market_state)
-            self.logger.debug("Dashboard updated with initial state")
 
         self.logger.info(
             f"Environment reset for {self.primary_asset}. Agent Start Time: {current_sim_time}, Initial Equity: ${self.initial_capital_for_session:.2f}")
@@ -328,7 +356,7 @@ class TradingEnvironment(gym.Env):
         return obs
 
     def _decode_action(self, raw_action) -> Dict[str, Any]:
-        """Decode the agent's action into a structured format the environment can use."""
+        """Decode the agent's action into a structured format."""
         # Extract action components, handling both tuples and arrays
         if isinstance(raw_action, (tuple, list)):
             action_type_idx, size_type_idx = raw_action
@@ -347,6 +375,21 @@ class TradingEnvironment(gym.Env):
 
         action_type = self.action_types[action_type_idx]
         size_type = self.position_size_types[size_type_idx]
+
+        # DEBUG: Track action distribution
+        self.action_debug_counts[action_type.name] += 1
+        self.step_count_for_debug += 1
+
+        # Log action distribution every 100 steps to identify bias
+        if self.step_count_for_debug % 100 == 0:
+            total_actions = sum(self.action_debug_counts.values())
+            if total_actions > 0:
+                buy_pct = (self.action_debug_counts["BUY"] / total_actions) * 100
+                sell_pct = (self.action_debug_counts["SELL"] / total_actions) * 100
+                hold_pct = (self.action_debug_counts["HOLD"] / total_actions) * 100
+                self.logger.info(
+                    f"ACTION DISTRIBUTION (Last 100 steps): BUY {buy_pct:.1f}% | SELL {sell_pct:.1f}% | HOLD {hold_pct:.1f}%"
+                )
 
         return {
             "type": action_type,
@@ -378,22 +421,17 @@ class TradingEnvironment(gym.Env):
                 ideal_bid = current_price_fallback * 0.9998
             else:
                 decoded_action['invalid_reason'] = "Missing market prices (BBO and current) for order."
-                self.logger.warning(
-                    f"Invalid prices for order at {market_state.get('timestamp_utc', 'N/A')}. No trade.")
                 self.invalid_action_count_episode += 1
                 return None
 
         if ideal_ask <= 0 or ideal_bid <= 0 or ideal_ask <= ideal_bid:
             decoded_action['invalid_reason'] = f"Invalid BBO prices: Ask ${ideal_ask:.2f}, Bid ${ideal_bid:.2f}."
-            self.logger.warning(
-                f"Invalid BBO for order at {market_state.get('timestamp_utc', 'N/A')}: Ask {ideal_ask}, Bid {ideal_bid}.")
             self.invalid_action_count_episode += 1
             return None
 
         pos_data = portfolio_state['positions'].get(asset_id)
         if not pos_data:
             decoded_action['invalid_reason'] = f"Position data for asset {asset_id} not found."
-            self.logger.error(f"Position data for asset {asset_id} not found in portfolio_state.")
             self.invalid_action_count_episode += 1
             return None
 
@@ -403,7 +441,6 @@ class TradingEnvironment(gym.Env):
         total_equity = portfolio_state['total_equity']
 
         max_pos_value_abs = total_equity * self.portfolio_manager.max_position_value_ratio
-        available_buying_power = cash
         allow_shorting = self.portfolio_manager.allow_shorting
         default_pos_value = self.portfolio_manager.default_position_value
 
@@ -414,8 +451,10 @@ class TradingEnvironment(gym.Env):
             return None
 
         elif action_type == ActionTypeEnum.BUY:
-            target_buy_value = round(size_float * max(default_pos_value, cash) / 100)
+            # IMPROVED BUY LOGIC: Use percentage of current equity, not cash
+            target_buy_value = (size_float / 100) * total_equity  # Use size_float as percentage
             target_buy_value = min(target_buy_value, max_pos_value_abs, cash)
+
             if target_buy_value > 1e-9 and ideal_ask > 1e-9:
                 quantity_to_trade = target_buy_value / ideal_ask
                 order_side = OrderSideEnum.BUY
@@ -426,10 +465,12 @@ class TradingEnvironment(gym.Env):
 
         elif action_type == ActionTypeEnum.SELL:
             if current_pos_side == PositionSideEnum.LONG:
-                quantity_to_trade = size_float * current_qty / 100
+                # Sell percentage of current position
+                quantity_to_trade = (size_float / 100) * current_qty
                 order_side = OrderSideEnum.SELL
             elif allow_shorting:
-                target_short_value = size_float * total_equity / 100
+                # IMPROVED SHORT LOGIC: Use percentage of equity
+                target_short_value = (size_float / 100) * total_equity
                 target_short_value = min(target_short_value, max_pos_value_abs)
                 if target_short_value > 1e-9 and ideal_bid > 1e-9:
                     quantity_to_trade = target_short_value / ideal_bid
@@ -520,10 +561,6 @@ class TradingEnvironment(gym.Env):
                 price_for_decision_val = 0.0
 
         prices_at_decision_time = {self.primary_asset: price_for_decision_val}
-        if prices_at_decision_time[self.primary_asset] <= 0.0:
-            self.logger.warning(
-                f"Could not determine a valid price for {self.primary_asset} at decision time {current_sim_time_decision} for portfolio valuation after fills.")
-
         self.portfolio_manager.update_market_value(prices_at_decision_time, time_for_pf_update_after_fill)
         portfolio_state_after_action_fills = self.portfolio_manager.get_portfolio_state(time_for_pf_update_after_fill)
 
@@ -537,7 +574,6 @@ class TradingEnvironment(gym.Env):
                 next_sim_time = market_state_next_t['timestamp_utc']
             else:
                 market_advanced = False
-                self.logger.warning("Market advanced but get_current_market_state returned None or invalid state.")
 
         if market_state_next_t and next_sim_time:
             price_for_next_val = market_state_next_t.get('current_price')
@@ -550,9 +586,6 @@ class TradingEnvironment(gym.Env):
                     price_for_next_val = 0.0
 
             prices_at_next_time = {self.primary_asset: price_for_next_val}
-            if prices_at_next_time[self.primary_asset] <= 0.0:
-                self.logger.warning(
-                    f"Could not determine a valid price for {self.primary_asset} at next time {next_sim_time} for portfolio valuation.")
             self.portfolio_manager.update_market_value(prices_at_next_time, next_sim_time)
 
         portfolio_state_next_t = self.portfolio_manager.get_portfolio_state(
@@ -563,19 +596,15 @@ class TradingEnvironment(gym.Env):
         if market_state_next_t and next_sim_time:
             observation_next_t = self._get_observation(market_state_next_t, next_sim_time)
             if observation_next_t is None:
-                self.logger.warning(
-                    f"Failed to get observation o_{{t+1}} at sim time {next_sim_time}. Using last valid observation and terminating.")
                 observation_next_t = self._last_observation
                 terminated_by_obs_failure = True
         else:
-            self.logger.info(
-                f"No further market state for new observation at step {self.current_step}. Using last valid observation.")
             observation_next_t = self._last_observation
 
         if observation_next_t is None:
-            self.logger.error("Observation is critically None even after fallbacks. Using dummy observation.")
             observation_next_t = self._get_dummy_observation()
-            if not terminated_by_obs_failure: terminated_by_obs_failure = True
+            if not terminated_by_obs_failure:
+                terminated_by_obs_failure = True
 
         self._last_observation = observation_next_t
 
@@ -587,11 +616,9 @@ class TradingEnvironment(gym.Env):
         if current_equity <= self.initial_capital_for_session * self.bankruptcy_threshold_factor:
             terminated = True
             termination_reason = TerminationReasonEnum.BANKRUPTCY
-            self.logger.info(f"Episode terminated: Bankruptcy. Equity ${current_equity:.2f} <= Threshold.")
         elif current_equity <= self.initial_capital_for_session * (1 - self.max_session_loss_percentage):
             terminated = True
             termination_reason = TerminationReasonEnum.MAX_LOSS_REACHED
-            self.logger.info(f"Episode terminated: Max session loss. Equity ${current_equity:.2f}")
 
         if terminated_by_obs_failure and not terminated:
             terminated = True
@@ -600,24 +627,24 @@ class TradingEnvironment(gym.Env):
         if not market_advanced and not terminated:
             terminated = True
             termination_reason = TerminationReasonEnum.END_OF_SESSION_DATA
-            self.logger.info(f"Episode terminated: End of market data at step {self.current_step}.")
 
         if self.invalid_action_count_episode >= self.max_invalid_actions_per_episode and not terminated:
             terminated = True
             termination_reason = TerminationReasonEnum.INVALID_ACTION_LIMIT_REACHED
-            self.logger.info(f"Episode terminated: Reached max invalid actions ({self.invalid_action_count_episode}).")
 
         if not terminated and self.current_step >= self.max_steps_per_episode:
             truncated = True
-            self.logger.info(f"Episode truncated: MAX_STEPS_REACHED ({self.current_step}).")
 
         reward = self.reward_calculator.calculate(
             portfolio_state_before_action=self._last_portfolio_state_before_action,
             portfolio_state_after_action_fills=portfolio_state_after_action_fills,
             portfolio_state_next_t=portfolio_state_next_t,
-            market_state_at_decision=market_state_at_decision, market_state_next_t=market_state_next_t,
-            decoded_action=self._last_decoded_action, fill_details_list=fill_details_list,
-            terminated=terminated, truncated=truncated, termination_reason=termination_reason
+            market_state_at_decision=market_state_at_decision,
+            market_state_next_t=market_state_next_t,
+            decoded_action=self._last_decoded_action,
+            fill_details_list=fill_details_list,
+            terminated=terminated, truncated=truncated,
+            termination_reason=termination_reason
         )
         self.episode_total_reward += reward
 
@@ -633,18 +660,14 @@ class TradingEnvironment(gym.Env):
             try:
                 market_state = self._get_current_market_state_safe()
                 self.dashboard.update_state(info, market_state)
-
-                # Occasional debug logging
-                if self.current_step % 100 == 0:
-                    self.logger.debug(f"Dashboard updated at step {self.current_step}")
-
             except Exception as e:
                 self.logger.error(f"Error updating dashboard: {e}")
 
         if terminated or truncated:
             final_metrics = self.portfolio_manager.get_trader_vue_metrics()
             info['episode_summary'] = {
-                "total_reward": self.episode_total_reward, "steps": self.current_step,
+                "total_reward": self.episode_total_reward,
+                "steps": self.current_step,
                 "final_equity": portfolio_state_next_t['total_equity'],
                 "session_realized_pnl_net": portfolio_state_next_t['realized_pnl_session'],
                 "session_net_profit_equity_change": portfolio_state_next_t[
@@ -657,10 +680,20 @@ class TradingEnvironment(gym.Env):
                 "invalid_actions_in_episode": self.invalid_action_count_episode,
                 **final_metrics
             }
-            self.logger.info(
-                f"EPISODE END ({self.primary_asset}). Reason: {info['episode_summary']['termination_reason']}. "
-                f"Net Profit (Equity Change): ${info['episode_summary']['session_net_profit_equity_change']:.2f}. "
-                f"Total Reward: {self.episode_total_reward:.4f}. Steps: {self.current_step}.")
+
+            # Log final action distribution for this episode
+            total_actions = sum(self.action_debug_counts.values())
+            if total_actions > 0:
+                buy_pct = (self.action_debug_counts["BUY"] / total_actions) * 100
+                sell_pct = (self.action_debug_counts["SELL"] / total_actions) * 100
+                hold_pct = (self.action_debug_counts["HOLD"] / total_actions) * 100
+
+                self.logger.info(
+                    f"EPISODE END ({self.primary_asset}). Reason: {info['episode_summary']['termination_reason']}. "
+                    f"Net Profit (Equity Change): ${info['episode_summary']['session_net_profit_equity_change']:.2f}. "
+                    f"Total Reward: {self.episode_total_reward:.4f}. Steps: {self.current_step}. "
+                    f"Actions: BUY {buy_pct:.1f}% | SELL {sell_pct:.1f}% | HOLD {hold_pct:.1f}%"
+                )
 
         return observation_next_t, reward, terminated, truncated, info
 
@@ -670,7 +703,8 @@ class TradingEnvironment(gym.Env):
                           is_terminated: bool = False, is_truncated: bool = False) -> Dict[str, Any]:
         info: Dict[str, Any] = {
             'timestamp_iso': current_portfolio_state_for_info['timestamp'].isoformat(),
-            'step': self.current_step, 'reward_step': reward,
+            'step': self.current_step,
+            'reward_step': reward,
             'episode_cumulative_reward': self.episode_total_reward,
             'action_decoded': self._last_decoded_action,
             'fills_step': fill_details_list if fill_details_list else [],

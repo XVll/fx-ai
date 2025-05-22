@@ -1,3 +1,4 @@
+# simulators/portfolio_simulator.py - CRITICAL FIXES for PnL tracking
 import logging
 from collections import deque
 from datetime import datetime, timezone
@@ -31,12 +32,12 @@ class FillDetails(TypedDict):
     fill_timestamp: datetime
     order_type: OrderTypeEnum
     order_side: OrderSideEnum
-    requested_quantity: float  # Optional, for reference
+    requested_quantity: float
     executed_quantity: float
     executed_price: float
     commission: float
     fees: float
-    slippage_cost_total: float  # Monetary value of slippage against a benchmark (e.g., ideal decision price)
+    slippage_cost_total: float
 
 
 class TradeLogEntry(TypedDict):
@@ -51,12 +52,12 @@ class TradeLogEntry(TypedDict):
     avg_exit_price: Optional[float]
     commission_total: float
     fees_total: float
-    slippage_total_trade_usd: float  # Sum of slippage_cost_total from all fills in this trade
-    realized_pnl: Optional[float]  # Net PnL: (ExitVal - EntryVal or vice-versa) - Comm - Fees
-    max_favorable_excursion_usd: float  # Max profit seen during the trade (vs avg entry)
-    max_adverse_excursion_usd: float  # Max loss seen during the trade (vs avg entry, usually <= 0)
-    max_favorable_excursion_pct: float  # MFE as % of entry value
-    max_adverse_excursion_pct: float  # MAE as % of entry value
+    slippage_total_trade_usd: float
+    realized_pnl: Optional[float]
+    max_favorable_excursion_usd: float
+    max_adverse_excursion_usd: float
+    max_favorable_excursion_pct: float
+    max_adverse_excursion_pct: float
     reason_for_exit: Optional[str]
     holding_period_seconds: Optional[float]
     entry_fills: List[FillDetails]
@@ -72,7 +73,7 @@ class PortfolioState(TypedDict):
     cash: float
     total_equity: float
     unrealized_pnl: float
-    realized_pnl_session: float  # Cumulative net PnL from closed trades
+    realized_pnl_session: float
     positions: Dict[str, Dict[str, Any]]
     total_commissions_session: float
     total_fees_session: float
@@ -102,7 +103,7 @@ class PortfolioManager:
         # State variables
         self.cash: float = 0.0
         self.positions: Dict[str, Dict[str, Any]] = {}
-        self.open_trades: Dict[str, TradeLogEntry] = {}  # trade_id -> TradeLogEntry
+        self.open_trades: Dict[str, TradeLogEntry] = {}
         self.trade_log: List[TradeLogEntry] = []
         self.realized_pnl_session: float = 0.0
         self.total_commissions_session: float = 0.0
@@ -116,14 +117,13 @@ class PortfolioManager:
         self.current_unrealized_pnl: float = 0.0
         self.trade_id_counter: int = 0
 
-        self.reset(datetime.now(timezone.utc))  # Initialize with default.yaml values
+        self.reset(datetime.now(timezone.utc))
 
     def _generate_trade_id(self) -> str:
         self.trade_id_counter += 1
-        # Ensure pd.Timestamp is available or fallback
         try:
             ts_str = pd.Timestamp.now(tz='UTC').strftime('%Y%m%d%H%M%S%f')
-        except NameError:  # If pandas is not imported as pd
+        except NameError:
             ts_str = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')
         return f"T{ts_str}_{self.trade_id_counter}"
 
@@ -135,7 +135,7 @@ class PortfolioManager:
             asset: {
                 'quantity': 0.0, 'avg_entry_price': 0.0, 'current_side': PositionSideEnum.FLAT,
                 'market_value': 0.0, 'unrealized_pnl': 0.0,
-                'entry_value_total': 0.0,  # For long: cost basis. For short: initial proceeds.
+                'entry_value_total': 0.0,
                 'open_trade_id': None
             } for asset in self.tradable_assets
         }
@@ -155,32 +155,46 @@ class PortfolioManager:
         self.logger.info(f"PortfolioManager reset. Initial Capital: ${self.initial_capital:.2f}")
 
     def update_fill(self, fill: FillDetails):
+        """FIXED: Properly track costs and realized PnL"""
         asset_id = fill['asset_id']
         pos_data = self.positions[asset_id]
 
-        self.cash -= (fill['commission'] + fill['fees'])
-        self.total_commissions_session += fill['commission']
-        self.total_fees_session += fill['fees']
-        self.total_slippage_cost_session += fill['slippage_cost_total']
-        self.total_volume_traded_session += abs(fill['executed_quantity'])  # abs for volume
+        # Track session totals IMMEDIATELY
+        commission = fill['commission']
+        fees = fill['fees']
+        slippage = fill['slippage_cost_total']
+
+        self.cash -= (commission + fees)
+        self.total_commissions_session += commission
+        self.total_fees_session += fees
+        self.total_slippage_cost_session += slippage
+        self.total_volume_traded_session += abs(fill['executed_quantity'])
         self.total_turnover_session += abs(fill['executed_quantity']) * fill['executed_price']
 
         qty_change = fill['executed_quantity']
         fill_price = fill['executed_price']
         fill_value = qty_change * fill_price
-        trade_side_for_fill = PositionSideEnum.LONG if fill['order_side'] == OrderSideEnum.BUY else PositionSideEnum.SHORT
+        trade_side_for_fill = PositionSideEnum.LONG if fill[
+                                                           'order_side'] == OrderSideEnum.BUY else PositionSideEnum.SHORT
+
+        # DETAILED LOGGING for debugging
+        self.logger.info(
+            f"FILL PROCESSED: {asset_id} {fill['order_side'].value} {qty_change:.2f} @ ${fill_price:.4f} "
+            f"| Commission: ${commission:.4f} | Fees: ${fees:.4f} | Slippage: ${slippage:.4f}"
+        )
 
         # --- Handle Opening/Scaling In ---
         if (fill['order_side'] == OrderSideEnum.BUY and pos_data['current_side'] != PositionSideEnum.SHORT) or \
-                (fill['order_side'] == OrderSideEnum.SELL and pos_data['current_side'] != PositionSideEnum.LONG and self.allow_shorting):
+                (fill['order_side'] == OrderSideEnum.SELL and pos_data[
+                    'current_side'] != PositionSideEnum.LONG and self.allow_shorting):
 
-            self.cash -= fill_value if fill['order_side'] == OrderSideEnum.BUY else -fill_value  # Buy decreases cash, Sell (to open short) increases
+            self.cash -= fill_value if fill['order_side'] == OrderSideEnum.BUY else -fill_value
 
             if pos_data['current_side'] == PositionSideEnum.FLAT:  # New position
                 pos_data['current_side'] = trade_side_for_fill
                 pos_data['avg_entry_price'] = fill_price
                 pos_data['quantity'] = qty_change
-                pos_data['entry_value_total'] = fill_value  # Cost for long, proceeds for short
+                pos_data['entry_value_total'] = fill_value
 
                 trade_id = self._generate_trade_id()
                 pos_data['open_trade_id'] = trade_id
@@ -189,20 +203,24 @@ class PortfolioManager:
                     entry_timestamp=fill['fill_timestamp'], exit_timestamp=None,
                     entry_quantity_total=qty_change, avg_entry_price=fill_price,
                     exit_quantity_total=0.0, avg_exit_price=None,
-                    commission_total=fill['commission'], fees_total=fill['fees'],
-                    slippage_total_trade_usd=fill['slippage_cost_total'],
+                    commission_total=commission, fees_total=fees,
+                    slippage_total_trade_usd=slippage,
                     realized_pnl=None,
-                    max_favorable_excursion_usd=0.0, max_adverse_excursion_usd=0.0,  # Initialized
-                    max_favorable_excursion_pct=0.0, max_adverse_excursion_pct=0.0,  # Initialized
+                    max_favorable_excursion_usd=0.0, max_adverse_excursion_usd=0.0,
+                    max_favorable_excursion_pct=0.0, max_adverse_excursion_pct=0.0,
                     reason_for_exit=None, holding_period_seconds=None,
                     entry_fills=[fill], exit_fills=[]
                 )
                 self.open_trades[trade_id] = new_trade
-            else:  # Scaling into existing position (must be same side)
+
+                self.logger.info(
+                    f"NEW POSITION OPENED: {asset_id} {trade_side_for_fill.value} {qty_change:.2f} @ ${fill_price:.4f}")
+
+            else:  # Scaling into existing position
                 if pos_data['current_side'] == trade_side_for_fill and pos_data['open_trade_id'] in self.open_trades:
                     open_trade = self.open_trades[pos_data['open_trade_id']]
                     new_total_qty = pos_data['quantity'] + qty_change
-                    new_entry_value_total = pos_data['entry_value_total'] + fill_value  # Add cost/proceeds
+                    new_entry_value_total = pos_data['entry_value_total'] + fill_value
 
                     pos_data['avg_entry_price'] = new_entry_value_total / new_total_qty if new_total_qty > 1e-9 else 0
                     pos_data['quantity'] = new_total_qty
@@ -210,23 +228,20 @@ class PortfolioManager:
 
                     open_trade['entry_quantity_total'] = new_total_qty
                     open_trade['avg_entry_price'] = pos_data['avg_entry_price']
-                    open_trade['commission_total'] += fill['commission']
-                    open_trade['fees_total'] += fill['fees']
-                    open_trade['slippage_total_trade_usd'] += fill['slippage_cost_total']
+                    open_trade['commission_total'] += commission
+                    open_trade['fees_total'] += fees
+                    open_trade['slippage_total_trade_usd'] += slippage
                     open_trade['entry_fills'].append(fill)
-                else:
-                    self.logger.warning(
-                        f"Cannot scale into {asset_id}. Fill side {fill['order_side'].value} mismatches position side {pos_data['current_side'].value} or no open trade.")
 
-            # --- Handle Closing/Reducing ---
+                    self.logger.info(f"SCALED INTO POSITION: {asset_id} total qty now {new_total_qty:.2f}")
+
+        # --- Handle Closing/Reducing ---
         elif (fill['order_side'] == OrderSideEnum.SELL and pos_data['current_side'] == PositionSideEnum.LONG) or \
-                (fill['order_side'] == OrderSideEnum.BUY and pos_data['current_side'] == PositionSideEnum.SHORT and self.allow_shorting):
+                (fill['order_side'] == OrderSideEnum.BUY and pos_data[
+                    'current_side'] == PositionSideEnum.SHORT and self.allow_shorting):
 
-            # Cash calculation - unchanged
             self.cash += fill_value if fill['order_side'] == OrderSideEnum.SELL else -fill_value
 
-            # Get fill details
-            fill_price = fill['executed_price']
             fill_qty = fill['executed_quantity']
             entry_price = pos_data['avg_entry_price']
 
@@ -240,25 +255,24 @@ class PortfolioManager:
                 # For short positions: (entry_price - cover_price) * quantity
                 realized_pnl_for_this_fill = (entry_price - fill_price) * fill_qty
 
-            # Deduct costs
-            realized_pnl_for_this_fill -= (fill['commission'] + fill['fees'])
+            # Deduct costs from realized PnL
+            realized_pnl_for_this_fill -= (commission + fees)
 
-            # Update session realized PnL (this is key - update even for partial closes)
+            # CRITICAL: Update session realized PnL immediately
             self.realized_pnl_session += realized_pnl_for_this_fill
 
-            self.logger.debug(
-                f"Realized PnL for {'SELL' if fill['order_side'] == OrderSideEnum.SELL else 'BUY'}: "
-                f"${realized_pnl_for_this_fill:.2f} - Entry: ${entry_price:.2f}, Exit: ${fill_price:.2f}, "
-                f"Qty: {fill_qty:.2f}, Session Total: ${self.realized_pnl_session:.2f}"
+            self.logger.info(
+                f"REALIZED PnL: ${realized_pnl_for_this_fill:.4f} | Entry: ${entry_price:.4f} | Exit: ${fill_price:.4f} | "
+                f"Qty: {fill_qty:.2f} | SESSION TOTAL: ${self.realized_pnl_session:.4f}"
             )
 
-            # Update trade record if it exists
+            # Update trade record
             if pos_data['open_trade_id'] and pos_data['open_trade_id'] in self.open_trades:
                 open_trade = self.open_trades[pos_data['open_trade_id']]
                 open_trade['exit_fills'].append(fill)
-                open_trade['commission_total'] += fill['commission']
-                open_trade['fees_total'] += fill['fees']
-                open_trade['slippage_total_trade_usd'] += fill['slippage_cost_total']
+                open_trade['commission_total'] += commission
+                open_trade['fees_total'] += fees
+                open_trade['slippage_total_trade_usd'] += slippage
 
                 # Update average exit price
                 current_exit_qty = open_trade.get('exit_quantity_total', 0.0)
@@ -268,10 +282,10 @@ class PortfolioManager:
                     total_exit_value = (open_trade['avg_exit_price'] * current_exit_qty) + (fill_price * fill_qty)
                     open_trade['avg_exit_price'] = total_exit_value / (current_exit_qty + fill_qty)
 
-                open_trade['exit_quantity_total'] = open_trade.get('exit_quantity_total', 0.0) + fill_qty
+                open_trade['exit_quantity_total'] = current_exit_qty + fill_qty
 
-                # Update the trade's realized PnL (even for partial closes)
-                if 'realized_pnl' not in open_trade:
+                # Update the trade's realized PnL
+                if 'realized_pnl' not in open_trade or open_trade['realized_pnl'] is None:
                     open_trade['realized_pnl'] = realized_pnl_for_this_fill
                 else:
                     open_trade['realized_pnl'] += realized_pnl_for_this_fill
@@ -283,16 +297,19 @@ class PortfolioManager:
                     pos_data['quantity'] = 0.0
                     pos_data['current_side'] = PositionSideEnum.FLAT
                     pos_data['open_trade_id'] = None
-                    pos_data['entry_value_total'] = 0.0  # Reset cost basis
+                    pos_data['entry_value_total'] = 0.0
 
                     open_trade['exit_timestamp'] = fill['fill_timestamp']
-                    open_trade['holding_period_seconds'] = (open_trade['exit_timestamp'] - open_trade['entry_timestamp']).total_seconds()
+                    open_trade['holding_period_seconds'] = (
+                                open_trade['exit_timestamp'] - open_trade['entry_timestamp']).total_seconds()
 
-                    # MFE/MAE calculations - unchanged
+                    # MFE/MAE calculations
                     initial_trade_value = open_trade['avg_entry_price'] * open_trade['entry_quantity_total']
                     if abs(initial_trade_value) > 1e-9:
-                        open_trade['max_favorable_excursion_pct'] = open_trade['max_favorable_excursion_usd'] / initial_trade_value
-                        open_trade['max_adverse_excursion_pct'] = open_trade['max_adverse_excursion_usd'] / initial_trade_value
+                        open_trade['max_favorable_excursion_pct'] = open_trade[
+                                                                        'max_favorable_excursion_usd'] / initial_trade_value
+                        open_trade['max_adverse_excursion_pct'] = open_trade[
+                                                                      'max_adverse_excursion_usd'] / initial_trade_value
                     else:
                         open_trade['max_favorable_excursion_pct'] = 0.0
                         open_trade['max_adverse_excursion_pct'] = 0.0
@@ -301,15 +318,12 @@ class PortfolioManager:
                     del self.open_trades[open_trade['trade_id']]
 
                     self.logger.info(
-                        f"Position closed for {asset_id}: Total Realized PnL=${open_trade['realized_pnl']:.2f}, "
-                        f"Session PnL=${self.realized_pnl_session:.2f}"
+                        f"POSITION CLOSED: {asset_id} | Trade PnL: ${open_trade['realized_pnl']:.4f} | "
+                        f"Session Total: ${self.realized_pnl_session:.4f}"
                     )
-            else:
-                self.logger.warning(f"Cannot process closing fill for {asset_id}. No matching open trade found.")
-        else:
-            self.logger.warning(f"Unhandled fill scenario for {asset_id}: Fill side {fill['order_side'].value}, Position side {pos_data['current_side'].value}")
 
-        self.logger.debug(f"Fill Processed: {asset_id}, Side {fill['order_side'].value}, Qty {qty_change:.4f} @ ${fill_price:.2f}. Cash: ${self.cash:.2f}")
+        self.logger.debug(
+            f"Cash after fill: ${self.cash:.2f} | Session costs: C:${self.total_commissions_session:.4f} F:${self.total_fees_session:.4f}")
 
     def update_market_value(self, asset_market_prices: Dict[str, float], current_timestamp: datetime):
         self.current_unrealized_pnl = 0.0
@@ -319,7 +333,7 @@ class PortfolioManager:
             if pos_data['current_side'] != PositionSideEnum.FLAT and asset_id in asset_market_prices:
                 current_price = asset_market_prices[asset_id]
                 pos_qty = pos_data['quantity']
-                avg_entry = pos_data['avg_entry_price']  # This is the position's current avg_entry
+                avg_entry = pos_data['avg_entry_price']
 
                 pos_data['market_value'] = pos_qty * current_price
                 total_positions_value += pos_data['market_value']
@@ -332,12 +346,10 @@ class PortfolioManager:
                 pos_data['unrealized_pnl'] = unreal_pnl_asset
                 self.current_unrealized_pnl += unreal_pnl_asset
 
-                # Update MFE/MAE for the corresponding open trade
+                # Update MFE/MAE for open trades
                 open_trade_id = pos_data.get('open_trade_id')
                 if open_trade_id and open_trade_id in self.open_trades:
                     trade = self.open_trades[open_trade_id]
-                    # MFE/MAE calculations use the trade's own average entry price and total entry quantity
-                    # This is important if the position was scaled into.
                     trade_avg_entry_price = trade['avg_entry_price']
                     trade_entry_qty = trade['entry_quantity_total']
                     current_excursion_usd = 0.0
@@ -347,8 +359,10 @@ class PortfolioManager:
                     elif trade['side'] == PositionSideEnum.SHORT:
                         current_excursion_usd = (trade_avg_entry_price - current_price) * trade_entry_qty
 
-                    trade['max_favorable_excursion_usd'] = max(trade.get('max_favorable_excursion_usd', -np.inf), current_excursion_usd)
-                    trade['max_adverse_excursion_usd'] = min(trade.get('max_adverse_excursion_usd', np.inf), current_excursion_usd)
+                    trade['max_favorable_excursion_usd'] = max(trade.get('max_favorable_excursion_usd', -np.inf),
+                                                               current_excursion_usd)
+                    trade['max_adverse_excursion_usd'] = min(trade.get('max_adverse_excursion_usd', np.inf),
+                                                             current_excursion_usd)
             else:
                 pos_data['market_value'] = 0.0
                 pos_data['unrealized_pnl'] = 0.0
@@ -358,58 +372,44 @@ class PortfolioManager:
         self.portfolio_feature_history.append(self._calculate_current_portfolio_features(current_timestamp))
 
     def _calculate_current_portfolio_features(self, timestamp: datetime) -> np.ndarray:
-        if not self.tradable_assets:  # Should not happen if properly initialized
-            # If portfolio_feat_dim is expected to be 5
+        if not self.tradable_assets:
             return np.zeros(self.portfolio_feat_dim if hasattr(self, 'portfolio_feat_dim') else 5, dtype=np.float32)
 
-        # Example for a single asset, extend for multi-asset
-        # This assumes you are primarily interested in features for the first tradable asset
-        # or that your environment is single-asset.
-        # If multi-asset, this logic would need to be iterated or aggregated.
         asset_id = self.tradable_assets[0]
         pos_data = self.positions.get(asset_id, {})
 
         # 1. Normalized Position Size
         norm_pos_size = 0.0
         current_pos_market_value = pos_data.get('market_value', 0.0)
-        if self.current_total_equity > 1e-9:  # Avoid div by zero if equity is ~0
-            # Max value for a position, can be based on total equity or initial capital
-            # Using current_total_equity * max_position_value_ratio as the denominator for normalization
+        if self.current_total_equity > 1e-9:
             max_theoretical_value_for_pos = self.current_total_equity * self.max_position_value_ratio
             if max_theoretical_value_for_pos > 1e-9:
                 if pos_data.get('current_side') == PositionSideEnum.LONG:
                     norm_pos_size = current_pos_market_value / max_theoretical_value_for_pos
                 elif pos_data.get('current_side') == PositionSideEnum.SHORT:
-                    # Market value of short position is often negative in accounting, but here we want magnitude
-                    norm_pos_size = -abs(current_pos_market_value) / max_theoretical_value_for_pos  # Use abs for market_value if it can be negative
+                    norm_pos_size = -abs(current_pos_market_value) / max_theoretical_value_for_pos
         norm_pos_size = np.clip(norm_pos_size, -1.0, 1.0)
 
-        # 2. Normalized Unrealized P&L of Current Open Trade
-        # This uses the position's unrealized PnL. If one trade per asset, this is the trade's UPL.
+        # 2. Normalized Unrealized P&L
         unreal_pnl_asset = pos_data.get('unrealized_pnl', 0.0)
         norm_unreal_pnl = 0.0
-        # Normalize by initial capital or current equity. Using initial capital as per original comment.
-        # Or, entry value of the trade could be another basis.
         entry_value_total_asset = pos_data.get('entry_value_total', 0.0)
-        if abs(entry_value_total_asset) > 1e-9:  # Normalize by entry value of the current position
+        if abs(entry_value_total_asset) > 1e-9:
             norm_unreal_pnl = unreal_pnl_asset / abs(entry_value_total_asset)
-        elif self.initial_capital > 1e-9:  # Fallback to initial capital
+        elif self.initial_capital > 1e-9:
             norm_unreal_pnl = unreal_pnl_asset / self.initial_capital
-        norm_unreal_pnl = np.clip(norm_unreal_pnl, -1.0, 1.0)  # P&L can exceed 100%
+        norm_unreal_pnl = np.clip(norm_unreal_pnl, -1.0, 1.0)
 
-        # 3. Normalized Maximum Adverse Excursion (MAE) of Current Open Trade
-        norm_mae_pct = 0.0  # Default to 0 (no adverse excursion or flat)
+        # 3. Normalized MAE
+        norm_mae_pct = 0.0
         open_trade_id = pos_data.get('open_trade_id')
         if open_trade_id and open_trade_id in self.open_trades:
             current_trade = self.open_trades[open_trade_id]
-            # MAE as % of entry value, already calculated in TradeLogEntry as max_adverse_excursion_pct
-            # This value is expected to be <= 0.
             norm_mae_pct = current_trade.get('max_adverse_excursion_pct', 0.0)
-            # Ensure it's clipped to expected range if necessary, though it should be naturally <=0
-            norm_mae_pct = np.clip(norm_mae_pct, -1.0, 0.0)  # MAE is <=0, so max is 0
+            norm_mae_pct = np.clip(norm_mae_pct, -1.0, 0.0)
 
-        # 4. Time in Current Open Trade (Normalized)
-        time_in_trade_normalized = 0.0  # Default to 0 (no open trade or zero duration)
+        # 4. Time in trade normalized
+        time_in_trade_normalized = 0.0
         if open_trade_id and open_trade_id in self.open_trades:
             current_trade = self.open_trades[open_trade_id]
             entry_time = current_trade['entry_timestamp']
@@ -417,15 +417,14 @@ class PortfolioManager:
 
             if self.max_position_holding_seconds > 0:
                 time_in_trade_normalized = duration_seconds / self.max_position_holding_seconds
-            time_in_trade_normalized = np.clip(time_in_trade_normalized, 0.0, 1.0)  # Assuming time cannot be > max or negative
+            time_in_trade_normalized = np.clip(time_in_trade_normalized, 0.0, 1.0)
 
-        # 5. Normalized Cash Percentage
+        # 5. Normalized cash percentage
         norm_cash_pct = 0.0
         if self.current_total_equity > 1e-9:
             norm_cash_pct = self.cash / self.current_total_equity
         norm_cash_pct = np.clip(norm_cash_pct, 0.0, 1.0)
 
-        # Combine all 5 features
         features = np.array([
             norm_pos_size,
             norm_unreal_pnl,
@@ -435,10 +434,6 @@ class PortfolioManager:
         ], dtype=np.float32)
 
         if hasattr(self, 'portfolio_feat_dim') and len(features) != self.portfolio_feat_dim:
-            self.logger.warning(
-                f"Feature length mismatch: expected {self.portfolio_feat_dim}, got {len(features)}. "
-                f"Ensure portfolio_feat_dim is 5 for the 5 essential features. Adjusting."
-            )
             final_features = np.zeros(self.portfolio_feat_dim, dtype=np.float32)
             common_len = min(len(features), self.portfolio_feat_dim)
             final_features[:common_len] = features[:common_len]
@@ -447,26 +442,23 @@ class PortfolioManager:
         return features
 
     def get_portfolio_observation(self) -> PortfolioObservationFeatures:
-        # Ensure deque has enough elements, padding with the oldest if not full
         hist_len = len(self.portfolio_feature_history)
-        lookback = max(1, self.portfolio_seq_len)  # Ensure lookback is at least 1
+        lookback = max(1, self.portfolio_seq_len)
 
-        if hist_len == 0:  # Should not happen if reset correctly initializes history
+        if hist_len == 0:
             empty_features = np.zeros((lookback, self.portfolio_feat_dim), dtype=np.float32)
             return PortfolioObservationFeatures(features=empty_features)
 
         if hist_len < lookback:
-            # Pad with the earliest available observation
             padding = [self.portfolio_feature_history[0]] * (lookback - hist_len)
             obs_list = padding + list(self.portfolio_feature_history)
         else:
             obs_list = list(self.portfolio_feature_history)
 
         obs_array = np.array(obs_list, dtype=np.float32)
-        # Ensure the correct shape if num_portfolio_features_per_step is 1 (for consistency)
         if obs_array.ndim == 1 and self.portfolio_feat_dim == 1:
             obs_array = obs_array.reshape(-1, 1)
-        elif obs_array.ndim == 1 and self.portfolio_feat_dim > 1 and lookback == 1:  # Single step, multiple features
+        elif obs_array.ndim == 1 and self.portfolio_feat_dim > 1 and lookback == 1:
             obs_array = obs_array.reshape(1, -1)
 
         return PortfolioObservationFeatures(features=obs_array)
@@ -475,7 +467,7 @@ class PortfolioManager:
         return PortfolioState(
             timestamp=current_timestamp, cash=self.cash, total_equity=self.current_total_equity,
             unrealized_pnl=self.current_unrealized_pnl, realized_pnl_session=self.realized_pnl_session,
-            positions=self.positions.copy(),  # Return a copy
+            positions=self.positions.copy(),
             total_commissions_session=self.total_commissions_session,
             total_fees_session=self.total_fees_session,
             total_slippage_cost_session=self.total_slippage_cost_session,
@@ -485,65 +477,56 @@ class PortfolioManager:
         )
 
     def _calculate_max_drawdown(self, equity_series_values: np.ndarray) -> Tuple[float, float]:
-        if len(equity_series_values) < 2: return 0.0, 0.0
+        if len(equity_series_values) < 2:
+            return 0.0, 0.0
 
-        equity_series = equity_series_values[np.isfinite(equity_series_values)]  # Clean out NaNs/Infs
-        if len(equity_series) < 2: return 0.0, 0.0
+        equity_series = equity_series_values[np.isfinite(equity_series_values)]
+        if len(equity_series) < 2:
+            return 0.0, 0.0
 
         high_water_mark = np.maximum.accumulate(equity_series)
         drawdowns_abs = high_water_mark - equity_series
         max_dd_abs = np.max(drawdowns_abs) if len(drawdowns_abs) > 0 else 0.0
 
-        # Calculate percentage drawdown carefully
         drawdowns_pct = np.zeros_like(equity_series, dtype=float)
-        # Avoid division by zero or very small HWM
         valid_hwm_indices = high_water_mark > 1e-9
         if np.any(valid_hwm_indices):
             drawdowns_pct[valid_hwm_indices] = drawdowns_abs[valid_hwm_indices] / high_water_mark[valid_hwm_indices]
         max_dd_pct = np.max(drawdowns_pct) if len(drawdowns_pct) > 0 else 0.0
 
-        return float(max_dd_abs), float(max_dd_pct * 100)  # Return percentage as 0-100
+        return float(max_dd_abs), float(max_dd_pct * 100)
 
     def get_trader_vue_metrics(self) -> Dict[str, Any]:
         metrics: Dict[str, Any] = {
-            # Counts
             "num_total_trades": 0, "num_winning_trades": 0, "num_losing_trades": 0, "num_breakeven_trades": 0,
-            # PnL (Net of per-trade costs)
             "total_net_profit_closed_trades": 0.0,
             "avg_net_pnl_per_trade": 0.0,
             "avg_net_winning_trade_pnl": 0.0, "avg_net_losing_trade_pnl": 0.0,
             "largest_net_winning_trade": 0.0, "largest_net_losing_trade": 0.0,
-            # PnL (Gross - before per-trade costs, based on price movement only)
-            "total_gross_profit_all_trades": 0.0,  # Sum of (exit_val - entry_val) or vice-versa
+            "total_gross_profit_all_trades": 0.0,
             "avg_gross_pnl_per_trade": 0.0,
-            # Ratios
             "win_rate_pct": 0.0, "loss_rate_pct": 0.0,
-            "profit_factor_gross": 0.0,  # GrossProfitWinners / GrossLossLosers
-            "reward_risk_ratio_net_avg": 0.0,  # AvgNetWin / Abs(AvgNetLoss)
-            # Durations
+            "profit_factor_gross": 0.0,
+            "reward_risk_ratio_net_avg": 0.0,
             "avg_trade_duration_seconds": 0.0,
             "avg_winner_duration_seconds": 0.0, "avg_loser_duration_seconds": 0.0,
-            # Streaks
             "max_consecutive_wins": 0, "max_consecutive_losses": 0,
-            # Drawdown (Portfolio Level)
             "max_portfolio_drawdown_abs": 0.0, "max_portfolio_drawdown_pct": 0.0,
-            # Costs (from trade log, should reconcile with session totals)
             "total_commissions_tradelog": 0.0, "total_fees_tradelog": 0.0, "total_slippage_tradelog": 0.0,
             "avg_commission_per_trade": 0.0, "avg_fees_per_trade": 0.0, "avg_slippage_per_trade_usd": 0.0,
-            # Excursions (MFE/MAE) - Key for "how much it went down"
             "avg_mfe_usd_per_trade": 0.0, "avg_mae_usd_per_trade": 0.0,
-            "avg_mfe_pct_per_trade": 0.0, "avg_mae_pct_per_trade": 0.0,  # As % of entry value
+            "avg_mfe_pct_per_trade": 0.0, "avg_mae_pct_per_trade": 0.0,
             "avg_mfe_usd_winners": 0.0, "avg_mae_usd_winners": 0.0,
             "avg_mfe_usd_losers": 0.0, "avg_mae_usd_losers": 0.0,
-            # Volume and Turnover
-            "total_volume_traded_tradelog": 0.0,  # Sum of trade entry quantities
-            "total_turnover_tradelog": 0.0,  # Sum of fill values within trades
+            "total_volume_traded_tradelog": 0.0,
+            "total_turnover_tradelog": 0.0,
         }
 
-        if not self.trade_log:  # No closed trades
+        if not self.trade_log:
             if self.portfolio_value_history:
                 equity_values = np.array([pv[1] for pv in self.portfolio_value_history])
-                metrics["max_portfolio_drawdown_abs"], metrics["max_portfolio_drawdown_pct"] = self._calculate_max_drawdown(equity_values)
+                metrics["max_portfolio_drawdown_abs"], metrics[
+                    "max_portfolio_drawdown_pct"] = self._calculate_max_drawdown(equity_values)
             return metrics
 
         metrics["num_total_trades"] = len(self.trade_log)
@@ -565,39 +548,39 @@ class PortfolioManager:
             for fill in trade['entry_fills'] + trade['exit_fills']:
                 metrics["total_turnover_tradelog"] += abs(fill['executed_quantity']) * fill['executed_price']
 
-            # Gross PnL (price movement only)
             gross_pnl_trade = net_pnl + trade['commission_total'] + trade['fees_total']
             metrics["total_gross_profit_all_trades"] += gross_pnl_trade
 
-            if net_pnl > 1e-9:  # Winning trade
+            if net_pnl > 1e-9:
                 metrics["num_winning_trades"] += 1
                 net_wins.append(net_pnl)
                 if gross_pnl_trade > 0:
-                    gross_wins_val.append(gross_pnl_trade)  # Only positive gross for gross profit factor
+                    gross_wins_val.append(gross_pnl_trade)
                 else:
-                    gross_losses_val_abs.append(abs(gross_pnl_trade))  # if net win but gross loss
-                if trade.get('holding_period_seconds') is not None: winner_durations.append(trade['holding_period_seconds'])
+                    gross_losses_val_abs.append(abs(gross_pnl_trade))
+                if trade.get('holding_period_seconds') is not None:
+                    winner_durations.append(trade['holding_period_seconds'])
                 current_win_streak += 1
                 current_loss_streak = 0
                 mfes_usd_winners.append(trade['max_favorable_excursion_usd'])
                 maes_usd_winners.append(trade['max_adverse_excursion_usd'])
-            elif net_pnl < -1e-9:  # Losing trade
+            elif net_pnl < -1e-9:
                 metrics["num_losing_trades"] += 1
                 net_losses.append(net_pnl)
                 if gross_pnl_trade < 0:
                     gross_losses_val_abs.append(abs(gross_pnl_trade))
                 else:
-                    gross_wins_val.append(gross_pnl_trade)  # if net loss but gross win
-                if trade.get('holding_period_seconds') is not None: loser_durations.append(trade['holding_period_seconds'])
+                    gross_wins_val.append(gross_pnl_trade)
+                if trade.get('holding_period_seconds') is not None:
+                    loser_durations.append(trade['holding_period_seconds'])
                 current_loss_streak += 1
                 current_win_streak = 0
                 mfes_usd_losers.append(trade['max_favorable_excursion_usd'])
                 maes_usd_losers.append(trade['max_adverse_excursion_usd'])
-            else:  # Breakeven trade
+            else:
                 metrics["num_breakeven_trades"] += 1
                 current_win_streak = 0
                 current_loss_streak = 0
-                # For gross profit factor, assign based on gross_pnl_trade
                 if gross_pnl_trade > 0:
                     gross_wins_val.append(gross_pnl_trade)
                 elif gross_pnl_trade < 0:
@@ -605,7 +588,8 @@ class PortfolioManager:
 
             max_win_streak = max(max_win_streak, current_win_streak)
             max_loss_streak = max(max_loss_streak, current_loss_streak)
-            if trade.get('holding_period_seconds') is not None: durations.append(trade['holding_period_seconds'])
+            if trade.get('holding_period_seconds') is not None:
+                durations.append(trade['holding_period_seconds'])
 
             mfes_usd.append(trade['max_favorable_excursion_usd'])
             maes_usd.append(trade['max_adverse_excursion_usd'])
@@ -623,21 +607,28 @@ class PortfolioManager:
             metrics["avg_commission_per_trade"] = metrics["total_commissions_tradelog"] / metrics["num_total_trades"]
             metrics["avg_fees_per_trade"] = metrics["total_fees_tradelog"] / metrics["num_total_trades"]
             metrics["avg_slippage_per_trade_usd"] = metrics["total_slippage_tradelog"] / metrics["num_total_trades"]
-            if durations: metrics["avg_trade_duration_seconds"] = np.mean(durations)
+            if durations:
+                metrics["avg_trade_duration_seconds"] = np.mean(durations)
 
         if net_wins:
             metrics["avg_net_winning_trade_pnl"] = np.mean(net_wins)
             metrics["largest_net_winning_trade"] = np.max(net_wins)
-            if winner_durations: metrics["avg_winner_duration_seconds"] = np.mean(winner_durations)
-            if mfes_usd_winners: metrics["avg_mfe_usd_winners"] = np.mean(mfes_usd_winners)
-            if maes_usd_winners: metrics["avg_mae_usd_winners"] = np.mean(maes_usd_winners)
+            if winner_durations:
+                metrics["avg_winner_duration_seconds"] = np.mean(winner_durations)
+            if mfes_usd_winners:
+                metrics["avg_mfe_usd_winners"] = np.mean(mfes_usd_winners)
+            if maes_usd_winners:
+                metrics["avg_mae_usd_winners"] = np.mean(maes_usd_winners)
 
         if net_losses:
             metrics["avg_net_losing_trade_pnl"] = np.mean(net_losses)
             metrics["largest_net_losing_trade"] = np.min(net_losses)
-            if loser_durations: metrics["avg_loser_duration_seconds"] = np.mean(loser_durations)
-            if mfes_usd_losers: metrics["avg_mfe_usd_losers"] = np.mean(mfes_usd_losers)
-            if maes_usd_losers: metrics["avg_mae_usd_losers"] = np.mean(maes_usd_losers)
+            if loser_durations:
+                metrics["avg_loser_duration_seconds"] = np.mean(loser_durations)
+            if mfes_usd_losers:
+                metrics["avg_mfe_usd_losers"] = np.mean(mfes_usd_losers)
+            if maes_usd_losers:
+                metrics["avg_mae_usd_losers"] = np.mean(maes_usd_losers)
 
         sum_gross_wins = sum(gross_wins_val)
         sum_gross_losses_abs = sum(gross_losses_val_abs)
@@ -657,14 +648,20 @@ class PortfolioManager:
         else:
             metrics["reward_risk_ratio_net_avg"] = 0.0
 
-        if mfes_usd: metrics["avg_mfe_usd_per_trade"] = np.mean(mfes_usd)
-        if maes_usd: metrics["avg_mae_usd_per_trade"] = np.mean(maes_usd)
-        if mfes_pct: metrics["avg_mfe_pct_per_trade"] = np.mean(mfes_pct) * 100  # as percentage
-        if maes_pct: metrics["avg_mae_pct_per_trade"] = np.mean(maes_pct) * 100  # as percentage
+        if mfes_usd:
+            metrics["avg_mfe_usd_per_trade"] = np.mean(mfes_usd)
+        if maes_usd:
+            metrics["avg_mae_usd_per_trade"] = np.mean(maes_usd)
+        if mfes_pct:
+            metrics["avg_mfe_pct_per_trade"] = np.mean(mfes_pct) * 100
+        if maes_pct:
+            metrics["avg_mae_pct_per_trade"] = np.mean(maes_pct) * 100
 
         if self.portfolio_value_history:
             equity_values = np.array([pv[1] for pv in self.portfolio_value_history])
-            metrics["max_portfolio_drawdown_abs"], metrics["max_portfolio_drawdown_pct"] = self._calculate_max_drawdown(equity_values)
+            metrics["max_portfolio_drawdown_abs"], metrics["max_portfolio_drawdown_pct"] = self._calculate_max_drawdown(
+                equity_values)
 
-        self.logger.info(f"TraderVue Metrics Calculated. Net Profit (Closed): ${metrics['total_net_profit_closed_trades']:.2f}")
+        self.logger.info(
+            f"TraderVue Metrics Calculated. Net Profit (Closed): ${metrics['total_net_profit_closed_trades']:.2f}")
         return metrics
