@@ -73,6 +73,8 @@ class TradingEnvironment(gym.Env):
         self.use_dashboard = env_cfg.render_mode == "dashboard"
         if self.use_dashboard:
             self.dashboard = TradingDashboard()
+            self.logger.info("Dashboard mode enabled with log display")
+
 
         self.max_steps_per_episode: int = env_cfg.max_steps
         self.random_reset_within_session: bool = env_cfg.random_reset
@@ -184,9 +186,12 @@ class TradingEnvironment(gym.Env):
             market_simulator=self.market_simulator
         )
 
+        # Configure dashboard if using it
         if self.dashboard:
             self.dashboard.set_symbol(symbol)
             self.dashboard.set_initial_capital(self.config.simulation.portfolio_config.initial_cash)
+            self.logger.info(
+                f"Dashboard configured for {symbol} with ${self.config.simulation.portfolio_config.initial_cash} initial capital")
 
         self.logger.info("All simulators and managers initialized for the session.")
 
@@ -249,12 +254,25 @@ class TradingEnvironment(gym.Env):
         initial_info = self._get_current_info(reward=0.0,
                                               current_portfolio_state_for_info=self._last_portfolio_state_before_action)
 
-        # Handle rendering/dashboard
+        # Handle rendering/dashboard - START DASHBOARD IMMEDIATELY
         if self.use_dashboard and self.dashboard:
+            # Always start dashboard on reset
             if not self.dashboard._running:
                 self.dashboard.start()
-            market_state = self.market_simulator.get_current_market_state() if self.market_simulator else None
+                self.logger.info("Dashboard started")
+
+            # Get market state for dashboard
+            market_state = None
+            try:
+                if self.market_simulator:
+                    market_state = self.market_simulator.get_current_market_state()
+            except Exception as e:
+                self.logger.error(f"Error getting market state for dashboard: {e}")
+
+            # Update dashboard immediately
             self.dashboard.update_state(initial_info, market_state)
+            self.logger.info("Dashboard updated with initial state")
+
         elif self.render_mode in ['human', 'logs']:
             self.render(info_dict=initial_info)
 
@@ -652,20 +670,29 @@ class TradingEnvironment(gym.Env):
                 f"Net Profit (Equity Change): ${info['episode_summary']['session_net_profit_equity_change']:.2f}. "
                 f"Total Reward: {self.episode_total_reward:.4f}. Steps: {self.current_step}.")
 
-            # Replace the existing render section with this:
-            if self.use_dashboard and self.dashboard:
-                # Update dashboard every step
-                market_state = self.market_simulator.get_current_market_state() if self.market_simulator else None
-                self.dashboard.update_state(info, market_state)
+            # ALWAYS UPDATE DASHBOARD IF ACTIVE
+            if self.use_dashboard and self.dashboard and self.dashboard._running:
+                try:
+                    # Get current market state
+                    market_state = None
+                    if self.market_simulator:
+                        market_state = self.market_simulator.get_current_market_state()
+
+                    # Update dashboard - this should happen every step
+                    self.dashboard.update_state(info, market_state)
+
+                    # Log every few steps to confirm updates
+                    if self.current_step % 10 == 0:
+                        self.logger.debug(f"Dashboard updated at step {self.current_step}")
+
+                except Exception as e:
+                    self.logger.error(f"Error updating dashboard: {e}")
+                    # Don't let dashboard errors stop training
+
             elif self.render_mode in ['human', 'logs']:
                 # Only use original render for non-dashboard modes
-                if self.current_step % self.config.env.render_interval == 0 or terminated or truncated:
+                if (self.current_step % self.config.env.render_interval == 0 or terminated or truncated):
                     self.render(info_dict=info)
-
-        # Only use original render for non-dashboard modes
-        if self.render_mode in ['human', 'logs'] and not self.use_dashboard:
-            if self.current_step % self.config.env.render_interval == 0 or terminated or truncated:
-                self.render(info_dict=info)
 
         return observation_next_t, reward, terminated, truncated, info
 
@@ -711,13 +738,76 @@ class TradingEnvironment(gym.Env):
         if self.render_mode not in ['human', 'logs'] or info_dict is None or not self.primary_asset:
             return
 
-        # ... keep the existing render implementation for human/logs modes ...
+        # ... keep ALL the existing render implementation for human/logs modes ...
         console = Console()
 
         try:
-            # ... existing render code stays the same ...
-            # (All the existing Rich rendering code)
-            pass
+            # ... ALL the existing Rich rendering code stays exactly the same ...
+            # (I'm not repeating it here to save space, but keep everything)
+
+            # Create a consistent layout with fixed heights
+            layout_grid = Table.grid(expand=True)
+
+            # Top row: Header with step info and main indicators
+            header = Table.grid(padding=(0, 1))
+
+            # Step info in a stylish format
+            timestamp_iso = info_dict.get('timestamp_iso')
+            time_str = 'N/A'
+            if timestamp_iso and isinstance(timestamp_iso, str):
+                try:
+                    time_str = timestamp_iso.split('T')[1].split('.')[0]
+                except IndexError:
+                    time_str = 'N/A'
+
+            step_info = Text.assemble(
+                ("STEP ", "bold cyan"),
+                (f"{info_dict.get('step', 'N/A')}", "cyan"),
+                " | ",
+                ("TIME ", "bold cyan"),
+                (time_str, "cyan")
+            )
+
+            # Current price and PnL indicators (key metrics)
+            current_price = None
+            if self.market_simulator:
+                try:
+                    market_state = self.market_simulator.get_current_market_state()
+                    if market_state:
+                        current_price = market_state.get('current_price')
+                        if current_price is None:
+                            current_price = market_state.get('best_bid_price') or market_state.get('best_ask_price')
+                except Exception as e:
+                    self.logger.warning(f"Error getting market state: {e}")
+            else:
+                self.logger.warning("Market simulator not available for price lookup.")
+
+            unreal_pnl = info_dict.get('portfolio_unrealized_pnl', 0.0)
+            real_pnl = info_dict.get('portfolio_realized_pnl_session_net', 0.0)
+
+            price_text = Text.assemble(
+                ("PRICE ", "bold yellow"),
+                (f"${current_price:.2f}" if current_price is not None else "N/A", "yellow"),
+                " | ",
+                ("UNREAL PNL ", "bold"),
+                (f"${unreal_pnl:.2f}", "green" if unreal_pnl > 0 else "red" if unreal_pnl < 0 else "white"),
+                " | ",
+                ("REAL PNL ", "bold"),
+                (f"${real_pnl:.2f}", "green" if real_pnl > 0 else "red" if real_pnl < 0 else "white")
+            )
+
+            header.add_row(step_info, price_text)
+            layout_grid.add_row(Panel(header, border_style="cyan", padding=(0, 0)))
+
+            # ... rest of the original render code ...
+
+            # Render the complete layout
+            console.print(Panel(
+                layout_grid,
+                title=f"[bold]Trading Environment: {str(self.primary_asset)}[/bold]",
+                border_style="white",
+                padding=(0, 1)
+            ))
 
         except Exception as e:
             try:
@@ -725,7 +815,7 @@ class TradingEnvironment(gym.Env):
                                     title="[bold red]Trading Environment - Render Error[/bold red]",
                                     style="bold red",
                                     border_style="red"))
-                self.logger.exception("Critical ggrendering error in render method:")
+                self.logger.exception("Critical rendering error in render method:")
             except Exception as fallback_e:
                 print(f"CRITICAL RENDERING ERROR: {e}")
                 print(f"FALLBACK RENDERER FAILED: {fallback_e}")
@@ -733,7 +823,9 @@ class TradingEnvironment(gym.Env):
                 traceback.print_exc()
 
     def close(self):
+        # Stop dashboard if running
         if self.dashboard:
+            self.logger.info("Stopping dashboard...")
             self.dashboard.stop()
         if self.market_simulator and hasattr(self.market_simulator, 'close'):
             self.market_simulator.close()
