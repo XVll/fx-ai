@@ -65,13 +65,13 @@ class TradingEnvironment(gym.Env):
         env_cfg = self.config.env
         self.primary_asset: Optional[str] = None
 
-        # Dashboard setup - FIXED: Better initialization
+        # Dashboard setup - FIXED: Simplified initialization
         self.dashboard: Optional[TradingDashboard] = None
         self.use_dashboard = env_cfg.render_mode == "dashboard"
 
+        # Don't start dashboard here - wait until we have data
         if self.use_dashboard:
-            self.dashboard = TradingDashboard()
-            self.logger.info("Dashboard mode enabled - logs will appear above the dashboard")
+            self.logger.info("Dashboard mode enabled - will start after session setup")
 
         self.max_steps_per_episode: int = env_cfg.max_steps
         self.random_reset_within_session: bool = env_cfg.random_reset
@@ -192,14 +192,24 @@ class TradingEnvironment(gym.Env):
             market_simulator=self.market_simulator
         )
 
-        # Configure dashboard if using it
-        if self.dashboard:
+        # Initialize dashboard if using it - FIXED: Proper setup
+        if self.use_dashboard:
+            self.dashboard = TradingDashboard()
             self.dashboard.set_symbol(symbol)
             self.dashboard.set_initial_capital(self.config.simulation.portfolio_config.initial_cash)
-            self.logger.info(
-                f"Dashboard configured for {symbol} with ${self.config.simulation.portfolio_config.initial_cash} initial capital")
+            self.logger.info(f"Dashboard configured for {symbol}")
 
         self.logger.info("All simulators and managers initialized for the session.")
+
+    def set_training_info(self, episode_num: int = 0, total_episodes: int = 0,
+                          total_steps: int = 0, update_count: int = 0,
+                          buffer_size: int = 0, is_training: bool = True,
+                          is_evaluating: bool = False, learning_rate: float = 0.0):
+        """Set training information for dashboard display"""
+        self.episode_number = episode_num
+        self.total_episodes = total_episodes
+        self.total_steps = total_steps
+        self.update_count = update_count
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[
         Dict[str, np.ndarray], Dict[str, Any]]:
@@ -260,13 +270,13 @@ class TradingEnvironment(gym.Env):
         initial_info = self._get_current_info(reward=0.0,
                                               current_portfolio_state_for_info=self._last_portfolio_state_before_action)
 
-        # Start dashboard if using it - FIXED: Start after reset is complete
-        if self.use_dashboard and self.dashboard:
-            if not self.dashboard._running:
-                self.dashboard.start()
-                self.logger.info("Dashboard started - logs will now appear above the dashboard")
+        # Start dashboard if using it - FIXED: Start at reset time
+        if self.use_dashboard and self.dashboard and not self.dashboard._running:
+            self.dashboard.start()
+            self.logger.info("📊 Dashboard started successfully")
 
-            # Update dashboard with initial state
+        # Update dashboard with initial state
+        if self.use_dashboard and self.dashboard and self.dashboard._running:
             market_state = self._get_current_market_state_safe()
             self.dashboard.update_state(initial_info, market_state)
 
@@ -640,7 +650,7 @@ class TradingEnvironment(gym.Env):
             is_terminated=terminated, is_truncated=truncated
         )
 
-        # Update dashboard every step if using it - FIXED: Only update state
+        # Update dashboard every step if using it - FIXED: Simpler update
         if self.use_dashboard and self.dashboard and self.dashboard._running:
             try:
                 market_state = self._get_current_market_state_safe()
@@ -716,7 +726,7 @@ class TradingEnvironment(gym.Env):
     def render(self, info_dict: Optional[Dict[str, Any]] = None):
         """Render method - delegates to dashboard if using dashboard mode"""
         if self.use_dashboard and self.dashboard:
-            # Dashboard handles its own rendering through Live display
+            # Dashboard handles its own rendering via Rich Live
             return
 
         # For other render modes, could implement basic console output here
@@ -727,7 +737,7 @@ class TradingEnvironment(gym.Env):
 
     def close(self):
         # Stop dashboard if running
-        if self.dashboard:
+        if self.dashboard and self.dashboard._running:
             self.logger.info("Stopping dashboard...")
             self.dashboard.stop()
         if self.market_simulator and hasattr(self.market_simulator, 'close'):
