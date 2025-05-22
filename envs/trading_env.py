@@ -1,4 +1,5 @@
-# envs/trading_env.py - Updated with Rich logging
+# envs/trading_env.py - Updated to reduce dashboard update frequency
+
 import logging
 from datetime import datetime
 from enum import Enum
@@ -73,6 +74,10 @@ class TradingEnvironment(gym.Env):
         # Dashboard setup
         self.dashboard: Optional[TradingDashboard] = None
         self.use_dashboard = env_cfg.render_mode == "dashboard"
+
+        # Dashboard update throttling
+        self._last_dashboard_update = 0.0
+        self._dashboard_update_interval = 0.5  # Update dashboard every 0.5 seconds max
 
         if self.use_dashboard:
             logging.info("Trading dashboard mode enabled - will start after session setup")
@@ -199,7 +204,8 @@ class TradingEnvironment(gym.Env):
         # Initialize dashboard if using it
         if self.use_dashboard:
             logging.info("Creating trading dashboard (right side)")
-            self.dashboard = TradingDashboard()
+            # Use larger log panel by default
+            self.dashboard = TradingDashboard(log_height=20)  # Increased from default
             self.dashboard.set_symbol(symbol)
             self.dashboard.set_initial_capital(self.config.simulation.portfolio_config.initial_cash)
             logging.info(f"Trading dashboard configured for {symbol}")
@@ -216,7 +222,7 @@ class TradingEnvironment(gym.Env):
         self.total_steps = total_steps
         self.update_count = update_count
 
-        # Update dashboard if available
+        # Update dashboard if available (but not too frequently)
         if self.dashboard:
             self.dashboard.set_training_info(
                 episode_num=episode_num,
@@ -228,6 +234,15 @@ class TradingEnvironment(gym.Env):
                 is_evaluating=is_evaluating,
                 learning_rate=learning_rate
             )
+
+    def _should_update_dashboard(self) -> bool:
+        """Check if enough time has passed to update dashboard"""
+        import time
+        current_time = time.time()
+        if current_time - self._last_dashboard_update >= self._dashboard_update_interval:
+            self._last_dashboard_update = current_time
+            return True
+        return False
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[
         Dict[str, np.ndarray], Dict[str, Any]]:
@@ -296,7 +311,7 @@ class TradingEnvironment(gym.Env):
             self.dashboard.start()
             logging.info("Trading dashboard started successfully")
 
-        # Update dashboard with initial state
+        # Update dashboard with initial state (always update on reset)
         if self.use_dashboard and self.dashboard and self.dashboard._running:
             market_state = self._get_current_market_state_safe()
             self.dashboard.update_state(initial_info, market_state)
@@ -677,13 +692,14 @@ class TradingEnvironment(gym.Env):
             is_terminated=terminated, is_truncated=truncated
         )
 
-        # Update dashboard every step if using it
+        # Update dashboard with throttling - only update occasionally during steps
         if self.use_dashboard and self.dashboard and self.dashboard._running:
-            try:
-                market_state = self._get_current_market_state_safe()
-                self.dashboard.update_state(info, market_state)
-            except Exception as e:
-                logging.error(f"Error updating dashboard: {e}")
+            if self._should_update_dashboard() or terminated or truncated:
+                try:
+                    market_state = self._get_current_market_state_safe()
+                    self.dashboard.update_state(info, market_state)
+                except Exception as e:
+                    logging.error(f"Error updating dashboard: {e}")
 
         if terminated or truncated:
             final_metrics = self.portfolio_manager.get_trader_vue_metrics()
