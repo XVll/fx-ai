@@ -1,246 +1,92 @@
-#!/usr/bin/env python3
-# demo_centralized_logging.py - Demo script showing the centralized logging system
-"""
-Demo script to showcase the new centralized logging system with enhanced dashboard.
-
-This script demonstrates:
-1. How to initialize the centralized logger
-2. How to use logging from different modules
-3. How the enhanced dashboard works with real-time logs
-4. Integration between logging and Rich console display
-
-Run this script to see the 2-column dashboard in action:
-- Left column: Live logs from all modules
-- Right column: Trading dashboard (simulated)
-"""
-
+#!/usr/bin/env python
+# test_logger.py - Test script for the logging system
 import os
 import sys
 import time
-import threading
-from datetime import datetime
-from typing import Dict, Any
-import random
+from pathlib import Path
 
-# Add the project root to the path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
-from utils.logger import (
-    initialize_logger, get_logger, log_info, log_warning,
-    log_error, log_debug, log_critical
-)
-from envs.env_dashboard import EnhancedTradingDashboard
+from utils.logger import initialize_logger, log_info, log_warning, log_error, log_debug, log_critical
 
 
-class MockTrainingSession:
-    """Mock training session to demonstrate logging integration"""
-
-    def __init__(self):
-        self.logger_manager = get_logger()
-        self.dashboard = EnhancedTradingDashboard(logger_manager=self.logger_manager)
-        self.is_running = False
-        self.step = 0
-        self.episode = 0
-        self.equity = 25000.0
-        self.price = 5.0
-
-    def start_demo(self):
-        """Start the demo session"""
-        log_info("🚀 Starting FX-AI Trading Demo", "demo")
-
-        # Setup dashboard
-        self.dashboard.set_symbol("MLGO")
-        self.dashboard.set_initial_capital(25000.0)
-        self.dashboard.start()
-
-        log_info("📊 Enhanced dashboard started successfully", "demo")
-
-        # Start background logging simulation
-        self.is_running = True
-
-        # Start different logging threads to simulate different modules
-        threading.Thread(target=self._simulate_market_data, daemon=True).start()
-        threading.Thread(target=self._simulate_portfolio_updates, daemon=True).start()
-        threading.Thread(target=self._simulate_model_training, daemon=True).start()
-        threading.Thread(target=self._simulate_execution_logs, daemon=True).start()
-
-        # Main simulation loop
-        self._run_simulation()
-
-    def _simulate_market_data(self):
-        """Simulate market data logging"""
-        while self.is_running:
-            # Simulate market tick
-            self.price += random.uniform(-0.05, 0.05)
-            self.price = max(0.1, self.price)  # Keep price positive
-
-            if random.random() < 0.3:  # 30% chance to log
-                if random.random() < 0.1:  # 10% chance for warnings
-                    log_warning(f"📊 High volatility detected: price moved to ${self.price:.4f}", "market")
-                else:
-                    log_debug(f"📈 Market tick: ${self.price:.4f}", "market")
-
-            time.sleep(random.uniform(0.5, 2.0))
-
-    def _simulate_portfolio_updates(self):
-        """Simulate portfolio manager logging"""
-        while self.is_running:
-            # Simulate equity changes
-            equity_change = random.uniform(-50, 100)
-            self.equity += equity_change
-
-            if random.random() < 0.2:  # 20% chance to log
-                if equity_change > 50:
-                    log_info(f"💰 Portfolio gain: ${equity_change:.2f}, Total: ${self.equity:.2f}", "portfolio")
-                elif equity_change < -30:
-                    log_warning(f"📉 Portfolio loss: ${equity_change:.2f}, Total: ${self.equity:.2f}", "portfolio")
-                else:
-                    log_debug(f"💼 Portfolio update: ${self.equity:.2f}", "portfolio")
-
-            time.sleep(random.uniform(1.0, 3.0))
-
-    def _simulate_model_training(self):
-        """Simulate model training logging"""
-        while self.is_running:
-            if random.random() < 0.15:  # 15% chance to log
-                loss = random.uniform(0.01, 0.5)
-                entropy = random.uniform(0.1, 1.0)
-
-                if random.random() < 0.05:  # 5% chance for errors
-                    log_error(f"🚨 Training error: gradient explosion detected", "model")
-                elif loss < 0.1:
-                    log_info(f"🧠 Model converging: loss={loss:.4f}, entropy={entropy:.3f}", "model")
-                else:
-                    log_debug(f"📊 Training step: loss={loss:.4f}", "model")
-
-            time.sleep(random.uniform(0.8, 2.5))
-
-    def _simulate_execution_logs(self):
-        """Simulate execution and order logging"""
-        while self.is_running:
-            if random.random() < 0.1:  # 10% chance to log
-                actions = ["BUY", "SELL", "HOLD"]
-                action = random.choice(actions)
-
-                if action in ["BUY", "SELL"]:
-                    quantity = random.uniform(10, 1000)
-                    if random.random() < 0.05:  # 5% chance for execution errors
-                        log_error(f"❌ Order rejected: {action} {quantity:.2f} @ ${self.price:.4f}", "execution")
-                    else:
-                        log_info(f"✅ Order filled: {action} {quantity:.2f} @ ${self.price:.4f}", "execution")
-                else:
-                    log_debug(f"⏸️ Action: {action}", "execution")
-
-            time.sleep(random.uniform(2.0, 5.0))
-
-    def _run_simulation(self):
-        """Main simulation loop"""
-        try:
-            while self.is_running:
-                self.step += 1
-
-                # Simulate step info for dashboard
-                step_reward = random.uniform(-1.0, 2.0)
-                episode_reward = random.uniform(-100, 500)
-
-                # Create mock info dict for dashboard
-                info_dict = {
-                    'step': self.step,
-                    'timestamp_iso': datetime.now().isoformat(),
-                    'reward_step': step_reward,
-                    'episode_cumulative_reward': episode_reward,
-                    'portfolio_equity': self.equity,
-                    'portfolio_cash': max(0, 25000 - abs(episode_reward)),
-                    'portfolio_unrealized_pnl': random.uniform(-200, 200),
-                    'portfolio_realized_pnl_session_net': random.uniform(-100, 150),
-                    'position_MLGO_qty': random.uniform(-500, 500),
-                    'position_MLGO_side': random.choice(['LONG', 'SHORT', 'FLAT']),
-                    'position_MLGO_avg_entry': self.price * random.uniform(0.95, 1.05),
-                    'invalid_actions_total_episode': random.randint(0, 5),
-                    'action_decoded': {
-                        'type': type('ActionType', (), {'name': random.choice(['BUY', 'SELL', 'HOLD'])})(),
-                        'size_enum': type('SizeEnum', (),
-                                          {'name': random.choice(['SIZE_25', 'SIZE_50', 'SIZE_75', 'SIZE_100'])})(),
-                        'invalid_reason': None if random.random() > 0.1 else "Insufficient funds"
-                    },
-                    'fills_step': []
-                }
-
-                # Simulate market state
-                market_state = {
-                    'current_price': self.price,
-                    'best_bid_price': self.price * 0.999,
-                    'best_ask_price': self.price * 1.001,
-                    'best_bid_size': random.uniform(100, 1000),
-                    'best_ask_size': random.uniform(100, 1000),
-                    'market_session': random.choice(['PREMARKET', 'REGULAR', 'POSTMARKET'])
-                }
-
-                # Update dashboard
-                self.dashboard.update_state(info_dict, market_state)
-
-                # Occasional episode end
-                if self.step % 100 == 0:
-                    self.episode += 1
-                    log_info(f"🏁 Episode {self.episode} completed with reward {episode_reward:.2f}", "demo")
-                    self.step = 0
-
-                # Log progress
-                if self.step % 20 == 0:
-                    log_info(f"📈 Step {self.step}: Price=${self.price:.4f}, Equity=${self.equity:.2f}", "demo")
-
-                time.sleep(0.2)  # Dashboard update frequency
-
-        except KeyboardInterrupt:
-            log_info("🛑 Demo interrupted by user", "demo")
-        finally:
-            self.stop_demo()
-
-    def stop_demo(self):
-        """Stop the demo session"""
-        self.is_running = False
-        if self.dashboard:
-            self.dashboard.stop()
-        log_info("👋 Demo session ended", "demo")
-
-
-def main():
-    """Main demo function"""
-    print("🎯 FX-AI Centralized Logging System Demo")
+def test_logging_system():
+    """Test the centralized logging system"""
+    print("Testing Centralized Logging System...")
     print("=" * 50)
-    print("This demo showcases:")
-    print("• Centralized logging from multiple modules")
-    print("• Enhanced 2-column dashboard (logs + trading info)")
-    print("• Real-time log display with color coding")
-    print("• Integration between logging and Rich console")
-    print("=" * 50)
-    print("Press Ctrl+C to stop the demo\n")
 
-    # Initialize centralized logging
-    log_file = f"demo_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    # Initialize logger
+    log_file = "./test_logs/test_output.log"
+    os.makedirs("./test_logs", exist_ok=True)
+
     logger_manager = initialize_logger(
-        app_name="fx-ai-demo",
+        app_name="test-fx-ai",
         log_file=log_file,
-        max_dashboard_logs=200
+        max_dashboard_logs=100
     )
 
-    log_info("🔧 Centralized logging system initialized", "demo")
-    log_info(f"📝 Logs will be saved to: {log_file}", "demo")
+    print(f"Log file will be written to: {log_file}")
+    print("Testing different log levels...")
+    print("")
 
-    # Show different log levels
-    log_debug("🐛 This is a debug message", "demo")
-    log_info("ℹ️ This is an info message", "demo")
-    log_warning("⚠️ This is a warning message", "demo")
-    log_error("❌ This is an error message (simulated)", "demo")
-    log_critical("🚨 This is a critical message (simulated)", "demo")
+    # Test different log levels with emoji and without
+    log_info("[START] Starting FX-AI Training System", "main")
+    log_info("[DIR] Output directory: ./test_output", "main")
+    log_info("[FILE] Log file: ./test_output/training.log", "main")
+    log_info("[SAVE] Configuration saved", "main")
 
-    # Wait a moment for the messages to be processed
-    time.sleep(2)
+    log_warning("[WARN] This is a warning message", "test")
+    log_error("[ERROR] This is an error message", "test")
+    log_debug("[DEBUG] This is a debug message (may not show)", "test")
+    log_critical("[CRITICAL] This is a critical message", "test")
 
-    # Start the demo session
-    demo_session = MockTrainingSession()
-    demo_session.start_demo()
+    # Test with original emoji (should be converted on Windows)
+    log_info("🚀 Starting FX-AI Training System", "emoji_test")
+    log_info("📁 Output directory: ./test_output", "emoji_test")
+    log_info("📄 Log file: ./test_output/training.log", "emoji_test")
+    log_info("💾 Configuration saved", "emoji_test")
+
+    # Test multiple modules
+    log_info("[CONFIG] Model configuration loaded", "model")
+    log_info("[BUILD] Environment created", "env")
+    log_info("[BRAIN] Neural network initialized", "ai")
+    log_info("[RUN] Training started", "ppo")
+
+    # Test recent logs
+    print("\n" + "=" * 50)
+    print("Recent logs from logger:")
+    recent_logs = logger_manager.get_recent_logs(10)
+    for entry in recent_logs:
+        print(f"{entry.timestamp.strftime('%H:%M:%S')} | {entry.level.value:>8} | {entry.module:>10} | {entry.message}")
+
+    print(f"\nTotal log entries: {len(logger_manager.get_recent_logs())}")
+    print(f"Log file created: {os.path.exists(log_file)}")
+
+    if os.path.exists(log_file):
+        print(f"Log file size: {os.path.getsize(log_file)} bytes")
+        print("\nLast few lines of log file:")
+        with open(log_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            for line in lines[-5:]:
+                print("  " + line.strip())
+
+    print("\n" + "=" * 50)
+    print("Logging test completed successfully!")
+    print("Press Ctrl+C to test interrupt handling...")
+
+    # Test interrupt handling
+    try:
+        for i in range(10):
+            log_info(f"[TEST] Iteration {i + 1}/10 - Press Ctrl+C to interrupt", "test")
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nInterrupt caught successfully!")
+        log_warning("[INTERRUPT] Test interrupted by user", "test")
+
+    print("Test finished!")
 
 
 if __name__ == "__main__":
-    main()
+    test_logging_system()
