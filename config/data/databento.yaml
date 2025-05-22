@@ -2,7 +2,7 @@
 # Data configuration - synchronized with DataConfig
 
 # Provider settings
-provider_type: "file"
+provider_type: "dummy"
 data_dir: "./dnb/mlgo"
 symbol_info_file: "./dnb/mlgo/symbols.json"
 symbol: "MLGO"

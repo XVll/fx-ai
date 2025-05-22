@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-# main_continuous.py - Updated with signal handling for Ctrl+C support
+# main_continuous.py - Updated with Rich logging and enhanced dashboard
 import os
 import sys
 import signal
 import threading
+import logging
 from datetime import datetime
 
 import hydra
@@ -12,8 +13,8 @@ import wandb
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 
-# Import centralized logging
-from utils.logger import initialize_logger, get_logger, log_info, log_error, log_warning
+# Import Rich logging setup
+from utils.logger import setup_rich_logging, console
 
 from agent.continous_training_callback import ContinuousTrainingCallback
 from ai.transformer import MultiBranchTransformer
@@ -27,6 +28,7 @@ from data.provider.dummy_data_provider import DummyDataProvider
 
 from envs.trading_env import TradingEnvironment
 from envs.wrappers.observation_wrapper import NormalizeDictObservation
+from envs.env_dashboard import TradingDashboard, TrainingStage
 
 from agent.ppo_agent import PPOTrainer
 from agent.callbacks import ModelCheckpointCallback, EarlyStoppingCallback
@@ -39,6 +41,10 @@ cleanup_called = False
 current_trainer = None
 current_env = None
 current_data_manager = None
+dashboard = None
+
+# Setup Rich logging at module level
+logger = setup_rich_logging()
 
 
 def signal_handler(signum, frame):
@@ -46,22 +52,21 @@ def signal_handler(signum, frame):
     global training_interrupted, cleanup_called
 
     if cleanup_called:
-        print("\nForce exit...")
+        console.print("\n[bold red]Force exit...[/bold red]")
         sys.exit(1)
 
     training_interrupted = True
-    print("\n" + "=" * 50)
-    print("INTERRUPT SIGNAL RECEIVED")
-    print("Attempting graceful shutdown...")
-    print("Press Ctrl+C again to force exit")
-    print("=" * 50)
+    console.print("\n" + "=" * 50)
+    console.print("[bold red]INTERRUPT SIGNAL RECEIVED[/bold red]")
+    console.print("Attempting graceful shutdown...")
+    console.print("Press Ctrl+C again to force exit")
+    console.print("=" * 50)
 
-    # Set a timer for forced exit if graceful shutdown takes too long
     def force_exit():
         import time
-        time.sleep(10)  # Wait 10 seconds for graceful shutdown
+        time.sleep(10)
         if training_interrupted and not cleanup_called:
-            print("\nGraceful shutdown timeout. Force exiting...")
+            console.print("\n[bold red]Graceful shutdown timeout. Force exiting...[/bold red]")
             sys.exit(1)
 
     timer = threading.Timer(10, force_exit)
@@ -71,64 +76,60 @@ def signal_handler(signum, frame):
 
 def cleanup_resources():
     """Clean up resources gracefully"""
-    global cleanup_called, current_trainer, current_env, current_data_manager
+    global cleanup_called, current_trainer, current_env, current_data_manager, dashboard
 
     if cleanup_called:
         return
     cleanup_called = True
 
     try:
-        log_info("[CLEANUP] Starting resource cleanup...", "cleanup")
+        logging.info("Starting resource cleanup...")
+
+        # Stop dashboard first
+        if dashboard and dashboard._running:
+            dashboard.stop()
+            logging.info("Dashboard stopped")
 
         # Stop trainer
         if current_trainer and hasattr(current_trainer, 'model'):
             try:
-                # Save current model
                 interrupted_model_path = os.path.join(
                     getattr(current_trainer, 'model_dir', './models'),
                     "interrupted_model.pt"
                 )
                 current_trainer.save_model(interrupted_model_path)
-                log_info(f"[CLEANUP] Saved interrupted model to: {interrupted_model_path}", "cleanup")
+                logging.info(f"Saved interrupted model to: {interrupted_model_path}")
             except Exception as e:
-                log_error(f"[CLEANUP] Error saving interrupted model: {e}", "cleanup")
-
-        # Close environment dashboard
-        if current_env and hasattr(current_env, 'dashboard') and current_env.dashboard:
-            try:
-                current_env.dashboard.stop()
-                log_info("[CLEANUP] Dashboard stopped", "cleanup")
-            except Exception as e:
-                log_error(f"[CLEANUP] Error stopping dashboard: {e}", "cleanup")
+                logging.error(f"Error saving interrupted model: {e}")
 
         # Close environment
         if current_env and hasattr(current_env, 'close'):
             try:
                 current_env.close()
-                log_info("[CLEANUP] Environment closed", "cleanup")
+                logging.info("Environment closed")
             except Exception as e:
-                log_error(f"[CLEANUP] Error closing environment: {e}", "cleanup")
+                logging.error(f"Error closing environment: {e}")
 
         # Close data manager
         if current_data_manager and hasattr(current_data_manager, 'close'):
             try:
                 current_data_manager.close()
-                log_info("[CLEANUP] Data manager closed", "cleanup")
+                logging.info("Data manager closed")
             except Exception as e:
-                log_error(f"[CLEANUP] Error closing data manager: {e}", "cleanup")
+                logging.error(f"Error closing data manager: {e}")
 
         # Finalize W&B if active
         if wandb.run:
             try:
                 wandb.finish()
-                log_info("[CLEANUP] W&B run finished", "cleanup")
+                logging.info("W&B run finished")
             except Exception as e:
-                log_error(f"[CLEANUP] Error finishing W&B: {e}", "cleanup")
+                logging.error(f"Error finishing W&B: {e}")
 
-        log_info("[CLEANUP] Resource cleanup completed", "cleanup")
+        logging.info("Resource cleanup completed")
 
     except Exception as e:
-        print(f"Error during cleanup: {e}")
+        console.print(f"[bold red]Error during cleanup: {e}[/bold red]")
 
 
 def select_device(device_str):
@@ -136,16 +137,16 @@ def select_device(device_str):
     if device_str == "auto":
         if torch.cuda.is_available():
             device = torch.device("cuda")
-            log_info(f"Using CUDA device: {torch.cuda.get_device_name(0)}", "device")
+            logging.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             device = torch.device("mps")
-            log_info("Using MPS (Apple Silicon) device", "device")
+            logging.info("Using MPS (Apple Silicon) device")
         else:
             device = torch.device("cpu")
-            log_info("Using CPU device", "device")
+            logging.info("Using CPU device")
     else:
         device = torch.device(device_str)
-        log_info(f"Using specified device: {device}", "device")
+        logging.info(f"Using specified device: {device}")
 
     return device
 
@@ -153,7 +154,7 @@ def select_device(device_str):
 def create_data_provider(config: Config):
     """Create appropriate data provider based on config."""
     data_cfg = config.data
-    log_info(f"Initializing data provider: {data_cfg.provider_type}", "data")
+    logging.info(f"Initializing data provider: {data_cfg.provider_type}")
 
     if data_cfg.provider_type == "file":
         return DabentoFileProvider(
@@ -173,7 +174,6 @@ def create_data_provider(config: Config):
             dataset=data_cfg.live.get("dataset", "XNAS.ITCH")
         )
     elif data_cfg.provider_type == "live_sim":
-        # First create historical provider
         hist_provider = DabentoFileProvider(
             data_dir=data_cfg.data_dir,
             symbol_info_file=data_cfg.symbol_info_file,
@@ -186,15 +186,14 @@ def create_data_provider(config: Config):
             start_time=data_cfg.start_date
         )
     elif data_cfg.provider_type == "dummy":
-        # For quick testing
         return DummyDataProvider(config={
-            'debug_window_mins': 120,  # 5 hours of data
-            'data_sparsity': 1,  # Generate data every 5 seconds
-            'num_squeezes': 2,  # 3 momentum squeezes
-            'base_price': 5.00,  # Start around $5
-            'volatility': 0.03,  # Base volatility
-            'squeeze_magnitude': 0.30,  # 30% average squeeze magnitude
-            'symbols': ['MLGO']  # Symbol to use
+            'debug_window_mins': 120,
+            'data_sparsity': 1,
+            'num_squeezes': 2,
+            'base_price': 5.00,
+            'volatility': 0.03,
+            'squeeze_magnitude': 0.30,
+            'symbols': ['MLGO']
         })
     else:
         raise ValueError(f"Unknown provider type: {data_cfg.provider_type}")
@@ -202,24 +201,16 @@ def create_data_provider(config: Config):
 
 @hydra.main(version_base="1.2", config_path="config", config_name="config")
 def run_training(cfg: Config):
-    """
-    Main training function with centralized logging and signal handling.
+    """Main training function with Rich logging and enhanced dashboard"""
+    global current_trainer, current_env, current_data_manager, dashboard
 
-    Args:
-        cfg: Config object from Hydra
-
-    Returns:
-        Dict[str, Any]: Training statistics
-    """
-    global current_trainer, current_env, current_data_manager
-
-    # Set up signal handlers for graceful shutdown
+    # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     if hasattr(signal, 'SIGTERM'):
         signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        # Get output directory - either from Hydra or create a new one
+        # Get output directory
         if HydraConfig.initialized():
             output_dir = HydraConfig.get().runtime.output_dir
         else:
@@ -230,39 +221,34 @@ def run_training(cfg: Config):
         model_dir = os.path.join(output_dir, "models")
         os.makedirs(model_dir, exist_ok=True)
 
-        # Initialize centralized logging FIRST
-        log_file = os.path.join(output_dir, "training.log")
-        logger_manager = initialize_logger(
-            app_name="fx-ai",
-            log_file=log_file,
-            max_logs=1000
-        )
+        # Log startup info
+        logging.info("🚀 Starting FX-AI Training System")
+        logging.info(f"📁 Output directory: {output_dir}")
 
-        # Log startup
-        log_info("[START] Starting FX-AI Training System", "main")
-        log_info(f"[DIR] Output directory: {output_dir}", "main")
-        log_info(f"[FILE] Log file: {log_file}", "main")
-
-        # Save the config for reference
+        # Save config for reference
         config_path = os.path.join(output_dir, "config_used.yaml")
         with open(config_path, 'w') as f:
             f.write(OmegaConf.to_yaml(cfg))
-        log_info(f"[SAVE] Configuration saved to: {config_path}", "main")
+        logging.info(f"💾 Configuration saved to: {config_path}")
 
-        # Check if we're in continuous training mode
+        # Initialize dashboard
+        dashboard = TradingDashboard(log_height=10)
+        dashboard.start()
+        dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.1, "Setting up system...")
+
+        # Check continuous training mode
         continuous_mode = getattr(cfg.training, 'enabled', False)
         load_best_model = getattr(cfg.training, 'load_best_model', False) if continuous_mode else False
         best_models_dir = getattr(cfg.training, 'best_models_dir', "./best_models")
-
-        # Create best_models_dir if it doesn't exist
         os.makedirs(best_models_dir, exist_ok=True)
 
         if continuous_mode:
-            log_info(f"[REFRESH] Continuous training mode enabled. Best models dir: {best_models_dir}", "training")
+            logging.info(f"🔄 Continuous training mode enabled. Best models dir: {best_models_dir}")
 
         # Initialize W&B if enabled
         if cfg.wandb.enabled:
             try:
+                dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.2, "Initializing W&B...")
                 wandb.init(
                     project=cfg.wandb.project_name,
                     entity=cfg.wandb.entity,
@@ -270,25 +256,30 @@ def run_training(cfg: Config):
                     save_code=cfg.wandb.log_code,
                     dir=output_dir
                 )
-                log_info(f"[CHART] W&B initialized: {wandb.run.name} ({wandb.run.id})", "wandb")
+                logging.info(f"📊 W&B initialized: {wandb.run.name} ({wandb.run.id})")
             except Exception as e:
-                log_error(f"Failed to initialize W&B: {e}", "wandb")
-                log_warning("Continuing without W&B...", "wandb")
+                logging.error(f"Failed to initialize W&B: {e}")
+                logging.warning("Continuing without W&B...")
 
         # Create data provider and manager
-        log_info("[LOAD] Initializing data provider and manager", "data")
+        dashboard.set_training_stage(TrainingStage.LOADING_DATA, 0.3, "Creating data provider...")
+        logging.info("📂 Initializing data provider and manager")
         data_provider = create_data_provider(cfg)
-        current_data_manager = DataManager(provider=data_provider, logger=get_logger().get_logger("DataManager"))
+        current_data_manager = DataManager(provider=data_provider, logger=logging.getLogger("DataManager"))
 
         # Get symbol and date range
         symbol = cfg.data.symbol
         start_date = cfg.data.start_date
         end_date = cfg.data.end_date
 
-        log_info(f"[UP] Trading symbol: {symbol}", "config")
-        log_info(f"[DATE] Date range: {start_date} to {end_date}", "config")
+        logging.info(f"📈 Trading symbol: {symbol}")
+        logging.info(f"📅 Date range: {start_date} to {end_date}")
 
-        # Initialize model manager for continuous training support
+        # Set dashboard symbol
+        dashboard.set_symbol(symbol)
+        dashboard.set_initial_capital(cfg.simulation.portfolio_config.initial_cash)
+
+        # Initialize model manager
         model_manager = ModelManager(
             base_dir=model_dir,
             best_models_dir=best_models_dir,
@@ -297,12 +288,13 @@ def run_training(cfg: Config):
             symbol=symbol
         )
 
-        # Create environment with centralized logging
-        log_info(f"[BUILD] Creating trading environment for {symbol}", "env")
+        # Create environment
+        dashboard.set_training_stage(TrainingStage.SETTING_UP_ENV, 0.4, "Creating trading environment...")
+        logging.info(f"🏗️ Creating trading environment for {symbol}")
         current_env = TradingEnvironment(
             config=cfg,
             data_manager=current_data_manager,
-            logger=get_logger().get_logger("TradingEnv")
+            logger=logging.getLogger("TradingEnv")
         )
 
         # Setup environment session
@@ -314,64 +306,57 @@ def run_training(cfg: Config):
 
         # Wrap environment with observation normalization if required
         if cfg.env.normalize_state:
-            log_info("[REFRESH] Wrapping environment with observation normalization", "env")
+            logging.info("🔄 Wrapping environment with observation normalization")
             current_env = NormalizeDictObservation(current_env)
 
         # Check for interruption
         if training_interrupted:
-            log_warning("Training interrupted during setup", "main")
+            logging.warning("Training interrupted during setup")
             return {}
 
-        # Select device for training
+        # Select device
         device = select_device(cfg.training.device)
 
         # Create model
-        log_info("[BRAIN] Creating multi-branch transformer model", "model")
+        dashboard.set_training_stage(TrainingStage.LOADING_MODEL, 0.5, "Creating transformer model...")
+        logging.info("🧠 Creating multi-branch transformer model")
         model_config = OmegaConf.to_container(cfg.model, resolve=True)
 
-        # Make an initial reset to get observation shape for sanity check
         obs, info = current_env.reset()
 
         try:
             model = MultiBranchTransformer(
                 **model_config,
                 device=device,
-                logger=get_logger().get_logger("Transformer")
+                logger=logging.getLogger("Transformer")
             )
-            log_info("[OK] Model created successfully", "model")
+            logging.info("✅ Model created successfully")
         except Exception as e:
-            log_error(f"Error creating model: {e}", "model")
+            logging.error(f"Error creating model: {e}")
             raise
 
-        # For continuous training, load the best model if available
+        # Load best model for continuous training
         loaded_metadata = {}
         if continuous_mode and load_best_model:
             best_model_info = model_manager.find_best_model()
             if best_model_info:
-                log_info(f"[LOAD] Loading best model for continuous training: {best_model_info['path']}", "training")
+                logging.info(f"📂 Loading best model: {best_model_info['path']}")
+                dashboard.set_training_stage(TrainingStage.LOADING_MODEL, 0.7, "Loading previous model...")
 
-                # Initialize optimizer before loading
-                training_params = {
-                    "lr": cfg.training.lr,
-                    "max_grad_norm": cfg.training.max_grad_norm,
-                }
-
-                # Create a temporary optimizer for loading
-                optimizer = torch.optim.Adam(model.parameters(), lr=training_params["lr"])
-
-                # Load the model weights and state
+                optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
                 model, training_state = model_manager.load_model(model, optimizer, best_model_info['path'])
                 loaded_metadata = training_state.get('metadata', {})
 
-                log_info("[OK] Model loaded successfully", "training")
-                log_info(f"[CHART] Training state: step={training_state.get('global_step', 0)}, "
-                         f"episode={training_state.get('global_episode', 0)}, "
-                         f"update={training_state.get('global_update', 0)}", "training")
+                logging.info("✅ Model loaded successfully")
+                logging.info(f"📊 Training state: step={training_state.get('global_step', 0)}, "
+                             f"episode={training_state.get('global_episode', 0)}, "
+                             f"update={training_state.get('global_update', 0)}")
             else:
-                log_info("[START] No previous model found for continuous training. Starting fresh.", "training")
+                logging.info("🆕 No previous model found. Starting fresh.")
 
         # Set up training callbacks
-        log_info("[CONFIG] Setting up training callbacks", "training")
+        dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.8, "Setting up callbacks...")
+        logging.info("⚙️ Setting up training callbacks")
         callbacks = [
             ModelCheckpointCallback(
                 save_dir=model_dir,
@@ -389,7 +374,7 @@ def run_training(cfg: Config):
                     min_delta=cfg.callbacks.early_stopping.min_delta
                 )
             )
-            log_info(f"[PAUSE] Early stopping enabled (patience: {cfg.callbacks.early_stopping.patience})", "training")
+            logging.info(f"⏹️ Early stopping enabled (patience: {cfg.callbacks.early_stopping.patience})")
 
         # Add W&B callback if enabled
         if cfg.wandb.enabled:
@@ -403,19 +388,17 @@ def run_training(cfg: Config):
                     log_code=cfg.wandb.log_code
                 )
                 callbacks.append(wandb_callback)
-                log_info("[UP] W&B callback added successfully", "wandb")
+                logging.info("📊 W&B callback added successfully")
             except Exception as e:
-                log_error(f"Failed to initialize W&B callback: {e}", "wandb")
-                log_warning("Continuing without W&B callback...", "wandb")
+                logging.error(f"Failed to initialize W&B callback: {e}")
+                logging.warning("Continuing without W&B callback...")
 
         # Add continuous training callback if in continuous mode
         if continuous_mode:
             try:
-                # Get continuous training settings
                 checkpoint_sync_frequency = getattr(cfg.training, 'checkpoint_sync_frequency', 5)
                 lr_annealing = getattr(cfg.training, 'lr_annealing', {})
 
-                # Create the callback
                 continuous_callback = ContinuousTrainingCallback(
                     model_manager=model_manager,
                     reward_metric="mean_reward",
@@ -424,12 +407,12 @@ def run_training(cfg: Config):
                     load_metadata=loaded_metadata
                 )
                 callbacks.append(continuous_callback)
-                log_info("[REFRESH] Continuous training callback added", "training")
+                logging.info("🔄 Continuous training callback added")
             except Exception as e:
-                log_error(f"Failed to initialize continuous training callback: {e}", "training")
-                log_warning("Continuing without continuous training callback...", "training")
+                logging.error(f"Failed to initialize continuous training callback: {e}")
+                logging.warning("Continuing without continuous training callback...")
 
-        # Extract training parameters from config
+        # Extract training parameters
         training_params = {
             "lr": cfg.training.lr,
             "gamma": cfg.training.gamma,
@@ -443,9 +426,10 @@ def run_training(cfg: Config):
             "rollout_steps": cfg.training.buffer_size
         }
 
-        log_info("[CONFIG] Training parameters configured", "training")
+        logging.info("⚙️ Training parameters configured")
 
-        # Create trainer with centralized logging
+        # Create trainer
+        dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.9, "Creating PPO trainer...")
         current_trainer = PPOTrainer(
             env=current_env,
             model=model,
@@ -454,99 +438,132 @@ def run_training(cfg: Config):
             output_dir=output_dir,
             use_wandb=cfg.wandb.enabled,
             callbacks=callbacks,
+            dashboard=dashboard,  # Pass dashboard to trainer
             **training_params
         )
 
+        # Update dashboard with training info
+        dashboard.update_training_metrics({
+            'learning_rate': cfg.training.lr,
+            'batch_size': cfg.training.batch_size,
+            'buffer_size': cfg.training.buffer_size,
+            'rollout_steps': cfg.training.buffer_size
+        })
+
         # Check for interruption before training
         if training_interrupted:
-            log_warning("Training interrupted before starting", "main")
+            logging.warning("Training interrupted before starting")
             return {}
 
         # Train the model
         total_updates = cfg.training.total_updates
         total_steps = total_updates * cfg.training.buffer_size
-        log_info(f"[RUN] Starting training for approximately {total_steps} steps "
-                 f"({total_updates} updates)", "training")
+        dashboard.set_training_stage(TrainingStage.COLLECTING_ROLLOUT, 0.0, f"Starting training for {total_updates} updates")
 
-        # Evaluate the model before training if in continuous mode
+        logging.info(f"🚀 Starting training for approximately {total_steps} steps ({total_updates} updates)")
+
+        # Evaluate before training if in continuous mode
         if continuous_mode and getattr(cfg.training, 'startup_evaluation', False) and load_best_model:
             if training_interrupted:
-                log_warning("Training interrupted before startup evaluation", "main")
+                logging.warning("Training interrupted before startup evaluation")
                 return {}
 
-            log_info("[SEARCH] Performing initial evaluation...", "eval")
+            dashboard.set_training_stage(TrainingStage.EVALUATING, 0.0, "Initial evaluation...")
+            logging.info("🔍 Performing initial evaluation...")
             try:
                 eval_stats = current_trainer.evaluate(n_episodes=5)
-                log_info(f"[CHART] Initial evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}",
-                         "eval")
+                logging.info(f"📊 Initial evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}")
 
-                # Log to W&B if enabled
                 if cfg.wandb.enabled and wandb.run:
                     wandb.log({"initial_eval": eval_stats})
             except Exception as e:
                 if training_interrupted:
-                    log_warning("Evaluation interrupted by user", "eval")
+                    logging.warning("Evaluation interrupted by user")
                 else:
-                    log_error(f"Error during initial evaluation: {e}", "eval")
+                    logging.error(f"Error during initial evaluation: {e}")
 
         if training_interrupted:
-            log_warning("Training interrupted", "main")
+            logging.warning("Training interrupted")
             return {}
 
         try:
-            # Modified training loop with interruption checks
+            # Enhanced training loop with dashboard updates
             training_stats = {}
             update_counter = 0
 
             while update_counter < total_updates and not training_interrupted:
                 try:
-                    # Collect rollout data
+                    # Update dashboard for rollout collection
+                    progress = update_counter / total_updates
+                    dashboard.set_training_stage(
+                        TrainingStage.COLLECTING_ROLLOUT,
+                        progress,
+                        f"Update {update_counter + 1}/{total_updates} - Collecting rollout..."
+                    )
+
                     if training_interrupted:
                         break
 
+                    # Collect rollout data
                     rollout_stats = current_trainer.collect_rollout_data()
 
                     if training_interrupted:
                         break
 
+                    # Update dashboard for policy update
+                    dashboard.set_training_stage(
+                        TrainingStage.UPDATING_POLICY,
+                        progress,
+                        f"Update {update_counter + 1}/{total_updates} - Updating policy..."
+                    )
+
                     # Update policy
                     update_metrics = current_trainer.update_policy()
+
+                    # Update dashboard with metrics
+                    dashboard.update_training_metrics({
+                        **rollout_stats,
+                        **update_metrics,
+                        'update_count': update_counter + 1,
+                        'total_updates': total_updates,
+                        'progress': progress
+                    })
 
                     # Call callbacks
                     for callback in current_trainer.callbacks:
                         if hasattr(callback, 'on_update_iteration_end'):
-                            callback.on_update_iteration_end(current_trainer, update_counter, update_metrics,
-                                                             rollout_stats)
+                            callback.on_update_iteration_end(current_trainer, update_counter, update_metrics, rollout_stats)
 
                     update_counter += 1
 
                     # Log progress
                     if update_counter % 5 == 0:
-                        log_info(f"[UP] Completed {update_counter}/{total_updates} updates. "
-                                 f"Mean reward: {rollout_stats.get('mean_reward', 0):.2f}", "training")
+                        logging.info(f"📈 Completed {update_counter}/{total_updates} updates. "
+                                     f"Mean reward: {rollout_stats.get('mean_reward', 0):.2f}")
 
                 except KeyboardInterrupt:
-                    log_warning("Training interrupted by KeyboardInterrupt", "training")
+                    logging.warning("Training interrupted by KeyboardInterrupt")
                     break
                 except Exception as e:
                     if training_interrupted:
-                        log_warning("Training interrupted during update", "training")
+                        logging.warning("Training interrupted during update")
                         break
                     else:
-                        log_error(f"Error during training update {update_counter}: {e}", "training")
-                        # Continue with next update rather than stopping entirely
+                        logging.error(f"Error during training update {update_counter}: {e}")
                         continue
 
-            # Handle training completion vs interruption
+            # Handle training completion
             if training_interrupted:
-                log_warning("[WARN] Training was interrupted by user", "training")
+                logging.warning("⚠️ Training was interrupted by user")
+                dashboard.set_training_stage(TrainingStage.ERROR, 1.0, "Training interrupted by user")
                 training_stats = {
                     "interrupted": True,
                     "completed_updates": update_counter,
                     "total_planned_updates": total_updates
                 }
             else:
-                log_info("[PARTY] Training completed successfully!", "training")
+                logging.info("🎉 Training completed successfully!")
+                dashboard.set_training_stage(TrainingStage.COMPLETED, 1.0, f"Training completed - {update_counter} updates")
                 training_stats = {
                     "total_episodes": getattr(current_trainer, 'global_episode_counter', 0),
                     "total_steps": getattr(current_trainer, 'global_step_counter', 0),
@@ -556,67 +573,66 @@ def run_training(cfg: Config):
 
             # Final model evaluation (only if not interrupted)
             if not training_interrupted:
-                log_info("[SEARCH] Evaluating best model", "eval")
-                # Load the best model if available
+                dashboard.set_training_stage(TrainingStage.EVALUATING, 1.0, "Final evaluation...")
+                logging.info("🔍 Evaluating best model")
+
                 best_model_info = model_manager.find_best_model()
                 if best_model_info:
                     model, _ = model_manager.load_model(model, None, best_model_info['path'])
-                    log_info(f"[LOAD] Loaded best model for evaluation: {best_model_info['path']}", "eval")
+                    logging.info(f"📂 Loaded best model for evaluation: {best_model_info['path']}")
 
                 try:
                     eval_stats = current_trainer.evaluate(n_episodes=10)
-                    log_info(f"[UP] Final evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}",
-                             "eval")
+                    logging.info(f"📊 Final evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}")
 
-                    # Log to W&B if enabled
                     if cfg.wandb.enabled and wandb.run:
                         wandb.log({"final_eval": eval_stats})
                 except Exception as e:
-                    log_error(f"Error during final evaluation: {e}", "eval")
+                    logging.error(f"Error during final evaluation: {e}")
 
             return training_stats
 
         except KeyboardInterrupt:
-            log_warning("[WARN] Training interrupted by user", "training")
+            logging.warning("⚠️ Training interrupted by user")
+            dashboard.set_training_stage(TrainingStage.ERROR, 1.0, "Training interrupted")
             return {"interrupted": True}
 
     except Exception as e:
-        log_error(f"Critical error: {e}", "main")
+        logging.error(f"Critical error: {e}")
+        if dashboard:
+            dashboard.set_training_stage(TrainingStage.ERROR, 1.0, f"Critical error: {str(e)[:50]}...")
         return {"error": str(e)}
 
     finally:
-        # Always clean up resources
         cleanup_resources()
 
 
 def main():
     """Main entry point with error handling"""
     os.environ["HYDRA_FULL_ERROR"] = "1"
-    os.environ["HYDRA_STRICT_CFG"] = "0"  # Allow fields not in struct
+    os.environ["HYDRA_STRICT_CFG"] = "0"
 
     # Set UTF-8 encoding for Windows
-    if os.name == 'nt':  # Windows
+    if os.name == 'nt':
         os.environ['PYTHONIOENCODING'] = 'utf-8'
 
     try:
         run_training()
     except KeyboardInterrupt:
-        print("\nTraining interrupted by user")
+        console.print("\n[bold red]Training interrupted by user[/bold red]")
         cleanup_resources()
         sys.exit(0)
     except Exception as e:
-        # Fallback logging if centralized logger fails
-        print(f"Error running training: {e}")
-        print("Trying to continue with default configuration...")
+        console.print(f"[bold red]Error running training: {e}[/bold red]")
+        console.print("Trying to continue with default configuration...")
         try:
             from config.config import Config
             config = Config()
-            # Override with hard-coded values instead of Hydra interpolation
             config.data.data_dir = "./dnb/mlgo"
             config.data.symbol_info_file = "./dnb/mlgo/symbols.json"
             run_training(config)
         except Exception as e2:
-            print(f"Failed to run with default config: {e2}")
+            console.print(f"[bold red]Failed to run with default config: {e2}[/bold red]")
             sys.exit(1)
     finally:
         cleanup_resources()
