@@ -1,4 +1,4 @@
-# utils/logger.py - Simplified Rich logger setup
+# utils/logger.py - Simplified Rich logger setup compatible with dashboard
 import logging
 import sys
 from rich.console import Console
@@ -15,6 +15,7 @@ console = Console()
 def setup_rich_logging(level: int = logging.INFO, show_time: bool = True, show_path: bool = False):
     """
     Set up Rich logging as the default Python logging handler.
+    This will be temporarily replaced when dashboard starts.
 
     Args:
         level: Logging level
@@ -22,7 +23,8 @@ def setup_rich_logging(level: int = logging.INFO, show_time: bool = True, show_p
         show_path: Whether to show file paths
     """
     # Clear any existing handlers
-    logging.getLogger().handlers.clear()
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
 
     # Create Rich handler
     rich_handler = RichHandler(
@@ -35,14 +37,18 @@ def setup_rich_logging(level: int = logging.INFO, show_time: bool = True, show_p
     )
 
     # Set up root logger
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[rich_handler]
-    )
+    root_logger.setLevel(level)
+    root_logger.addHandler(rich_handler)
 
-    return logging.getLogger()
+    # Set format
+    rich_handler.setFormatter(logging.Formatter("%(message)s"))
+
+    return root_logger
+
+
+def get_logger(name: str = None) -> logging.Logger:
+    """Get a logger instance"""
+    return logging.getLogger(name) if name else logging.getLogger()
 
 
 # Setup default rich logging
