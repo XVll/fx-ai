@@ -1,13 +1,10 @@
-# envs/env_dashboard.py - FIXED: Proper Rich Live integration
+# envs/env_dashboard.py - PROPERLY FIXED: Following Rich Live documentation exactly
 import logging
 from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Deque
 from dataclasses import dataclass, field
-import threading
 import time
-import sys
-from io import StringIO
 
 from rich.console import Console
 from rich.live import Live
@@ -17,7 +14,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.align import Align
 from rich import box
-from rich.columns import Columns
+from rich.logging import RichHandler
 
 from simulators.portfolio_simulator import PositionSideEnum, OrderSideEnum
 
@@ -90,7 +87,7 @@ class DashboardState:
 class TradingDashboard:
     """
     A live dashboard for monitoring trading environment using Rich Live display.
-    FIXED: Properly integrates with Rich Live console for logging.
+    PROPERLY FIXED: Following Rich Live documentation pattern exactly.
     """
 
     def __init__(self, console: Optional[Console] = None):
@@ -100,226 +97,258 @@ class TradingDashboard:
         Args:
             console: Rich console instance (creates new if None)
         """
+        self.console = console or Console()
         self.state = DashboardState()
         self.live: Optional[Live] = None
-        self.layout: Optional[Layout] = None
+        self.layout: Layout = self._create_layout()
         self.logger = logging.getLogger(__name__)
-
-        # Store original console but let Live manage logging
-        self._external_console = console
-        self._live_console: Optional[Console] = None
 
         # State management
         self._running = False
-        self._last_update = 0
-        self._setup_layout()
 
-    def _setup_layout(self):
-        """Create the dashboard layout structure - 2 columns (no logs column)"""
-        self.layout = Layout()
+    def _create_layout(self) -> Layout:
+        """Create the dashboard layout structure"""
+        layout = Layout()
 
         # Main structure: header, body with 2 columns, footer
-        self.layout.split_column(
+        layout.split_column(
             Layout(name="header", size=3),
             Layout(name="body", ratio=1),
             Layout(name="footer", size=3)
         )
 
-        # Split body into 2 columns (removed logs column)
-        self.layout["body"].split_row(
+        # Split body into 2 columns
+        layout["body"].split_row(
             Layout(name="left_column", ratio=1),
             Layout(name="right_column", ratio=1)
         )
 
         # Left column: Market data, Position, Costs
-        self.layout["left_column"].split_column(
+        layout["left_column"].split_column(
             Layout(name="market", size=9),
             Layout(name="position", size=9),
             Layout(name="costs", size=6)
         )
 
         # Right column: Portfolio, Actions, Fills
-        self.layout["right_column"].split_column(
+        layout["right_column"].split_column(
             Layout(name="portfolio", size=9),
             Layout(name="actions", size=8),
             Layout(name="fills", size=7)
         )
 
+        # Initialize with empty content
+        self._update_layout(layout)
+        return layout
+
     def start(self):
-        """Start the live dashboard"""
+        """Start the live dashboard following Rich Live pattern exactly"""
         if self._running:
             return
 
-        self._running = True
-
         try:
-            # Create Live display - let it manage its own console
+            # Create Live display following the documentation pattern
             self.live = Live(
                 self.layout,
-                console=self._external_console,  # Use provided console or None for auto
+                console=self.console,
                 refresh_per_second=2,
                 screen=False,  # Don't use alternate screen
                 auto_refresh=True,
-                vertical_overflow="ellipsis"  # Handle overflow gracefully
+                transient=False,  # Keep dashboard visible
+                redirect_stdout=True,  # This makes print() appear above
+                redirect_stderr=True,  # This makes stderr appear above
+                vertical_overflow="ellipsis"
             )
 
             # Start the live display
             self.live.start()
+            self._running = True
 
-            # Now we can access the live console for logging
-            self._live_console = self.live.console
+            # Configure logging to use live.console (this is the key!)
+            self._setup_logging()
 
-            # Update display and redirect logging
-            self._update_display()
-            self._setup_logging_redirect()
-
-            self.logger.info("Trading dashboard started - logs will appear above the dashboard")
+            # Use live.console.print to show startup message ABOVE dashboard
+            self.live.console.print(
+                "🚀 [bold green]Trading Dashboard Started[/bold green] - logs will appear above this dashboard")
 
         except Exception as e:
             self.logger.error(f"Failed to start dashboard: {e}")
             self._running = False
 
-    def _setup_logging_redirect(self):
-        """Redirect Python logging to the live console"""
-        if not self._live_console:
+    def _setup_logging(self):
+        """Configure logging to use live.console following Rich docs pattern"""
+        if not self.live:
             return
 
-        # Create a handler that writes to the live console
-        class LiveConsoleHandler(logging.Handler):
-            def __init__(self, live_console: Console):
-                super().__init__()
-                self.live_console = live_console
+        try:
+            # This is the correct way according to Rich Live docs
+            # Remove existing handlers first
+            root_logger = logging.getLogger()
 
-            def emit(self, record):
-                try:
-                    msg = self.format(record)
-                    # Use live console for output - appears above dashboard
-                    self.live_console.print(msg)
-                except Exception:
-                    pass  # Don't let logging errors break anything
+            # Remove existing RichHandlers to avoid duplicates
+            handlers_to_remove = [h for h in root_logger.handlers if isinstance(h, RichHandler)]
+            for handler in handlers_to_remove:
+                root_logger.removeHandler(handler)
 
-        # Remove any existing handlers and add our live console handler
-        # Only redirect root logger temporarily
-        self._original_handlers = logging.root.handlers[:]
-        self._live_handler = LiveConsoleHandler(self._live_console)
-        self._live_handler.setLevel(logging.INFO)
+            # Create RichHandler using live.console - THIS IS THE KEY
+            rich_handler = RichHandler(
+                console=self.live.console,  # Use live.console - logs appear above!
+                show_time=True,
+                show_path=False,
+                markup=True,
+                rich_tracebacks=True,
+                omit_repeated_times=False
+            )
+            rich_handler.setLevel(logging.INFO)
 
-        # Set formatter to match existing style
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
-        self._live_handler.setFormatter(formatter)
+            # Simple formatter
+            formatter = logging.Formatter("%(message)s")
+            rich_handler.setFormatter(formatter)
 
-        # Add our handler but keep existing ones
-        logging.root.addHandler(self._live_handler)
+            # Add to root logger
+            root_logger.addHandler(rich_handler)
+            root_logger.setLevel(logging.INFO)
+
+            # Test that logging works correctly - this should appear ABOVE dashboard
+            self.live.console.print("✅ [green]Logging configured - this appears above dashboard[/green]")
+
+        except Exception as e:
+            print(f"Error setting up logging: {e}")
 
     def stop(self):
         """Stop the live dashboard"""
-        self._running = False
+        if not self._running:
+            return
 
-        # Restore original logging setup
-        if hasattr(self, '_live_handler'):
-            try:
-                logging.root.removeHandler(self._live_handler)
-            except:
-                pass
+        self._running = False
 
         if self.live:
             try:
+                # Use live.console.print for final message
+                self.live.console.print("🛑 [yellow]Stopping trading dashboard...[/yellow]")
                 self.live.stop()
             except Exception as e:
-                self.logger.error(f"Error stopping dashboard: {e}")
-
-        self.logger.info("Trading dashboard stopped")
+                print(f"Error stopping dashboard: {e}")
 
     def update_state(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
         """
-        Update dashboard state with new information from the environment.
+        Update dashboard state and refresh display.
+        This follows the Rich Live pattern: update data, then call live.update()
         """
+        if not self._running or not self.live:
+            return
+
         try:
-            # Basic environment info
-            self.state.step = info_dict.get('step', self.state.step)
-            self.state.timestamp = info_dict.get('timestamp_iso', 'N/A')
-            self.state.episode_reward = info_dict.get('episode_cumulative_reward', 0.0)
-            self.state.step_reward = info_dict.get('reward_step', 0.0)
-            self.state.total_reward = self.state.episode_reward
+            # Update state data
+            self._update_state_data(info_dict, market_state)
 
-            # Portfolio metrics
-            self.state.total_equity = info_dict.get('portfolio_equity', 0.0)
-            self.state.cash = info_dict.get('portfolio_cash', 0.0)
-            self.state.unrealized_pnl = info_dict.get('portfolio_unrealized_pnl', 0.0)
-            self.state.realized_pnl = info_dict.get('portfolio_realized_pnl_session_net', 0.0)
+            # Update the layout with new data
+            self._update_layout(self.layout)
 
-            # Calculate session PnL
-            self.state.session_pnl = self.state.total_equity - self.state.initial_capital
-            if self.state.initial_capital > 0:
-                self.state.session_pnl_pct = (self.state.session_pnl / self.state.initial_capital) * 100
-
-            # Position data
-            symbol = self.state.symbol
-            if symbol != "N/A":
-                self.state.position_qty = info_dict.get(f'position_{symbol}_qty', 0.0)
-                self.state.position_side = info_dict.get(f'position_{symbol}_side', 'FLAT')
-                self.state.position_avg_entry = info_dict.get(f'position_{symbol}_avg_entry', 0.0)
-
-            # Action info
-            action_decoded = info_dict.get('action_decoded', {})
-            if action_decoded:
-                action_type = action_decoded.get('type')
-                self.state.last_action_type = action_type.name if hasattr(action_type, 'name') else str(action_type)
-
-                size_enum = action_decoded.get('size_enum')
-                self.state.last_action_size = size_enum.name if hasattr(size_enum, 'name') else str(size_enum)
-
-                self.state.last_action_invalid = bool(action_decoded.get('invalid_reason'))
-                self.state.last_action_reason = str(action_decoded.get('invalid_reason', ''))
-
-                # Add to recent actions (limited for display)
-                self.state.recent_actions.append({
-                    'step': self.state.step,
-                    'type': self.state.last_action_type,
-                    'size': self.state.last_action_size,
-                    'invalid': self.state.last_action_invalid
-                })
-
-            self.state.invalid_actions_count = info_dict.get('invalid_actions_total_episode', 0)
-
-            # Market data
-            if market_state:
-                self.state.current_price = market_state.get('current_price')
-                self.state.bid_price = market_state.get('best_bid_price')
-                self.state.ask_price = market_state.get('best_ask_price')
-                self.state.bid_size = market_state.get('best_bid_size', 0)
-                self.state.ask_size = market_state.get('best_ask_size', 0)
-                self.state.market_session = market_state.get('market_session', 'UNKNOWN')
-
-            # Fills
-            fills_step = info_dict.get('fills_step', [])
-            if fills_step:
-                for fill in fills_step:
-                    self.state.recent_fills.append({
-                        'step': self.state.step,
-                        'side': fill.get('order_side', 'N/A'),
-                        'quantity': fill.get('executed_quantity', 0.0),
-                        'price': fill.get('executed_price', 0.0)
-                    })
-
-            # Episode summary if available
-            episode_summary = info_dict.get('episode_summary', {})
-            if episode_summary:
-                self.state.total_commissions = episode_summary.get('session_total_commissions', 0.0)
-                self.state.total_fees = episode_summary.get('session_total_fees', 0.0)
-                self.state.total_slippage = episode_summary.get('session_total_slippage_cost', 0.0)
-                self.state.termination_reason = episode_summary.get('termination_reason', '')
-
-            # Status
-            self.state.is_terminated = info_dict.get('termination_reason') is not None
-            self.state.is_truncated = info_dict.get('TimeLimit.truncated', False)
-
-            # Update display
-            if self._running:
-                self._update_display()
+            # This is the key: use live.update() to refresh the display
+            # The layout is already updated, so Live will show the new content
+            self.live.update(self.layout)
 
         except Exception as e:
-            self.logger.error(f"Error updating dashboard state: {e}")
+            # Use live.console for error logging - appears above dashboard
+            if self.live:
+                self.live.console.print(f"❌ [red]Error updating dashboard: {e}[/red]")
+
+    def _update_state_data(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
+        """Update internal state data"""
+        # Basic environment info
+        self.state.step = info_dict.get('step', self.state.step)
+        self.state.timestamp = info_dict.get('timestamp_iso', 'N/A')
+        self.state.episode_reward = info_dict.get('episode_cumulative_reward', 0.0)
+        self.state.step_reward = info_dict.get('reward_step', 0.0)
+        self.state.total_reward = self.state.episode_reward
+
+        # Portfolio metrics
+        self.state.total_equity = info_dict.get('portfolio_equity', 0.0)
+        self.state.cash = info_dict.get('portfolio_cash', 0.0)
+        self.state.unrealized_pnl = info_dict.get('portfolio_unrealized_pnl', 0.0)
+        self.state.realized_pnl = info_dict.get('portfolio_realized_pnl_session_net', 0.0)
+
+        # Calculate session PnL
+        self.state.session_pnl = self.state.total_equity - self.state.initial_capital
+        if self.state.initial_capital > 0:
+            self.state.session_pnl_pct = (self.state.session_pnl / self.state.initial_capital) * 100
+
+        # Position data
+        symbol = self.state.symbol
+        if symbol != "N/A":
+            self.state.position_qty = info_dict.get(f'position_{symbol}_qty', 0.0)
+            self.state.position_side = info_dict.get(f'position_{symbol}_side', 'FLAT')
+            self.state.position_avg_entry = info_dict.get(f'position_{symbol}_avg_entry', 0.0)
+
+        # Action info
+        action_decoded = info_dict.get('action_decoded', {})
+        if action_decoded:
+            action_type = action_decoded.get('type')
+            self.state.last_action_type = action_type.name if hasattr(action_type, 'name') else str(action_type)
+
+            size_enum = action_decoded.get('size_enum')
+            self.state.last_action_size = size_enum.name if hasattr(size_enum, 'name') else str(size_enum)
+
+            self.state.last_action_invalid = bool(action_decoded.get('invalid_reason'))
+            self.state.last_action_reason = str(action_decoded.get('invalid_reason', ''))
+
+            # Add to recent actions
+            self.state.recent_actions.append({
+                'step': self.state.step,
+                'type': self.state.last_action_type,
+                'size': self.state.last_action_size,
+                'invalid': self.state.last_action_invalid
+            })
+
+        self.state.invalid_actions_count = info_dict.get('invalid_actions_total_episode', 0)
+
+        # Market data
+        if market_state:
+            self.state.current_price = market_state.get('current_price')
+            self.state.bid_price = market_state.get('best_bid_price')
+            self.state.ask_price = market_state.get('best_ask_price')
+            self.state.bid_size = market_state.get('best_bid_size', 0)
+            self.state.ask_size = market_state.get('best_ask_size', 0)
+            self.state.market_session = market_state.get('market_session', 'UNKNOWN')
+
+        # Fills
+        fills_step = info_dict.get('fills_step', [])
+        if fills_step:
+            for fill in fills_step:
+                self.state.recent_fills.append({
+                    'step': self.state.step,
+                    'side': fill.get('order_side', 'N/A'),
+                    'quantity': fill.get('executed_quantity', 0.0),
+                    'price': fill.get('executed_price', 0.0)
+                })
+
+        # Episode summary
+        episode_summary = info_dict.get('episode_summary', {})
+        if episode_summary:
+            self.state.total_commissions = episode_summary.get('session_total_commissions', 0.0)
+            self.state.total_fees = episode_summary.get('session_total_fees', 0.0)
+            self.state.total_slippage = episode_summary.get('session_total_slippage_cost', 0.0)
+            self.state.termination_reason = episode_summary.get('termination_reason', '')
+
+        # Status
+        self.state.is_terminated = info_dict.get('termination_reason') is not None
+        self.state.is_truncated = info_dict.get('TimeLimit.truncated', False)
+
+        # Update tracking
+        self.state.last_update_time = time.time()
+        self.state.update_count += 1
+
+    def _update_layout(self, layout: Layout):
+        """Update all layout components with current state data"""
+        layout["header"].update(self._create_header())
+        layout["market"].update(self._create_market_panel())
+        layout["position"].update(self._create_position_panel())
+        layout["costs"].update(self._create_costs_panel())
+        layout["portfolio"].update(self._create_portfolio_panel())
+        layout["actions"].update(self._create_actions_panel())
+        layout["fills"].update(self._create_fills_panel())
+        layout["footer"].update(self._create_footer())
 
     def set_symbol(self, symbol: str):
         """Set the trading symbol"""
@@ -329,28 +358,20 @@ class TradingDashboard:
         """Set the initial capital for PnL calculations"""
         self.state.initial_capital = capital
 
-    def _update_display(self):
-        """Update all dashboard components"""
-        if not self.layout or not self._running:
-            return
-
-        try:
-            current_time = time.time()
-            self.state.last_update_time = current_time
-            self.state.update_count += 1
-
-            # Update each section
-            self.layout["header"].update(self._create_header())
-            self.layout["market"].update(self._create_market_panel())
-            self.layout["position"].update(self._create_position_panel())
-            self.layout["costs"].update(self._create_costs_panel())
-            self.layout["portfolio"].update(self._create_portfolio_panel())
-            self.layout["actions"].update(self._create_actions_panel())
-            self.layout["fills"].update(self._create_fills_panel())
-            self.layout["footer"].update(self._create_footer())
-
-        except Exception as e:
-            self.logger.error(f"Error updating display components: {e}")
+    def log_message(self, message: str, level: str = "info"):
+        """
+        Log a message that will appear ABOVE the dashboard.
+        This is the correct way to add logs according to Rich Live docs.
+        """
+        if self.live:
+            if level == "error":
+                self.live.console.print(f"❌ [red]{message}[/red]")
+            elif level == "warning":
+                self.live.console.print(f"⚠️ [yellow]{message}[/yellow]")
+            elif level == "success":
+                self.live.console.print(f"✅ [green]{message}[/green]")
+            else:
+                self.live.console.print(f"ℹ️ {message}")
 
     def _create_header(self) -> Panel:
         """Create the header panel with basic info"""
@@ -421,8 +442,7 @@ class TradingDashboard:
         entry_text = f"${self.state.position_avg_entry:.4f}" if self.state.position_avg_entry > 0 else "N/A"
         table.add_row("Avg Entry", Text(entry_text, style="white"))
 
-        if (self.state.current_price and self.state.position_avg_entry > 0 and
-                self.state.position_qty != 0):
+        if (self.state.current_price and self.state.position_avg_entry > 0 and self.state.position_qty != 0):
             price_diff = self.state.current_price - self.state.position_avg_entry
             if self.state.position_side == "SHORT":
                 price_diff = -price_diff
@@ -484,7 +504,8 @@ class TradingDashboard:
         table.add_column("Size", width=8)
         table.add_column("Status", width=8)
 
-        for action in list(self.state.recent_actions):
+        recent_actions = list(self.state.recent_actions)[-5:]
+        for action in recent_actions:
             step = str(action['step'])
             action_type = action['type']
             size = action['size']
@@ -515,7 +536,8 @@ class TradingDashboard:
         table.add_column("Qty", width=8)
         table.add_column("Price", width=10)
 
-        for fill in list(self.state.recent_fills):
+        recent_fills = list(self.state.recent_fills)[-5:]
+        for fill in recent_fills:
             step = str(fill['step'])
 
             side_obj = fill['side']
@@ -550,8 +572,7 @@ class TradingDashboard:
         else:
             footer_text = "[green]Environment running normally[/green]"
 
-        refresh_info = f" | Last update: {time.strftime('%H:%M:%S')} | Step: {self.state.step}"
-        footer_text += refresh_info
+        footer_text += f" | Step: {self.state.step} | Last update: {time.strftime('%H:%M:%S')}"
 
         return Panel(
             Align.center(Text.from_markup(footer_text)),
