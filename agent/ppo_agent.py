@@ -1,4 +1,4 @@
-# agent/ppo_agent.py - Updated with Rich logging integration
+# agent/ppo_agent.py - Updated with proper dashboard progress tracking
 import os
 import logging
 import numpy as np
@@ -8,6 +8,7 @@ import torch.optim as optim
 from typing import Dict, List, Union, Any, Optional
 import wandb
 import torch.nn.functional as nnf
+import time
 
 from config.config import ModelConfig
 from envs.env_dashboard import TrainingStage
@@ -95,6 +96,10 @@ class PPOTrainer:
         # Dashboard integration
         self.is_evaluating = False
 
+        # Performance tracking for dashboard
+        self.last_update_start_time = 0.0
+        self.last_rollout_start_time = 0.0
+
         logging.info(f"🤖 PPOTrainer initialized. Device: {self.device}, LR: {self.lr}, Rollout Steps: {self.rollout_steps}")
 
     def _convert_action_for_env(self, action_tensor: torch.Tensor) -> Any:
@@ -123,9 +128,12 @@ class PPOTrainer:
             )
 
     def collect_rollout_data(self) -> Dict[str, Any]:
-        """Collects data for a fixed number of steps."""
+        """Collects data for a fixed number of steps with proper dashboard progress tracking."""
         logging.info(f"🎲 Starting rollout data collection for {self.rollout_steps} steps...")
         self.buffer.clear()
+
+        # Record start time for performance tracking
+        self.last_rollout_start_time = time.time()
 
         # Update dashboard that we're collecting rollouts (training mode)
         self._update_dashboard_training_info(is_training=True, is_evaluating=False)
@@ -147,14 +155,21 @@ class PPOTrainer:
                 for k, v in current_env_state_np.items()
             }
 
+            # Update dashboard with rollout progress
             if self.dashboard:
-                stage_progress_detail = collected_steps / self.rollout_steps
-                if self.dashboard.state.current_stage == TrainingStage.COLLECTING_ROLLOUT:
-                    self.dashboard.set_training_stage(
-                        TrainingStage.COLLECTING_ROLLOUT,  # Keep current stage
-                        self.dashboard.state.stage_progress,  # Keep overall progress
-                        stage_progress_detail  # Update details
-                    )
+                rollout_progress = collected_steps / self.rollout_steps
+                self.dashboard.set_training_stage(
+                    TrainingStage.COLLECTING_ROLLOUT,
+                    None,  # Don't change overall progress
+                    f"Collecting step {collected_steps}/{self.rollout_steps}",
+                    rollout_progress  # Set substage progress
+                )
+
+                # Update training metrics with current collection status
+                self.dashboard.update_training_metrics({
+                    'collected_steps': collected_steps,
+                    'rollout_steps': self.rollout_steps,
+                })
 
             current_model_state_torch_batched = {}
             for key, tensor_val in single_step_tensors.items():
@@ -235,12 +250,29 @@ class PPOTrainer:
 
         self.buffer.prepare_data_for_training()
 
+        # Calculate performance metrics
+        rollout_time = time.time() - self.last_rollout_start_time
+        steps_per_second = collected_steps / rollout_time if rollout_time > 0 else 0
+
         rollout_stats = {
             "collected_steps": collected_steps,
             "mean_reward": np.mean(episode_rewards_in_rollout) if episode_rewards_in_rollout else 0,
             "mean_episode_length": np.mean(episode_lengths_in_rollout) if episode_lengths_in_rollout else 0,
-            "num_episodes_in_rollout": len(episode_rewards_in_rollout)
+            "num_episodes_in_rollout": len(episode_rewards_in_rollout),
+            "rollout_time": rollout_time,
+            "steps_per_second": steps_per_second
         }
+
+        # Update dashboard with rollout completion
+        if self.dashboard:
+            self.dashboard.update_training_metrics({
+                'collected_steps': collected_steps,
+                'mean_episode_reward': rollout_stats["mean_reward"],
+                'mean_episode_length': rollout_stats["mean_episode_length"],
+                'episodes_per_update': rollout_stats["num_episodes_in_rollout"],
+                'steps_per_second': steps_per_second,
+            })
+
         logging.info(f"📊 Rollout finished. {rollout_stats}")
         return rollout_stats
 
@@ -295,7 +327,10 @@ class PPOTrainer:
         logging.debug(f"Final shapes - advantages: {self.buffer.advantages.shape}, returns: {self.buffer.returns.shape}")
 
     def update_policy(self) -> Dict[str, float]:
-        """Performs PPO updates for ppo_epochs using data in the buffer."""
+        """Performs PPO updates for ppo_epochs using data in the buffer with proper dashboard progress tracking."""
+        # Record start time for performance tracking
+        self.last_update_start_time = time.time()
+
         # Update dashboard that we're updating policy
         self._update_dashboard_training_info(is_training=True, is_evaluating=False)
 
@@ -326,22 +361,39 @@ class PPOTrainer:
 
         total_actor_loss, total_critic_loss, total_entropy_loss = 0, 0, 0
         num_updates_in_epoch = 0
+        total_batches = (num_samples + self.batch_size - 1) // self.batch_size
+        total_updates = self.ppo_epochs * total_batches
 
         logging.info(f"🔄 Starting PPO update for {self.ppo_epochs} epochs with {num_samples} samples")
 
+        update_idx = 0
         for epoch in range(self.ppo_epochs):
+            # Update dashboard with epoch progress
             if self.dashboard:
-                stage_progress_detail = epoch + 1 / self.ppo_epochs
-                if self.dashboard.state.current_stage == TrainingStage.UPDATING_POLICY:
-                    self.dashboard.set_training_stage(
-                        TrainingStage.UPDATING_POLICY,
-                        self.dashboard.state.stage_progress,
-                        stage_progress_detail
-                    )
+                epoch_progress = epoch / self.ppo_epochs
+                self.dashboard.set_training_stage(
+                    TrainingStage.UPDATING_POLICY,
+                    None,  # Don't change overall progress
+                    f"Policy update epoch {epoch + 1}/{self.ppo_epochs}",
+                    epoch_progress  # Set substage progress
+                )
+
             np.random.shuffle(indices)
 
             for start_idx in range(0, num_samples, self.batch_size):
                 batch_indices = indices[start_idx: start_idx + self.batch_size]
+
+                # Update dashboard with batch progress within epoch
+                if self.dashboard:
+                    batch_progress = update_idx / total_updates
+                    batch_num = (start_idx // self.batch_size) + 1
+                    epoch_batches = (num_samples + self.batch_size - 1) // self.batch_size
+                    self.dashboard.set_training_stage(
+                        TrainingStage.UPDATING_POLICY,
+                        None,  # Don't change overall progress
+                        f"Epoch {epoch + 1}/{self.ppo_epochs}, Batch {batch_num}/{epoch_batches}",
+                        batch_progress  # Set substage progress
+                    )
 
                 batch_states = {key: tensor_val[batch_indices] for key, tensor_val in states_dict.items()}
                 batch_actions = actions[batch_indices]
@@ -417,8 +469,12 @@ class PPOTrainer:
                 total_critic_loss += critic_loss.item()
                 total_entropy_loss += entropy.mean().item()
                 num_updates_in_epoch += 1
+                update_idx += 1
 
         self.global_update_counter += 1
+
+        # Calculate performance metrics
+        update_time = time.time() - self.last_update_start_time
 
         avg_actor_loss = total_actor_loss / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
         avg_critic_loss = total_critic_loss / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
@@ -428,8 +484,19 @@ class PPOTrainer:
             "actor_loss": avg_actor_loss,
             "critic_loss": avg_critic_loss,
             "entropy": avg_entropy,
-            "total_loss": avg_actor_loss + self.critic_coef * avg_critic_loss + self.entropy_coef * (-avg_entropy)
+            "total_loss": avg_actor_loss + self.critic_coef * avg_critic_loss + self.entropy_coef * (-avg_entropy),
+            "time_per_update": update_time
         }
+
+        # Update dashboard with final metrics
+        if self.dashboard:
+            self.dashboard.update_training_metrics({
+                'actor_loss': avg_actor_loss,
+                'critic_loss': avg_critic_loss,
+                'entropy': avg_entropy,
+                'time_per_update': update_time,
+                'update_count': self.global_update_counter
+            })
 
         for callback in self.callbacks:
             callback.on_update_end(self, update_metrics)
@@ -437,7 +504,8 @@ class PPOTrainer:
         logging.info(f"📈 PPO Update {self.global_update_counter}: "
                      f"Actor Loss: {avg_actor_loss:.4f}, "
                      f"Critic Loss: {avg_critic_loss:.4f}, "
-                     f"Entropy: {avg_entropy:.4f}")
+                     f"Entropy: {avg_entropy:.4f}, "
+                     f"Time: {update_time:.1f}s")
 
         return update_metrics
 
@@ -504,7 +572,7 @@ class PPOTrainer:
         return final_stats
 
     def evaluate(self, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
-        """Evaluates the current model policy with enhanced logging."""
+        """Evaluates the current model policy with enhanced logging and dashboard updates."""
         logging.info(f"🔍 Starting evaluation for {n_episodes} episodes (deterministic: {deterministic})...")
 
         # Set model to evaluation mode
@@ -518,6 +586,16 @@ class PPOTrainer:
         episode_lengths = []
 
         for i in range(n_episodes):
+            # Update dashboard with evaluation progress
+            if self.dashboard:
+                eval_progress = i / n_episodes
+                self.dashboard.set_training_stage(
+                    TrainingStage.EVALUATING,
+                    None,  # Don't change overall progress
+                    f"Evaluation episode {i + 1}/{n_episodes}",
+                    eval_progress  # Set substage progress
+                )
+
             env_state_np, _ = self.env.reset()
             current_episode_reward = 0.0
             current_episode_length = 0
