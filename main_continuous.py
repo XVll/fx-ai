@@ -1,18 +1,17 @@
 #!/usr/bin/env python
-# main_continuous.py - Main entry point for training AI models with continuous training support
+# main_continuous.py - Updated with centralized logging integration
 import os
 import sys
-import logging
+from datetime import datetime
 
 import hydra
 import torch
 import wandb
-from datetime import datetime
-from typing import Dict
-
 from hydra.core.hydra_config import HydraConfig
-from hydra import initialize, compose, initialize_config_module
-from omegaconf import OmegaConf, DictConfig
+from omegaconf import OmegaConf
+
+# Import centralized logging
+from utils.logger import initialize_logger, get_logger, log_info, log_error, log_warning
 
 from agent.continous_training_callback import ContinuousTrainingCallback
 from ai.transformer import MultiBranchTransformer
@@ -32,33 +31,22 @@ from agent.callbacks import ModelCheckpointCallback, EarlyStoppingCallback
 from agent.wandb_callback import WandbCallback
 from utils.model_manager import ModelManager
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(f"trading_ai_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    ]
-)
-log = logging.getLogger("main")
-
 
 def select_device(device_str):
     """Select device based on config or auto-detect."""
     if device_str == "auto":
         if torch.cuda.is_available():
             device = torch.device("cuda")
-            log.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
+            log_info(f"Using CUDA device: {torch.cuda.get_device_name(0)}", "device")
         elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             device = torch.device("mps")
-            log.info("Using MPS (Apple Silicon) device")
+            log_info("Using MPS (Apple Silicon) device", "device")
         else:
             device = torch.device("cpu")
-            log.info("Using CPU device")
+            log_info("Using CPU device", "device")
     else:
         device = torch.device(device_str)
-        log.info(f"Using specified device: {device}")
+        log_info(f"Using specified device: {device}", "device")
 
     return device
 
@@ -66,7 +54,7 @@ def select_device(device_str):
 def create_data_provider(config: Config):
     """Create appropriate data provider based on config."""
     data_cfg = config.data
-    log.info(f"Initializing data provider: {data_cfg.provider_type}")
+    log_info(f"Initializing data provider: {data_cfg.provider_type}", "data")
 
     if data_cfg.provider_type == "file":
         return DabentoFileProvider(
@@ -112,13 +100,14 @@ def create_data_provider(config: Config):
     else:
         raise ValueError(f"Unknown provider type: {data_cfg.provider_type}")
 
+
 @hydra.main(version_base="1.2", config_path="config", config_name="config")
 def run_training(cfg: Config):
     """
-    Main training function.
+    Main training function with centralized logging.
 
     Args:
-        cfg: Optional Config object. If None, config will be loaded using Hydra.
+        cfg: Config object from Hydra
 
     Returns:
         Dict[str, Any]: Training statistics
@@ -134,13 +123,24 @@ def run_training(cfg: Config):
     model_dir = os.path.join(output_dir, "models")
     os.makedirs(model_dir, exist_ok=True)
 
+    # Initialize centralized logging FIRST
+    log_file = os.path.join(output_dir, "training.log")
+    logger_manager = initialize_logger(
+        app_name="fx-ai",
+        log_file=log_file,
+        max_dashboard_logs=1000
+    )
+
+    # Log startup
+    log_info("🚀 Starting FX-AI Training System", "main")
+    log_info(f"📁 Output directory: {output_dir}", "main")
+    log_info(f"📄 Log file: {log_file}", "main")
+
     # Save the config for reference
     config_path = os.path.join(output_dir, "config_used.yaml")
     with open(config_path, 'w') as f:
         f.write(OmegaConf.to_yaml(cfg))
-
-    log.info(f"Training run initialized in directory: {output_dir}")
-    log.info(f"Configuration saved to: {config_path}")
+    log_info(f"💾 Configuration saved to: {config_path}", "main")
 
     # Check if we're in continuous training mode
     continuous_mode = getattr(cfg.training, 'enabled', False)
@@ -151,7 +151,7 @@ def run_training(cfg: Config):
     os.makedirs(best_models_dir, exist_ok=True)
 
     if continuous_mode:
-        log.info(f"Continuous training mode enabled. Will use/save best models in: {best_models_dir}")
+        log_info(f"🔄 Continuous training mode enabled. Best models dir: {best_models_dir}", "training")
 
     # Initialize W&B if enabled
     if cfg.wandb.enabled:
@@ -163,23 +163,33 @@ def run_training(cfg: Config):
                 save_code=cfg.wandb.log_code,
                 dir=output_dir
             )
-            log.info(f"W&B initialized: {wandb.run.name} ({wandb.run.id})")
+            log_info(f"📊 W&B initialized: {wandb.run.name} ({wandb.run.id})", "wandb")
         except Exception as e:
-            log.error(f"Failed to initialize W&B: {e}")
-            log.info("Continuing without W&B...")
+            log_error(f"Failed to initialize W&B: {e}", "wandb")
+            log_warning("Continuing without W&B...", "wandb")
 
     try:
         # Create data provider and manager
-        log.info("Initializing data provider and manager")
+        log_info("📡 Initializing data provider and manager", "data")
         data_provider = create_data_provider(cfg)
-        data_manager = DataManager(provider=data_provider, logger=log.getChild("DataManager"))
+
+        # Pass the logger manager to data manager if it supports it
+        if hasattr(DataManager, '__init__'):
+            # Check if DataManager accepts logger_manager parameter
+            try:
+                data_manager = DataManager(provider=data_provider, logger=get_logger().get_logger("DataManager"))
+            except TypeError:
+                data_manager = DataManager(provider=data_provider)
+        else:
+            data_manager = DataManager(provider=data_provider)
 
         # Get symbol and date range
         symbol = cfg.data.symbol
-
-        # Set trading dates (use specific dates for reproducibility)
         start_date = cfg.data.start_date
         end_date = cfg.data.end_date
+
+        log_info(f"📈 Trading symbol: {symbol}", "config")
+        log_info(f"📅 Date range: {start_date} to {end_date}", "config")
 
         # Initialize model manager for continuous training support
         model_manager = ModelManager(
@@ -190,12 +200,12 @@ def run_training(cfg: Config):
             symbol=symbol
         )
 
-        # Create environment
-        log.info(f"Creating trading environment for {symbol} from {start_date} to {end_date}")
+        # Create environment with centralized logging
+        log_info(f"🏦 Creating trading environment for {symbol}", "env")
         env = TradingEnvironment(
             config=cfg,
             data_manager=data_manager,
-            logger=log.getChild("TradingEnv")
+            logger=get_logger().get_logger("TradingEnv")
         )
 
         # Setup environment session
@@ -207,24 +217,28 @@ def run_training(cfg: Config):
 
         # Wrap environment with observation normalization if required
         if cfg.env.normalize_state:
-            log.info("Wrapping environment with observation normalization")
+            log_info("🔄 Wrapping environment with observation normalization", "env")
             env = NormalizeDictObservation(env)
 
         # Select device for training
         device = select_device(cfg.training.device)
 
         # Create model
-        log.info("Creating multi-branch transformer model")
+        log_info("🧠 Creating multi-branch transformer model", "model")
         model_config = OmegaConf.to_container(cfg.model, resolve=True)
 
         # Make an initial reset to get observation shape for sanity check
         obs, info = env.reset()
 
         try:
-            model = MultiBranchTransformer(**model_config, device=device, logger=log.getChild("Transformer"))
-            log.info(f"Model created successfully with config: {model_config}")
+            model = MultiBranchTransformer(
+                **model_config,
+                device=device,
+                logger=get_logger().get_logger("Transformer")
+            )
+            log_info(f"✅ Model created successfully", "model")
         except Exception as e:
-            log.error(f"Error creating model: {e}")
+            log_error(f"Error creating model: {e}", "model")
             raise
 
         # For continuous training, load the best model if available
@@ -232,10 +246,9 @@ def run_training(cfg: Config):
         if continuous_mode and load_best_model:
             best_model_info = model_manager.find_best_model()
             if best_model_info:
-                log.info(f"Loading best model for continuous training: {best_model_info['path']}")
+                log_info(f"📂 Loading best model for continuous training: {best_model_info['path']}", "training")
 
                 # Initialize optimizer before loading
-                # Extract training parameters from config for optimizer
                 training_params = {
                     "lr": cfg.training.lr,
                     "max_grad_norm": cfg.training.max_grad_norm,
@@ -248,16 +261,15 @@ def run_training(cfg: Config):
                 model, training_state = model_manager.load_model(model, optimizer, best_model_info['path'])
                 loaded_metadata = training_state.get('metadata', {})
 
-                log.info(f"Loaded model from {best_model_info['path']}")
-                log.info(f"Training state loaded: "
-                         f"step={training_state.get('global_step', 0)}, "
+                log_info(f"✅ Model loaded successfully", "training")
+                log_info(f"📊 Training state: step={training_state.get('global_step', 0)}, "
                          f"episode={training_state.get('global_episode', 0)}, "
-                         f"update={training_state.get('global_update', 0)}")
+                         f"update={training_state.get('global_update', 0)}", "training")
             else:
-                log.info("No previous model found for continuous training. Starting fresh.")
+                log_info("🆕 No previous model found for continuous training. Starting fresh.", "training")
 
         # Set up training callbacks
-        log.info("Setting up training callbacks")
+        log_info("🔧 Setting up training callbacks", "training")
         callbacks = [
             ModelCheckpointCallback(
                 save_dir=model_dir,
@@ -275,6 +287,7 @@ def run_training(cfg: Config):
                     min_delta=cfg.callbacks.early_stopping.min_delta
                 )
             )
+            log_info(f"⏹️ Early stopping enabled (patience: {cfg.callbacks.early_stopping.patience})", "training")
 
         # Add W&B callback if enabled
         if cfg.wandb.enabled:
@@ -288,10 +301,10 @@ def run_training(cfg: Config):
                     log_code=cfg.wandb.log_code
                 )
                 callbacks.append(wandb_callback)
-                log.info("W&B callback added successfully")
+                log_info("📈 W&B callback added successfully", "wandb")
             except Exception as e:
-                log.error(f"Failed to initialize W&B callback: {e}")
-                log.info("Continuing without W&B callback...")
+                log_error(f"Failed to initialize W&B callback: {e}", "wandb")
+                log_warning("Continuing without W&B callback...", "wandb")
 
         # Add continuous training callback if in continuous mode
         if continuous_mode:
@@ -309,10 +322,10 @@ def run_training(cfg: Config):
                     load_metadata=loaded_metadata
                 )
                 callbacks.append(continuous_callback)
-                log.info("Continuous training callback added")
+                log_info("🔄 Continuous training callback added", "training")
             except Exception as e:
-                log.error(f"Failed to initialize continuous training callback: {e}")
-                log.info("Continuing without continuous training callback...")
+                log_error(f"Failed to initialize continuous training callback: {e}", "training")
+                log_warning("Continuing without continuous training callback...", "training")
 
         # Extract training parameters from config
         training_params = {
@@ -328,9 +341,9 @@ def run_training(cfg: Config):
             "rollout_steps": cfg.training.buffer_size
         }
 
-        log.info(f"Training parameters: {training_params}")
+        log_info(f"⚙️ Training parameters configured", "training")
 
-        # Create trainer
+        # Create trainer with centralized logging
         trainer = PPOTrainer(
             env=env,
             model=model,
@@ -345,14 +358,14 @@ def run_training(cfg: Config):
         # Train the model
         total_updates = cfg.training.total_updates
         total_steps = total_updates * cfg.training.buffer_size
-        log.info(f"Starting training for approximately {total_steps} steps "
-                 f"({total_updates} updates)")
+        log_info(f"🏃 Starting training for approximately {total_steps} steps "
+                 f"({total_updates} updates)", "training")
 
         # Evaluate the model before training if in continuous mode
         if continuous_mode and getattr(cfg.training, 'startup_evaluation', False) and load_best_model:
-            log.info("Performing initial evaluation...")
+            log_info("🔍 Performing initial evaluation...", "eval")
             eval_stats = trainer.evaluate(n_episodes=5)
-            log.info(f"Initial evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}")
+            log_info(f"📊 Initial evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}", "eval")
 
             # Log to W&B if enabled
             if cfg.wandb.enabled and wandb.run:
@@ -362,24 +375,24 @@ def run_training(cfg: Config):
             training_stats = trainer.train(total_updates)
 
             # Log final statistics
-            log.info("Training completed")
-            log.info(f"Total episodes: {training_stats.get('total_episodes', 0)}")
-            log.info(f"Total steps: {training_stats.get('total_steps', 0)}")
-            log.info(f"Best mean reward: {training_stats.get('best_mean_reward', 0)}")
+            log_info("🎉 Training completed successfully!", "training")
+            log_info(f"📊 Total episodes: {training_stats.get('total_episodes', 0)}", "training")
+            log_info(f"📊 Total steps: {training_stats.get('total_steps', 0)}", "training")
+            log_info(f"📊 Best mean reward: {training_stats.get('best_mean_reward', 0)}", "training")
 
             if 'best_model_path' in training_stats:
-                log.info(f"Best model saved to: {training_stats['best_model_path']}")
+                log_info(f"💾 Best model saved to: {training_stats['best_model_path']}", "training")
 
             # Evaluate the best model
-            log.info("Evaluating best model")
+            log_info("🔍 Evaluating best model", "eval")
             # Load the best model if available
             best_model_info = model_manager.find_best_model()
             if best_model_info:
                 model, _ = model_manager.load_model(model, None, best_model_info['path'])
-                log.info(f"Loaded best model for evaluation: {best_model_info['path']}")
+                log_info(f"📂 Loaded best model for evaluation: {best_model_info['path']}", "eval")
 
             eval_stats = trainer.evaluate(n_episodes=10)
-            log.info(f"Evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}")
+            log_info(f"📈 Final evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}", "eval")
 
             # Log to W&B if enabled
             if cfg.wandb.enabled and wandb.run:
@@ -388,11 +401,11 @@ def run_training(cfg: Config):
             return training_stats
 
         except KeyboardInterrupt:
-            log.info("Training interrupted by user")
+            log_warning("⚠️ Training interrupted by user", "training")
             # Save current model
             interrupted_model_path = os.path.join(model_dir, "interrupted_model.pt")
             trainer.save_model(interrupted_model_path)
-            log.info(f"Saved interrupted model to: {interrupted_model_path}")
+            log_info(f"💾 Saved interrupted model to: {interrupted_model_path}", "training")
 
             # Try to save to best_models as well for continuity
             if continuous_mode:
@@ -403,31 +416,34 @@ def run_training(cfg: Config):
                         -9999.0  # Low priority for interrupted models
                     )
                 except Exception as e:
-                    log.warning(f"Failed to save interrupted model to best_models: {e}")
+                    log_warning(f"Failed to save interrupted model to best_models: {e}", "training")
 
         except Exception as e:
-            log.exception(f"Error during training: {e}")
+            log_error(f"Error during training: {e}", "training")
             # Try to save current model
             try:
                 error_model_path = os.path.join(model_dir, "error_model.pt")
                 trainer.save_model(error_model_path)
-                log.info(f"Saved model at error to: {error_model_path}")
+                log_info(f"💾 Saved model at error to: {error_model_path}", "training")
             except:
-                log.error("Failed to save model after error")
+                log_error("Failed to save model after error", "training")
 
     except Exception as e:
-        log.exception(f"Critical error: {e}")
+        log_error(f"Critical error: {e}", "main")
 
     finally:
         # Clean up
         if 'data_manager' in locals():
-            log.info("Closing data manager")
+            log_info("🧹 Closing data manager", "cleanup")
             data_manager.close()
 
         # Finalize W&B logging if used
         if cfg.wandb.enabled and wandb.run:
-            log.info("Finalizing W&B run")
+            log_info("📊 Finalizing W&B run", "wandb")
             wandb.finish()
+
+        log_info("👋 Training session completed", "main")
+
 
 def main():
     os.environ["HYDRA_FULL_ERROR"] = "1"
@@ -436,9 +452,9 @@ def main():
     try:
         run_training()
     except Exception as e:
-        log.exception(f"Error initializing Hydra: {e}")
-        # Provide a fallback option with default paths
-        log.info("Trying to continue with default configuration...")
+        # Fallback logging if centralized logger fails
+        print(f"Error initializing Hydra: {e}")
+        print("Trying to continue with default configuration...")
         from config.config import Config
         config = Config()
         # Override with hard-coded values instead of Hydra interpolation

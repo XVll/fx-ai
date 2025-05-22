@@ -1,11 +1,10 @@
-# agent/ppo_agent.py - Updated with dashboard integration
+# agent/ppo_agent.py - Updated with centralized logging integration
 import os
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from typing import Dict, List, Union, Any, Optional
-import logging
 import wandb
 from omegaconf import DictConfig
 import torch.nn.functional as nnf
@@ -15,8 +14,7 @@ from envs.trading_env import TradingEnvironment
 from ai.transformer import MultiBranchTransformer
 from agent.utils import ReplayBuffer, convert_state_dict_to_tensors
 from agent.callbacks import TrainingCallback
-
-logger = logging.getLogger(__name__)
+from utils.logger import get_logger, log_info, log_warning, log_error, log_debug
 
 
 class PPOTrainer:
@@ -43,6 +41,9 @@ class PPOTrainer:
         self.env = env
         self.model = model
         self.model_config = model_config if model_config else {}
+
+        # Use centralized logger
+        self.logger = get_logger().get_logger("PPOTrainer")
 
         # Hyperparameters
         self.lr = lr
@@ -79,7 +80,7 @@ class PPOTrainer:
         # Logging and W&B
         self.use_wandb = use_wandb
         if self.use_wandb and wandb.run is None:
-            logger.warning("W&B not initialized. Consider initializing wandb.init() before trainer.")
+            log_warning("W&B not initialized. Consider initializing wandb.init() before trainer.", "ppo")
 
         # Callbacks
         self.callbacks = callbacks if callbacks else []
@@ -92,8 +93,7 @@ class PPOTrainer:
         # Dashboard integration
         self.is_evaluating = False
 
-        logger.info(
-            f"PPOTrainer initialized. Device: {self.device}, LR: {self.lr}, Rollout Steps: {self.rollout_steps}")
+        log_info(f"🤖 PPOTrainer initialized. Device: {self.device}, LR: {self.lr}, Rollout Steps: {self.rollout_steps}", "ppo")
 
     def _convert_action_for_env(self, action_tensor: torch.Tensor) -> Any:
         """Converts model's action tensor to environment-compatible format."""
@@ -122,7 +122,7 @@ class PPOTrainer:
 
     def collect_rollout_data(self) -> Dict[str, Any]:
         """Collects data for a fixed number of steps."""
-        logger.info(f"Starting rollout data collection for {self.rollout_steps} steps...")
+        log_info(f"🎲 Starting rollout data collection for {self.rollout_steps} steps...", "ppo")
         self.buffer.clear()
 
         # Update dashboard that we're collecting rollouts (training mode)
@@ -153,8 +153,7 @@ class PPOTrainer:
                     elif tensor_val.ndim == 3 and tensor_val.shape[0] == 1:
                         current_model_state_torch_batched[key] = tensor_val
                     else:
-                        logger.error(
-                            f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}'. Expected 2D. Shape: {tensor_val.shape}")
+                        log_error(f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}'. Expected 2D. Shape: {tensor_val.shape}", "ppo")
                         current_model_state_torch_batched[key] = tensor_val
                 elif key == 'static':
                     if tensor_val.ndim == 2 and tensor_val.shape[0] == 1:
@@ -162,8 +161,7 @@ class PPOTrainer:
                     elif tensor_val.ndim == 1:
                         current_model_state_torch_batched[key] = tensor_val.unsqueeze(0)
                     else:
-                        logger.error(
-                            f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}' (static). Expected 1D or 2D (1,F). Shape: {tensor_val.shape}")
+                        log_error(f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}' (static). Expected 1D or 2D (1,F). Shape: {tensor_val.shape}", "ppo")
                         current_model_state_torch_batched[key] = tensor_val
                 else:
                     current_model_state_torch_batched[key] = tensor_val
@@ -178,7 +176,7 @@ class PPOTrainer:
                 next_env_state_np, reward, terminated, truncated, info = self.env.step(env_action)
                 done = terminated or truncated
             except Exception as e:
-                logger.error(f"Error during environment step: {e}", exc_info=True)
+                log_error(f"Error during environment step: {e}", "ppo")
                 break
 
             self.buffer.add(
@@ -205,10 +203,10 @@ class PPOTrainer:
                 episode_rewards_in_rollout.append(current_episode_reward)
                 episode_lengths_in_rollout.append(current_episode_length)
 
-                logger.info(
-                    f"Episode {self.global_episode_counter} finished. Reward: {current_episode_reward:.2f}, "
-                    f"Length: {current_episode_length}, Global Steps: {self.global_step_counter}"
-                )
+                log_info(f"🏁 Episode {self.global_episode_counter} finished. "
+                        f"Reward: {current_episode_reward:.2f}, "
+                        f"Length: {current_episode_length}, "
+                        f"Global Steps: {self.global_step_counter}", "ppo")
 
                 for callback in self.callbacks:
                     callback.on_episode_end(self, current_episode_reward, current_episode_length, info)
@@ -231,13 +229,13 @@ class PPOTrainer:
             "mean_episode_length": np.mean(episode_lengths_in_rollout) if episode_lengths_in_rollout else 0,
             "num_episodes_in_rollout": len(episode_rewards_in_rollout)
         }
-        logger.info(f"Rollout finished. {rollout_stats}")
+        log_info(f"📊 Rollout finished. {rollout_stats}", "ppo")
         return rollout_stats
 
     def _compute_advantages_and_returns(self):
         """Computes GAE advantages and returns, storing them in the buffer."""
         if self.buffer.rewards is None or self.buffer.values is None or self.buffer.dones is None:
-            logger.error("Cannot compute advantages: buffer data not prepared.")
+            log_error("Cannot compute advantages: buffer data not prepared.", "ppo")
             return
 
         rewards = self.buffer.rewards
@@ -245,8 +243,7 @@ class PPOTrainer:
         dones = self.buffer.dones
         num_steps = len(rewards)
 
-        logger.debug(
-            f"Computing advantages with shapes - rewards: {rewards.shape}, values: {values.shape}, dones: {dones.shape}")
+        log_debug(f"Computing advantages with shapes - rewards: {rewards.shape}, values: {values.shape}, dones: {dones.shape}", "ppo")
 
         advantages = torch.zeros_like(values, device=self.device)
         last_gae_lam = 0
@@ -273,17 +270,17 @@ class PPOTrainer:
         self.buffer.advantages = advantages
 
         if values.ndim > 1 and values.shape[1] > 1:
-            logger.warning(f"Values has multiple columns: {values.shape}. Taking first column.")
+            log_warning(f"Values has multiple columns: {values.shape}. Taking first column.", "ppo")
             values = values[:, 0:1]
 
         returns = advantages + values
 
         if returns.ndim > 1 and returns.shape[1] > 1:
-            logger.warning(f"Returns has unexpected shape: {returns.shape}. Taking first column.")
+            log_warning(f"Returns has unexpected shape: {returns.shape}. Taking first column.", "ppo")
             returns = returns[:, 0:1]
 
         self.buffer.returns = returns
-        logger.debug(f"Final shapes - advantages: {self.buffer.advantages.shape}, returns: {self.buffer.returns.shape}")
+        log_debug(f"Final shapes - advantages: {self.buffer.advantages.shape}, returns: {self.buffer.returns.shape}", "ppo")
 
     def update_policy(self) -> Dict[str, float]:
         """Performs PPO updates for ppo_epochs using data in the buffer."""
@@ -294,7 +291,7 @@ class PPOTrainer:
 
         training_data = self.buffer.get_training_data()
         if training_data is None:
-            logger.error("Skipping policy update due to missing training data in buffer.")
+            log_error("Skipping policy update due to missing training data in buffer.", "ppo")
             return {}
 
         states_dict = training_data["states"]
@@ -307,7 +304,7 @@ class PPOTrainer:
 
         num_samples = actions.size(0)
         if num_samples == 0:
-            logger.warning("No samples in buffer to update policy. Skipping update.")
+            log_warning("No samples in buffer to update policy. Skipping update.", "ppo")
             return {}
 
         indices = np.arange(num_samples)
@@ -317,6 +314,8 @@ class PPOTrainer:
 
         total_actor_loss, total_critic_loss, total_entropy_loss = 0, 0, 0
         num_updates_in_epoch = 0
+
+        log_info(f"🔄 Starting PPO update for {self.ppo_epochs} epochs with {num_samples} samples", "ppo")
 
         for epoch in range(self.ppo_epochs):
             np.random.shuffle(indices)
@@ -333,9 +332,8 @@ class PPOTrainer:
                 action_params, current_values = self.model(batch_states)
 
                 if epoch == 0 and start_idx == 0:
-                    logger.debug(
-                        f"Batch shapes - actions: {batch_actions.shape}, old_log_probs: {batch_old_log_probs.shape}, "
-                        f"advantages: {batch_advantages.shape}, returns: {batch_returns.shape}")
+                    log_debug(f"Batch shapes - actions: {batch_actions.shape}, old_log_probs: {batch_old_log_probs.shape}, "
+                             f"advantages: {batch_advantages.shape}, returns: {batch_returns.shape}", "ppo")
 
                 if batch_returns.ndim > 1 and batch_returns.shape[1] > 1:
                     batch_returns = batch_returns[:, 0:1]
@@ -370,19 +368,17 @@ class PPOTrainer:
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * batch_advantages
                 actor_loss = -torch.min(surr1, surr2).mean()
 
-                logger.debug(
-                    f"Shape check - current_values: {current_values.shape}, batch_returns: {batch_returns.shape}")
+                log_debug(f"Shape check - current_values: {current_values.shape}, batch_returns: {batch_returns.shape}", "ppo")
 
                 if batch_returns.ndim > 1 and batch_returns.size(1) > 1:
-                    logger.warning(f"Unexpected batch_returns shape: {batch_returns.shape}. Taking first column.")
+                    log_warning(f"Unexpected batch_returns shape: {batch_returns.shape}. Taking first column.", "ppo")
                     batch_returns = batch_returns[:, 0:1]
 
                 current_values_shaped = current_values.view(-1, 1)
                 batch_returns_shaped = batch_returns.view(-1, 1)
 
                 if current_values_shaped.size(0) != batch_returns_shaped.size(0):
-                    logger.error(
-                        f"Shape mismatch after reshaping: {current_values_shaped.shape} vs {batch_returns_shaped.shape}")
+                    log_error(f"Shape mismatch after reshaping: {current_values_shaped.shape} vs {batch_returns_shaped.shape}", "ppo")
                     min_size = min(current_values_shaped.size(0), batch_returns_shaped.size(0))
                     current_values_shaped = current_values_shaped[:min_size]
                     batch_returns_shaped = batch_returns_shaped[:min_size]
@@ -418,13 +414,16 @@ class PPOTrainer:
         for callback in self.callbacks:
             callback.on_update_end(self, update_metrics)
 
-        logger.info(f"PPO Update {self.global_update_counter}: {update_metrics}")
+        log_info(f"📈 PPO Update {self.global_update_counter}: "
+                f"Actor Loss: {avg_actor_loss:.4f}, "
+                f"Critic Loss: {avg_critic_loss:.4f}, "
+                f"Entropy: {avg_entropy:.4f}", "ppo")
 
         return update_metrics
 
     def train(self, total_training_steps: int, eval_freq_steps: Optional[int] = None):
-        """Main training loop with dashboard integration."""
-        logger.info(f"Starting PPO training for a total of {total_training_steps} environment steps.")
+        """Main training loop with enhanced logging."""
+        log_info(f"🚀 Starting PPO training for a total of {total_training_steps} environment steps.", "ppo")
 
         for callback in self.callbacks:
             callback.on_training_start(self)
@@ -432,14 +431,16 @@ class PPOTrainer:
         best_eval_reward = -float('inf')
 
         while self.global_step_counter < total_training_steps:
+            log_info(f"🔄 Update {self.global_update_counter + 1} - Collecting rollout data...", "ppo")
             rollout_info = self.collect_rollout_data()
 
             if self.buffer.get_size() < self.rollout_steps and self.buffer.get_size() < self.batch_size:
-                logger.warning(f"Buffer size {self.buffer.get_size()} is less than rollout_steps {self.rollout_steps} "
-                               f"or batch_size {self.batch_size} after collection. Might be due to early episode ends. Skipping update if too small.")
+                log_warning(f"Buffer size {self.buffer.get_size()} is less than rollout_steps {self.rollout_steps} "
+                           f"or batch_size {self.batch_size} after collection. Might be due to early episode ends. Skipping update if too small.", "ppo")
                 if self.buffer.get_size() < self.batch_size:
                     continue
 
+            log_info(f"🧠 Updating policy with {self.buffer.get_size()} samples...", "ppo")
             update_metrics = self.update_policy()
 
             for callback in self.callbacks:
@@ -452,9 +453,9 @@ class PPOTrainer:
                 # Update dashboard that we're evaluating
                 self._update_dashboard_training_info(is_training=False, is_evaluating=True)
 
+                log_info(f"🔍 Running evaluation at step {self.global_step_counter}...", "ppo")
                 eval_stats = self.evaluate(n_episodes=10)
-                logger.info(
-                    f"Evaluation at step {self.global_step_counter}: Mean Reward: {eval_stats['mean_reward']:.2f}")
+                log_info(f"📊 Evaluation at step {self.global_step_counter}: Mean Reward: {eval_stats['mean_reward']:.2f}", "ppo")
 
                 # Reset dashboard back to training mode
                 self._update_dashboard_training_info(is_training=True, is_evaluating=False)
@@ -467,23 +468,24 @@ class PPOTrainer:
 
                 if eval_stats['mean_reward'] > best_eval_reward:
                     best_eval_reward = eval_stats['mean_reward']
-                    self.save_model(os.path.join(self.model_dir, f"best_model_update_{self.global_update_counter}.pt"))
-                    logger.info(f"New best model saved with eval reward: {best_eval_reward:.2f}")
+                    best_model_path = os.path.join(self.model_dir, f"best_model_update_{self.global_update_counter}.pt")
+                    self.save_model(best_model_path)
+                    log_info(f"🏆 New best model saved with eval reward: {best_eval_reward:.2f} at {best_model_path}", "ppo")
 
-                self.save_model(os.path.join(self.model_dir, "latest_model.pt"))
+                latest_model_path = os.path.join(self.model_dir, "latest_model.pt")
+                self.save_model(latest_model_path)
 
         final_stats = {"total_steps_trained": self.global_step_counter, "total_updates": self.global_update_counter}
 
         for callback in self.callbacks:
             callback.on_training_end(self, final_stats)
 
-        logger.info(
-            f"Training finished. Total steps: {self.global_step_counter}, Total PPO updates: {self.global_update_counter}")
+        log_info(f"🎉 Training finished! Total steps: {self.global_step_counter}, Total PPO updates: {self.global_update_counter}", "ppo")
         return final_stats
 
     def evaluate(self, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
-        """Evaluates the current model policy with dashboard integration."""
-        logger.info(f"Starting evaluation for {n_episodes} episodes (deterministic: {deterministic})...")
+        """Evaluates the current model policy with enhanced logging."""
+        log_info(f"🔍 Starting evaluation for {n_episodes} episodes (deterministic: {deterministic})...", "ppo")
 
         # Set model to evaluation mode
         self.model.eval()
@@ -513,7 +515,7 @@ class PPOTrainer:
                     next_env_state_np, reward, terminated, truncated, _ = self.env.step(env_action)
                     done = terminated or truncated
                 except Exception as e:
-                    logger.error(f"Error during evaluation step: {e}", exc_info=True)
+                    log_error(f"Error during evaluation step: {e}", "ppo")
                     done = True
                     reward = 0
 
@@ -523,8 +525,8 @@ class PPOTrainer:
 
             episode_rewards.append(current_episode_reward)
             episode_lengths.append(current_episode_length)
-            logger.debug(
-                f"Eval Episode {i + 1}/{n_episodes} finished. Reward: {current_episode_reward:.2f}, Length: {current_episode_length}")
+            log_debug(f"Eval Episode {i + 1}/{n_episodes} finished. "
+                     f"Reward: {current_episode_reward:.2f}, Length: {current_episode_length}", "ppo")
 
         # Reset model to training mode
         self.model.train()
@@ -537,10 +539,12 @@ class PPOTrainer:
             "episode_rewards": episode_rewards,
             "episode_lengths": episode_lengths
         }
+
+        log_info(f"📊 Evaluation complete! Mean reward: {eval_results['mean_reward']:.2f} ± {eval_results['std_reward']:.2f}", "ppo")
         return eval_results
 
     def save_model(self, path: str) -> None:
-        """Saves the model and optimizer state."""
+        """Saves the model and optimizer state with enhanced logging."""
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             torch.save({
@@ -551,12 +555,12 @@ class PPOTrainer:
                 'global_update_counter': self.global_update_counter,
                 'model_config': self.model_config
             }, path)
-            logger.info(f"Model saved to {path}")
+            log_info(f"💾 Model saved to {path}", "ppo")
         except Exception as e:
-            logger.error(f"Error saving model to {path}: {e}", exc_info=True)
+            log_error(f"Error saving model to {path}: {e}", "ppo")
 
     def load_model(self, path: str) -> None:
-        """Loads the model and optimizer state."""
+        """Loads the model and optimizer state with enhanced logging."""
         try:
             checkpoint = torch.load(path, map_location=self.device)
             self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -567,7 +571,8 @@ class PPOTrainer:
             self.global_update_counter = checkpoint.get('global_update_counter', 0)
 
             self.model.to(self.device)
-            logger.info(
-                f"Model loaded from {path}. Resuming from step {self.global_step_counter}, update {self.global_update_counter}.")
+            log_info(f"📂 Model loaded from {path}. "
+                    f"Resuming from step {self.global_step_counter}, "
+                    f"update {self.global_update_counter}.", "ppo")
         except Exception as e:
-            logger.error(f"Error loading model from {path}: {e}", exc_info=True)
+            log_error(f"Error loading model from {path}: {e}", "ppo")
