@@ -1,4 +1,4 @@
-# envs/env_dashboard.py - Enhanced with centralized logging and 2-column layout
+# envs/env_dashboard.py - Fixed: Trading dashboard on right, console on left
 import logging
 from collections import deque
 from datetime import datetime
@@ -94,54 +94,47 @@ class DashboardState:
     is_evaluating: bool = False
 
 
-class EnhancedTradingDashboard:
+class TradingDashboard:
     """
-    Enhanced trading dashboard with centralized logging and 2-column layout.
-    Left column: Live logs
-    Right column: Trading dashboard
+    Trading dashboard that displays on the right side of terminal.
+    Left side is reserved for regular console logging.
     """
 
     def __init__(self, logger_manager: Optional[CentralizedLogger] = None):
         """
-        Initialize the enhanced trading dashboard.
+        Initialize the trading dashboard.
 
         Args:
-            logger_manager: Centralized logger instance
+            logger_manager: Centralized logger instance (not used for display, just for notifications)
         """
         self.logger_manager = logger_manager or get_logger()
-        self.console = self.logger_manager.console
+
+        # Create a separate console for the dashboard to avoid conflicts
+        self.dashboard_console = Console(
+            width=60,  # Fixed width for right side
+            force_terminal=True,
+            legacy_windows=False
+        )
+
         self.state = DashboardState()
         self.live: Optional[Live] = None
         self.layout: Layout = self._create_layout()
 
         # State management
         self._running = False
-        self._last_log_count = 0
 
     def _create_layout(self) -> Layout:
-        """Create the 2-column dashboard layout structure"""
+        """Create the dashboard layout structure (trading info only)"""
         layout = Layout()
 
-        # Main structure: 2 columns
-        layout.split_row(
-            Layout(name="logs_column", ratio=1),  # Left: Logs
-            Layout(name="dashboard_column", ratio=1)  # Right: Dashboard
-        )
-
-        # Left column: Logs section
-        layout["logs_column"].split_column(
-            Layout(name="logs_header", size=3),
-            Layout(name="logs_content", ratio=1)
-        )
-
-        # Right column: Dashboard sections
-        layout["dashboard_column"].split_column(
+        # Single column layout for trading dashboard
+        layout.split_column(
             Layout(name="header", size=3),
             Layout(name="body", ratio=1),
             Layout(name="footer", size=3)
         )
 
-        # Dashboard body: 2 columns
+        # Body: 2 columns for trading info
         layout["body"].split_row(
             Layout(name="left_info", ratio=1),
             Layout(name="right_info", ratio=1)
@@ -151,53 +144,52 @@ class EnhancedTradingDashboard:
         layout["left_info"].split_column(
             Layout(name="market", size=9),
             Layout(name="position", size=9),
-            Layout(name="training", size=6)
+            Layout(name="training", size=8)
         )
 
         # Right info: Portfolio, Actions, Fills
         layout["right_info"].split_column(
             Layout(name="portfolio", size=9),
             Layout(name="actions", size=8),
-            Layout(name="fills", size=7)
+            Layout(name="fills", size=9)
         )
 
-        # Initialize with empty content
+        # Initialize with content
         self._update_layout(layout)
         return layout
 
     def start(self):
-        """Start the enhanced dashboard with centralized logging"""
+        """Start the dashboard on the right side of terminal"""
         if self._running:
             return
 
         try:
-            # Create Live display
+            # Create Live display with specific settings to avoid console conflicts
             self.live = Live(
                 self.layout,
-                console=self.console,
-                refresh_per_second=4,  # Higher refresh rate for logs
-                screen=False,
+                console=self.dashboard_console,
+                refresh_per_second=2,  # Lower refresh rate to reduce conflicts
+                screen=False,  # Don't use alternate screen
                 auto_refresh=True,
                 transient=False,
-                redirect_stdout=False,  # Don't redirect - we handle logging differently
-                redirect_stderr=False,
-                vertical_overflow="ellipsis"
+                redirect_stdout=False,  # CRITICAL: Don't redirect stdout
+                redirect_stderr=False,  # CRITICAL: Don't redirect stderr
+                vertical_overflow="crop"  # Crop instead of ellipsis
             )
 
             # Start the live display
             self.live.start()
             self._running = True
 
-            # Log startup message using centralized logger
-            self.logger_manager.info("🚀 Enhanced Trading Dashboard Started", "dashboard")
-            self.logger_manager.info("📊 Logs displayed in left column, dashboard in right column", "dashboard")
+            # Log startup message using regular logger (will appear on left)
+            self.logger_manager.info("Trading Dashboard Started (Right Side)", "dashboard")
 
         except Exception as e:
-            self.logger_manager.error(f"Failed to start enhanced dashboard: {e}", "dashboard")
+            self.logger_manager.error(f"Failed to start dashboard: {e}", "dashboard")
             self._running = False
 
     def stop(self):
-        """Stop the enhanced dashboard"""
+        """Stop the dashboard"""
         if not self._running:
             return
 
@@ -205,10 +197,10 @@ class EnhancedTradingDashboard:
 
         if self.live:
             try:
-                self.logger_manager.info("🛑 Stopping enhanced trading dashboard...", "dashboard")
+                self.logger_manager.info("Stopping trading dashboard...", "dashboard")
                 self.live.stop()
             except Exception as e:
-                print(f"Error stopping enhanced dashboard: {e}")
+                print(f"Error stopping dashboard: {e}")
 
     def update_state(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
         """
@@ -225,10 +217,11 @@ class EnhancedTradingDashboard:
             self._update_layout(self.layout)
 
             # Refresh the display
-            self.live.update(self.layout)
+            self.live.update(self.layout, refresh=True)
 
         except Exception as e:
-            self.logger_manager.error(f"Error updating enhanced dashboard: {e}", "dashboard")
+            # Use regular logger for errors (will appear on console)
+            self.logger_manager.error(f"Error updating dashboard: {e}", "dashboard")
 
     def _update_state_data(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
         """Update internal state data"""
@@ -317,11 +310,6 @@ class EnhancedTradingDashboard:
 
     def _update_layout(self, layout: Layout):
         """Update all layout components with current state data"""
-        # Update logs section
-        layout["logs_header"].update(self._create_logs_header())
-        layout["logs_content"].update(self._create_logs_content())
-
-        # Update dashboard sections
         layout["header"].update(self._create_header())
         layout["market"].update(self._create_market_panel())
         layout["position"].update(self._create_position_panel())
@@ -331,65 +319,6 @@ class EnhancedTradingDashboard:
         layout["fills"].update(self._create_fills_panel())
         layout["footer"].update(self._create_footer())
 
-    def _create_logs_header(self) -> Panel:
-        """Create the logs section header"""
-        log_count = len(self.logger_manager.get_recent_logs())
-        header_text = f"[bold cyan]📋 Live Logs[/bold cyan] ([yellow]{log_count}[/yellow] entries)"
-
-        if self.state.is_training:
-            status = "[green]🏃 TRAINING[/green]"
-        elif self.state.is_evaluating:
-            status = "[blue]🔍 EVALUATING[/blue]"
-        else:
-            status = "[yellow]⏸️ IDLE[/yellow]"
-
-        header_table = Table.grid(padding=1)
-        header_table.add_column(justify="left")
-        header_table.add_column(justify="right")
-
-        header_table.add_row(header_text, status)
-
-        return Panel(header_table, style="bright_blue", box=box.HEAVY)
-
-    def _create_logs_content(self) -> Panel:
-        """Create the live logs content panel"""
-        # Get recent logs from centralized logger
-        formatted_logs = self.logger_manager.get_formatted_logs_for_display(count=30)
-
-        if not formatted_logs:
-            content = Text("No logs yet...", style="dim white")
-        else:
-            # Show most recent logs at the bottom
-            content = Group(*formatted_logs[-30:])  # Show last 30 logs
-
-        return Panel(
-            content,
-            title="",
-            border_style="white",
-            box=box.SIMPLE,
-            padding=(0, 1)
-        )
-
-    def _create_training_panel(self) -> Panel:
-        """Create training information panel"""
-        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-
-        table.add_row("Episode", Text(f"{self.state.episode_number}", style="bold cyan"))
-        table.add_row("Total Steps", Text(f"{self.state.total_steps}", style="white"))
-        table.add_row("Updates", Text(f"{self.state.update_count_training}", style="white"))
-
-        if self.state.is_training:
-            status = Text("TRAINING", style="bold green")
-        elif self.state.is_evaluating:
-            status = Text("EVALUATING", style="bold blue")
-        else:
-            status = Text("IDLE", style="yellow")
-
-        table.add_row("Status", status)
-
-        return Panel(table, title="[bold]Training", border_style="cyan")
-
-    # [Rest of the panel creation methods remain the same as before...]
     def _create_header(self) -> Panel:
         """Create the header panel with basic info"""
         time_str = "N/A"
@@ -399,18 +328,18 @@ class EnhancedTradingDashboard:
             except:
                 time_str = "N/A"
 
-        status = "🟢 ACTIVE"
+        status = "[green]ACTIVE[/green]"
         if self.state.is_terminated:
-            status = "🔴 TERMINATED"
+            status = "[red]TERMINATED[/red]"
         elif self.state.is_truncated:
-            status = "🟡 TRUNCATED"
+            status = "[yellow]TRUNCATED[/yellow]"
 
         header_table = Table.grid(padding=1)
         header_table.add_column(justify="left")
         header_table.add_column(justify="center")
         header_table.add_column(justify="right")
 
-        reward_text = f"[bold green]EPISODE: {self.state.episode_reward:.4f}[/bold green] | [yellow]STEP: {self.state.step_reward:.4f}[/yellow]"
+        reward_text = f"[bold green]EP: {self.state.episode_reward:.4f}[/bold green] | [yellow]STEP: {self.state.step_reward:.4f}[/yellow]"
 
         header_table.add_row(
             f"[bold cyan]STEP {self.state.step}[/bold cyan] | [cyan]{time_str}[/cyan]",
@@ -478,6 +407,25 @@ class EnhancedTradingDashboard:
             table.add_row("Market Value", "N/A")
 
         return Panel(table, title="[bold]Position", border_style="blue")
+
+    def _create_training_panel(self) -> Panel:
+        """Create training information panel"""
+        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+
+        table.add_row("Episode", Text(f"{self.state.episode_number}", style="bold cyan"))
+        table.add_row("Total Steps", Text(f"{self.state.total_steps}", style="white"))
+        table.add_row("Updates", Text(f"{self.state.update_count_training}", style="white"))
+
+        if self.state.is_training:
+            status = Text("TRAINING", style="bold green")
+        elif self.state.is_evaluating:
+            status = Text("EVALUATING", style="bold blue")
+        else:
+            status = Text("IDLE", style="yellow")
+
+        table.add_row("Status", status)
+
+        return Panel(table, title="[bold]Training", border_style="cyan")
 
     def _create_portfolio_panel(self) -> Panel:
         """Create portfolio metrics panel"""
@@ -576,7 +524,7 @@ class EnhancedTradingDashboard:
         else:
             footer_text = "[green]Environment running normally[/green]"
 
-        footer_text += f" | Step: {self.state.step} | Dashboard updates: {self.state.update_count}"
+        footer_text += f" | Step: {self.state.step} | Updates: {self.state.update_count}"
 
         return Panel(
             Align.center(Text.from_markup(footer_text)),
@@ -605,6 +553,6 @@ class EnhancedTradingDashboard:
 
 
 # Convenience function for easy integration
-def create_enhanced_dashboard(logger_manager: Optional[CentralizedLogger] = None) -> EnhancedTradingDashboard:
-    """Create and return a new enhanced trading dashboard instance"""
-    return EnhancedTradingDashboard(logger_manager=logger_manager)
+def create_trading_dashboard(logger_manager: Optional[CentralizedLogger] = None) -> TradingDashboard:
+    """Create and return a new trading dashboard instance"""
+    return TradingDashboard(logger_manager=logger_manager)

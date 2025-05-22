@@ -235,7 +235,7 @@ def run_training(cfg: Config):
         logger_manager = initialize_logger(
             app_name="fx-ai",
             log_file=log_file,
-            max_dashboard_logs=1000
+            max_logs=1000
         )
 
         # Log startup

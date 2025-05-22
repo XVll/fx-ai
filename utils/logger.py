@@ -1,4 +1,4 @@
-# utils/logger.py - Fixed for Windows Unicode support
+# utils/logger.py - Fixed: No dashboard conflicts, clean console logging
 import logging
 import sys
 import threading
@@ -34,75 +34,35 @@ class LogEntry:
     extra_data: Optional[Dict[str, Any]] = None
 
 
-class DashboardLogHandler(logging.Handler):
-    """Custom log handler that feeds logs to the dashboard display"""
-
-    def __init__(self, log_manager):
-        super().__init__()
-        self.log_manager = log_manager
-        self.highlighter = ReprHighlighter()
-
-    def emit(self, record):
-        try:
-            # Format the log message
-            message = self.format(record)
-
-            # Determine log level
-            level_map = {
-                logging.DEBUG: LogLevel.DEBUG,
-                logging.INFO: LogLevel.INFO,
-                logging.WARNING: LogLevel.WARNING,
-                logging.ERROR: LogLevel.ERROR,
-                logging.CRITICAL: LogLevel.CRITICAL,
-            }
-            level = level_map.get(record.levelno, LogLevel.INFO)
-
-            # Create log entry
-            log_entry = LogEntry(
-                timestamp=datetime.fromtimestamp(record.created),
-                level=level,
-                module=record.name,
-                message=message,
-                extra_data=getattr(record, 'extra_data', None)
-            )
-
-            # Add to dashboard
-            self.log_manager.add_log_entry(log_entry)
-
-        except Exception:
-            self.handleError(record)
-
-
 class CentralizedLogger:
     """
     Centralized logging manager with Rich console integration and Windows Unicode support.
 
     Features:
-    - Rich console formatting
+    - Rich console formatting (left side of terminal)
     - File logging with UTF-8 encoding
-    - Dashboard integration
     - Thread-safe log collection
     - Windows Unicode compatibility
+    - No dashboard conflicts
     """
 
     def __init__(
             self,
             app_name: str = "fx-ai",
             log_file: Optional[str] = None,
-            max_dashboard_logs: int = 1000,
+            max_logs: int = 1000,
             console: Optional[Console] = None
     ):
         self.app_name = app_name
-        self.max_dashboard_logs = max_dashboard_logs
+        self.max_logs = max_logs
 
         # Detect Windows and set up console appropriately
         self.is_windows = platform.system() == "Windows"
 
-        # Set up console with proper encoding for Windows
+        # Set up main console for logging (left side of terminal)
         if console is None:
             # Force UTF-8 encoding on Windows
             if self.is_windows:
-                # Try to enable UTF-8 mode on Windows
                 try:
                     import os
                     os.environ['PYTHONIOENCODING'] = 'utf-8'
@@ -110,23 +70,30 @@ class CentralizedLogger:
                     import io
                     if hasattr(sys.stdout, 'buffer'):
                         stdout_utf8 = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-                        self.console = Console(file=stdout_utf8, force_terminal=True)
+                        self.console = Console(
+                            file=stdout_utf8,
+                            force_terminal=True,
+                            width=80  # Leave space for dashboard on right
+                        )
                     else:
-                        self.console = Console(force_terminal=True)
+                        self.console = Console(
+                            force_terminal=True,
+                            width=80  # Leave space for dashboard on right
+                        )
                 except Exception:
                     # Fallback to regular console
-                    self.console = Console(force_terminal=True)
+                    self.console = Console(
+                        force_terminal=True,
+                        width=80  # Leave space for dashboard on right
+                    )
             else:
-                self.console = Console()
+                self.console = Console(width=80)  # Leave space for dashboard on right
         else:
             self.console = console
 
-        # Thread-safe log storage for dashboard
-        self._log_entries: Deque[LogEntry] = deque(maxlen=max_dashboard_logs)
+        # Thread-safe log storage (minimal, just for tracking)
+        self._log_entries: Deque[LogEntry] = deque(maxlen=max_logs)
         self._lock = threading.RLock()
-
-        # Dashboard integration
-        self.dashboard_handler: Optional[DashboardLogHandler] = None
 
         # Set up logging
         self._setup_logging(log_file)
@@ -148,13 +115,13 @@ class CentralizedLogger:
         if self.is_windows:
             # Use text symbols instead of emoji on Windows
             detailed_formatter = logging.Formatter(
-                '%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s',
+                '%(asctime)s | %(name)-15s | %(levelname)-8s | %(message)s',
                 datefmt='%H:%M:%S'
             )
         else:
             # Use regular format on Unix systems
             detailed_formatter = logging.Formatter(
-                '%(asctime)s | %(name)-20s | %(levelname)-8s | %(message)s',
+                '%(asctime)s | %(name)-15s | %(levelname)-8s | %(message)s',
                 datefmt='%H:%M:%S'
             )
 
@@ -171,14 +138,16 @@ class CentralizedLogger:
             file_handler.setFormatter(detailed_formatter)
             root_logger.addHandler(file_handler)
 
-        # Console handler for non-dashboard output
+        # Console handler for left side logging
         try:
             console_handler = RichHandler(
                 console=self.console,
-                show_time=False,
+                show_time=True,
                 show_path=False,
                 markup=True,
-                rich_tracebacks=True
+                rich_tracebacks=True,
+                tracebacks_width=80,
+                tracebacks_show_locals=False
             )
             console_handler.setLevel(logging.INFO)
             console_handler.setFormatter(simple_formatter)
@@ -187,14 +156,8 @@ class CentralizedLogger:
             # Fallback to standard console handler if Rich fails
             fallback_handler = logging.StreamHandler(sys.stdout)
             fallback_handler.setLevel(logging.INFO)
-            fallback_handler.setFormatter(simple_formatter)
+            fallback_handler.setFormatter(detailed_formatter)
             root_logger.addHandler(fallback_handler)
-
-        # Dashboard handler
-        self.dashboard_handler = DashboardLogHandler(self)
-        self.dashboard_handler.setLevel(logging.INFO)
-        self.dashboard_handler.setFormatter(detailed_formatter)
-        root_logger.addHandler(self.dashboard_handler)
 
     def _clean_message_for_windows(self, message: str) -> str:
         """Clean message for Windows compatibility by replacing emoji with text"""
@@ -246,54 +209,22 @@ class CentralizedLogger:
         return cleaned_message
 
     def add_log_entry(self, entry: LogEntry):
-        """Add a log entry to the dashboard display (thread-safe)"""
+        """Add a log entry to internal storage (thread-safe)"""
         with self._lock:
             # Clean the message for Windows
             entry.message = self._clean_message_for_windows(entry.message)
             self._log_entries.append(entry)
 
     def get_recent_logs(self, count: Optional[int] = None) -> List[LogEntry]:
-        """Get recent log entries for dashboard display"""
+        """Get recent log entries"""
         with self._lock:
             if count is None:
                 return list(self._log_entries)
             else:
                 return list(self._log_entries)[-count:]
 
-    def get_formatted_logs_for_display(self, count: int = 50) -> List[Text]:
-        """Get formatted log entries for Rich display"""
-        logs = self.get_recent_logs(count)
-        formatted_logs = []
-
-        for log_entry in logs:
-            # Color coding by level
-            level_colors = {
-                LogLevel.DEBUG: "dim white",
-                LogLevel.INFO: "white",
-                LogLevel.WARNING: "yellow",
-                LogLevel.ERROR: "red",
-                LogLevel.CRITICAL: "bold red"
-            }
-
-            level_color = level_colors.get(log_entry.level, "white")
-            time_str = log_entry.timestamp.strftime("%H:%M:%S")
-
-            # Create formatted text
-            text = Text()
-            text.append(f"{time_str} ", style="dim cyan")
-            text.append(f"{log_entry.level.value:>8}", style=level_color)
-            text.append(" | ", style="dim white")
-            text.append(f"{log_entry.module:>15}", style="dim blue")
-            text.append(" | ", style="dim white")
-            text.append(log_entry.message,
-                        style=level_color if log_entry.level in [LogLevel.ERROR, LogLevel.CRITICAL] else "white")
-
-            formatted_logs.append(text)
-
-        return formatted_logs
-
-    def clear_dashboard_logs(self):
-        """Clear dashboard log history"""
+    def clear_logs(self):
+        """Clear log history"""
         with self._lock:
             self._log_entries.clear()
 
@@ -307,11 +238,29 @@ class CentralizedLogger:
         logger = self.get_logger(module)
         logger.info(cleaned_message, extra={'extra_data': kwargs})
 
+        # Store in internal history
+        self.add_log_entry(LogEntry(
+            timestamp=datetime.now(),
+            level=LogLevel.INFO,
+            module=module,
+            message=cleaned_message,
+            extra_data=kwargs
+        ))
+
     def warning(self, message: str, module: str = "app", **kwargs):
         """Log warning message"""
         cleaned_message = self._clean_message_for_windows(message)
         logger = self.get_logger(module)
         logger.warning(cleaned_message, extra={'extra_data': kwargs})
+
+        # Store in internal history
+        self.add_log_entry(LogEntry(
+            timestamp=datetime.now(),
+            level=LogLevel.WARNING,
+            module=module,
+            message=cleaned_message,
+            extra_data=kwargs
+        ))
 
     def error(self, message: str, module: str = "app", **kwargs):
         """Log error message"""
@@ -319,17 +268,44 @@ class CentralizedLogger:
         logger = self.get_logger(module)
         logger.error(cleaned_message, extra={'extra_data': kwargs})
 
+        # Store in internal history
+        self.add_log_entry(LogEntry(
+            timestamp=datetime.now(),
+            level=LogLevel.ERROR,
+            module=module,
+            message=cleaned_message,
+            extra_data=kwargs
+        ))
+
     def debug(self, message: str, module: str = "app", **kwargs):
         """Log debug message"""
         cleaned_message = self._clean_message_for_windows(message)
         logger = self.get_logger(module)
         logger.debug(cleaned_message, extra={'extra_data': kwargs})
 
+        # Store in internal history
+        self.add_log_entry(LogEntry(
+            timestamp=datetime.now(),
+            level=LogLevel.DEBUG,
+            module=module,
+            message=cleaned_message,
+            extra_data=kwargs
+        ))
+
     def critical(self, message: str, module: str = "app", **kwargs):
         """Log critical message"""
         cleaned_message = self._clean_message_for_windows(message)
         logger = self.get_logger(module)
         logger.critical(cleaned_message, extra={'extra_data': kwargs})
+
+        # Store in internal history
+        self.add_log_entry(LogEntry(
+            timestamp=datetime.now(),
+            level=LogLevel.CRITICAL,
+            module=module,
+            message=cleaned_message,
+            extra_data=kwargs
+        ))
 
 
 # Global logger instance
@@ -347,7 +323,7 @@ def get_logger() -> CentralizedLogger:
 def initialize_logger(
         app_name: str = "fx-ai",
         log_file: Optional[str] = None,
-        max_dashboard_logs: int = 1000,
+        max_logs: int = 1000,
         console: Optional[Console] = None
 ) -> CentralizedLogger:
     """Initialize the global logger"""
@@ -355,7 +331,7 @@ def initialize_logger(
     _global_logger = CentralizedLogger(
         app_name=app_name,
         log_file=log_file,
-        max_dashboard_logs=max_dashboard_logs,
+        max_logs=max_logs,
         console=console
     )
     return _global_logger
