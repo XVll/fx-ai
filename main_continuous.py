@@ -234,12 +234,13 @@ def run_training(cfg: Config):
         logging.info(f"💾 Configuration saved to: {config_path}")
 
         # Initialize dashboard early and start it immediately
-        dashboard = TradingDashboard(log_height=10)
-        dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.1, "Setting up system...")
-
-        # Start dashboard immediately to take over logging
-        dashboard.start()
-        logging.info("Dashboard started and logging configured")
+        if cfg.env.render_mode == "dashboard":
+            dashboard = TradingDashboard(log_height=10) # Todo move config
+            dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.1, "Setting up system...")
+            dashboard.start()
+            logging.info("Dashboard started and logging configured")
+        else:
+            dashboard = None
 
         # Check continuous training mode
         continuous_mode = getattr(cfg.training, 'enabled', False)
@@ -299,7 +300,8 @@ def run_training(cfg: Config):
         current_env = TradingEnvironment(
             config=cfg,
             data_manager=current_data_manager,
-            logger=logging.getLogger("TradingEnv")
+            logger=logging.getLogger("TradingEnv"),
+            dashboard = dashboard,
         )
 
         # Setup environment session
