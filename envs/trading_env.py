@@ -1,4 +1,4 @@
-# envs/trading_env.py - Updated for stable dashboard integration
+# envs/trading_env.py - FIXED: Multiple dashboard and position sizing issues
 
 import logging
 from datetime import datetime
@@ -76,11 +76,11 @@ class TradingEnvironment(gym.Env):
         self.dashboard = dashboard
         self.use_dashboard = self.dashboard is not None
 
-        # Enhanced dashboard update throttling to prevent blinking
+        # FIXED: Enhanced dashboard update throttling to prevent blinking
         self._last_dashboard_update = 0.0
-        self._dashboard_update_interval = 1.0  # Update dashboard every 1 second max
+        self._dashboard_update_interval = 2.0  # FIXED: Increased to 2 seconds to reduce flickering
         self._step_update_counter = 0
-        self._dashboard_update_frequency = 50  # Update every 50 steps during training
+        self._dashboard_update_frequency = 25  # FIXED: Update every 25 steps instead of 50
 
         if self.use_dashboard:
             logging.info("Trading dashboard mode enabled - will start after session setup")
@@ -90,6 +90,10 @@ class TradingEnvironment(gym.Env):
         self.max_session_loss_percentage: float = env_cfg.max_episode_loss_percent
         self.bankruptcy_threshold_factor: float = env_cfg.bankruptcy_threshold_factor
         self.max_invalid_actions_per_episode: int = env_cfg.max_invalid_actions_per_episode
+
+        # FIXED: Configurable position sizing with fixed dollar amounts
+        self.default_position_value = getattr(config.simulation.portfolio_config, 'default_position_value', 10000.0)
+        self.logger.info(f"Using fixed position value: ${self.default_position_value:.2f}")
 
         self.data_manager = data_manager
         self.market_simulator: Optional[MarketSimulator] = None
@@ -103,9 +107,10 @@ class TradingEnvironment(gym.Env):
         self.position_size_types = list(PositionSizeTypeEnum)
         self.action_space = spaces.MultiDiscrete([len(self.action_types), len(self.position_size_types)])
 
-        # Debug action distribution to identify bias
+        # FIXED: Enhanced action distribution tracking for episode-wide statistics
         self.action_debug_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
         self.step_count_for_debug = 0
+        self.episode_action_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}  # FIXED: Episode-wide tracking
 
         logging.info(f"Action space: {self.action_space} "
                      f"(ActionTypes: {[a.name for a in self.action_types]}, "
@@ -137,11 +142,16 @@ class TradingEnvironment(gym.Env):
         self._last_decoded_action: Optional[Dict[str, Any]] = None
         self.initial_capital_for_session: float = 0.0
 
-        # Training state tracking for dashboard
+        # FIXED: Enhanced training state tracking for dashboard
         self.episode_number: int = 0
         self.total_episodes: int = 0
         self.total_steps: int = 0
         self.update_count: int = 0
+
+        # FIXED: Current state tracking for footer
+        self.current_termination_reason: Optional[str] = None
+        self.is_terminated: bool = False
+        self.is_truncated: bool = False
 
         self.render_mode = env_cfg.render_mode
 
@@ -215,7 +225,10 @@ class TradingEnvironment(gym.Env):
                           buffer_size: int = 0, is_training: bool = True,
                           is_evaluating: bool = False, learning_rate: float = 0.0):
         """Set training information for dashboard display"""
-        self.episode_number = episode_num
+        # FIXED: Proper episode number tracking
+        if episode_num > self.episode_number:
+            self.episode_number = episode_num
+
         self.total_episodes = total_episodes
         self.total_steps = total_steps
         self.update_count = update_count
@@ -223,7 +236,7 @@ class TradingEnvironment(gym.Env):
         # Update dashboard if available (but only occasionally)
         if self.dashboard and self._should_update_dashboard_training():
             self.dashboard.set_training_info(
-                episode_num=episode_num,
+                episode_num=self.episode_number,
                 total_episodes=total_episodes,
                 total_steps=total_steps,
                 update_count=update_count,
@@ -236,7 +249,7 @@ class TradingEnvironment(gym.Env):
     def _should_update_dashboard_training(self) -> bool:
         """Check if enough time has passed to update training info on dashboard"""
         current_time = time.time()
-        if current_time - self._last_dashboard_update >= 2.0:  # Update training info every 2 seconds max
+        if current_time - self._last_dashboard_update >= 3.0:  # FIXED: Update training info every 3 seconds max
             self._last_dashboard_update = current_time
             return True
         return False
@@ -269,16 +282,25 @@ class TradingEnvironment(gym.Env):
             return dummy_obs, {"error": "Session not set up. Call setup_session first.",
                                "termination_reason": TerminationReasonEnum.SETUP_FAILURE.value}
 
-        # Reset episode counters
+        # FIXED: Reset episode counters and state tracking
         self.current_step = 0
         self.invalid_action_count_episode = 0
         self.episode_total_reward = 0.0
         self._last_decoded_action = None
-        self._step_update_counter = 0  # Reset step counter
+        self._step_update_counter = 0
 
-        # Reset debug counters
+        # FIXED: Reset current state tracking
+        self.current_termination_reason = None
+        self.is_terminated = False
+        self.is_truncated = False
+
+        # FIXED: Reset episode-wide action counts
+        self.episode_action_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
         self.action_debug_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
         self.step_count_for_debug = 0
+
+        # FIXED: Increment episode number properly
+        self.episode_number += 1
 
         logging.info(f"Resetting environment for episode {self.episode_number}")
 
@@ -329,7 +351,6 @@ class TradingEnvironment(gym.Env):
             try:
                 market_state = self._get_current_market_state_safe()
                 self.dashboard.update_state(initial_info, market_state)
-                # Force update after a brief delay to ensure it's processed
             except Exception as e:
                 logging.error(f"Error updating dashboard on reset: {e}")
 
@@ -422,19 +443,20 @@ class TradingEnvironment(gym.Env):
         action_type = self.action_types[action_type_idx]
         size_type = self.position_size_types[size_type_idx]
 
-        # DEBUG: Track action distribution
+        # FIXED: Track both debug counts and episode-wide counts
         self.action_debug_counts[action_type.name] += 1
+        self.episode_action_counts[action_type.name] += 1
         self.step_count_for_debug += 1
 
-        # Log action distribution every 100 steps to identify bias
-        if self.step_count_for_debug % 100 == 0:
+        # FIXED: Reduced logging frequency to prevent spam
+        if self.step_count_for_debug % 200 == 0:  # Every 200 steps instead of 100
             total_actions = sum(self.action_debug_counts.values())
             if total_actions > 0:
                 buy_pct = (self.action_debug_counts["BUY"] / total_actions) * 100
                 sell_pct = (self.action_debug_counts["SELL"] / total_actions) * 100
                 hold_pct = (self.action_debug_counts["HOLD"] / total_actions) * 100
-                logging.info(
-                    f"ACTION DISTRIBUTION (Last 100 steps): BUY {buy_pct:.1f}% | SELL {sell_pct:.1f}% | HOLD {hold_pct:.1f}%")
+                logging.debug(  # FIXED: Changed to debug level
+                    f"ACTION DISTRIBUTION (Last 200 steps): BUY {buy_pct:.1f}% | SELL {sell_pct:.1f}% | HOLD {hold_pct:.1f}%")
 
         return {
             "type": action_type,
@@ -446,6 +468,7 @@ class TradingEnvironment(gym.Env):
 
     def _translate_agent_action_to_order(self, decoded_action: Dict[str, Any], portfolio_state: PortfolioState,
                                          market_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """FIXED: Translate agent action using configurable fixed dollar amounts"""
         action_type = decoded_action['type']
         size_float = decoded_action['size_float']
 
@@ -487,7 +510,6 @@ class TradingEnvironment(gym.Env):
 
         max_pos_value_abs = total_equity * self.portfolio_manager.max_position_value_ratio
         allow_shorting = self.portfolio_manager.allow_shorting
-        default_pos_value = self.portfolio_manager.default_position_value
 
         quantity_to_trade = 0.0
         order_side: Optional[OrderSideEnum] = None
@@ -496,8 +518,8 @@ class TradingEnvironment(gym.Env):
             return None
 
         elif action_type == ActionTypeEnum.BUY:
-            # IMPROVED BUY LOGIC: Use percentage of current equity, not cash
-            target_buy_value = (size_float/100) * total_equity  # Use size_float as percentage
+            # FIXED: Use configurable fixed dollar amount instead of equity percentage
+            target_buy_value = self.default_position_value * size_float  # size_float is already 0.25, 0.50, 0.75, 1.0
             target_buy_value = min(target_buy_value, max_pos_value_abs, cash)
 
             if target_buy_value > 1e-9 and ideal_ask > 1e-9:
@@ -505,23 +527,28 @@ class TradingEnvironment(gym.Env):
                 order_side = OrderSideEnum.BUY
                 if current_pos_side == PositionSideEnum.SHORT:
                     quantity_to_trade += current_qty
+
+                # FIXED: Log the calculation for debugging
+                logging.debug(f"BUY Order: target_value=${target_buy_value:.2f}, price=${ideal_ask:.4f}, qty={quantity_to_trade:.2f}")
             else:
                 decoded_action['invalid_reason'] = "Insufficient buying power or invalid price for BUY."
 
         elif action_type == ActionTypeEnum.SELL:
             if current_pos_side == PositionSideEnum.LONG:
                 # Sell percentage of current position
-                quantity_to_trade = (size_float/100) * current_qty
+                quantity_to_trade = size_float * current_qty
                 order_side = OrderSideEnum.SELL
+                logging.debug(f"SELL Order (Long): current_qty={current_qty:.2f}, size_float={size_float}, qty={quantity_to_trade:.2f}")
             elif allow_shorting:
-                # IMPROVED SHORT LOGIC: Use percentage of equity
-                target_short_value = (size_float/100) * total_equity
+                # FIXED: Use configurable fixed dollar amount for shorting
+                target_short_value = self.default_position_value * size_float
                 target_short_value = min(target_short_value, max_pos_value_abs)
                 if target_short_value > 1e-9 and ideal_bid > 1e-9:
                     quantity_to_trade = target_short_value / ideal_bid
                     order_side = OrderSideEnum.SELL
                     if current_pos_side == PositionSideEnum.LONG:
                         quantity_to_trade += current_qty
+                    logging.debug(f"SELL Order (Short): target_value=${target_short_value:.2f}, price=${ideal_bid:.4f}, qty={quantity_to_trade:.2f}")
                 else:
                     decoded_action['invalid_reason'] = "Insufficient shorting power or invalid price for SELL (short)."
             else:
@@ -592,6 +619,7 @@ class TradingEnvironment(gym.Env):
             if fill:
                 fill_details_list.append(fill)
                 self.portfolio_manager.update_fill(fill)
+                # FIXED: Reduced log level to debug
                 logging.debug(
                     f"Fill executed: {fill['order_side'].value} {fill['executed_quantity']:.2f} @ ${fill['executed_price']:.4f}")
 
@@ -689,6 +717,12 @@ class TradingEnvironment(gym.Env):
             truncated = True
             logging.info(f"Episode truncated: MAX_STEPS_REACHED ({self.current_step} steps)")
 
+        # FIXED: Update current state tracking
+        self.is_terminated = terminated
+        self.is_truncated = truncated
+        if termination_reason:
+            self.current_termination_reason = termination_reason.value
+
         reward = self.reward_calculator.calculate(
             portfolio_state_before_action=self._last_portfolio_state_before_action,
             portfolio_state_after_action_fills=portfolio_state_after_action_fills,
@@ -743,18 +777,19 @@ class TradingEnvironment(gym.Env):
                 **final_metrics
             }
 
-            # Log final action distribution for this episode
-            total_actions = sum(self.action_debug_counts.values())
+            # FIXED: Log final episode info with less verbosity
+            total_actions = sum(self.episode_action_counts.values())
             if total_actions > 0:
-                buy_pct = (self.action_debug_counts["BUY"] / total_actions) * 100
-                sell_pct = (self.action_debug_counts["SELL"] / total_actions) * 100
-                hold_pct = (self.action_debug_counts["HOLD"] / total_actions) * 100
+                buy_pct = (self.episode_action_counts["BUY"] / total_actions) * 100
+                sell_pct = (self.episode_action_counts["SELL"] / total_actions) * 100
+                hold_pct = (self.episode_action_counts["HOLD"] / total_actions) * 100
 
                 logging.info(
-                    f"EPISODE END ({self.primary_asset}). Reason: {info['episode_summary']['termination_reason']}. "
-                    f"Net Profit (Equity Change): ${info['episode_summary']['session_net_profit_equity_change']:.2f}. "
-                    f"Total Reward: {self.episode_total_reward:.4f}. Steps: {self.current_step}. "
-                    f"Actions: BUY {buy_pct:.1f}% | SELL {sell_pct:.1f}% | HOLD {hold_pct:.1f}%")
+                    f"Episode {self.episode_number} END ({self.primary_asset}). "
+                    f"Reason: {info['episode_summary']['termination_reason']}. "
+                    f"Net P&L: ${info['episode_summary']['session_net_profit_equity_change']:.2f}. "
+                    f"Reward: {self.episode_total_reward:.4f}. Steps: {self.current_step}. "
+                    f"Actions: B{buy_pct:.0f}% S{sell_pct:.0f}% H{hold_pct:.0f}%")
 
         return observation_next_t, reward, terminated, truncated, info
 
@@ -775,7 +810,9 @@ class TradingEnvironment(gym.Env):
             'portfolio_realized_pnl_session_net': current_portfolio_state_for_info['realized_pnl_session'],
             'invalid_action_in_step': bool(self._last_decoded_action.get('invalid_reason')) if self._last_decoded_action else False,
             'invalid_actions_total_episode': self.invalid_action_count_episode,
-            'episode_action_counts' : self.action_debug_counts.copy()
+            'episode_action_counts': self.episode_action_counts.copy(),  # FIXED: Use episode-wide counts
+            'global_step_counter': self.total_steps,  # FIXED: Add global step counter to info
+            'episode_number': self.episode_number  # FIXED: Add episode number to info
         }
         if self.primary_asset:
             pos_detail = current_portfolio_state_for_info['positions'].get(self.primary_asset, {})
