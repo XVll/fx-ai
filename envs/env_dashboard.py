@@ -1,8 +1,11 @@
 import logging
 from collections import deque
-from typing import Any, Dict, Optional, Deque
+from typing import Any, Dict, Optional, Deque, List
 from dataclasses import dataclass, field
 from enum import Enum
+import io
+import sys
+from contextlib import redirect_stdout, redirect_stderr
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -13,6 +16,8 @@ from rich.text import Text
 from rich.align import Align
 from rich import box
 from rich.logging import RichHandler
+from rich.progress import Progress, BarColumn, TextColumn
+
 
 class TrainingStage(Enum):
     """Training stages for dashboard display"""
@@ -115,6 +120,34 @@ class DashboardState:
     update_count_dashboard: int = 0
 
 
+class LogCapture:
+    """Captures logs for the dashboard"""
+
+    def __init__(self, max_lines: int = 50):
+        self.max_lines = max_lines
+        self.lines = deque(maxlen=max_lines)
+        self.buffer = io.StringIO()
+
+    def write(self, text: str):
+        if text.strip():  # Only capture non-empty lines
+            # Remove any existing Rich markup and clean the text
+            clean_text = text.strip()
+            # Remove timestamp and level info that Rich adds
+            if "] " in clean_text and clean_text.startswith("["):
+                parts = clean_text.split("] ", 1)
+                if len(parts) > 1:
+                    clean_text = parts[1]
+
+            self.lines.append(clean_text)
+        return len(text)
+
+    def flush(self):
+        pass
+
+    def get_recent_logs(self) -> List[str]:
+        return list(self.lines)
+
+
 class TradingDashboard:
     """
     Full-screen trading dashboard with logs appearing below.
@@ -140,24 +173,37 @@ class TradingDashboard:
         self.live: Optional[Live] = None
         self._running = False
 
-        # Log console for bottom section
-        self.log_console = Console(width=self.console.width, height=self.log_height)
+        # Log capture system
+        self.log_capture = LogCapture(max_lines=50)
+        self.original_stdout = None
+        self.original_stderr = None
 
-        # Setup logging to appear in bottom section
+        # Setup custom logging handler that goes only to our capture
         self._setup_dashboard_logging()
 
     def _setup_dashboard_logging(self):
-        """Setup logging to appear in the dashboard's log section"""
-        # Create a custom handler that will be used by the dashboard log section
-        self.log_handler = RichHandler(
-            console=self.log_console,
-            show_time=True,
-            show_path=False,
-            rich_tracebacks=True,
-            markup=True
-        )
+        """Setup logging to be captured by dashboard only"""
 
-        # Don't add to root logger here - we'll handle this in the layout
+        # Create a custom handler that writes to our log capture
+        class DashboardLogHandler(logging.Handler):
+            def __init__(self, log_capture):
+                super().__init__()
+                self.log_capture = log_capture
+
+            def emit(self, record):
+                try:
+                    msg = self.format(record)
+                    self.log_capture.write(msg + "\n")
+                except Exception:
+                    pass
+
+        # Create our custom handler
+        self.dashboard_handler = DashboardLogHandler(self.log_capture)
+        self.dashboard_handler.setLevel(logging.INFO)
+
+        # Format messages simply
+        formatter = logging.Formatter('%(levelname)s: %(message)s')
+        self.dashboard_handler.setFormatter(formatter)
 
     def _create_layout(self) -> Layout:
         """Create the full-screen dashboard layout"""
@@ -213,6 +259,16 @@ class TradingDashboard:
             return
 
         try:
+            # Redirect logging to our handler ONLY when dashboard is active
+            root_logger = logging.getLogger()
+
+            # Remove existing handlers to prevent double logging
+            self.original_handlers = root_logger.handlers.copy()
+            root_logger.handlers.clear()
+
+            # Add only our dashboard handler
+            root_logger.addHandler(self.dashboard_handler)
+
             # Update layout with initial content
             self._update_layout()
 
@@ -220,11 +276,11 @@ class TradingDashboard:
             self.live = Live(
                 self.layout,
                 console=self.console,
-                refresh_per_second=4,
-                screen=False,  # Use regular screen, not alternate
+                refresh_per_second=2,  # Reduced refresh rate to prevent blinking
+                screen=False,
                 auto_refresh=True,
                 transient=False,
-                redirect_stdout=False,
+                redirect_stdout=False,  # Don't redirect stdout/stderr
                 redirect_stderr=False
             )
 
@@ -244,12 +300,23 @@ class TradingDashboard:
 
         self._running = False
 
-        if self.live:
-            try:
+        try:
+            # Restore original logging setup
+            root_logger = logging.getLogger()
+            root_logger.handlers.clear()
+
+            # Restore original handlers
+            if hasattr(self, 'original_handlers'):
+                for handler in self.original_handlers:
+                    root_logger.addHandler(handler)
+
+            # Stop live display
+            if self.live:
                 logging.info("Stopping trading dashboard...")
                 self.live.stop()
-            except Exception as e:
-                logging.error(f"Error stopping dashboard: {e}")
+
+        except Exception as e:
+            print(f"Error stopping dashboard: {e}")
 
     def set_training_stage(self, stage: TrainingStage, progress: float = 0.0, details: str = ""):
         """Set the current training stage"""
@@ -261,98 +328,139 @@ class TradingDashboard:
             self._update_layout()
 
     def update_training_metrics(self, metrics: Dict[str, Any]):
-        """Update training metrics"""
-        self.state.learning_rate = metrics.get('learning_rate', self.state.learning_rate)
-        self.state.batch_size = metrics.get('batch_size', self.state.batch_size)
-        self.state.buffer_size = metrics.get('buffer_size', self.state.buffer_size)
-        self.state.rollout_steps = metrics.get('rollout_steps', self.state.rollout_steps)
-        self.state.collected_steps = metrics.get('collected_steps', self.state.collected_steps)
-        self.state.mean_episode_reward = metrics.get('mean_episode_reward', self.state.mean_episode_reward)
-        self.state.mean_episode_length = metrics.get('mean_episode_length', self.state.mean_episode_length)
-        self.state.actor_loss = metrics.get('actor_loss', self.state.actor_loss)
-        self.state.critic_loss = metrics.get('critic_loss', self.state.critic_loss)
-        self.state.entropy = metrics.get('entropy', self.state.entropy)
-        self.state.episodes_per_update = metrics.get('episodes_per_update', self.state.episodes_per_update)
-        self.state.steps_per_second = metrics.get('steps_per_second', self.state.steps_per_second)
+        """Update training metrics - only update if new values are provided"""
+        # Only update values that are actually provided in metrics
+        if 'learning_rate' in metrics:
+            self.state.learning_rate = metrics['learning_rate']
+        if 'batch_size' in metrics:
+            self.state.batch_size = metrics['batch_size']
+        if 'buffer_size' in metrics:
+            self.state.buffer_size = metrics['buffer_size']
+        if 'rollout_steps' in metrics:
+            self.state.rollout_steps = metrics['rollout_steps']
+        if 'collected_steps' in metrics:
+            self.state.collected_steps = metrics['collected_steps']
+        if 'mean_episode_reward' in metrics:
+            self.state.mean_episode_reward = metrics['mean_episode_reward']
+        if 'mean_episode_length' in metrics:
+            self.state.mean_episode_length = metrics['mean_episode_length']
+        if 'actor_loss' in metrics:
+            self.state.actor_loss = metrics['actor_loss']
+        if 'critic_loss' in metrics:
+            self.state.critic_loss = metrics['critic_loss']
+        if 'entropy' in metrics:
+            self.state.entropy = metrics['entropy']
+        if 'episodes_per_update' in metrics:
+            self.state.episodes_per_update = metrics['episodes_per_update']
+        if 'steps_per_second' in metrics:
+            self.state.steps_per_second = metrics['steps_per_second']
 
     def update_state(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
-        """Update dashboard state and refresh display"""
+        """Update dashboard state and refresh display - only update provided values"""
         if not self._running or not self.live:
             return
 
         try:
-            self._update_state_data(info_dict, market_state)
-            self._update_layout()
+            # Only update if we have actual data to update
+            if info_dict or market_state:
+                self._update_state_data(info_dict, market_state)
+                self._update_layout()
 
         except Exception as e:
             logging.error(f"Error updating dashboard: {e}")
 
     def _update_state_data(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
-        """Update internal state data"""
-        # Basic environment info
-        self.state.step = info_dict.get('step', self.state.step)
-        self.state.timestamp = info_dict.get('timestamp_iso', 'N/A')
-        self.state.episode_reward = info_dict.get('episode_cumulative_reward', 0.0)
-        self.state.step_reward = info_dict.get('reward_step', 0.0)
+        """Update internal state data - preserve existing values if not provided"""
+        # Basic environment info - only update if provided
+        if 'step' in info_dict:
+            self.state.step = info_dict['step']
+        if 'timestamp_iso' in info_dict:
+            self.state.timestamp = info_dict['timestamp_iso']
+        if 'episode_cumulative_reward' in info_dict:
+            self.state.episode_reward = info_dict['episode_cumulative_reward']
+        if 'reward_step' in info_dict:
+            self.state.step_reward = info_dict['reward_step']
 
-        # Portfolio metrics
-        self.state.total_equity = info_dict.get('portfolio_equity', 0.0)
-        self.state.cash = info_dict.get('portfolio_cash', 0.0)
-        self.state.unrealized_pnl = info_dict.get('portfolio_unrealized_pnl', 0.0)
-        self.state.realized_pnl = info_dict.get('portfolio_realized_pnl_session_net', 0.0)
+        # Portfolio metrics - only update if provided
+        if 'portfolio_equity' in info_dict:
+            self.state.total_equity = info_dict['portfolio_equity']
+        if 'portfolio_cash' in info_dict:
+            self.state.cash = info_dict['portfolio_cash']
+        if 'portfolio_unrealized_pnl' in info_dict:
+            self.state.unrealized_pnl = info_dict['portfolio_unrealized_pnl']
+        if 'portfolio_realized_pnl_session_net' in info_dict:
+            self.state.realized_pnl = info_dict['portfolio_realized_pnl_session_net']
 
-        # Calculate session PnL
-        self.state.session_pnl = self.state.total_equity - self.state.initial_capital
-        if self.state.initial_capital > 0:
+        # Calculate session PnL only if we have both values
+        if self.state.total_equity > 0 and self.state.initial_capital > 0:
+            self.state.session_pnl = self.state.total_equity - self.state.initial_capital
             self.state.session_pnl_pct = (self.state.session_pnl / self.state.initial_capital) * 100
 
-        # Position data
+        # Position data - only update if provided
         symbol = self.state.symbol
         if symbol != "N/A":
-            self.state.position_qty = info_dict.get(f'position_{symbol}_qty', 0.0)
-            self.state.position_side = info_dict.get(f'position_{symbol}_side', 'FLAT')
-            self.state.position_avg_entry = info_dict.get(f'position_{symbol}_avg_entry', 0.0)
+            pos_qty_key = f'position_{symbol}_qty'
+            pos_side_key = f'position_{symbol}_side'
+            pos_entry_key = f'position_{symbol}_avg_entry'
 
-        # Action info
-        action_decoded = info_dict.get('action_decoded', {})
-        if action_decoded:
-            action_type = action_decoded.get('type')
-            self.state.last_action_type = action_type.name if hasattr(action_type, 'name') else str(action_type)
+            if pos_qty_key in info_dict:
+                self.state.position_qty = info_dict[pos_qty_key]
+            if pos_side_key in info_dict:
+                self.state.position_side = info_dict[pos_side_key]
+            if pos_entry_key in info_dict:
+                self.state.position_avg_entry = info_dict[pos_entry_key]
 
-            size_enum = action_decoded.get('size_enum')
-            self.state.last_action_size = size_enum.name if hasattr(size_enum, 'name') else str(size_enum)
+        # Action info - only update if provided
+        if 'action_decoded' in info_dict:
+            action_decoded = info_dict['action_decoded']
+            if action_decoded:
+                action_type = action_decoded.get('type')
+                if action_type:
+                    self.state.last_action_type = action_type.name if hasattr(action_type, 'name') else str(action_type)
 
-            self.state.last_action_invalid = bool(action_decoded.get('invalid_reason'))
+                size_enum = action_decoded.get('size_enum')
+                if size_enum:
+                    self.state.last_action_size = size_enum.name if hasattr(size_enum, 'name') else str(size_enum)
 
-            # Add to recent actions
-            self.state.recent_actions.append({
-                'step': self.state.step,
-                'type': self.state.last_action_type,
-                'size': self.state.last_action_size,
-                'invalid': self.state.last_action_invalid
-            })
+                if 'invalid_reason' in action_decoded:
+                    self.state.last_action_invalid = bool(action_decoded['invalid_reason'])
 
-        # Market data
-        if market_state:
-            self.state.current_price = market_state.get('current_price')
-            self.state.bid_price = market_state.get('best_bid_price')
-            self.state.ask_price = market_state.get('best_ask_price')
-            self.state.market_session = market_state.get('market_session', 'UNKNOWN')
-
-        # Fills
-        fills_step = info_dict.get('fills_step', [])
-        if fills_step:
-            for fill in fills_step:
-                self.state.recent_fills.append({
+                # Add to recent actions
+                self.state.recent_actions.append({
                     'step': self.state.step,
-                    'side': fill.get('order_side', 'N/A'),
-                    'quantity': fill.get('executed_quantity', 0.0),
-                    'price': fill.get('executed_price', 0.0)
+                    'type': self.state.last_action_type,
+                    'size': self.state.last_action_size,
+                    'invalid': self.state.last_action_invalid
                 })
 
-        # Status
-        self.state.is_terminated = info_dict.get('termination_reason') is not None
-        self.state.is_truncated = info_dict.get('TimeLimit.truncated', False)
+        # Market data - only update if provided
+        if market_state:
+            if 'current_price' in market_state:
+                self.state.current_price = market_state['current_price']
+            if 'best_bid_price' in market_state:
+                self.state.bid_price = market_state['best_bid_price']
+            if 'best_ask_price' in market_state:
+                self.state.ask_price = market_state['best_ask_price']
+            if 'market_session' in market_state:
+                self.state.market_session = market_state['market_session']
+
+        # Fills - only update if provided
+        if 'fills_step' in info_dict:
+            fills_step = info_dict['fills_step']
+            if fills_step:
+                for fill in fills_step:
+                    self.state.recent_fills.append({
+                        'step': self.state.step,
+                        'side': fill.get('order_side', 'N/A'),
+                        'quantity': fill.get('executed_quantity', 0.0),
+                        'price': fill.get('executed_price', 0.0)
+                    })
+
+        # Status - only update if provided
+        if 'termination_reason' in info_dict:
+            self.state.is_terminated = info_dict['termination_reason'] is not None
+        if 'TimeLimit.truncated' in info_dict:
+            self.state.is_truncated = info_dict['TimeLimit.truncated']
 
     def _update_layout(self):
         """Update all layout components"""
@@ -402,24 +510,33 @@ class TradingDashboard:
         return Panel(header_table, style="bright_blue", box=box.HEAVY, title="FX-AI Trading Dashboard")
 
     def _create_training_stage_panel(self) -> Panel:
-        """Create training stage panel with progress"""
-        if self.state.current_stage == TrainingStage.INITIALIZING:
-            progress_bar = "[red]████████████████████[/red]"
-        else:
-            filled = int(self.state.stage_progress * 20)
-            progress_bar = "[green]" + "█" * filled + "[/green]" + "░" * (20 - filled)
+        """Create training stage panel with properly colored progress bar"""
+        # Create the progress bar using Rich's Text with proper styling
+        progress_text = Text()
+
+        # Calculate filled and empty portions
+        filled_chars = int(self.state.stage_progress * 20)
+        empty_chars = 20 - filled_chars
+
+        # Add filled portion in green
+        if filled_chars > 0:
+            progress_text.append("█" * filled_chars, style="green")
+
+        # Add empty portion in dim white
+        if empty_chars > 0:
+            progress_text.append("░" * empty_chars, style="dim white")
 
         stage_text = Text()
         stage_text.append(f"Stage: ", style="white")
         stage_text.append(f"{self.state.current_stage.value}", style="bold yellow")
 
-        progress_text = Text()
-        progress_text.append(f"Progress: {self.state.stage_progress:.1%} ", style="white")
-        progress_text.append(progress_bar)
+        progress_line = Text()
+        progress_line.append(f"Progress: {self.state.stage_progress:.1%} ", style="white")
+        progress_line.append_text(progress_text)
 
         details_text = Text(self.state.stage_details or "Ready", style="cyan")
 
-        content = Group(stage_text, progress_text, details_text)
+        content = Group(stage_text, progress_line, details_text)
         return Panel(content, title="[bold]Training Stage", border_style="cyan")
 
     def _create_training_metrics_panel(self) -> Panel:
@@ -431,8 +548,8 @@ class TradingDashboard:
         table.add_row("Batch Size", Text(f"{self.state.batch_size}", style="white"))
         table.add_row("Buffer Size", Text(f"{self.state.buffer_size}", style="white"))
 
-        if self.state.collected_steps > 0:
-            collection_pct = (self.state.collected_steps / self.state.rollout_steps) * 100 if self.state.rollout_steps > 0 else 0
+        if self.state.collected_steps > 0 and self.state.rollout_steps > 0:
+            collection_pct = (self.state.collected_steps / self.state.rollout_steps) * 100
             table.add_row("Collection", Text(f"{self.state.collected_steps}/{self.state.rollout_steps} ({collection_pct:.1f}%)", style="yellow"))
 
         table.add_row("Mean Reward", Text(f"{self.state.mean_episode_reward:.4f}", style="green" if self.state.mean_episode_reward > 0 else "red"))
@@ -640,10 +757,18 @@ class TradingDashboard:
         )
 
     def _create_logs_panel(self) -> Panel:
-        """Create the logs panel for bottom section"""
-        # This will be updated by the logging system
+        """Create the logs panel with recent log entries"""
+        recent_logs = self.log_capture.get_recent_logs()
+
+        if recent_logs:
+            # Take the last few logs to fit in the panel
+            display_logs = recent_logs[-self.log_height + 2:]  # Leave room for borders
+            log_text = "\n".join(display_logs)
+        else:
+            log_text = "Waiting for log messages..."
+
         return Panel(
-            Text("Logs will appear here...", style="dim"),
+            Text(log_text, style="dim white"),
             title="[bold]System Logs",
             border_style="dim"
         )
