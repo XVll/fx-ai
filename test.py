@@ -1,99 +1,145 @@
 #!/usr/bin/env python3
 """
-Test script for the trading dashboard.
-This demonstrates how to use the dashboard independently or with the trading environment.
+Test script to demonstrate the PROPERLY FIXED dashboard functionality.
+This follows the Rich Live documentation pattern exactly.
 """
 
 import time
-import random
+import logging
 from datetime import datetime
-
 from envs.env_dashboard import TradingDashboard
-from simulators.portfolio_simulator import OrderSideEnum
 
 
-def demo_dashboard():
-    """Demonstrate the dashboard with simulated trading data"""
+def test_dashboard():
+    """Test the properly fixed dashboard following Rich Live docs pattern"""
+
+    print("Starting dashboard test following Rich Live documentation pattern...")
+    print("Expected behavior:")
+    print("1. Dashboard appears at bottom")
+    print("2. All logs appear ABOVE the dashboard")
+    print("3. Dashboard updates with new data")
+    print("4. Clean separation between logs and dashboard")
+    print()
 
     # Create dashboard
-    dashboard = TradingDashboard(update_frequency=0.1)
+    dashboard = TradingDashboard()
     dashboard.set_symbol("MLGO")
     dashboard.set_initial_capital(25000.0)
 
     try:
-        # Start the dashboard
+        # Start the dashboard - this sets up Rich Live properly
         dashboard.start()
-        print("Dashboard started! Watch the live display...")
 
-        # Simulate some trading activity
-        for step in range(1, 101):
-            # Simulate market data
-            base_price = 5.00
-            price_change = random.uniform(-0.05, 0.05)
-            current_price = base_price + price_change
+        # Get logger after dashboard started (it's now configured to use live.console)
+        logger = logging.getLogger("test")
 
-            # Create mock info dict (like what trading env would provide)
-            info_dict = {
+        # These should appear ABOVE the dashboard
+        logger.info("🚀 Starting test sequence...")
+        logger.info("📊 Dashboard should now be visible at the bottom")
+        logger.info("📝 These log messages should appear above the dashboard")
+
+        # Test the dashboard's log_message method too
+        dashboard.log_message("✅ Dashboard log method test - this appears above", "success")
+        dashboard.log_message("⚠️ Warning message test", "warning")
+        dashboard.log_message("❌ Error message test", "error")
+        dashboard.log_message("ℹ️ Info message test", "info")
+
+        # Simulate trading activity with logs appearing above
+        for step in range(30):
+            # Create mock data
+            mock_info = {
                 'step': step,
                 'timestamp_iso': datetime.now().isoformat(),
-                'reward_step': random.uniform(-0.1, 0.1),
-                'episode_cumulative_reward': random.uniform(-5, 5),
-                'portfolio_equity': 25000 + random.uniform(-1000, 1000),
-                'portfolio_cash': 20000 + random.uniform(-5000, 5000),
-                'portfolio_unrealized_pnl': random.uniform(-500, 500),
-                'portfolio_realized_pnl_session_net': random.uniform(-200, 200),
-                'position_MLGO_qty': random.uniform(0, 1000),
-                'position_MLGO_side': random.choice(['FLAT', 'LONG', 'SHORT']),
-                'position_MLGO_avg_entry': current_price + random.uniform(-0.1, 0.1),
-                'invalid_actions_total_episode': random.randint(0, 5)
+                'episode_cumulative_reward': step * 0.1 - 2.5,
+                'reward_step': 0.1 if step % 3 == 0 else -0.05,
+                'portfolio_equity': 25000 + (step * 10) - 100,
+                'portfolio_cash': 25000 - (step * 50),
+                'portfolio_unrealized_pnl': step * 2.5,
+                'portfolio_realized_pnl_session_net': step * 1.2,
+                'action_decoded': {
+                    'type': type('ActionType', (), {'name': ['HOLD', 'BUY', 'SELL'][step % 3]})(),
+                    'size_enum': type('SizeEnum', (), {'name': ['SIZE_25', 'SIZE_50', 'SIZE_75'][step % 3]})(),
+                    'invalid_reason': 'Test invalid reason' if step % 10 == 0 else None
+                },
+                'position_MLGO_qty': (step % 100) * 10,
+                'position_MLGO_side': ['FLAT', 'LONG', 'SHORT'][step % 3],
+                'position_MLGO_avg_entry': 5.25 + (step * 0.01),
+                'invalid_actions_total_episode': step // 10,
+                'fills_step': [
+                    {
+                        'order_side': type('OrderSide', (), {'value': ['BUY', 'SELL'][step % 2]})(),
+                        'executed_quantity': 100 + step,
+                        'executed_price': 5.20 + (step * 0.01)
+                    }
+                ] if step % 5 == 0 else []
             }
 
-            # Add action info occasionally
-            if step % 5 == 0:
-                info_dict['action_decoded'] = {
-                    'type': type('ActionType', (), {'name': random.choice(['HOLD', 'BUY', 'SELL'])})(),
-                    'size_enum': type('SizeEnum', (),
-                                      {'name': random.choice(['SIZE_25', 'SIZE_50', 'SIZE_75', 'SIZE_100'])})(),
-                    'invalid_reason': None if random.random() > 0.2 else "Test invalid reason"
+            mock_market_state = {
+                'current_price': 5.25 + (step * 0.005),
+                'best_bid_price': 5.24 + (step * 0.005),
+                'best_ask_price': 5.26 + (step * 0.005),
+                'best_bid_size': 1000 + (step * 10),
+                'best_ask_size': 1500 + (step * 15),
+                'market_session': ['PREMARKET', 'REGULAR', 'POSTMARKET'][step % 3]
+            }
+
+            # Update dashboard (this should update the bottom display)
+            dashboard.update_state(mock_info, mock_market_state)
+
+            # These logs should appear ABOVE the dashboard
+            if step % 10 == 0:
+                logger.info(f"📊 Step {step}: Portfolio equity: ${mock_info['portfolio_equity']:.2f}")
+            elif step % 7 == 0:
+                logger.warning(f"⚠️  Step {step}: High volatility detected")
+            elif step % 5 == 0:
+                logger.info(
+                    f"💰 Step {step}: Trade executed - {mock_info['fills_step'][0]['order_side'].value} {mock_info['fills_step'][0]['executed_quantity']} @ ${mock_info['fills_step'][0]['executed_price']:.2f}")
+                # Use dashboard's log method too
+                dashboard.log_message(f"Trade logged via dashboard method", "success")
+            elif step % 3 == 0:
+                logger.debug(f"🔍 Step {step}: Action taken - {mock_info['action_decoded']['type'].name}")
+            else:
+                logger.info(f"Step {step}: Regular trading step, reward: {mock_info['reward_step']:.3f}")
+
+            # Test episode summary
+            if step == 25:
+                logger.info("📈 Episode summary incoming...")
+                mock_info['episode_summary'] = {
+                    'total_reward': mock_info['episode_cumulative_reward'],
+                    'steps': step,
+                    'session_total_commissions': step * 0.5,
+                    'session_total_fees': step * 0.3,
+                    'session_total_slippage_cost': step * 0.2,
+                    'termination_reason': 'END_OF_SESSION_DATA'
                 }
+                dashboard.update_state(mock_info, mock_market_state)
+                logger.info("✅ Episode completed successfully!")
+                dashboard.log_message("🎉 Episode finished!", "success")
 
-            # Add fills occasionally
-            if step % 7 == 0:
-                info_dict['fills_step'] = [{
-                    'order_side': random.choice([OrderSideEnum.BUY, OrderSideEnum.SELL]),
-                    'executed_quantity': random.uniform(10, 100),
-                    'executed_price': current_price,
-                    'commission': random.uniform(0.1, 2.0),
-                    'fees': random.uniform(0.5, 5.0),
-                    'slippage_cost_total': random.uniform(0.1, 1.0)
-                }]
+            time.sleep(0.3)  # Slower for better visibility
 
-            # Create mock market state
-            spread = 0.01
-            market_state = {
-                'current_price': current_price,
-                'best_bid_price': current_price - spread / 2,
-                'best_ask_price': current_price + spread / 2,
-                'best_bid_size': random.uniform(100, 1000),
-                'best_ask_size': random.uniform(100, 1000),
-                'market_session': random.choice(['PREMARKET', 'REGULAR', 'POSTMARKET'])
-            }
+        logger.info("🎉 Dashboard test completed successfully!")
+        logger.info("✅ If logs appeared above dashboard, the fix is working!")
+        dashboard.log_message("✅ Test completed - logs should be above this dashboard", "success")
 
-            # Update dashboard
-            dashboard.update_state(info_dict, market_state)
-
-            # Sleep to simulate real trading pace
-            time.sleep(0.5)
+        # Keep running to show final state
+        logger.info("Press Ctrl+C to exit...")
+        while True:
+            time.sleep(1)
 
     except KeyboardInterrupt:
-        print("\nDemo interrupted by user")
+        logger.info("👋 Dashboard test interrupted by user")
+        dashboard.log_message("👋 Test interrupted", "info")
+    except Exception as e:
+        logger.error(f"❌ Error during dashboard test: {e}")
+        dashboard.log_message(f"❌ Error: {e}", "error")
+        raise
     finally:
-        # Stop dashboard
+        # Clean shutdown
+        logger.info("🛑 Stopping dashboard...")
         dashboard.stop()
-        print("Dashboard stopped")
+        print("\nDashboard test completed.")
 
 
 if __name__ == "__main__":
-    print("Starting trading dashboard demo...")
-    print("Press Ctrl+C to stop")
-    demo_dashboard()
+    test_dashboard()
