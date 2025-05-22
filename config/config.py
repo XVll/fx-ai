@@ -34,7 +34,7 @@ class EnvConfig:
     normalize_state: bool = True  # Should feature vectors be normalized?
     random_reset: bool = True  # Should the environment be reset randomly?
     max_position: float = 1.0  # Maximum position size
-    render_mode: str = "human"  # Rendering mode (none, human, rgb_array)
+    render_mode: str = "dashboard"  # Rendering mode (none, human, rgb_array, dashboard)
     position_multipliers: List[float] = field(default_factory=lambda: [0.25, 0.5, 0.75, 1.0])
     reward: RewardConfig = field(default_factory=RewardConfig)
 
