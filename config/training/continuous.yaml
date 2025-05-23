@@ -13,7 +13,7 @@ best_models_dir: "${hydra:runtime.cwd}/best_models"
 model_prefix: "${data.symbol}"
 max_best_models: 5
 version_tracking: true
-startup_evaluation: true
+startup_evaluation: false
 checkpoint_sync_frequency: 2  # How often to sync checkpoints to best_models directory
 
 # Set to higher value than regular PPO to enable longer continued training
