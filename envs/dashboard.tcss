@@ -1,0 +1,33 @@
+/* dashboard.tcss */
+#log-view {
+    height: 70%; /* Logs take 70% of vertical space */
+    border: round $primary;
+    margin-bottom: 1;
+    background: $surface; /* Ensure background for log view */
+    overflow-y: scroll; /* Ensure log view is scrollable */
+}
+
+DashboardDisplay { /* Target the custom widget type */
+    height: 30%; /* Dashboard takes the remaining 30% */
+    width: 100%;
+    border: round $accent;
+    background: $surface-darken-1; /* Ensure background for dashboard display */
+    overflow: hidden; /* Prevent dashboard from trying to scroll its own content if too large */
+}
+
+/* Style for the rows within DashboardDisplay if needed */
+#dash_row1, #dash_row2 {
+    height: 1fr; /* Distribute space equally if using multiple rows */
+    margin-bottom: 1;
+}
+
+#dashboard-content-scroll {
+    overflow-y: auto; /* Allow vertical scroll if dashboard content exceeds its allocated space */
+    width: 100%;
+    height: 100%;
+}
+
+Header, Footer {
+    background: $primary-background;
+    color: $text;
+}
