@@ -1,4 +1,4 @@
-# simulators/portfolio_simulator.py - FIXED: Comprehensive fixes for P&L tracking and position management
+# simulators/portfolio_simulator.py - FIXED: Correct position tracking and average entry price calculation
 
 import logging
 from collections import deque
@@ -188,8 +188,8 @@ class PortfolioManager:
         elif qty < 0.0:
             issues.append(f"Negative quantity: {qty:.4f}")
 
-        # Check for unreasonable average entry price
-        if qty > 0.0 and (avg_entry <= 0.0 or avg_entry > 1000.0):
+        # FIXED: More reasonable check for average entry price
+        if qty > 0.0 and (avg_entry <= 0.0 or avg_entry > 10000.0):  # Reasonable price range
             issues.append(f"Unreasonable avg_entry_price: ${avg_entry:.4f} with qty: {qty:.4f}")
 
         # Check for inconsistent entry value
@@ -207,7 +207,7 @@ class PortfolioManager:
                 self.logger.error(f"   Last fill: {self._last_fill_details}")
 
     def update_fill(self, fill: FillDetails):
-        """FIXED: Comprehensive fill processing with enhanced validation and logging"""
+        """FIXED: Comprehensive fill processing with correct weighted average calculation"""
         asset_id = fill['asset_id']
         pos_data = self.positions[asset_id]
 
@@ -312,31 +312,33 @@ class PortfolioManager:
                 if pos_data['open_trade_id'] and pos_data['open_trade_id'] in self.open_trades:
                     open_trade = self.open_trades[pos_data['open_trade_id']]
 
-                    # FIXED: Proper weighted average calculation
-                    old_total_value = pos_data['entry_value_total']
-                    new_fill_value = abs(fill_value)
-                    new_total_value = old_total_value + new_fill_value
-                    new_total_qty = pos_data['quantity'] + abs(qty_change)
+                    # FIXED: Correct weighted average calculation using price * quantity
+                    old_qty = pos_data['quantity']
+                    old_avg_price = pos_data['avg_entry_price']
+                    new_fill_qty = abs(qty_change)
+                    new_fill_price = fill_price
 
-                    # Weighted average entry price
-                    new_avg_entry = new_total_value / new_total_qty if new_total_qty > 0 else 0
+                    # Calculate weighted average: (old_qty * old_price + new_qty * new_price) / (old_qty + new_qty)
+                    total_cost = (old_qty * old_avg_price) + (new_fill_qty * new_fill_price)
+                    new_total_qty = old_qty + new_fill_qty
+                    new_avg_price = total_cost / new_total_qty if new_total_qty > 0 else 0
 
                     # Update position
-                    pos_data['avg_entry_price'] = new_avg_entry
+                    pos_data['avg_entry_price'] = new_avg_price
                     pos_data['quantity'] = new_total_qty
-                    pos_data['entry_value_total'] = new_total_value
-                    pos_data['total_entry_cost'] += (new_fill_value + commission + fees)
+                    pos_data['entry_value_total'] = new_total_qty * new_avg_price  # Recalculate based on new average
+                    pos_data['total_entry_cost'] += (abs(fill_value) + commission + fees)
 
                     # Update trade record
                     open_trade['entry_quantity_total'] = new_total_qty
-                    open_trade['avg_entry_price'] = new_avg_entry
+                    open_trade['avg_entry_price'] = new_avg_price
                     open_trade['commission_total'] += commission
                     open_trade['fees_total'] += fees
                     open_trade['slippage_total_trade_usd'] += slippage
                     open_trade['entry_fills'].append(fill)
 
                     self.logger.info(
-                        f"📈 ADDED TO POSITION: {asset_id} total qty now {new_total_qty:.4f} @ avg ${new_avg_entry:.4f}")
+                        f"📈 ADDED TO POSITION: {asset_id} | Old: {old_qty:.4f}@${old_avg_price:.4f} + New: {new_fill_qty:.4f}@${new_fill_price:.4f} = Total: {new_total_qty:.4f}@${new_avg_price:.4f}")
 
         # --- Handle Closing/Reducing Positions ---
         elif is_closing_or_reducing:
@@ -384,8 +386,9 @@ class PortfolioManager:
                 if open_trade.get('avg_exit_price') is None or current_exit_qty < 1e-9:
                     open_trade['avg_exit_price'] = fill_price
                 else:
-                    total_exit_value = (open_trade['avg_exit_price'] * current_exit_qty) + (fill_price * fill_qty)
-                    open_trade['avg_exit_price'] = total_exit_value / (current_exit_qty + fill_qty)
+                    # Weighted average for exit price
+                    total_exit_cost = (open_trade['avg_exit_price'] * current_exit_qty) + (fill_price * fill_qty)
+                    open_trade['avg_exit_price'] = total_exit_cost / (current_exit_qty + fill_qty)
 
                 open_trade['exit_quantity_total'] = current_exit_qty + fill_qty
 

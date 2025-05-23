@@ -1,4 +1,4 @@
-# agent/ppo_agent.py - FIXED: Real-time dashboard updates and evaluation tracking
+# agent/ppo_agent.py - FIXED: Enhanced dashboard integration with reward component tracking
 
 import os
 import logging
@@ -97,16 +97,24 @@ class PPOTrainer:
         # Dashboard integration
         self.is_evaluating = False
 
-        # FIXED: Real-time dashboard update tracking
+        # FIXED: Enhanced dashboard update tracking
         self.last_update_start_time = 0.0
         self.last_rollout_start_time = 0.0
         self.last_dashboard_sync = 0.0
-        self.dashboard_sync_interval = 1.0  # FIXED: Update every 1 second for smoother updates
+        self.dashboard_sync_interval = 0.5  # FIXED: More frequent updates
 
-        # FIXED: Real-time step tracking during rollout
+        # FIXED: Performance tracking for dashboard
         self.steps_collected_current_rollout = 0
         self.evaluation_episode_count = 0
         self.evaluation_total_episodes = 0
+
+        # FIXED: Advanced training metrics tracking
+        self.training_metrics_history = {
+            'clipfrac': 0.0,
+            'approx_kl': 0.0,
+            'value_explained_variance': 0.0,
+            'policy_kl_divergence': 0.0
+        }
 
         logging.info(
             f"🤖 PPOTrainer initialized. Device: {self.device}, LR: {self.lr}, Rollout Steps: {self.rollout_steps}")
@@ -138,7 +146,7 @@ class PPOTrainer:
 
     def _sync_with_dashboard_realtime(self, collected_steps: int, episode_rewards: List[float],
                                       force_update: bool = False):
-        """FIXED: Real-time dashboard sync with immediate global step updates"""
+        """FIXED: Enhanced real-time dashboard sync with comprehensive metrics"""
         current_time = time.time()
 
         # FIXED: Update global step counter immediately for real-time display
@@ -147,7 +155,7 @@ class PPOTrainer:
         should_update = (
                 force_update or
                 current_time - self.last_dashboard_sync >= self.dashboard_sync_interval or
-                collected_steps % 10 == 0  # FIXED: Update every 10 steps for smooth progress
+                collected_steps % 5 == 0  # FIXED: Update every 5 steps for smooth progress
         )
 
         if should_update:
@@ -166,23 +174,44 @@ class PPOTrainer:
                 steps_per_second = collected_steps / rollout_time if rollout_time > 0 else 0
                 mean_reward = np.mean(episode_rewards) if episode_rewards else 0
 
-                # FIXED: Update training metrics with real-time global steps
-                self.dashboard.update_training_metrics({
+                # FIXED: Comprehensive metrics update including reward components
+                comprehensive_metrics = {
                     'collected_steps': collected_steps,
                     'rollout_steps': self.rollout_steps,
                     'mean_episode_reward': mean_reward,
                     'steps_per_second': steps_per_second,
-                    'global_step_counter': actual_global_steps,  # FIXED: Real-time global steps
+                    'global_step_counter': actual_global_steps,
+                    'total_steps': actual_global_steps,  # FIXED: Ensure both are updated
                     'episode_number': self.global_episode_counter,
-                    'step': actual_global_steps  # FIXED: Also update the main step counter
-                })
+                    'step': actual_global_steps,
+                    'update_count': self.global_update_counter,
+
+                    # FIXED: Include training performance metrics
+                    'episodes_per_update': len(episode_rewards),
+                    'time_per_update': rollout_time,
+
+                    # FIXED: Include advanced training metrics if available
+                    **self.training_metrics_history
+                }
+
+                # FIXED: Get reward components from environment's reward calculator if available
+                if hasattr(self.env, 'reward_calculator') and hasattr(self.env.reward_calculator,
+                                                                      'get_last_reward_components'):
+                    try:
+                        reward_components = self.env.reward_calculator.get_last_reward_components()
+                        if reward_components:
+                            comprehensive_metrics['reward_components'] = reward_components
+                    except Exception as e:
+                        self.logger.debug(f"Could not get reward components: {e}")
+
+                self.dashboard.update_training_metrics(comprehensive_metrics)
 
             # FIXED: Force update environment's training info with real-time steps
             if hasattr(self.env, 'set_training_info'):
                 self.env.set_training_info(
                     episode_num=self.global_episode_counter,
                     total_episodes=0,
-                    total_steps=actual_global_steps,  # FIXED: Real-time global steps
+                    total_steps=actual_global_steps,
                     update_count=self.global_update_counter,
                     buffer_size=self.rollout_steps,
                     is_training=not self.is_evaluating,
@@ -192,12 +221,8 @@ class PPOTrainer:
 
             self.last_dashboard_sync = current_time
 
-            # FIXED: Log real-time progress with more detail
-            logging.debug(
-                f"Real-time update: Global Step {actual_global_steps}, Collected {collected_steps}/{self.rollout_steps}, Mean Reward: {np.mean(episode_rewards) if episode_rewards else 0:.4f}")
-
     def collect_rollout_data(self) -> Dict[str, Any]:
-        """FIXED: Collects data with immediate real-time dashboard updates."""
+        """FIXED: Enhanced rollout collection with comprehensive dashboard updates."""
         logging.info(f"🎲 Starting rollout data collection for {self.rollout_steps} steps...")
         self.buffer.clear()
 
@@ -227,7 +252,7 @@ class PPOTrainer:
             }
 
             # FIXED: More frequent real-time dashboard updates during rollout
-            if collected_steps % 5 == 0 or collected_steps == self.rollout_steps - 1:  # Update every 5 steps
+            if collected_steps % 3 == 0 or collected_steps == self.rollout_steps - 1:  # Update every 3 steps
                 self._sync_with_dashboard_realtime(collected_steps, episode_rewards_in_rollout)
 
             current_model_state_torch_batched = {}
@@ -239,7 +264,7 @@ class PPOTrainer:
                         current_model_state_torch_batched[key] = tensor_val
                     else:
                         logging.error(
-                            f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}'. Expected 2D. Shape: {tensor_val.shape}")
+                            f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}'. Shape: {tensor_val.shape}")
                         current_model_state_torch_batched[key] = tensor_val
                 elif key == 'static':
                     if tensor_val.ndim == 2 and tensor_val.shape[0] == 1:
@@ -248,7 +273,7 @@ class PPOTrainer:
                         current_model_state_torch_batched[key] = tensor_val.unsqueeze(0)
                     else:
                         logging.error(
-                            f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}' (static). Expected 1D or 2D (1,F). Shape: {tensor_val.shape}")
+                            f"Unexpected tensor ndim ({tensor_val.ndim}) for key '{key}' (static). Shape: {tensor_val.shape}")
                         current_model_state_torch_batched[key] = tensor_val
                 else:
                     current_model_state_torch_batched[key] = tensor_val
@@ -333,20 +358,23 @@ class PPOTrainer:
             "global_episode_counter": self.global_episode_counter
         }
 
-        # Update dashboard with rollout completion
+        # FIXED: Final comprehensive dashboard update
         if self.dashboard:
-            self.dashboard.update_training_metrics({
+            final_metrics = {
                 'collected_steps': collected_steps,
                 'mean_episode_reward': rollout_stats["mean_reward"],
                 'mean_episode_length': rollout_stats["mean_episode_length"],
                 'episodes_per_update': rollout_stats["num_episodes_in_rollout"],
                 'steps_per_second': steps_per_second,
                 'global_step_counter': self.global_step_counter,
-                'episode_number': self.global_episode_counter
-            })
+                'total_steps': self.global_step_counter,  # FIXED: Ensure sync
+                'episode_number': self.global_episode_counter,
+                'time_per_update': rollout_time
+            }
+            self.dashboard.update_training_metrics(final_metrics)
 
         logging.info(
-            f"📊 Rollout finished. Global Steps: {self.global_step_counter}, Episodes: {self.global_episode_counter}, {rollout_stats}")
+            f"📊 Rollout finished. Global Steps: {self.global_step_counter}, Episodes: {self.global_episode_counter}")
         return rollout_stats
 
     def _compute_advantages_and_returns(self):
@@ -383,7 +411,7 @@ class PPOTrainer:
 
             delta = rewards[t] + self.gamma * next_value * (1.0 - dones[t].float()) - values[t]
             advantages[t] = last_gae_lam = delta + self.gamma * self.gae_lambda * (
-                    1.0 - dones[t].float()) * last_gae_lam
+                        1.0 - dones[t].float()) * last_gae_lam
 
         self.buffer.advantages = advantages
 
@@ -402,7 +430,7 @@ class PPOTrainer:
             f"Final shapes - advantages: {self.buffer.advantages.shape}, returns: {self.buffer.returns.shape}")
 
     def update_policy(self) -> Dict[str, float]:
-        """FIXED: Performs PPO updates with real-time dashboard progress tracking."""
+        """FIXED: Enhanced PPO updates with comprehensive metrics tracking."""
         # Record start time for performance tracking
         self.last_update_start_time = time.time()
 
@@ -439,11 +467,16 @@ class PPOTrainer:
         total_batches = (num_samples + self.batch_size - 1) // self.batch_size
         total_updates = self.ppo_epochs * total_batches
 
+        # FIXED: Advanced metrics tracking
+        total_clipfrac = 0
+        total_approx_kl = 0
+        total_explained_variance = 0
+
         logging.info(f"🔄 Starting PPO update for {self.ppo_epochs} epochs with {num_samples} samples")
 
         update_idx = 0
         for epoch in range(self.ppo_epochs):
-            # FIXED: Update dashboard with epoch progress and real-time metrics
+            # FIXED: Update dashboard with epoch progress
             if self.dashboard:
                 epoch_progress = epoch / self.ppo_epochs
                 self.dashboard.set_training_stage(
@@ -453,20 +486,13 @@ class PPOTrainer:
                     epoch_progress
                 )
 
-                # FIXED: Update with current global counters
-                self.dashboard.update_training_metrics({
-                    'global_step_counter': self.global_step_counter,
-                    'episode_number': self.global_episode_counter,
-                    'update_count': self.global_update_counter
-                })
-
             np.random.shuffle(indices)
 
             for start_idx in range(0, num_samples, self.batch_size):
                 batch_indices = indices[start_idx: start_idx + self.batch_size]
 
                 # FIXED: Real-time batch progress updates
-                if self.dashboard and update_idx % 3 == 0:  # Update every 3 batches
+                if self.dashboard and update_idx % 2 == 0:  # Update every 2 batches
                     batch_progress = update_idx / total_updates
                     batch_num = (start_idx // self.batch_size) + 1
                     epoch_batches = total_batches
@@ -484,11 +510,6 @@ class PPOTrainer:
                 batch_returns = returns[batch_indices]
 
                 action_params, current_values = self.model(batch_states)
-
-                if epoch == 0 and start_idx == 0:
-                    logging.debug(
-                        f"Batch shapes - actions: {batch_actions.shape}, old_log_probs: {batch_old_log_probs.shape}, "
-                        f"advantages: {batch_advantages.shape}, returns: {batch_returns.shape}")
 
                 if batch_returns.ndim > 1 and batch_returns.shape[1] > 1:
                     batch_returns = batch_returns[:, 0:1]
@@ -523,19 +544,25 @@ class PPOTrainer:
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * batch_advantages
                 actor_loss = -torch.min(surr1, surr2).mean()
 
-                logging.debug(
-                    f"Shape check - current_values: {current_values.shape}, batch_returns: {batch_returns.shape}")
+                # FIXED: Calculate advanced metrics
+                with torch.no_grad():
+                    # Clip fraction
+                    clipfrac = torch.mean((torch.abs(ratio - 1.0) > self.clip_eps).float()).item()
+                    total_clipfrac += clipfrac
 
-                if batch_returns.ndim > 1 and batch_returns.size(1) > 1:
-                    logging.warning(f"Unexpected batch_returns shape: {batch_returns.shape}. Taking first column.")
-                    batch_returns = batch_returns[:, 0:1]
+                    # Approximate KL divergence
+                    approx_kl = torch.mean(batch_old_log_probs - new_log_probs).item()
+                    total_approx_kl += approx_kl
+
+                    # Value function explained variance
+                    var_y = torch.var(batch_returns)
+                    explained_var = 1 - torch.var(batch_returns - current_values.view(-1, 1)) / (var_y + 1e-8)
+                    total_explained_variance += explained_var.item()
 
                 current_values_shaped = current_values.view(-1, 1)
                 batch_returns_shaped = batch_returns.view(-1, 1)
 
                 if current_values_shaped.size(0) != batch_returns_shaped.size(0):
-                    logging.error(
-                        f"Shape mismatch after reshaping: {current_values_shaped.shape} vs {batch_returns_shaped.shape}")
                     min_size = min(current_values_shaped.size(0), batch_returns_shaped.size(0))
                     current_values_shaped = current_values_shaped[:min_size]
                     batch_returns_shaped = batch_returns_shaped[:min_size]
@@ -546,8 +573,12 @@ class PPOTrainer:
 
                 self.optimizer.zero_grad()
                 loss.backward()
+
+                # FIXED: Track gradient norm
+                grad_norm = 0
                 if self.max_grad_norm > 0:
-                    nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                    grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+
                 self.optimizer.step()
 
                 total_actor_loss += actor_loss.item()
@@ -565,6 +596,19 @@ class PPOTrainer:
         avg_critic_loss = total_critic_loss / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
         avg_entropy = total_entropy_loss / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
 
+        # FIXED: Calculate advanced metrics averages
+        avg_clipfrac = total_clipfrac / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
+        avg_approx_kl = total_approx_kl / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
+        avg_explained_variance = total_explained_variance / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
+
+        # FIXED: Store advanced metrics for dashboard
+        self.training_metrics_history.update({
+            'clipfrac': avg_clipfrac,
+            'approx_kl': avg_approx_kl,
+            'value_function_explained_variance': avg_explained_variance,
+            'policy_kl_divergence': avg_approx_kl
+        })
+
         update_metrics = {
             "actor_loss": avg_actor_loss,
             "critic_loss": avg_critic_loss,
@@ -573,30 +617,39 @@ class PPOTrainer:
             "time_per_update": update_time,
             "global_step_counter": self.global_step_counter,
             "global_episode_counter": self.global_episode_counter,
-            "global_update_counter": self.global_update_counter
+            "global_update_counter": self.global_update_counter,
+            # FIXED: Include advanced metrics
+            "clipfrac": avg_clipfrac,
+            "approx_kl": avg_approx_kl,
+            "value_function_explained_variance": avg_explained_variance
         }
 
-        # FIXED: Update dashboard with final metrics including global counters
+        # FIXED: Comprehensive dashboard update with all metrics
         if self.dashboard:
-            self.dashboard.update_training_metrics({
+            comprehensive_update = {
                 'actor_loss': avg_actor_loss,
                 'critic_loss': avg_critic_loss,
                 'entropy': avg_entropy,
                 'time_per_update': update_time,
                 'update_count': self.global_update_counter,
                 'global_step_counter': self.global_step_counter,
-                'episode_number': self.global_episode_counter
-            })
+                'total_steps': self.global_step_counter,  # FIXED: Ensure sync
+                'episode_number': self.global_episode_counter,
+                # FIXED: Advanced metrics
+                'clipfrac': avg_clipfrac,
+                'approx_kl': avg_approx_kl,
+                'value_function_explained_variance': avg_explained_variance,
+                'policy_kl_divergence': avg_approx_kl
+            }
+            self.dashboard.update_training_metrics(comprehensive_update)
 
         for callback in self.callbacks:
             callback.on_update_end(self, update_metrics)
 
         logging.info(f"📈 PPO Update {self.global_update_counter}: "
-                     f"Actor Loss: {avg_actor_loss:.4f}, "
-                     f"Critic Loss: {avg_critic_loss:.4f}, "
-                     f"Entropy: {avg_entropy:.4f}, "
-                     f"Time: {update_time:.1f}s, "
-                     f"Global Steps: {self.global_step_counter}")
+                     f"Actor: {avg_actor_loss:.4f}, Critic: {avg_critic_loss:.4f}, "
+                     f"Entropy: {avg_entropy:.4f}, ClipFrac: {avg_clipfrac:.3f}, "
+                     f"Time: {update_time:.1f}s, Global Steps: {self.global_step_counter}")
 
         return update_metrics
 
@@ -614,8 +667,7 @@ class PPOTrainer:
             rollout_info = self.collect_rollout_data()
 
             if self.buffer.get_size() < self.rollout_steps and self.buffer.get_size() < self.batch_size:
-                logging.warning(f"Buffer size {self.buffer.get_size()} is less than rollout_steps {self.rollout_steps} "
-                                f"or batch_size {self.batch_size} after collection. Might be due to early episode ends. Skipping update if too small.")
+                logging.warning(f"Buffer size {self.buffer.get_size()} too small. Skipping update.")
                 if self.buffer.get_size() < self.batch_size:
                     continue
 
@@ -628,21 +680,19 @@ class PPOTrainer:
             # Evaluation with dashboard update
             if eval_freq_steps and (self.global_update_counter % (
                     eval_freq_steps // self.rollout_steps) == 0 or self.global_step_counter >= total_training_steps):
-
                 # Update dashboard that we're evaluating
                 self._update_dashboard_training_info(is_training=False, is_evaluating=True)
 
                 logging.info(f"🔍 Running evaluation at step {self.global_step_counter}...")
                 eval_stats = self.evaluate(n_episodes=10)
-                logging.info(
-                    f"📊 Evaluation at step {self.global_step_counter}: Mean Reward: {eval_stats['mean_reward']:.2f}")
+                logging.info(f"📊 Evaluation: Mean Reward: {eval_stats['mean_reward']:.2f}")
 
                 # Reset dashboard back to training mode
                 self._update_dashboard_training_info(is_training=True, is_evaluating=False)
 
                 for callback in self.callbacks:
                     eval_metrics = {f"eval/{k}": v for k, v in eval_stats.items() if
-                                    k != 'episode_rewards' and k != 'episode_lengths'}
+                                    k not in ['episode_rewards', 'episode_lengths']}
                     eval_metrics["global_step"] = self.global_step_counter
                     callback.on_update_iteration_end(self, self.global_update_counter, eval_metrics, {})
 
@@ -650,8 +700,7 @@ class PPOTrainer:
                     best_eval_reward = eval_stats['mean_reward']
                     best_model_path = os.path.join(self.model_dir, f"best_model_update_{self.global_update_counter}.pt")
                     self.save_model(best_model_path)
-                    logging.info(
-                        f"🏆 New best model saved with eval reward: {best_eval_reward:.2f} at {best_model_path}")
+                    logging.info(f"🏆 New best model saved: {best_eval_reward:.2f} at {best_model_path}")
 
                 latest_model_path = os.path.join(self.model_dir, "latest_model.pt")
                 self.save_model(latest_model_path)
@@ -662,11 +711,11 @@ class PPOTrainer:
             callback.on_training_end(self, final_stats)
 
         logging.info(
-            f"🎉 Training finished! Total steps: {self.global_step_counter}, Total PPO updates: {self.global_update_counter}")
+            f"🎉 Training finished! Total steps: {self.global_step_counter}, Updates: {self.global_update_counter}")
         return final_stats
 
     def evaluate(self, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
-        """FIXED: Evaluates with real-time dashboard updates and detailed tracking during evaluation."""
+        """FIXED: Enhanced evaluation with comprehensive dashboard updates."""
         logging.info(f"🔍 Starting evaluation for {n_episodes} episodes (deterministic: {deterministic})...")
 
         # Set model to evaluation mode
@@ -693,12 +742,16 @@ class PPOTrainer:
                 )
 
                 # FIXED: Update evaluation metrics
-                self.dashboard.update_training_metrics({
+                eval_metrics_update = {
                     'global_step_counter': self.global_step_counter,
+                    'total_steps': self.global_step_counter,
                     'episode_number': self.global_episode_counter,
                     'evaluation_episode': i + 1,
-                    'evaluation_total': n_episodes
-                })
+                    'evaluation_total': n_episodes,
+                    'is_evaluating': True,
+                    'is_training': False
+                }
+                self.dashboard.update_training_metrics(eval_metrics_update)
 
             env_state_np, _ = self.env.reset()
             current_episode_reward = 0.0
@@ -726,28 +779,30 @@ class PPOTrainer:
                 current_episode_length += 1
                 step_count += 1
 
-                # FIXED: Real-time evaluation progress updates every 25 steps
-                if step_count % 25 == 0 and self.dashboard:
-                    self.dashboard.update_training_metrics({
+                # FIXED: Real-time evaluation progress updates
+                if step_count % 20 == 0 and self.dashboard:
+                    eval_step_update = {
                         'evaluation_episode_reward': current_episode_reward,
                         'evaluation_episode_length': current_episode_length,
                         'evaluation_step': step_count
-                    })
+                    }
+                    self.dashboard.update_training_metrics(eval_step_update)
 
             episode_rewards.append(current_episode_reward)
             episode_lengths.append(current_episode_length)
             self.evaluation_episode_count += 1
 
-            logging.info(f"🔍 Eval Episode {i + 1}/{n_episodes} finished. "
-                         f"Reward: {current_episode_reward:.2f}, Length: {current_episode_length}")
+            logging.info(
+                f"🔍 Eval Episode {i + 1}/{n_episodes}: Reward: {current_episode_reward:.2f}, Length: {current_episode_length}")
 
             # FIXED: Update dashboard after each evaluation episode
             if self.dashboard:
                 mean_reward_so_far = np.mean(episode_rewards) if episode_rewards else 0
-                self.dashboard.update_training_metrics({
+                eval_episode_update = {
                     'evaluation_mean_reward': mean_reward_so_far,
                     'evaluation_episodes_completed': self.evaluation_episode_count
-                })
+                }
+                self.dashboard.update_training_metrics(eval_episode_update)
 
         # Reset model to training mode
         self.model.train()
@@ -763,18 +818,21 @@ class PPOTrainer:
 
         # FIXED: Final evaluation dashboard update
         if self.dashboard:
-            self.dashboard.update_training_metrics({
+            final_eval_update = {
                 'evaluation_final_mean_reward': eval_results["mean_reward"],
                 'evaluation_final_std_reward': eval_results["std_reward"],
-                'evaluation_completed': True
-            })
+                'evaluation_completed': True,
+                'is_evaluating': False,
+                'is_training': True  # Back to training mode
+            }
+            self.dashboard.update_training_metrics(final_eval_update)
 
         logging.info(
-            f"📊 Evaluation complete! Mean reward: {eval_results['mean_reward']:.2f} ± {eval_results['std_reward']:.2f}")
+            f"📊 Evaluation complete! Mean: {eval_results['mean_reward']:.2f} ± {eval_results['std_reward']:.2f}")
         return eval_results
 
     def save_model(self, path: str) -> None:
-        """Saves the model and optimizer state with enhanced logging."""
+        """Saves the model and optimizer state."""
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             torch.save({
@@ -790,7 +848,7 @@ class PPOTrainer:
             logging.error(f"Error saving model to {path}: {e}")
 
     def load_model(self, path: str) -> None:
-        """Loads the model and optimizer state with enhanced logging."""
+        """Loads the model and optimizer state."""
         try:
             checkpoint = torch.load(path, map_location=self.device)
             self.model.load_state_dict(checkpoint['model_state_dict'])
