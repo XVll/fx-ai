@@ -1,4 +1,4 @@
-# envs/reward.py - FIXED: Improved logging for reward system analysis
+# envs/reward.py - FIXED: Enhanced reward calculator with better component tracking for dashboard
 
 import logging
 from typing import Any, Dict, List, Optional
@@ -53,8 +53,7 @@ class RewardCalculator:
         # Fallback for initial capital
         self.initial_capital_fallback = self.config_main.simulation.portfolio_config.initial_cash
 
-        # FIXED: Enhanced tracking for reward system analysis
-        self.action_reward_tracking = {"HOLD": [], "BUY": [], "SELL": []}
+        # FIXED: Enhanced tracking for reward analysis
         self.step_count = 0
         self.episode_reward_summary = {
             "total_equity_change_reward": 0.0,
@@ -63,21 +62,21 @@ class RewardCalculator:
             "total_inaction_penalties": 0.0,
             "total_drawdown_penalties": 0.0,
             "total_invalid_action_penalties": 0.0,
+            "total_terminal_penalties": 0.0,
             "total_profit_bonuses": 0.0,
-            "profitable_actions": 0,
-            "unprofitable_actions": 0,
-            "neutral_actions": 0
+            "profitable_steps": 0,
+            "unprofitable_steps": 0,
+            "neutral_steps": 0
         }
 
-        # FIXED: Reduce logging frequency to essential insights only
-        self.significant_reward_threshold = 0.01  # Only log significant rewards
-        self.analysis_frequency = 100  # Analyze every 100 steps instead of 50
+        # FIXED: Component tracking for dashboard integration
+        self.last_reward_components = {}
+        self.significant_reward_threshold = 0.001  # Reduced threshold for better tracking
 
-        self.logger.info(f"RewardCalculator initialized with balanced reward config")
+        self.logger.info(f"RewardCalculator initialized with enhanced component tracking")
 
     def reset(self):
         """Reset tracking for new episode"""
-        self.action_reward_tracking = {"HOLD": [], "BUY": [], "SELL": []}
         self.step_count = 0
         self.episode_reward_summary = {
             "total_equity_change_reward": 0.0,
@@ -86,11 +85,13 @@ class RewardCalculator:
             "total_inaction_penalties": 0.0,
             "total_drawdown_penalties": 0.0,
             "total_invalid_action_penalties": 0.0,
+            "total_terminal_penalties": 0.0,
             "total_profit_bonuses": 0.0,
-            "profitable_actions": 0,
-            "unprofitable_actions": 0,
-            "neutral_actions": 0
+            "profitable_steps": 0,
+            "unprofitable_steps": 0,
+            "neutral_steps": 0
         }
+        self.last_reward_components = {}
         self.logger.debug("RewardCalculator reset for new episode")
 
     def calculate(self,
@@ -114,22 +115,22 @@ class RewardCalculator:
         equity_before = portfolio_state_before_action['total_equity']
         equity_after_market_move = portfolio_state_next_t['total_equity']
         equity_change = equity_after_market_move - equity_before
-        reward_components['equity_change_reward'] = self.weight_equity_change * equity_change
-        self.episode_reward_summary["total_equity_change_reward"] += reward_components['equity_change_reward']
+        reward_components['equity_change'] = self.weight_equity_change * equity_change
+        self.episode_reward_summary["total_equity_change_reward"] += reward_components['equity_change']
 
         # 2. Realized PnL bonus
         if self.weight_realized_pnl > 0:
             realized_pnl_before = portfolio_state_before_action['realized_pnl_session']
             realized_pnl_after_fills = portfolio_state_after_action_fills['realized_pnl_session']
             step_realized_pnl = realized_pnl_after_fills - realized_pnl_before
-            reward_components['realized_pnl_bonus'] = self.weight_realized_pnl * step_realized_pnl
-            self.episode_reward_summary["total_realized_pnl_bonus"] += reward_components['realized_pnl_bonus']
+            reward_components['realized_pnl'] = self.weight_realized_pnl * step_realized_pnl
+            self.episode_reward_summary["total_realized_pnl_bonus"] += reward_components['realized_pnl']
 
         # 3. Transaction penalties
         if self.penalty_transaction_fill > 0 and fill_details_list:
             num_fills = len(fill_details_list)
-            reward_components['transaction_fill_penalty'] = -self.penalty_transaction_fill * num_fills
-            self.episode_reward_summary["total_transaction_penalties"] += reward_components['transaction_fill_penalty']
+            reward_components['transaction_cost'] = -self.penalty_transaction_fill * num_fills
+            self.episode_reward_summary["total_transaction_penalties"] += reward_components['transaction_cost']
 
         # 4. Inaction penalties (improved logic)
         if self.penalty_holding_inaction > 0 and action_type_from_env == ActionTypeEnum.HOLD:
@@ -142,38 +143,40 @@ class RewardCalculator:
                         break
 
             if has_open_position and equity_change < 0:
-                reward_components['holding_inaction_penalty'] = -self.penalty_holding_inaction
-                self.episode_reward_summary["total_inaction_penalties"] += reward_components['holding_inaction_penalty']
+                reward_components['inaction_penalty'] = -self.penalty_holding_inaction
+                self.episode_reward_summary["total_inaction_penalties"] += reward_components['inaction_penalty']
             elif not has_open_position:
-                reward_components['holding_inaction_penalty'] = -self.penalty_holding_inaction * 0.1
-                self.episode_reward_summary["total_inaction_penalties"] += reward_components['holding_inaction_penalty']
+                reward_components['inaction_penalty'] = -self.penalty_holding_inaction * 0.1
+                self.episode_reward_summary["total_inaction_penalties"] += reward_components['inaction_penalty']
 
         # 5. Drawdown penalties
         if self.penalty_drawdown_step > 0 and equity_change < 0:
-            reward_components['drawdown_step_penalty'] = self.penalty_drawdown_step * equity_change
-            self.episode_reward_summary["total_drawdown_penalties"] += reward_components['drawdown_step_penalty']
+            reward_components['drawdown_penalty'] = self.penalty_drawdown_step * equity_change
+            self.episode_reward_summary["total_drawdown_penalties"] += reward_components['drawdown_penalty']
 
         # 6. Invalid action penalties
         if self.penalty_invalid_action > 0 and decoded_action.get('invalid_reason'):
-            reward_components['invalid_action_penalty'] = -self.penalty_invalid_action
-            self.episode_reward_summary["total_invalid_action_penalties"] += reward_components['invalid_action_penalty']
+            reward_components['invalid_action'] = -self.penalty_invalid_action
+            self.episode_reward_summary["total_invalid_action_penalties"] += reward_components['invalid_action']
 
         # 7. Terminal penalties
         if terminated:
             if termination_reason == TerminationReasonEnumForEnv.BANKRUPTCY:
-                reward_components['terminal_bankruptcy_penalty'] = -self.terminal_penalty_bankruptcy
+                reward_components['bankruptcy_penalty'] = -self.terminal_penalty_bankruptcy
+                self.episode_reward_summary["total_terminal_penalties"] += reward_components['bankruptcy_penalty']
             elif termination_reason == TerminationReasonEnumForEnv.MAX_LOSS_REACHED:
-                reward_components['terminal_max_loss_penalty'] = -self.terminal_penalty_max_loss
+                reward_components['max_loss_penalty'] = -self.terminal_penalty_max_loss
+                self.episode_reward_summary["total_terminal_penalties"] += reward_components['max_loss_penalty']
 
-        # 8. Profit bonuses
+        # 8. Profit bonuses for encouraging positive outcomes
         if equity_change > 0:
             reward_components['profit_bonus'] = 0.01 * equity_change
             self.episode_reward_summary["total_profit_bonuses"] += reward_components['profit_bonus']
-            self.episode_reward_summary["profitable_actions"] += 1
+            self.episode_reward_summary["profitable_steps"] += 1
         elif equity_change < 0:
-            self.episode_reward_summary["unprofitable_actions"] += 1
+            self.episode_reward_summary["unprofitable_steps"] += 1
         else:
-            self.episode_reward_summary["neutral_actions"] += 1
+            self.episode_reward_summary["neutral_steps"] += 1
 
         # 9. Risk management penalties
         try:
@@ -186,42 +189,41 @@ class RewardCalculator:
                     if total_equity > 0 and position_value > 0:
                         position_ratio = position_value / total_equity
                         if position_ratio > 1.5:
-                            reward_components['excessive_leverage_penalty'] = -0.01 * (position_ratio - 1.5)
+                            reward_components['leverage_penalty'] = -0.01 * (position_ratio - 1.5)
         except Exception as e:
-            self.logger.debug(f"Error calculating position ratio penalty: {e}")
+            self.logger.debug(f"Error calculating leverage penalty: {e}")
 
         # Calculate total reward
         total_reward = sum(reward_components.values())
         total_reward *= self.reward_scaling_factor
 
-        # Track rewards by action type
-        self.action_reward_tracking[action_name].append(total_reward)
+        # FIXED: Store components for dashboard (always store, regardless of significance)
+        self.last_reward_components = reward_components.copy()
         self.step_count += 1
 
-        # FIXED: Smart logging - only log significant events and periodic analysis
+        # FIXED: Smart logging - only log significant events and key decisions
         should_log_detail = (
                 abs(total_reward) > self.significant_reward_threshold or  # Significant reward
                 fill_details_list or  # Any fills occurred
                 decoded_action.get('invalid_reason') or  # Invalid action
-                terminated or truncated  # Episode end
+                terminated or truncated or  # Episode end
+                equity_change != 0  # Any equity change
         )
 
         if should_log_detail and self.log_reward_components:
-            loggable_components = {
-                k: (v.value if hasattr(v, 'value') else v)
-                for k, v in reward_components.items()
-                if abs(v) > 0.001  # Only log non-trivial components
+            # Filter out zero components for cleaner logging
+            non_zero_components = {
+                k: v for k, v in reward_components.items()
+                if abs(v) > 0.0001
             }
 
-            if loggable_components:  # Only log if there are significant components
-                self.logger.info(
-                    f"Reward {action_name}: {total_reward:.4f} | "
-                    f"Equity Δ: ${equity_change:.4f} | "
-                    f"Components: {loggable_components}"
-                )
+            if non_zero_components:
+                self.logger.info(f"💰 {action_name} Reward: {total_reward:.4f} | "
+                                 f"Equity Δ: ${equity_change:.4f} | "
+                                 f"Components: {non_zero_components}")
 
-        # Periodic bias analysis (less frequent)
-        if self.step_count % self.analysis_frequency == 0:
+        # Periodic comprehensive analysis (every 100 steps)
+        if self.step_count % 100 == 0:
             self._log_reward_analysis()
 
         # Episode end summary
@@ -230,58 +232,33 @@ class RewardCalculator:
 
         return total_reward
 
+    def get_last_reward_components(self) -> Dict[str, float]:
+        """FIXED: Get the last reward components for dashboard integration"""
+        return self.last_reward_components.copy()
+
     def _log_reward_analysis(self):
-        """FIXED: Enhanced reward system analysis with actionable insights"""
+        """FIXED: Enhanced periodic reward analysis"""
         try:
-            analysis = {}
-            total_actions = 0
+            if self.step_count == 0:
+                return
 
-            for action_type, rewards in self.action_reward_tracking.items():
-                if rewards:
-                    analysis[action_type] = {
-                        'count': len(rewards),
-                        'mean_reward': sum(rewards) / len(rewards),
-                        'total_reward': sum(rewards),
-                        'positive_count': sum(1 for r in rewards if r > 0.001),
-                        'negative_count': sum(1 for r in rewards if r < -0.001),
-                        'max_reward': max(rewards),
-                        'min_reward': min(rewards)
-                    }
-                    total_actions += len(rewards)
+            total_reward_so_far = sum(self.episode_reward_summary.values())
+            profitable_rate = (self.episode_reward_summary["profitable_steps"] / self.step_count) * 100
 
-            if total_actions > 0:
-                self.logger.info("=== REWARD SYSTEM ANALYSIS ===")
+            # Identify dominant reward components
+            dominant_components = []
+            for component, total_value in self.episode_reward_summary.items():
+                if abs(total_value) > abs(total_reward_so_far) * 0.1:  # More than 10% of total
+                    dominant_components.append(f"{component}: {total_value:.3f}")
 
-                # Action distribution and performance
-                for action_type, stats in analysis.items():
-                    if stats['count'] > 0:
-                        action_pct = (stats['count'] / total_actions) * 100
-                        success_rate = (stats['positive_count'] / stats['count']) * 100
+            self.logger.info(f"📊 Reward Analysis (Step {self.step_count}): "
+                             f"Total: {total_reward_so_far:.4f}, "
+                             f"Profitable: {profitable_rate:.1f}%, "
+                             f"Dominant: {', '.join(dominant_components) if dominant_components else 'Balanced'}")
 
-                        performance_indicator = "🟢" if stats['mean_reward'] > 0.01 else "🔴" if stats['mean_reward'] < -0.01 else "🟡"
-
-                        self.logger.info(
-                            f"{performance_indicator} {action_type}: {action_pct:.1f}% of actions | "
-                            f"Mean: {stats['mean_reward']:.4f} | Success: {success_rate:.1f}% | "
-                            f"Range: [{stats['min_reward']:.4f}, {stats['max_reward']:.4f}]"
-                        )
-
-                # System health indicators
-                profitable_actions = self.episode_reward_summary["profitable_actions"]
-                total_episode_actions = (profitable_actions +
-                                         self.episode_reward_summary["unprofitable_actions"] +
-                                         self.episode_reward_summary["neutral_actions"])
-
-                if total_episode_actions > 0:
-                    profitability_rate = (profitable_actions / total_episode_actions) * 100
-                    self.logger.info(f"📊 System Profitability: {profitability_rate:.1f}% profitable actions")
-
-                # Detect potential issues
-                if analysis.get('HOLD', {}).get('mean_reward', 0) > analysis.get('BUY', {}).get('mean_reward', 0):
-                    self.logger.warning("⚠️ HOLD actions more rewarded than BUY - check action bias")
-
-                if analysis.get('BUY', {}).get('count', 0) == 0 and analysis.get('SELL', {}).get('count', 0) == 0:
-                    self.logger.warning("⚠️ No trading actions taken - agent may be too conservative")
+            # Alert for potential issues
+            if profitable_rate < 30:
+                self.logger.warning(f"⚠️ Low profitability rate: {profitable_rate:.1f}% - check reward balance")
 
         except Exception as e:
             self.logger.debug(f"Error in reward analysis: {e}")
@@ -289,57 +266,60 @@ class RewardCalculator:
     def _log_episode_summary(self):
         """FIXED: Log comprehensive episode reward summary"""
         try:
-            total_reward = sum(self.episode_reward_summary.values())
+            total_episode_reward = sum(self.episode_reward_summary.values())
 
-            # Calculate reward composition
-            significant_components = {
-                k: v for k, v in self.episode_reward_summary.items()
-                if abs(v) > 0.01  # Only significant components
-            }
+            # Calculate component percentages
+            component_analysis = {}
+            for component, value in self.episode_reward_summary.items():
+                if abs(value) > 0.001:  # Only significant components
+                    percentage = (abs(value) / abs(total_episode_reward) * 100) if total_episode_reward != 0 else 0
+                    component_analysis[component] = {
+                        'value': value,
+                        'percentage': percentage
+                    }
 
-            if significant_components:
-                self.logger.info("=== EPISODE REWARD SUMMARY ===")
-                self.logger.info(f"Total Episode Reward: {total_reward:.4f}")
+            # Sort by absolute impact
+            sorted_components = sorted(component_analysis.items(),
+                                       key=lambda x: abs(x[1]['value']), reverse=True)
 
-                for component, value in significant_components.items():
-                    percentage = (value / total_reward * 100) if total_reward != 0 else 0
-                    component_name = component.replace('total_', '').replace('_', ' ').title()
-                    self.logger.info(f"  {component_name}: {value:.4f} ({percentage:.1f}%)")
+            self.logger.info("=== EPISODE REWARD SUMMARY ===")
+            self.logger.info(f"Total Episode Reward: {total_episode_reward:.4f}")
 
-                # Action outcome summary
-                total_actions = (self.episode_reward_summary["profitable_actions"] +
-                                 self.episode_reward_summary["unprofitable_actions"] +
-                                 self.episode_reward_summary["neutral_actions"])
+            # Show top reward drivers
+            for component, analysis in sorted_components[:5]:  # Top 5 components
+                component_name = component.replace('total_', '').replace('_', ' ').title()
+                value = analysis['value']
+                percentage = analysis['percentage']
+                impact_icon = "🟢" if value > 0 else "🔴" if value < 0 else "⚪"
+                self.logger.info(f"  {impact_icon} {component_name}: {value:.4f} ({percentage:.1f}%)")
 
-                if total_actions > 0:
-                    profit_rate = (self.episode_reward_summary["profitable_actions"] / total_actions) * 100
-                    status_icon = "🟢" if profit_rate > 60 else "🟡" if profit_rate > 40 else "🔴"
-                    self.logger.info(
-                        f"{status_icon} Action Success Rate: {profit_rate:.1f}% ({self.episode_reward_summary['profitable_actions']}/{total_actions})")
+            # Step outcome summary
+            total_steps = (self.episode_reward_summary["profitable_steps"] +
+                           self.episode_reward_summary["unprofitable_steps"] +
+                           self.episode_reward_summary["neutral_steps"])
+
+            if total_steps > 0:
+                profit_rate = (self.episode_reward_summary["profitable_steps"] / total_steps) * 100
+                status_icon = "🟢" if profit_rate > 60 else "🟡" if profit_rate > 40 else "🔴"
+                self.logger.info(f"{status_icon} Step Success Rate: {profit_rate:.1f}% "
+                                 f"({self.episode_reward_summary['profitable_steps']}/{total_steps})")
 
         except Exception as e:
             self.logger.debug(f"Error in episode summary: {e}")
 
     def get_bias_summary(self) -> Dict[str, Any]:
-        """Get summary of reward bias for end-of-episode analysis"""
-        summary = {}
-        total_steps = sum(len(rewards) for rewards in self.action_reward_tracking.values())
+        """Get summary of reward components for analysis"""
+        summary = {
+            'episode_summary': self.episode_reward_summary.copy(),
+            'total_steps': self.step_count,
+            'last_components': self.last_reward_components.copy()
+        }
 
-        for action_type, rewards in self.action_reward_tracking.items():
-            if rewards:
-                summary[action_type] = {
-                    'count': len(rewards),
-                    'percentage': (len(rewards) / total_steps) * 100 if total_steps > 0 else 0,
-                    'mean_reward': sum(rewards) / len(rewards),
-                    'total_reward': sum(rewards),
-                    'positive_reward_rate': (sum(1 for r in rewards if r > 0) / len(rewards)) * 100
-                }
-            else:
-                summary[action_type] = {
-                    'count': 0, 'percentage': 0, 'mean_reward': 0,
-                    'total_reward': 0, 'positive_reward_rate': 0
-                }
+        # Calculate component impact percentages
+        total_reward = sum(self.episode_reward_summary.values())
+        if abs(total_reward) > 0.001:
+            for component, value in self.episode_reward_summary.items():
+                impact_key = f"{component}_impact_pct"
+                summary[impact_key] = (abs(value) / abs(total_reward)) * 100
 
-        # Add episode summary
-        summary['episode_summary'] = self.episode_reward_summary.copy()
         return summary
