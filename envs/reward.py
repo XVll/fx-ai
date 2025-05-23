@@ -1,7 +1,9 @@
-# envs/reward.py - FIXED: Enhanced reward calculator with better component tracking for dashboard
+# envs/reward.py - UPDATED: Enhanced reward calculator with comprehensive dashboard integration
 
 import logging
 from typing import Any, Dict, List, Optional
+from collections import defaultdict, deque
+import time
 
 from config.config import Config
 from simulators.portfolio_simulator import PortfolioState, FillDetails, PositionSideEnum
@@ -53,7 +55,7 @@ class RewardCalculator:
         # Fallback for initial capital
         self.initial_capital_fallback = self.config_main.simulation.portfolio_config.initial_cash
 
-        # FIXED: Enhanced tracking for reward analysis
+        # UPDATED: Enhanced tracking for comprehensive dashboard integration
         self.step_count = 0
         self.episode_reward_summary = {
             "total_equity_change_reward": 0.0,
@@ -69,11 +71,20 @@ class RewardCalculator:
             "neutral_steps": 0
         }
 
-        # FIXED: Component tracking for dashboard integration
+        # UPDATED: Enhanced component tracking for comprehensive dashboard
         self.last_reward_components = {}
-        self.significant_reward_threshold = 0.001  # Reduced threshold for better tracking
+        self.reward_component_history = deque(maxlen=100)  # Track recent reward components
+        self.component_impact_analysis = defaultdict(lambda: {"total": 0.0, "count": 0, "avg": 0.0})
+        self.significant_reward_threshold = 0.001
 
-        self.logger.info(f"RewardCalculator initialized with enhanced component tracking")
+        # UPDATED: Action-reward correlation tracking for dashboard analytics
+        self.action_reward_correlation = defaultdict(lambda: {"total_reward": 0.0, "count": 0, "positive_count": 0})
+
+        # UPDATED: Step-by-step reward analysis for dashboard
+        self.recent_step_rewards = deque(maxlen=50)  # Track recent step rewards for trend analysis
+        self.reward_trend_analysis = {"improving": 0, "declining": 0, "stable": 0}
+
+        self.logger.info(f"RewardCalculator initialized with comprehensive dashboard integration")
 
     def reset(self):
         """Reset tracking for new episode"""
@@ -92,6 +103,8 @@ class RewardCalculator:
             "neutral_steps": 0
         }
         self.last_reward_components = {}
+        # Note: Don't reset component_impact_analysis and action_reward_correlation
+        # as these are useful across episodes
         self.logger.debug("RewardCalculator reset for new episode")
 
     def calculate(self,
@@ -197,17 +210,55 @@ class RewardCalculator:
         total_reward = sum(reward_components.values())
         total_reward *= self.reward_scaling_factor
 
-        # FIXED: Store components for dashboard (always store, regardless of significance)
+        # UPDATED: Store components for comprehensive dashboard
         self.last_reward_components = reward_components.copy()
         self.step_count += 1
 
-        # FIXED: Smart logging - only log significant events and key decisions
+        # UPDATED: Track reward component history and analysis for dashboard
+        self.reward_component_history.append({
+            'step': self.step_count,
+            'timestamp': time.time(),
+            'components': reward_components.copy(),
+            'total_reward': total_reward,
+            'action_type': action_name
+        })
+
+        # UPDATED: Update component impact analysis for dashboard analytics
+        for component, value in reward_components.items():
+            if abs(value) > 0.0001:  # Only track significant components
+                self.component_impact_analysis[component]["total"] += value
+                self.component_impact_analysis[component]["count"] += 1
+                self.component_impact_analysis[component]["avg"] = (
+                        self.component_impact_analysis[component]["total"] /
+                        self.component_impact_analysis[component]["count"]
+                )
+
+        # UPDATED: Track action-reward correlation for dashboard
+        self.action_reward_correlation[action_name]["total_reward"] += total_reward
+        self.action_reward_correlation[action_name]["count"] += 1
+        if total_reward > 0:
+            self.action_reward_correlation[action_name]["positive_count"] += 1
+
+        # UPDATED: Track step rewards for trend analysis
+        self.recent_step_rewards.append(total_reward)
+        if len(self.recent_step_rewards) >= 10:
+            recent_avg = sum(list(self.recent_step_rewards)[-10:]) / 10
+            older_avg = sum(list(self.recent_step_rewards)[-20:-10]) / 10 if len(self.recent_step_rewards) >= 20 else recent_avg
+
+            if recent_avg > older_avg * 1.05:
+                self.reward_trend_analysis["improving"] += 1
+            elif recent_avg < older_avg * 0.95:
+                self.reward_trend_analysis["declining"] += 1
+            else:
+                self.reward_trend_analysis["stable"] += 1
+
+        # UPDATED: Smart logging - enhanced for dashboard integration
         should_log_detail = (
-                abs(total_reward) > self.significant_reward_threshold or  # Significant reward
-                fill_details_list or  # Any fills occurred
-                decoded_action.get('invalid_reason') or  # Invalid action
-                terminated or truncated or  # Episode end
-                equity_change != 0  # Any equity change
+                abs(total_reward) > self.significant_reward_threshold or
+                fill_details_list or
+                decoded_action.get('invalid_reason') or
+                terminated or truncated or
+                equity_change != 0
         )
 
         if should_log_detail and self.log_reward_components:
@@ -222,22 +273,48 @@ class RewardCalculator:
                                  f"Equity Δ: ${equity_change:.4f} | "
                                  f"Components: {non_zero_components}")
 
-        # Periodic comprehensive analysis (every 100 steps)
+        # UPDATED: Enhanced periodic analysis for dashboard (every 100 steps)
         if self.step_count % 100 == 0:
-            self._log_reward_analysis()
+            self._log_comprehensive_reward_analysis()
 
-        # Episode end summary
+        # Episode end comprehensive summary
         if terminated or truncated:
-            self._log_episode_summary()
+            self._log_comprehensive_episode_summary()
 
         return total_reward
 
     def get_last_reward_components(self) -> Dict[str, float]:
-        """FIXED: Get the last reward components for dashboard integration"""
+        """Get the last reward components for dashboard integration"""
         return self.last_reward_components.copy()
 
-    def _log_reward_analysis(self):
-        """FIXED: Enhanced periodic reward analysis"""
+    def get_comprehensive_reward_analysis(self) -> Dict[str, Any]:
+        """UPDATED: Get comprehensive reward analysis for dashboard integration"""
+        analysis = {
+            'episode_summary': self.episode_reward_summary.copy(),
+            'total_steps': self.step_count,
+            'last_components': self.last_reward_components.copy(),
+            'component_impact_analysis': dict(self.component_impact_analysis),
+            'action_reward_correlation': dict(self.action_reward_correlation),
+            'reward_trend_analysis': self.reward_trend_analysis.copy()
+        }
+
+        # Calculate component impact percentages
+        total_episode_reward = sum(self.episode_reward_summary.values())
+        if abs(total_episode_reward) > 0.001:
+            for component, value in self.episode_reward_summary.items():
+                impact_key = f"{component}_impact_pct"
+                analysis[impact_key] = (abs(value) / abs(total_episode_reward)) * 100
+
+        # Add action reward statistics
+        for action_type, stats in self.action_reward_correlation.items():
+            if stats["count"] > 0:
+                stats["avg_reward"] = stats["total_reward"] / stats["count"]
+                stats["positive_rate"] = (stats["positive_count"] / stats["count"]) * 100
+
+        return analysis
+
+    def _log_comprehensive_reward_analysis(self):
+        """UPDATED: Enhanced periodic reward analysis for dashboard"""
         try:
             if self.step_count == 0:
                 return
@@ -245,55 +322,77 @@ class RewardCalculator:
             total_reward_so_far = sum(self.episode_reward_summary.values())
             profitable_rate = (self.episode_reward_summary["profitable_steps"] / self.step_count) * 100
 
-            # Identify dominant reward components
+            # UPDATED: Identify dominant reward components with more detail
             dominant_components = []
             for component, total_value in self.episode_reward_summary.items():
                 if abs(total_value) > abs(total_reward_so_far) * 0.1:  # More than 10% of total
-                    dominant_components.append(f"{component}: {total_value:.3f}")
+                    percentage = (abs(total_value) / abs(total_reward_so_far)) * 100 if total_reward_so_far != 0 else 0
+                    dominant_components.append(f"{component}: {total_value:.3f} ({percentage:.1f}%)")
 
-            self.logger.info(f"📊 Reward Analysis (Step {self.step_count}): "
+            # UPDATED: Action effectiveness analysis
+            best_action = max(self.action_reward_correlation.items(),
+                              key=lambda x: x[1]["total_reward"] / x[1]["count"] if x[1]["count"] > 0 else 0,
+                              default=("NONE", {"total_reward": 0, "count": 1}))
+
+            best_action_avg = best_action[1]["total_reward"] / best_action[1]["count"] if best_action[1]["count"] > 0 else 0
+
+            self.logger.info(f"📊 Comprehensive Reward Analysis (Step {self.step_count}): "
                              f"Total: {total_reward_so_far:.4f}, "
                              f"Profitable: {profitable_rate:.1f}%, "
-                             f"Dominant: {', '.join(dominant_components) if dominant_components else 'Balanced'}")
+                             f"Best Action: {best_action[0]} (avg: {best_action_avg:.4f})")
+
+            if dominant_components:
+                self.logger.info(f"   🔍 Dominant Components: {', '.join(dominant_components[:3])}")
 
             # Alert for potential issues
             if profitable_rate < 30:
                 self.logger.warning(f"⚠️ Low profitability rate: {profitable_rate:.1f}% - check reward balance")
 
-        except Exception as e:
-            self.logger.debug(f"Error in reward analysis: {e}")
+            # UPDATED: Trend analysis
+            if len(self.recent_step_rewards) >= 20:
+                trend_summary = (f"Trends - Improving: {self.reward_trend_analysis['improving']}, "
+                                 f"Declining: {self.reward_trend_analysis['declining']}, "
+                                 f"Stable: {self.reward_trend_analysis['stable']}")
+                self.logger.info(f"   📈 {trend_summary}")
 
-    def _log_episode_summary(self):
-        """FIXED: Log comprehensive episode reward summary"""
+        except Exception as e:
+            self.logger.debug(f"Error in comprehensive reward analysis: {e}")
+
+    def _log_comprehensive_episode_summary(self):
+        """UPDATED: Log comprehensive episode reward summary for dashboard"""
         try:
             total_episode_reward = sum(self.episode_reward_summary.values())
 
-            # Calculate component percentages
+            # UPDATED: Calculate comprehensive component analysis
             component_analysis = {}
             for component, value in self.episode_reward_summary.items():
-                if abs(value) > 0.001:  # Only significant components
+                if abs(value) > 0.001:
                     percentage = (abs(value) / abs(total_episode_reward) * 100) if total_episode_reward != 0 else 0
                     component_analysis[component] = {
                         'value': value,
-                        'percentage': percentage
+                        'percentage': percentage,
+                        'impact_level': 'HIGH' if percentage > 20 else 'MEDIUM' if percentage > 5 else 'LOW'
                     }
 
             # Sort by absolute impact
             sorted_components = sorted(component_analysis.items(),
                                        key=lambda x: abs(x[1]['value']), reverse=True)
 
-            self.logger.info("=== EPISODE REWARD SUMMARY ===")
+            self.logger.info("=== COMPREHENSIVE EPISODE REWARD SUMMARY ===")
             self.logger.info(f"Total Episode Reward: {total_episode_reward:.4f}")
 
-            # Show top reward drivers
+            # UPDATED: Show top reward drivers with impact levels
             for component, analysis in sorted_components[:5]:  # Top 5 components
                 component_name = component.replace('total_', '').replace('_', ' ').title()
                 value = analysis['value']
                 percentage = analysis['percentage']
+                impact_level = analysis['impact_level']
                 impact_icon = "🟢" if value > 0 else "🔴" if value < 0 else "⚪"
-                self.logger.info(f"  {impact_icon} {component_name}: {value:.4f} ({percentage:.1f}%)")
+                level_icon = "🔥" if impact_level == 'HIGH' else "⚡" if impact_level == 'MEDIUM' else "💡"
 
-            # Step outcome summary
+                self.logger.info(f"  {impact_icon}{level_icon} {component_name}: {value:.4f} ({percentage:.1f}%)")
+
+            # UPDATED: Step outcome summary with trend analysis
             total_steps = (self.episode_reward_summary["profitable_steps"] +
                            self.episode_reward_summary["unprofitable_steps"] +
                            self.episode_reward_summary["neutral_steps"])
@@ -304,22 +403,45 @@ class RewardCalculator:
                 self.logger.info(f"{status_icon} Step Success Rate: {profit_rate:.1f}% "
                                  f"({self.episode_reward_summary['profitable_steps']}/{total_steps})")
 
+            # UPDATED: Action effectiveness summary
+            self.logger.info("📊 Action Effectiveness Summary:")
+            for action_type, stats in self.action_reward_correlation.items():
+                if stats["count"] > 0:
+                    avg_reward = stats["total_reward"] / stats["count"]
+                    positive_rate = (stats["positive_count"] / stats["count"]) * 100
+                    effectiveness_icon = "🟢" if avg_reward > 0 else "🔴" if avg_reward < 0 else "⚪"
+                    self.logger.info(f"  {effectiveness_icon} {action_type}: Avg={avg_reward:.4f}, "
+                                     f"Success={positive_rate:.1f}%, Count={stats['count']}")
+
         except Exception as e:
-            self.logger.debug(f"Error in episode summary: {e}")
+            self.logger.debug(f"Error in comprehensive episode summary: {e}")
 
-    def get_bias_summary(self) -> Dict[str, Any]:
-        """Get summary of reward components for analysis"""
-        summary = {
-            'episode_summary': self.episode_reward_summary.copy(),
-            'total_steps': self.step_count,
-            'last_components': self.last_reward_components.copy()
-        }
+    def get_reward_bias_summary(self) -> Dict[str, Any]:
+        """UPDATED: Get comprehensive reward bias summary for dashboard analytics"""
+        summary = self.get_comprehensive_reward_analysis()
 
-        # Calculate component impact percentages
+        # Add bias detection
+        bias_indicators = {}
+
+        # Check for dominant components (potential over-weighting)
         total_reward = sum(self.episode_reward_summary.values())
         if abs(total_reward) > 0.001:
             for component, value in self.episode_reward_summary.items():
-                impact_key = f"{component}_impact_pct"
-                summary[impact_key] = (abs(value) / abs(total_reward)) * 100
+                impact_pct = (abs(value) / abs(total_reward)) * 100
+                if impact_pct > 50:
+                    bias_indicators[f"{component}_dominance"] = impact_pct
 
+        # Check for action bias
+        if len(self.action_reward_correlation) > 1:
+            action_rewards = {action: stats["total_reward"] / stats["count"]
+                              for action, stats in self.action_reward_correlation.items()
+                              if stats["count"] > 0}
+
+            if action_rewards:
+                max_reward = max(action_rewards.values())
+                min_reward = min(action_rewards.values())
+                if max_reward > 0 and min_reward < 0 and abs(max_reward / min_reward) > 5:
+                    bias_indicators["action_reward_imbalance"] = max_reward / min_reward
+
+        summary['bias_indicators'] = bias_indicators
         return summary

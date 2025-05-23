@@ -1,3 +1,5 @@
+# main_continuous.py - UPDATED: Integration with comprehensive dashboard
+
 import os
 import sys
 import signal
@@ -27,7 +29,7 @@ from data.provider.dummy_data_provider import DummyDataProvider
 
 from envs.trading_env import TradingEnvironment
 from envs.wrappers.observation_wrapper import NormalizeDictObservation
-from envs.env_dashboard import TradingDashboard, TrainingStage
+from envs.env_dashboard import TradingDashboard, TrainingStage  # UPDATED: Import comprehensive dashboard
 
 from agent.ppo_agent import PPOTrainer
 from agent.callbacks import ModelCheckpointCallback, EarlyStoppingCallback
@@ -84,10 +86,10 @@ def cleanup_resources():
     try:
         logging.info("Starting resource cleanup...")
 
-        # Stop dashboard first
+        # UPDATED: Stop comprehensive dashboard first
         if dashboard and dashboard._running:
             dashboard.stop()
-            logging.info("Dashboard stopped")
+            logging.info("Comprehensive dashboard stopped")
 
         # Stop trainer
         if current_trainer and hasattr(current_trainer, 'model'):
@@ -200,7 +202,7 @@ def create_data_provider(config: Config):
 
 @hydra.main(version_base="1.2", config_path="config", config_name="config")
 def run_training(cfg: Config):
-    """Main training function with Rich logging and enhanced dashboard"""
+    """Main training function with comprehensive dashboard integration"""
     global current_trainer, current_env, current_data_manager, dashboard
 
     # Set up signal handlers
@@ -209,7 +211,7 @@ def run_training(cfg: Config):
         signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        # Setup basic logging first (will be reconfigured by dashboard)
+        # Setup basic logging first (will be reconfigured by comprehensive dashboard)
         setup_rich_logging(level=logging.INFO, show_time=True, show_path=False)
 
         # Get output directory
@@ -224,7 +226,7 @@ def run_training(cfg: Config):
         os.makedirs(model_dir, exist_ok=True)
 
         # Log startup info
-        logging.info("🚀 Starting FX-AI Training System")
+        logging.info("🚀 Starting FX-AI Training System with Comprehensive Dashboard")
         logging.info(f"📁 Output directory: {output_dir}")
 
         # Save config for reference
@@ -233,12 +235,14 @@ def run_training(cfg: Config):
             f.write(OmegaConf.to_yaml(cfg))
         logging.info(f"💾 Configuration saved to: {config_path}")
 
-        # Initialize dashboard early and start it immediately
+        # UPDATED: Initialize comprehensive dashboard early and start it immediately
         if cfg.env.render_mode == "dashboard":
-            dashboard = TradingDashboard(log_height=10) # Todo move config
+            # UPDATED: Use comprehensive dashboard with configurable log height
+            dashboard_log_height = getattr(cfg.env, 'dashboard_log_height', 25)
+            dashboard = TradingDashboard(log_height=dashboard_log_height)
             dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.1, "Setting up system...")
             dashboard.start()
-            logging.info("Dashboard started and logging configured")
+            logging.info("Comprehensive Trading Dashboard started and logging configured")
         else:
             dashboard = None
 
@@ -281,9 +285,13 @@ def run_training(cfg: Config):
         logging.info(f"📈 Trading symbol: {symbol}")
         logging.info(f"📅 Date range: {start_date} to {end_date}")
 
-        # Set dashboard symbol and capital
-        dashboard.set_symbol(symbol)
-        dashboard.set_initial_capital(cfg.simulation.portfolio_config.initial_cash)
+        # UPDATED: Set comprehensive dashboard symbol and capital
+        if dashboard:
+            dashboard.set_symbol(symbol)
+            dashboard.set_initial_capital(cfg.simulation.portfolio_config.initial_cash)
+            # Set model name with symbol for display
+            model_name = f"PPO_Transformer_v1.0_{symbol}"
+            dashboard.set_model_name(model_name)
 
         # Initialize model manager
         model_manager = ModelManager(
@@ -296,12 +304,12 @@ def run_training(cfg: Config):
 
         # Create environment
         dashboard.set_training_stage(TrainingStage.SETTING_UP_ENV, 0.4, "Creating trading environment...")
-        logging.info(f"🏗️ Creating trading environment for {symbol}")
+        logging.info(f"🏗️ Creating comprehensive trading environment for {symbol}")
         current_env = TradingEnvironment(
             config=cfg,
             data_manager=current_data_manager,
             logger=logging.getLogger("TradingEnv"),
-            dashboard = dashboard,
+            dashboard=dashboard,  # UPDATED: Pass comprehensive dashboard
         )
 
         # Setup environment session
@@ -445,29 +453,30 @@ def run_training(cfg: Config):
             output_dir=output_dir,
             use_wandb=cfg.wandb.enabled,
             callbacks=callbacks,
-            dashboard=dashboard,  # Pass dashboard to trainer
+            dashboard=dashboard,  # UPDATED: Pass comprehensive dashboard to trainer
             **training_params
         )
 
-        # Update dashboard with initial training info
-        dashboard.set_training_info(
-            episode_num=0,
-            total_episodes=0,
-            total_steps=0,
-            update_count=0,
-            buffer_size=cfg.training.buffer_size,
-            is_training=False,
-            is_evaluating=False,
-            learning_rate=cfg.training.lr
-        )
+        # UPDATED: Update comprehensive dashboard with initial training info
+        if dashboard:
+            dashboard.set_training_info(
+                episode_num=0,
+                total_episodes=0,
+                total_steps=0,
+                update_count=0,
+                buffer_size=cfg.training.buffer_size,
+                is_training=False,
+                is_evaluating=False,
+                learning_rate=cfg.training.lr
+            )
 
-        # Update dashboard with training metrics
-        dashboard.update_training_metrics({
-            'learning_rate': cfg.training.lr,
-            'batch_size': cfg.training.batch_size,
-            'buffer_size': cfg.training.buffer_size,
-            'rollout_steps': cfg.training.buffer_size
-        })
+            # Update comprehensive dashboard with training metrics
+            dashboard.update_training_metrics({
+                'learning_rate': cfg.training.lr,
+                'batch_size': cfg.training.batch_size,
+                'buffer_size': cfg.training.buffer_size,
+                'rollout_steps': cfg.training.buffer_size
+            })
 
         # Check for interruption before training
         if training_interrupted:
@@ -479,7 +488,7 @@ def run_training(cfg: Config):
         total_steps = total_updates * cfg.training.buffer_size
         dashboard.set_training_stage(TrainingStage.COLLECTING_ROLLOUT, 0.0, f"Starting training for {total_updates} updates")
 
-        logging.info(f"🚀 Starting training for approximately {total_steps} steps ({total_updates} updates)")
+        logging.info(f"🚀 Starting comprehensive training for approximately {total_steps} steps ({total_updates} updates)")
 
         # Evaluate before training if in continuous mode
         if continuous_mode and getattr(cfg.training, 'startup_evaluation', False) and load_best_model:
@@ -506,14 +515,14 @@ def run_training(cfg: Config):
             return {}
 
         try:
-            # Enhanced training loop with dashboard updates
+            # UPDATED: Enhanced training loop with comprehensive dashboard updates
             training_stats = {}
             update_counter = 0
             last_dashboard_update = 0
 
             while update_counter < total_updates and not training_interrupted:
                 try:
-                    # Update dashboard for rollout collection (less frequent updates)
+                    # Update comprehensive dashboard for rollout collection
                     progress = update_counter / total_updates
                     if update_counter - last_dashboard_update >= 1:  # Update every iteration
                         dashboard.set_training_stage(
@@ -522,17 +531,18 @@ def run_training(cfg: Config):
                             f"Update {update_counter + 1}/{total_updates} - Collecting rollout..."
                         )
 
-                        # Update training info on dashboard
-                        dashboard.set_training_info(
-                            episode_num=getattr(current_trainer, 'global_episode_counter', 0),
-                            total_episodes=0,
-                            total_steps=getattr(current_trainer, 'global_step_counter', 0),
-                            update_count=update_counter,
-                            buffer_size=cfg.training.buffer_size,
-                            is_training=True,
-                            is_evaluating=False,
-                            learning_rate=cfg.training.lr
-                        )
+                        # UPDATED: Update comprehensive training info on dashboard
+                        if dashboard:
+                            dashboard.set_training_info(
+                                episode_num=getattr(current_trainer, 'global_episode_counter', 0),
+                                total_episodes=0,
+                                total_steps=getattr(current_trainer, 'global_step_counter', 0),
+                                update_count=update_counter,
+                                buffer_size=cfg.training.buffer_size,
+                                is_training=True,
+                                is_evaluating=False,
+                                learning_rate=cfg.training.lr
+                            )
                         last_dashboard_update = update_counter
 
                     if training_interrupted:
@@ -544,7 +554,7 @@ def run_training(cfg: Config):
                     if training_interrupted:
                         break
 
-                    # Update dashboard for policy update
+                    # Update comprehensive dashboard for policy update
                     dashboard.set_training_stage(
                         TrainingStage.UPDATING_POLICY,
                         progress,
@@ -554,8 +564,8 @@ def run_training(cfg: Config):
                     # Update policy
                     update_metrics = current_trainer.update_policy()
 
-                    # Update dashboard with metrics (only pass provided metrics, less frequently)
-                    if update_counter % 2 == 0:  # Update metrics every other iteration
+                    # UPDATED: Update comprehensive dashboard with metrics
+                    if update_counter % 2 == 0 and dashboard:  # Update metrics every other iteration
                         combined_metrics = {}
                         combined_metrics.update(rollout_stats)
                         combined_metrics.update(update_metrics)
