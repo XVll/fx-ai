@@ -1,4 +1,4 @@
-# envs/env_dashboard.py - FIXED: Visual issues, progress alignment, dynamic footer, market time
+# envs/env_dashboard.py - FIXED: Enhanced dashboard with reward tracking and improved layout
 
 import logging
 import threading
@@ -40,17 +40,24 @@ class TrainingStage(Enum):
 
 @dataclass
 class DashboardState:
-    """Enhanced dashboard state with training information"""
+    """Enhanced dashboard state with comprehensive reward tracking"""
     # Environment state
     step: int = 0
-    episode_step: int = 0  # Track episode-specific step (resets each episode)
+    episode_step: int = 0
     timestamp: str = "N/A"
-    market_time: str = "N/A"  # FIXED: Add market time for header
+    market_time: str = "N/A"
     symbol: str = "N/A"
     episode_reward: float = 0.0
     step_reward: float = 0.0
     total_reward: float = 0.0
     episode_action_counts: Dict[str, int] = field(default_factory=lambda: {"BUY": 0, "SELL": 0, "HOLD": 0})
+
+    # FIXED: Comprehensive reward tracking
+    reward_components: Dict[str, float] = field(default_factory=dict)
+    avg_reward_per_action: Dict[str, float] = field(default_factory=lambda: {"BUY": 0.0, "SELL": 0.0, "HOLD": 0.0})
+    reward_efficiency: float = 0.0  # Positive rewards / Total actions
+    reward_consistency: float = 0.0  # Std dev of recent rewards
+    recent_rewards: Deque[float] = field(default_factory=lambda: deque(maxlen=50))
 
     # Market data
     current_price: Optional[float] = None
@@ -79,21 +86,21 @@ class DashboardState:
     last_action_invalid: bool = False
     invalid_actions_count: int = 0
 
-    # Recent history - Fixed to always show last 3 unique entries
+    # Recent history
     recent_actions: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=3))
     recent_fills: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=3))
 
-    # Training state - Enhanced with proper progress tracking
+    # Training state
     episode_number: int = 0
     total_episodes: int = 0
     total_steps: int = 0
     update_count: int = 0
     current_stage: TrainingStage = TrainingStage.INITIALIZING
-    stage_progress: float = 0.0  # Overall training progress (0.0 to 1.0)
-    substage_progress: float = 0.0  # Current stage progress (0.0 to 1.0)
+    stage_progress: float = 0.0
+    substage_progress: float = 0.0
     stage_details: str = ""
 
-    # Training metrics
+    # FIXED: Enhanced training metrics
     learning_rate: float = 0.0
     batch_size: int = 0
     buffer_size: int = 0
@@ -104,6 +111,9 @@ class DashboardState:
     actor_loss: float = 0.0
     critic_loss: float = 0.0
     entropy: float = 0.0
+    gradient_norm: float = 0.0
+    value_loss: float = 0.0
+    policy_entropy: float = 0.0
 
     # Performance tracking
     episodes_per_update: int = 0
@@ -112,12 +122,12 @@ class DashboardState:
     total_training_time: float = 0.0
     estimated_time_remaining: float = 0.0
 
-    # FIXED: Dynamic status tracking
+    # Status tracking
     is_training: bool = False
     is_evaluating: bool = False
     is_terminated: bool = False
     is_truncated: bool = False
-    current_termination_reason: str = ""  # FIXED: Track current termination reason instead of static
+    current_termination_reason: str = ""
 
     # Performance metrics
     initial_capital: float = 25000.0
@@ -127,17 +137,15 @@ class DashboardState:
     # Update tracking
     last_update_time: float = 0.0
     update_count_dashboard: int = 0
-
-    # State versioning to prevent race conditions
     state_version: int = 0
 
 
 class TradingDashboard:
     """
-    FIXED: Full-screen trading dashboard with improved layout, progress bars, and dynamic footer.
+    FIXED: Enhanced full-screen trading dashboard with reward tracking and improved layout.
     """
 
-    def __init__(self, log_height: int = 22):  # FIXED: Slightly reduced for better proportions
+    def __init__(self, log_height: int = 20):
         """
         Initialize the full-screen trading dashboard.
 
@@ -147,9 +155,9 @@ class TradingDashboard:
         self.log_height = log_height
         self.state = DashboardState()
 
-        # FIXED: Enhanced thread safety with better throttling
+        # FIXED: Optimized thread safety and update throttling
         self._state_lock = threading.RLock()
-        self._update_throttle = 0.5  # FIXED: Increased to 0.5 seconds to reduce flickering
+        self._update_throttle = 0.3  # FIXED: Reduced to 0.3 seconds for more responsive updates
         self._last_update_time = 0.0
         self._update_in_progress = False
 
@@ -176,7 +184,7 @@ class TradingDashboard:
         self._running = False
 
         # Enhanced log capture that preserves Rich formatting
-        self.log_buffer = deque(maxlen=150)  # FIXED: Reduced buffer size
+        self.log_buffer = deque(maxlen=100)  # FIXED: Optimized buffer size
         self._setup_dashboard_logging()
 
     def _setup_dashboard_logging(self):
@@ -187,7 +195,7 @@ class TradingDashboard:
                 super().__init__(
                     console=dashboard_instance.log_console,
                     show_time=True,
-                    show_path=True,
+                    show_path=False,  # FIXED: Disabled path for cleaner logs
                     rich_tracebacks=True,
                     tracebacks_show_locals=False,
                     markup=True
@@ -201,7 +209,7 @@ class TradingDashboard:
                         temp_handler = RichHandler(
                             console=temp_console,
                             show_time=True,
-                            show_path=True,
+                            show_path=False,
                             markup=True
                         )
                         temp_handler.setFormatter(self.formatter)
@@ -223,46 +231,54 @@ class TradingDashboard:
         self.dashboard_handler.setLevel(logging.INFO)
 
     def _create_layout(self) -> Layout:
-        """FIXED: Create uniform grid layout with better proportions"""
+        """FIXED: Create 4-column layout with reward tracking column"""
         layout = Layout()
 
         # Split main layout: Dashboard (top) and Logs (bottom)
         layout.split_column(
-            Layout(name="dashboard", ratio=3),  # FIXED: Dashboard takes more space
+            Layout(name="dashboard", ratio=3),
             Layout(name="logs", size=self.log_height)
         )
 
-        # FIXED: More organized header/footer split
+        # FIXED: Single-line header and footer
         dashboard_layout = layout["dashboard"]
         dashboard_layout.split_column(
-            Layout(name="header", size=5),  # FIXED: Slightly larger header for market time
+            Layout(name="header", size=3),  # FIXED: Compact single-line header
             Layout(name="body", ratio=1),
-            Layout(name="footer", size=4)  # FIXED: Larger footer for more info
+            Layout(name="footer", size=2)  # FIXED: Compact single-line footer
         )
 
-        # FIXED: Uniform grid layout - 3x3 grid with consistent sizing
+        # FIXED: 4-column layout with reward tracking
         dashboard_layout["body"].split_row(
-            Layout(name="left_column", ratio=1),
-            Layout(name="center_column", ratio=1),
-            Layout(name="right_column", ratio=1)
+            Layout(name="market_column", ratio=1),  # Market & Position
+            Layout(name="training_column", ratio=1),  # Training & Performance
+            Layout(name="reward_column", ratio=1),  # FIXED: New reward tracking column
+            Layout(name="activity_column", ratio=1)  # Actions & Stats
         )
 
-        # FIXED: Left column - Market and Position (uniform sizes)
-        dashboard_layout["left_column"].split_column(
+        # Market column (Market + Position + Portfolio)
+        dashboard_layout["market_column"].split_column(
             Layout(name="market", ratio=1),
             Layout(name="position", ratio=1),
             Layout(name="portfolio", ratio=1)
         )
 
-        # FIXED: Center column - Training info (uniform sizes)
-        dashboard_layout["center_column"].split_column(
+        # Training column (Stage + Metrics + Performance)
+        dashboard_layout["training_column"].split_column(
             Layout(name="training_stage", ratio=1),
             Layout(name="training_metrics", ratio=1),
             Layout(name="performance", ratio=1)
         )
 
-        # FIXED: Right column - Actions and stats (uniform sizes)
-        dashboard_layout["right_column"].split_column(
+        # FIXED: Reward tracking column (Reward Performance + Components + Efficiency)
+        dashboard_layout["reward_column"].split_column(
+            Layout(name="reward_performance", ratio=1),
+            Layout(name="reward_components", ratio=1),
+            Layout(name="reward_efficiency", ratio=1)
+        )
+
+        # Activity column (Actions + Fills + Episode Stats)
+        dashboard_layout["activity_column"].split_column(
             Layout(name="actions", ratio=1),
             Layout(name="fills", ratio=1),
             Layout(name="episode_stats", ratio=1)
@@ -283,11 +299,11 @@ class TradingDashboard:
 
             self._update_layout()
 
-            # FIXED: Reduced refresh rate to prevent flickering
+            # FIXED: Optimized refresh rate
             self.live = Live(
                 self.layout,
                 console=self.console,
-                refresh_per_second=2,  # FIXED: Reduced from 3 to 2
+                refresh_per_second=3,  # FIXED: Increased to 3 for smoother updates
                 screen=False,
                 auto_refresh=True,
                 transient=False,
@@ -298,7 +314,7 @@ class TradingDashboard:
             self.live.start()
             self._running = True
 
-            logging.info("Full-screen Trading Dashboard Started")
+            logging.info("Enhanced Trading Dashboard Started with Reward Tracking")
 
         except Exception as e:
             logging.error(f"Failed to start dashboard: {e}")
@@ -320,13 +336,14 @@ class TradingDashboard:
                     root_logger.addHandler(handler)
 
             if self.live:
-                logging.info("Stopping trading dashboard...")
+                logging.info("Stopping enhanced trading dashboard...")
                 self.live.stop()
 
         except Exception as e:
             print(f"Error stopping dashboard: {e}")
 
-    def set_training_stage(self, stage: TrainingStage, overall_progress: float = None, details: str = "", substage_progress: float = None):
+    def set_training_stage(self, stage: TrainingStage, overall_progress: float = None, details: str = "",
+                           substage_progress: float = None):
         """Set the current training stage with proper progress tracking"""
         with self._state_lock:
             self.state.current_stage = stage
@@ -342,7 +359,7 @@ class TradingDashboard:
             self._safe_throttled_update()
 
     def update_training_metrics(self, metrics: Dict[str, Any]):
-        """Update training metrics with thread safety"""
+        """Update training metrics with reward component tracking"""
         if not metrics:
             return
 
@@ -352,13 +369,17 @@ class TradingDashboard:
                     if isinstance(value, (int, float)) and not (isinstance(value, float) and (value != value)):
                         setattr(self.state, key, value)
 
+            # FIXED: Track reward components if available
+            if 'reward_components' in metrics and isinstance(metrics['reward_components'], dict):
+                self.state.reward_components = metrics['reward_components']
+
             self.state.state_version += 1
 
         if self._running:
             self._safe_throttled_update()
 
     def update_state(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
-        """Update dashboard state with enhanced thread safety and validation"""
+        """Enhanced state update with reward tracking"""
         if not self._running or not self.live:
             return
 
@@ -371,7 +392,7 @@ class TradingDashboard:
                     return
 
                 self._update_in_progress = True
-                self._update_state_data_validated(info_dict, market_state)
+                self._update_state_data_enhanced(info_dict, market_state)
                 self._update_in_progress = False
 
             self._safe_throttled_update()
@@ -380,34 +401,48 @@ class TradingDashboard:
             self._update_in_progress = False
             logging.error(f"Error updating dashboard state: {e}")
 
-    def _update_state_data_validated(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
-        """Thread-safe state update with comprehensive validation"""
+    def _update_state_data_enhanced(self, info_dict: Dict[str, Any], market_state: Optional[Dict[str, Any]] = None):
+        """Enhanced state update with comprehensive reward tracking"""
 
-        # FIXED: Update global step properly
+        # Update global step properly
         if 'global_step_counter' in info_dict and isinstance(info_dict['global_step_counter'], (int, float)):
             global_step = int(info_dict.get('global_step_counter'))
             if global_step >= 0:
                 self.state.step = global_step
 
-        # FIXED: Update episode step separately
+        # Update episode step separately
         if 'step' in info_dict and isinstance(info_dict['step'], (int, float)):
             new_episode_step = int(info_dict['step'])
             if new_episode_step >= 0:
                 self.state.episode_step = new_episode_step
 
-        # FIXED: Update episode number properly
+        # Update episode number properly
         if 'episode_number' in info_dict and isinstance(info_dict['episode_number'], (int, float)):
             episode_num = int(info_dict['episode_number'])
             if episode_num > 0:
                 self.state.episode_number = episode_num
 
-        # FIXED: Update timestamp and calculate market time
+        # FIXED: Enhanced reward tracking
+        if 'reward_step' in info_dict and isinstance(info_dict['reward_step'], (int, float)):
+            step_reward = float(info_dict['reward_step'])
+            if not (step_reward != step_reward):  # Check for NaN
+                self.state.step_reward = step_reward
+                self.state.recent_rewards.append(step_reward)
+
+                # Calculate reward efficiency and consistency
+                if len(self.state.recent_rewards) > 5:
+                    positive_rewards = sum(1 for r in self.state.recent_rewards if r > 0)
+                    self.state.reward_efficiency = positive_rewards / len(self.state.recent_rewards)
+
+                    import statistics
+                    self.state.reward_consistency = statistics.stdev(self.state.recent_rewards) if len(
+                        self.state.recent_rewards) > 1 else 0.0
+
+        # Update timestamp and calculate market time
         if 'timestamp_iso' in info_dict and isinstance(info_dict['timestamp_iso'], str) and info_dict['timestamp_iso']:
             self.state.timestamp = info_dict['timestamp_iso']
-            # FIXED: Extract market time from timestamp
             try:
                 dt = datetime.fromisoformat(info_dict['timestamp_iso'].replace('Z', '+00:00'))
-                # Convert to Eastern time for market hours
                 from zoneinfo import ZoneInfo
                 et_time = dt.astimezone(ZoneInfo('America/New_York'))
                 self.state.market_time = et_time.strftime("%H:%M:%S ET")
@@ -415,19 +450,24 @@ class TradingDashboard:
                 self.state.market_time = "N/A"
 
         # Update rewards with validation
-        if 'episode_cumulative_reward' in info_dict and isinstance(info_dict['episode_cumulative_reward'], (int, float)):
+        if 'episode_cumulative_reward' in info_dict and isinstance(info_dict['episode_cumulative_reward'],
+                                                                   (int, float)):
             reward = float(info_dict['episode_cumulative_reward'])
             if not (reward != reward):
                 self.state.episode_reward = reward
 
-        if 'reward_step' in info_dict and isinstance(info_dict['reward_step'], (int, float)):
-            step_reward = float(info_dict['reward_step'])
-            if not (step_reward != step_reward):
-                self.state.step_reward = step_reward
-
-        # FIXED: Use episode-wide action counts
+        # FIXED: Enhanced action counts and reward per action tracking
         if 'episode_action_counts' in info_dict and isinstance(info_dict['episode_action_counts'], dict):
             self.state.episode_action_counts = info_dict['episode_action_counts']
+
+            # Calculate average reward per action type
+            total_actions = sum(self.state.episode_action_counts.values())
+            if total_actions > 0 and self.state.episode_reward != 0:
+                for action_type in ["BUY", "SELL", "HOLD"]:
+                    action_count = self.state.episode_action_counts.get(action_type, 0)
+                    if action_count > 0:
+                        # Estimate reward contribution (simplified)
+                        self.state.avg_reward_per_action[action_type] = self.state.episode_reward / total_actions
 
         # Portfolio metrics with validation
         portfolio_updates = {
@@ -492,6 +532,7 @@ class TradingDashboard:
                 'type': self.state.last_action_type,
                 'size': self.state.last_action_size,
                 'invalid': self.state.last_action_invalid,
+                'reward': self.state.step_reward,  # FIXED: Track reward per action
                 'timestamp': time.time()
             }
 
@@ -557,7 +598,7 @@ class TradingDashboard:
                         if should_add:
                             self.state.recent_fills.append(new_fill)
 
-        # FIXED: Status updates with dynamic tracking
+        # Status updates with dynamic tracking
         if 'termination_reason' in info_dict:
             termination_reason = info_dict['termination_reason']
             self.state.is_terminated = termination_reason is not None
@@ -590,7 +631,7 @@ class TradingDashboard:
                 logging.error(f"Error in safe throttled update: {e}")
 
     def _update_layout(self):
-        """Update all layout components with error handling"""
+        """Update all layout components with enhanced reward tracking"""
         try:
             with self._state_lock:
                 self.layout["header"].update(self._create_header())
@@ -600,6 +641,12 @@ class TradingDashboard:
                 self.layout["training_stage"].update(self._create_training_stage_panel())
                 self.layout["training_metrics"].update(self._create_training_metrics_panel())
                 self.layout["performance"].update(self._create_performance_panel())
+
+                # FIXED: New reward tracking panels
+                self.layout["reward_performance"].update(self._create_reward_performance_panel())
+                self.layout["reward_components"].update(self._create_reward_components_panel())
+                self.layout["reward_efficiency"].update(self._create_reward_efficiency_panel())
+
                 self.layout["actions"].update(self._create_actions_panel())
                 self.layout["fills"].update(self._create_fills_panel())
                 self.layout["episode_stats"].update(self._create_episode_stats_panel())
@@ -625,15 +672,7 @@ class TradingDashboard:
         )
 
     def _create_header(self) -> Panel:
-        """FIXED: Create cleaner header with market time and better organization"""
-        # Extract time from timestamp
-        time_str = "N/A"
-        if self.state.timestamp != "N/A":
-            try:
-                time_str = self.state.timestamp.split('T')[1].split('.')[0]
-            except:
-                time_str = "N/A"
-
+        """FIXED: Create compact single-line header"""
         # Training status
         if self.state.is_training:
             status = f"[bold green]TRAINING[/bold green]"
@@ -644,27 +683,20 @@ class TradingDashboard:
         else:
             status = "[yellow]IDLE[/yellow]"
 
-        header_table = Table.grid(padding=1)
-        header_table.add_column(justify="left")
-        header_table.add_column(justify="center")
-        header_table.add_column(justify="right")
+        # FIXED: Single line header with key information
+        header_text = (f"[bold cyan]FX-AI Trading Dashboard[/bold cyan] | "
+                       f"{self.state.symbol} | Ep {self.state.episode_number} | Step {self.state.episode_step} | "
+                       f"{status} - {self.state.current_stage.value} | "
+                       f"Market: {self.state.market_time} | Equity: [bold]${self.state.total_equity:.2f}[/bold]")
 
-        # FIXED: Better organized header info
-        left_info = f"[bold cyan]{self.state.symbol}[/bold cyan] | Ep {self.state.episode_number} | Step {self.state.episode_step}"
-        center_info = f"{status} - {self.state.current_stage.value}"
-        right_info = f"Market Time: [yellow]{self.state.market_time}[/yellow] | Equity: [bold]${self.state.total_equity:.2f}[/bold]"
-
-        header_table.add_row(left_info, center_info, right_info)
-
-        return Panel(header_table, style="bright_blue", box=box.HEAVY, title="FX-AI Trading Dashboard")
+        return Panel(Align.center(Text.from_markup(header_text)), style="bright_blue", box=box.HEAVY)
 
     def _create_training_stage_panel(self) -> Panel:
-        """FIXED: Create training stage panel with properly aligned progress bars"""
+        """Create training stage panel with properly aligned progress bars"""
 
-        # FIXED: Create consistent progress bar formatting with fixed width
         def create_progress_bar(progress: float, style: str = "green") -> Text:
-            progress = max(0.0, min(1.0, progress))  # Clamp to 0-1
-            filled_chars = int(progress * 25)  # Fixed width of 25 characters
+            progress = max(0.0, min(1.0, progress))
+            filled_chars = int(progress * 25)
             empty_chars = 25 - filled_chars
 
             bar_text = Text()
@@ -679,13 +711,12 @@ class TradingDashboard:
         stage_text.append("Stage: ", style="white")
         stage_text.append(f"{self.state.current_stage.value}", style="bold yellow")
 
-        # FIXED: Consistent formatting for progress percentages (always 2 decimal places)
         overall_progress_line = Text()
-        overall_progress_line.append(f"Overall: {self.state.stage_progress:6.1%} ", style="white")  # Fixed width: 6 chars
+        overall_progress_line.append(f"Overall: {self.state.stage_progress:6.1%} ", style="white")
         overall_progress_line.append_text(create_progress_bar(self.state.stage_progress, "green"))
 
         substage_progress_line = Text()
-        substage_progress_line.append(f"Current: {self.state.substage_progress:6.1%} ", style="white")  # Fixed width: 6 chars
+        substage_progress_line.append(f"Current: {self.state.substage_progress:6.1%} ", style="white")
         substage_progress_line.append_text(create_progress_bar(self.state.substage_progress, "yellow"))
 
         details_text = Text(self.state.stage_details or "Ready", style="cyan")
@@ -694,23 +725,28 @@ class TradingDashboard:
         return Panel(content, title="[bold]Training Stage", border_style="cyan")
 
     def _create_training_metrics_panel(self) -> Panel:
-        """Create training metrics panel"""
+        """Create enhanced training metrics panel"""
         table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
 
         table.add_row("Update", Text(f"{self.state.update_count}", style="bold cyan"))
         table.add_row("Learning Rate", Text(f"{self.state.learning_rate:.2e}", style="white"))
-        table.add_row("Global Steps", Text(f"{self.state.step}", style="yellow"))  # FIXED: Show global steps
+        table.add_row("Global Steps", Text(f"{self.state.step}", style="yellow"))
 
         if self.state.collected_steps > 0 and self.state.rollout_steps > 0:
             collection_pct = (self.state.collected_steps / self.state.rollout_steps) * 100
-            table.add_row("Collection", Text(f"{self.state.collected_steps}/{self.state.rollout_steps} ({collection_pct:.1f}%)", style="yellow"))
+            table.add_row("Collection",
+                          Text(f"{self.state.collected_steps}/{self.state.rollout_steps} ({collection_pct:.1f}%)",
+                               style="yellow"))
 
-        table.add_row("Mean Reward", Text(f"{self.state.mean_episode_reward:.4f}", style="green" if self.state.mean_episode_reward > 0 else "red"))
+        table.add_row("Mean Reward", Text(f"{self.state.mean_episode_reward:.4f}",
+                                          style="green" if self.state.mean_episode_reward > 0 else "red"))
 
         if self.state.actor_loss != 0:
             table.add_row("Actor Loss", Text(f"{self.state.actor_loss:.4f}", style="red"))
         if self.state.critic_loss != 0:
             table.add_row("Critic Loss", Text(f"{self.state.critic_loss:.4f}", style="red"))
+        if self.state.entropy != 0:
+            table.add_row("Entropy", Text(f"{self.state.entropy:.4f}", style="magenta"))
 
         return Panel(table, title="[bold]Training Metrics", border_style="green")
 
@@ -726,11 +762,92 @@ class TradingDashboard:
         if self.state.time_per_update > 0:
             table.add_row("Time/Update", Text(f"{self.state.time_per_update:.1f}s", style="white"))
 
-        # FIXED: Show episode and step rewards
-        table.add_row("Episode Reward", Text(f"{self.state.episode_reward:.4f}", style="green" if self.state.episode_reward > 0 else "red"))
-        table.add_row("Step Reward", Text(f"{self.state.step_reward:.4f}", style="green" if self.state.step_reward > 0 else "red"))
+        table.add_row("Episode Reward", Text(f"{self.state.episode_reward:.4f}",
+                                             style="green" if self.state.episode_reward > 0 else "red"))
+        table.add_row("Step Reward",
+                      Text(f"{self.state.step_reward:.4f}", style="green" if self.state.step_reward > 0 else "red"))
 
         return Panel(table, title="[bold]Performance", border_style="magenta")
+
+    def _create_reward_performance_panel(self) -> Panel:
+        """FIXED: Create reward performance tracking panel"""
+        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+
+        # Reward efficiency (% of positive rewards)
+        efficiency_style = "green" if self.state.reward_efficiency > 0.5 else "yellow" if self.state.reward_efficiency > 0.3 else "red"
+        table.add_row("Efficiency", Text(f"{self.state.reward_efficiency:.1%}", style=efficiency_style))
+
+        # Reward consistency (lower std dev = more consistent)
+        consistency_style = "green" if self.state.reward_consistency < 0.1 else "yellow" if self.state.reward_consistency < 0.2 else "red"
+        table.add_row("Consistency", Text(f"{self.state.reward_consistency:.4f}", style=consistency_style))
+
+        # Recent rewards trend
+        if len(self.state.recent_rewards) >= 5:
+            recent_avg = sum(list(self.state.recent_rewards)[-5:]) / 5
+            trend_style = "green" if recent_avg > 0 else "red"
+            table.add_row("Recent Avg", Text(f"{recent_avg:.4f}", style=trend_style))
+
+        # Reward per action type
+        for action_type in ["BUY", "SELL", "HOLD"]:
+            avg_reward = self.state.avg_reward_per_action.get(action_type, 0.0)
+            reward_style = "green" if avg_reward > 0 else "red" if avg_reward < 0 else "white"
+            table.add_row(f"{action_type} Avg", Text(f"{avg_reward:.4f}", style=reward_style))
+
+        return Panel(table, title="[bold]Reward Performance", border_style="purple")
+
+    def _create_reward_components_panel(self) -> Panel:
+        """FIXED: Create reward components breakdown panel"""
+        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+
+        if self.state.reward_components:
+            # Show top reward components
+            sorted_components = sorted(self.state.reward_components.items(), key=lambda x: abs(x[1]), reverse=True)
+
+            for i, (component, value) in enumerate(sorted_components[:6]):  # Show top 6 components
+                component_name = component.replace('_', ' ').title()[:12]  # Truncate long names
+                value_style = "green" if value > 0 else "red" if value < 0 else "white"
+                table.add_row(component_name, Text(f"{value:.4f}", style=value_style))
+        else:
+            # Default components when no data available
+            table.add_row("Equity Change", Text("0.0000", style="white"))
+            table.add_row("Realized PnL", Text("0.0000", style="white"))
+            table.add_row("Transaction", Text("0.0000", style="white"))
+            table.add_row("Invalid Action", Text("0.0000", style="white"))
+
+        return Panel(table, title="[bold]Reward Components", border_style="yellow")
+
+    def _create_reward_efficiency_panel(self) -> Panel:
+        """FIXED: Create reward efficiency analysis panel"""
+        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+
+        # Action success rates
+        total_actions = sum(self.state.episode_action_counts.values())
+        if total_actions > 0:
+            for action_type in ["BUY", "SELL", "HOLD"]:
+                action_count = self.state.episode_action_counts.get(action_type, 0)
+                action_pct = (action_count / total_actions) * 100
+
+                # Determine if this action type is performing well
+                avg_reward = self.state.avg_reward_per_action.get(action_type, 0.0)
+                performance_style = "green" if avg_reward > 0 else "yellow" if avg_reward > -0.01 else "red"
+
+                table.add_row(f"{action_type}%", Text(f"{action_pct:.1f}%", style=performance_style))
+
+        # Reward system health indicators
+        if len(self.state.recent_rewards) > 10:
+            positive_count = sum(1 for r in self.state.recent_rewards if r > 0)
+            negative_count = sum(1 for r in self.state.recent_rewards if r < 0)
+
+            health_style = "green" if positive_count > negative_count else "red"
+            table.add_row("Reward Health", Text(f"{positive_count}+/{negative_count}-", style=health_style))
+
+        # Invalid actions impact
+        if self.state.invalid_actions_count > 0:
+            invalid_pct = (self.state.invalid_actions_count / max(self.state.episode_step, 1)) * 100
+            invalid_style = "red" if invalid_pct > 5 else "yellow" if invalid_pct > 2 else "green"
+            table.add_row("Invalid%", Text(f"{invalid_pct:.1f}%", style=invalid_style))
+
+        return Panel(table, title="[bold]Reward Efficiency", border_style="red")
 
     def _create_market_panel(self) -> Panel:
         """Create market data panel"""
@@ -803,12 +920,12 @@ class TradingDashboard:
         return Panel(table, title="[bold]Portfolio", border_style="green")
 
     def _create_actions_panel(self) -> Panel:
-        """Create recent actions panel - limited to 3 entries"""
+        """Create recent actions panel with reward tracking"""
         table = Table(box=box.SIMPLE, show_edge=False, padding=(0, 1))
         table.add_column("Step", width=6)
         table.add_column("Action", width=8)
         table.add_column("Size", width=8)
-        table.add_column("Status", width=8)
+        table.add_column("Reward", width=8)  # FIXED: Added reward column
 
         recent_actions = list(self.state.recent_actions)
         for action in recent_actions:
@@ -816,26 +933,24 @@ class TradingDashboard:
             action_type = action['type']
             size = action['size'].replace('SIZE_', '') if 'SIZE_' in action['size'] else action['size']
 
+            # FIXED: Show reward for this action
+            reward_val = action.get('reward', 0.0)
+            reward_style = "green" if reward_val > 0 else "red" if reward_val < 0 else "white"
+            reward_text = Text(f"{reward_val:.3f}", style=reward_style)
+
             if action['invalid']:
                 status = Text("INVALID", style="bold red")
+                table.add_row(step, action_type, size, "")  # No reward for invalid actions
             else:
-                status_text = "OK"
-                if action_type == "BUY":
-                    status = Text(status_text, style="green")
-                elif action_type == "SELL":
-                    status = Text(status_text, style="red")
-                else:
-                    status = Text(status_text, style="white")
-
-            table.add_row(step, action_type, size, status)
+                table.add_row(step, action_type, size, reward_text)
 
         while len(table.rows) < 3:
             table.add_row("", "", "", "")
 
-        return Panel(table, title="[bold]Recent Actions (Last 3)", border_style="magenta")
+        return Panel(table, title="[bold]Recent Actions (w/ Rewards)", border_style="magenta")
 
     def _create_fills_panel(self) -> Panel:
-        """Create recent fills panel - limited to 3 entries"""
+        """Create recent fills panel"""
         table = Table(box=box.SIMPLE, show_edge=False, padding=(0, 1))
         table.add_column("Step", width=6)
         table.add_column("Side", width=6)
@@ -857,16 +972,17 @@ class TradingDashboard:
         while len(table.rows) < 3:
             table.add_row("", "", "", "")
 
-        return Panel(table, title="[bold]Recent Fills (Last 3)", border_style="yellow")
+        return Panel(table, title="[bold]Recent Fills", border_style="yellow")
 
     def _create_episode_stats_panel(self) -> Panel:
-        """FIXED: Create episode statistics panel using episode-wide action counts"""
+        """Create episode statistics panel"""
         table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
 
         table.add_row("Episode Length", Text(f"{self.state.mean_episode_length:.1f}", style="white"))
-        table.add_row("Invalid Actions", Text(f"{self.state.invalid_actions_count}", style="red" if self.state.invalid_actions_count > 0 else "white"))
+        table.add_row("Invalid Actions", Text(f"{self.state.invalid_actions_count}",
+                                              style="red" if self.state.invalid_actions_count > 0 else "white"))
 
-        # FIXED: Use episode-wide action counts instead of recent actions
+        # Action distribution
         buy_count = self.state.episode_action_counts.get("BUY", 0)
         sell_count = self.state.episode_action_counts.get("SELL", 0)
         hold_count = self.state.episode_action_counts.get("HOLD", 0)
@@ -884,29 +1000,19 @@ class TradingDashboard:
         return Panel(table, title="[bold]Episode Stats", border_style="cyan")
 
     def _create_footer(self) -> Panel:
-        """FIXED: Create dynamic footer showing current state"""
-        footer_lines = []
+        """FIXED: Create compact single-line footer"""
 
-        # FIXED: Dynamic status based on current state
+        # Dynamic status based on current state
         if self.state.is_terminated and self.state.current_termination_reason:
-            footer_lines.append(f"[bold red]TERMINATED: {self.state.current_termination_reason}[/bold red]")
+            status_text = f"[bold red]TERMINATED: {self.state.current_termination_reason}[/bold red]"
         elif self.state.is_truncated:
-            footer_lines.append("[bold yellow]TRUNCATED: Max steps reached[/bold yellow]")
+            status_text = "[bold yellow]TRUNCATED: Max steps reached[/bold yellow]"
         elif self.state.current_stage == TrainingStage.ERROR:
-            footer_lines.append("[bold red]ERROR OCCURRED - Check logs below[/bold red]")
+            status_text = "[bold red]ERROR OCCURRED - Check logs below[/bold red]"
         else:
-            footer_lines.append(f"[green]FX-AI Training System Active[/green]")
+            status_text = f"[green]FX-AI Active[/green] | Global Step: {self.state.step} | Update: {self.state.update_count} | LR: {self.state.learning_rate:.2e}"
 
-        # FIXED: Add global training info to footer
-        footer_lines.append(f"Global Step: {self.state.step} | Update: {self.state.update_count} | "
-                            f"Learning Rate: {self.state.learning_rate:.2e}")
-
-        footer_content = "\n".join(footer_lines)
-
-        return Panel(
-            Align.center(Text.from_markup(footer_content)),
-            style="bright_white"
-        )
+        return Panel(Align.center(Text.from_markup(status_text)), style="bright_white")
 
     def set_symbol(self, symbol: str):
         """Set the trading symbol"""
@@ -924,12 +1030,11 @@ class TradingDashboard:
                           is_evaluating: bool = False, learning_rate: float = 0.0):
         """Set training information with thread safety and validation"""
         with self._state_lock:
-            # FIXED: Proper episode and step tracking
             if episode_num > 0:
                 self.state.episode_number = episode_num
             if total_steps >= 0:
                 self.state.total_steps = total_steps
-                self.state.step = total_steps  # Update display step
+                self.state.step = total_steps
             if update_count >= 0:
                 self.state.update_count = update_count
 
