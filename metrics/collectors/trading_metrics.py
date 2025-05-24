@@ -111,30 +111,30 @@ class PortfolioMetricsCollector(MetricCollector):
 
         try:
             # Basic portfolio values
-            metrics[self.register_metric("total_equity", self._get_metadata("total_equity"))] = MetricValue(self.current_equity)
-            metrics[self.register_metric("cash_balance", self._get_metadata("cash_balance"))] = MetricValue(self.current_cash)
-            metrics[self.register_metric("unrealized_pnl", self._get_metadata("unrealized_pnl"))] = MetricValue(self.unrealized_pnl)
-            metrics[self.register_metric("realized_pnl_session", self._get_metadata("realized_pnl_session"))] = MetricValue(self.realized_pnl)
+            metrics[f"{self.category.value}.{self.name}.total_equity"] = MetricValue(self.current_equity)
+            metrics[f"{self.category.value}.{self.name}.cash_balance"] = MetricValue(self.current_cash)
+            metrics[f"{self.category.value}.{self.name}.unrealized_pnl"] = MetricValue(self.unrealized_pnl)
+            metrics[f"{self.category.value}.{self.name}.realized_pnl_session"] = MetricValue(self.realized_pnl)
 
             # Return percentage
             total_return_pct = ((self.current_equity - self.initial_capital) / self.initial_capital) * 100
-            metrics[self.register_metric("total_return_pct", self._get_metadata("total_return_pct"))] = MetricValue(total_return_pct)
+            metrics[f"{self.category.value}.{self.name}.total_return_pct"] = MetricValue(total_return_pct)
 
             # Drawdown calculations
             if self.equity_history:
                 max_equity = max(self.equity_history)
                 current_dd_pct = ((max_equity - self.current_equity) / max_equity) * 100 if max_equity > 0 else 0
-                metrics[self.register_metric("current_drawdown_pct", self._get_metadata("current_drawdown_pct"))] = MetricValue(current_dd_pct)
+                metrics[f"{self.category.value}.{self.name}.current_drawdown_pct"] = MetricValue(current_dd_pct)
 
                 # Calculate maximum drawdown
                 max_dd = self._calculate_max_drawdown()
-                metrics[self.register_metric("max_drawdown_pct", self._get_metadata("max_drawdown_pct"))] = MetricValue(max_dd)
+                metrics[f"{self.category.value}.{self.name}.max_drawdown_pct"] = MetricValue(max_dd)
 
                 # Calculate Sharpe ratio and volatility
                 if len(self.equity_history) > 10:
                     sharpe, volatility = self._calculate_risk_metrics()
-                    metrics[self.register_metric("sharpe_ratio", self._get_metadata("sharpe_ratio"))] = MetricValue(sharpe)
-                    metrics[self.register_metric("volatility_pct", self._get_metadata("volatility_pct"))] = MetricValue(volatility)
+                    metrics[f"{self.category.value}.{self.name}.sharpe_ratio"] = MetricValue(sharpe)
+                    metrics[f"{self.category.value}.{self.name}.volatility_pct"] = MetricValue(volatility)
 
         except Exception as e:
             self.logger.debug(f"Error collecting portfolio metrics: {e}")
@@ -283,23 +283,23 @@ class PositionMetricsCollector(MetricCollector):
         metrics = {}
 
         try:
-            metrics[self.register_metric("quantity", self._get_metadata("quantity"))] = MetricValue(self.current_quantity)
+            metrics[f"{self.category.value}.{self.name}.quantity"] = MetricValue(self.current_quantity)
 
             # Convert side to numeric for W&B
             side_numeric = {"FLAT": 0, "LONG": 1, "SHORT": -1}.get(self.current_side, 0)
-            metrics[self.register_metric("side", self._get_metadata("side"))] = MetricValue(side_numeric)
+            metrics[f"{self.category.value}.{self.name}.side"] = MetricValue(side_numeric)
 
-            metrics[self.register_metric("avg_entry_price", self._get_metadata("avg_entry_price"))] = MetricValue(self.avg_entry_price)
-            metrics[self.register_metric("market_value", self._get_metadata("market_value"))] = MetricValue(self.market_value)
-            metrics[self.register_metric("unrealized_pnl", self._get_metadata("unrealized_pnl"))] = MetricValue(self.position_pnl)
-            metrics[self.register_metric("current_price", self._get_metadata("current_price"))] = MetricValue(self.current_price)
+            metrics[f"{self.category.value}.{self.name}.avg_entry_price"] = MetricValue(self.avg_entry_price)
+            metrics[f"{self.category.value}.{self.name}.market_value"] = MetricValue(self.market_value)
+            metrics[f"{self.category.value}.{self.name}.unrealized_pnl"] = MetricValue(self.position_pnl)
+            metrics[f"{self.category.value}.{self.name}.current_price"] = MetricValue(self.current_price)
 
             # Calculate unrealized P&L percentage
             if self.avg_entry_price > 0 and self.current_quantity != 0:
                 pnl_pct = ((self.current_price - self.avg_entry_price) / self.avg_entry_price) * 100
                 if self.current_side == "SHORT":
                     pnl_pct = -pnl_pct
-                metrics[self.register_metric("unrealized_pnl_pct", self._get_metadata("unrealized_pnl_pct"))] = MetricValue(pnl_pct)
+                metrics[f"{self.category.value}.{self.name}.unrealized_pnl_pct"] = MetricValue(pnl_pct)
 
         except Exception as e:
             self.logger.debug(f"Error collecting position metrics: {e}")
@@ -415,18 +415,18 @@ class TradeMetricsCollector(MetricCollector):
 
         try:
             # Basic counts
-            metrics[self.register_metric("total_trades", self._get_metadata("total_trades"))] = MetricValue(self.trade_count)
+            metrics[f"{self.category.value}.{self.name}.total_trades"] = MetricValue(self.trade_count)
 
             # Calculate win rate
             win_rate = (self.winning_trades / self.trade_count * 100) if self.trade_count > 0 else 0
-            metrics[self.register_metric("win_rate", self._get_metadata("win_rate"))] = MetricValue(win_rate)
+            metrics[f"{self.category.value}.{self.name}.win_rate"] = MetricValue(win_rate)
 
             # Calculate P&L metrics
             trade_pnls = [trade['realized_pnl'] for trade in self.completed_trades if 'realized_pnl' in trade]
 
             if trade_pnls:
                 avg_pnl = np.mean(trade_pnls)
-                metrics[self.register_metric("avg_trade_pnl", self._get_metadata("avg_trade_pnl"))] = MetricValue(avg_pnl)
+                metrics[f"{self.category.value}.{self.name}.avg_trade_pnl"] = MetricValue(avg_pnl)
 
                 winning_pnls = [pnl for pnl in trade_pnls if pnl > 0]
                 losing_pnls = [pnl for pnl in trade_pnls if pnl <= 0]
@@ -434,20 +434,20 @@ class TradeMetricsCollector(MetricCollector):
                 if winning_pnls:
                     avg_win = np.mean(winning_pnls)
                     largest_win = max(winning_pnls)
-                    metrics[self.register_metric("avg_winning_trade", self._get_metadata("avg_winning_trade"))] = MetricValue(avg_win)
-                    metrics[self.register_metric("largest_win", self._get_metadata("largest_win"))] = MetricValue(largest_win)
+                    metrics[f"{self.category.value}.{self.name}.avg_winning_trade"] = MetricValue(avg_win)
+                    metrics[f"{self.category.value}.{self.name}.largest_win"] = MetricValue(largest_win)
 
                 if losing_pnls:
                     avg_loss = np.mean(losing_pnls)
                     largest_loss = min(losing_pnls)
-                    metrics[self.register_metric("avg_losing_trade", self._get_metadata("avg_losing_trade"))] = MetricValue(avg_loss)
-                    metrics[self.register_metric("largest_loss", self._get_metadata("largest_loss"))] = MetricValue(largest_loss)
+                    metrics[f"{self.category.value}.{self.name}.avg_losing_trade"] = MetricValue(avg_loss)
+                    metrics[f"{self.category.value}.{self.name}.largest_loss"] = MetricValue(largest_loss)
 
                 # Profit factor
                 gross_profit = sum(winning_pnls) if winning_pnls else 0
                 gross_loss = abs(sum(losing_pnls)) if losing_pnls else 0
                 profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf') if gross_profit > 0 else 0
-                metrics[self.register_metric("profit_factor", self._get_metadata("profit_factor"))] = MetricValue(profit_factor)
+                metrics[f"{self.category.value}.{self.name}.profit_factor"] = MetricValue(profit_factor)
 
         except Exception as e:
             self.logger.debug(f"Error collecting trade metrics: {e}")
