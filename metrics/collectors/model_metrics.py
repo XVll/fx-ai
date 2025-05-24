@@ -1,10 +1,7 @@
-# metrics/collectors/model_metrics.py - Model-related metrics collector
-
 import logging
-from typing import Dict, Optional, Any
+from typing import Dict, Optional
 import torch
 import torch.nn as nn
-import numpy as np
 
 from ..core import MetricCollector, MetricValue, MetricCategory, MetricType, MetricMetadata
 
@@ -167,11 +164,9 @@ class ModelMetricsCollector(MetricCollector):
     def record_loss_metrics(self, actor_loss: float, critic_loss: float,
                             entropy: float, total_loss: Optional[float] = None):
         """Record loss metrics manually"""
-        metrics = {}
-
-        metrics[self.register_metric("actor_loss", self._get_metadata("actor_loss"))] = MetricValue(actor_loss)
-        metrics[self.register_metric("critic_loss", self._get_metadata("critic_loss"))] = MetricValue(critic_loss)
-        metrics[self.register_metric("entropy", self._get_metadata("entropy"))] = MetricValue(entropy)
+        metrics = {self.register_metric("actor_loss", self._get_metadata("actor_loss")): MetricValue(actor_loss),
+                   self.register_metric("critic_loss", self._get_metadata("critic_loss")): MetricValue(critic_loss),
+                   self.register_metric("entropy", self._get_metadata("entropy")): MetricValue(entropy)}
 
         if total_loss is None:
             total_loss = actor_loss + critic_loss
@@ -182,12 +177,9 @@ class ModelMetricsCollector(MetricCollector):
     def record_ppo_metrics(self, clip_fraction: float, approx_kl: float,
                            explained_variance: float):
         """Record PPO-specific metrics"""
-        metrics = {}
-
-        metrics[self.register_metric("clip_fraction", self._get_metadata("clip_fraction"))] = MetricValue(clip_fraction * 100)  # Convert to percentage
-        metrics[self.register_metric("approx_kl", self._get_metadata("approx_kl"))] = MetricValue(approx_kl)
-        metrics[self.register_metric("explained_variance", self._get_metadata("explained_variance"))] = MetricValue(
-            explained_variance * 100)  # Convert to percentage
+        metrics = {self.register_metric("clip_fraction", self._get_metadata("clip_fraction")): MetricValue(clip_fraction * 100),
+                   self.register_metric("approx_kl", self._get_metadata("approx_kl")): MetricValue(approx_kl),
+                   self.register_metric("explained_variance", self._get_metadata("explained_variance")): MetricValue(explained_variance * 100)}
 
         return metrics
 
@@ -296,7 +288,7 @@ class OptimizerMetricsCollector(MetricCollector):
             return metrics
 
         try:
-            # Get first parameter group (assuming uniform settings)
+            # Get the first parameter group (assuming uniform settings)
             if self.optimizer.param_groups:
                 param_group = self.optimizer.param_groups[0]
 

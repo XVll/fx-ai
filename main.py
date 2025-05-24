@@ -13,6 +13,7 @@ import torch
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 
+from metrics.manager import MetricsManager
 # Import Rich logging setup
 from utils.logger import setup_rich_logging, console
 
@@ -21,15 +22,11 @@ from ai.transformer import MultiBranchTransformer
 from config.config import Config
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DabentoFileProvider
-from data.provider.data_bento.databento_api_provider import DabentoAPIProvider
-from data.provider.data_bento.databento_live_provider import DabentoLiveProvider
-from data.provider.data_bento.databento_live_sim_provider import DabentoLiveSimProvider
-from data.provider.dummy_data_provider import DummyDataProvider
 
 from envs.trading_env import TradingEnvironment
 
 from agent.ppo_agent import PPOTrainer
-from agent.base_callbacks import ModelCheckpointCallback, EarlyStoppingCallback
+from agent.base_callbacks import ModelCheckpointCallback, EarlyStoppingCallback, TrainingCallback
 from utils.model_manager import ModelManager
 
 # Import new metrics system
@@ -41,7 +38,7 @@ cleanup_called = False
 current_trainer = None
 current_env = None
 current_data_manager = None
-metrics_manager = None
+metrics_manager:MetricsManager = None
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +123,7 @@ def cleanup_resources():
 
 
 def select_device(device_str):
-    """Select device based on config or auto-detect."""
+    """Select a device based on config or auto-detect."""
     if device_str == "auto":
         if torch.cuda.is_available():
             device = torch.device("cuda")
@@ -156,38 +153,6 @@ def create_data_provider(config: Config):
             verbose=data_cfg.verbose,
             dbn_cache_size=data_cfg.dbn_cache_size
         )
-    elif data_cfg.provider_type == "api":
-        return DabentoAPIProvider(
-            api_key=data_cfg.api.get("api_key", ""),
-            dataset=data_cfg.api.get("dataset", "XNAS.ITCH")
-        )
-    elif data_cfg.provider_type == "live":
-        return DabentoLiveProvider(
-            api_key=data_cfg.live.get("api_key", ""),
-            dataset=data_cfg.live.get("dataset", "XNAS.ITCH")
-        )
-    elif data_cfg.provider_type == "live_sim":
-        hist_provider = DabentoFileProvider(
-            data_dir=data_cfg.data_dir,
-            symbol_info_file=data_cfg.symbol_info_file,
-            verbose=data_cfg.verbose,
-            dbn_cache_size=data_cfg.dbn_cache_size
-        )
-        return DabentoLiveSimProvider(
-            historical_provider=hist_provider,
-            replay_speed=data_cfg.live.get("replay_speed", 1.0),
-            start_time=data_cfg.start_date
-        )
-    elif data_cfg.provider_type == "dummy":
-        return DummyDataProvider(config={
-            'debug_window_mins': 120,
-            'data_sparsity': 1,
-            'num_squeezes': 2,
-            'base_price': 5.00,
-            'volatility': 0.03,
-            'squeeze_magnitude': 0.30,
-            'symbols': ['MLGO']
-        })
     else:
         raise ValueError(f"Unknown provider type: {data_cfg.provider_type}")
 
@@ -262,7 +227,7 @@ def run_training(cfg: Config):
             metrics_manager = None
             metrics_integrator = None
 
-        # Create data provider and manager
+        # Create a data provider and manager
         logging.info("📂 Initializing data provider and manager")
         data_provider = create_data_provider(cfg)
         current_data_manager = DataManager(provider=data_provider, logger=logging.getLogger("DataManager"))
@@ -317,10 +282,10 @@ def run_training(cfg: Config):
             logging.error(f"Error creating model: {e}")
             raise
 
-        # Update metrics system with model
+        # Update a metrics system with the model
+        optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
         if metrics_integrator:
-            optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
-            # Add model and optimizer to metrics system
+            # Add model and optimizer to a metrics system
             from metrics.collectors.model_metrics import ModelMetricsCollector, OptimizerMetricsCollector
             model_collector = ModelMetricsCollector(model)
             optimizer_collector = OptimizerMetricsCollector(optimizer)
@@ -349,7 +314,7 @@ def run_training(cfg: Config):
 
         # Set up training callbacks
         logging.info("⚙️ Setting up training callbacks")
-        callbacks = [
+        callbacks: list[TrainingCallback] = [
             ModelCheckpointCallback(
                 save_dir=model_dir,
                 save_freq=cfg.callbacks.save_freq,
