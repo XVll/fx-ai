@@ -1,30 +1,98 @@
+
+# Feature Engineering for Trading Agents
+# Portfolio Branch
+1. Current Position Size	: Normalized: e.g., -1 (max short), 0 (flat), +1 (max long). Or actual share count normalized by a typical trade size.	Essential for action determination (e.g., cannot buy more if at max long allocation). Informs risk exposure.
+2. Average Entry Price	: Normalized by current market price or a recent short-term moving average of price.	Basis for calculating unrealized P&L and evaluating trade performance.	 (implied)
+3. Unrealized P&L	: As a percentage of entry price, or portfolio value, or in terms of ATRs.	Key feedback on current trade's performance; crucial for adaptive exit logic.
+4. Time in Current Trade	: Number of timesteps (seconds or minutes) since the position was opened.	Critical for scalping to avoid prolonged holdings. Can be used in reward penalties or to trigger time-based exits [ (implied by "remaining time")].
+5. Drawdown from Entry / High Water Mark	: Percentage drop from highest P&L achieved during the current trade, or from entry price if trade is consistently negative.	Measures intra-trade risk. Indicates if a trade is moving significantly against the agent, potentially triggering learned stop-loss behavior.	 (Max Drawdown)
+# Static Branch
+1. Float
+2. Relative Daily Volume
+3. Time of Day Cyclical encoding (sin/cos of minutes from market open)
+4. Day of Week One-hot encoded or cyclical encoding (sin/cos of day of week)
+
+# Reward Design for Trading Agents
+Reward Components: (Foundational)
+Realized Profit/Loss (PnL) per trade:
+This reward is typically given at the end of a trade (when a position is closed). It is the most direct measure of trading success. Total Costs include commissions and estimated slippage.   
+ 
+Differential Sharpe Ratio / Financial Return Metrics:
+Calculation: One approach is to calculate the change in portfolio value adjusted for risk at each step or over short intervals. For instance, a reward could be the change in a short-term Sharpe ratio: ΔSR
+is calculated using returns over a very short trailing window. Another option is the direct financial return (change in portfolio value) at each step.
+This provides denser reward signals compared to only rewarding at trade completion, encouraging consistent, risk-aware accumulation of profits.
+
+Mark-to-Market (MTM) P&L Change (for open positions):
+This provides immediate feedback to the agent on its decision to hold a position. Positive MTM change reinforces holding profitable positions, while negative MTM change penalizes holding losing ones. Research indicates that agents provided with MTM information tend to trade more frequently and manage positions more effectively.   
+
+
+Shaping Rewards (Penalties & Incentives):
+Reward shaping involves adding smaller, more frequent rewards or penalties to guide the agent towards specific desired behaviors beyond simple PnL maximization.
+1. Penalty for Excessive Holding Time
+    * This encourages the agent to avoid holding positions for too long, which can lead to increased risk and opportunity costs.
+    * Example: If a position is held for more than a certain number of timesteps, a small negative reward is applied.
+2. Penalty for Overtrading
+    * This discourages the agent from making too many trades in a short period, which can lead to high transaction costs and slippage.
+    * Example: If the agent makes more than a certain number of trades within a defined period, a small negative reward is applied.
+3. Quick, Decisive Profit Taking
+    * This encourages the agent to take profits quickly when they are available, rather than waiting for larger gains that may not materialize.
+    * Example: If a position is closed with a profit within a certain number of timesteps, a small positive reward is applied.
+4. Penalty for Large Negative P&L Swings
+    * This discourages the agent from allowing large losses to accumulate, which can be detrimental to long-term performance.
+    * Example: If the unrealized P&L swings negatively beyond a certain threshold, a small negative reward is applied.
+
+# Metrics for Evaluating Trading Agents
+
+Core DRL	Actor Loss, Critic Loss	Per training step/batch	wandb.log()	Learning progress, stability.
+Policy Entropy	Per training step/batch	wandb.log()	Exploration vs. exploitation balance.
+Value Function Estimates	Per training step/batch (sampled)	wandb.Histogram, wandb.log()	Accuracy of reward prediction.
+Episode Rewards (Raw, Smoothed)	Per episode	wandb.log()	Overall learning efficacy.
+Trading Performance	Cumulative Realized P&L	Per evaluation episode/day	wandb.log()	Primary profitability measure.
+Sharpe Ratio, Sortino Ratio	Per evaluation episode/day	wandb.log()	Risk-adjusted performance.
+Maximum Drawdown	Per evaluation episode/day	wandb.log()	Downside risk assessment.
+Win Rate, Avg Win/Loss, Profit Factor	Per evaluation episode/day	wandb.log()	Trade quality and consistency.
+Number of Trades, Avg Holding Time	Per evaluation episode/day	wandb.log()	Strategy activity level, adherence to scalping.
+Trade Execution	P&L per trade	Per trade (batched to wandb.Table)	wandb.Table, wandb.Histogram	Distribution of trade outcomes.
+Slippage per trade	Per trade (batched to wandb.Table)	wandb.Table, wandb.Histogram	Execution cost analysis.
+Trade Duration	Per trade (batched to wandb.Table)	wandb.Table, wandb.Histogram	Adherence to scalping timeframes.
+Trades on Price Chart	Periodically / On demand	wandb.Image or custom plot	Visual verification of entries/exits.
+Model Internals	Input Feature Distributions	Periodically (e.g., every N episodes)	wandb.Histogram (for each feature)	Data quality, normalization, regime shifts.
+Transformer Attention Weights	Periodically (sampled instances)	wandb.Image (heatmap) or custom plot	Understand model focus across branches/time.
+Action Probabilities	Per decision step (sampled/aggregated)	wandb.Histogram, wandb.plot.line()	Agent's confidence/indecision.
+Feature Importance (SHAP/LIME)	Infrequently (e.g., major checkpoints)	wandb.Table, wandb.Image	Identify key predictive features.
+
+* Action Metrics for each component
+- Magnitude and Frequency: How large is each penalty/reward on average? How often is each component triggered?
+- Correlation with Behavior: How does the agent's behavior (e.g., trade duration, P&L per trade, trading frequency) correlate with the different reward components it receives?
+- Impact on Learning: Are certain penalties overly dominant, leading to unintended conservative or erratic behavior? Are incentives strong enough to encourage desired actions?
+
+Current Metrics
 # Metrics
- 1. Training (13 metrics)
+1. Training (13 metrics)
     - Process metrics: episode_count, episode_reward_mean/std, episode_length_mean, episode_duration_mean, global_step, steps_per_second, update_count, update_duration, rollout_duration, training_duration, episodes_per_hour, updates_per_hour
     - Evaluation metrics: eval_reward_mean/std, eval_length_mean, eval_count
-  2. Trading (15 metrics)
-    - Portfolio (9): total_equity, cash_balance, unrealized_pnl, realized_pnl_session, total_return_pct, max_drawdown_pct, current_drawdown_pct, sharpe_ratio, volatility_pct
-    - Position (6): quantity, side, avg_entry_price, market_value, unrealized_pnl, unrealized_pnl_pct, current_price
-    - Trades (8): total_trades, win_rate, avg_trade_pnl, avg_winning_trade, avg_losing_trade, profit_factor, largest_win, largest_loss
-  3. Model (12 metrics)
-    - Model metrics: actor_loss, critic_loss, total_loss, entropy, gradient_norm, gradient_max, param_norm, param_count, clip_fraction, approx_kl, explained_variance, learning_rate
-    - Optimizer metrics: learning_rate, momentum, weight_decay
-  4. Execution (11 metrics)
-    - total_fills, total_volume, total_turnover, total_commission, total_fees, total_slippage, avg_commission_per_share, avg_slippage_bps, avg_fill_size, total_transaction_costs, transaction_cost_bps
-  5. Environment (7+ metrics)
-    - Core: total_env_steps, step_reward, step_reward_mean, **episode_reward_current**, invalid_action_rate, action_hold_pct, action_buy_pct, action_sell_pct
-    - Dynamic reward components and action efficiency metrics
-  6. System (3 metrics)
-    - uptime_seconds, memory_usage_mb, cpu_usage_pct
-Your system correctly defines and collects:
-
-  - Training: 17 metrics (13 process + 4 evaluation)
-  - Trading: 24 metrics (9 portfolio + 7 position + 8 trades)
-  - Model: 12 metrics (including optimizer metrics)
-  - Execution: 11 metrics ✓
-  - Environment: 10+ metrics (including dynamic reward components)
-  - System: 3 metrics (your collectors) + W&B auto-collected system metrics
-
+2. Trading (15 metrics)
+   - Portfolio (9): total_equity, cash_balance, unrealized_pnl, realized_pnl_session, total_return_pct, max_drawdown_pct, current_drawdown_pct, sharpe_ratio, volatility_pct
+   - Position (6): quantity, side, avg_entry_price, market_value, unrealized_pnl, unrealized_pnl_pct, current_price
+   - Trades (8): total_trades, win_rate, avg_trade_pnl, avg_winning_trade, avg_losing_trade, profit_factor, largest_win, largest_loss
+3. Model (12 metrics)
+   - Model metrics: actor_loss, critic_loss, total_loss, entropy, gradient_norm, gradient_max, param_norm, param_count, clip_fraction, approx_kl, explained_variance, learning_rate
+   - Optimizer metrics: learning_rate, momentum, weight_decay
+4. Execution (11 metrics)
+   - total_fills, total_volume, total_turnover, total_commission, total_fees, total_slippage, avg_commission_per_share, avg_slippage_bps, avg_fill_size, total_transaction_costs, transaction_cost_bps
+5. Environment (7+ metrics)
+   - Core: total_env_steps, step_reward, step_reward_mean, **episode_reward_current**, invalid_action_rate, action_hold_pct, action_buy_pct, action_sell_pct
+   - Dynamic reward components and action efficiency metrics
+6. System (3 metrics)
+   - uptime_seconds, memory_usage_mb, cpu_usage_pct
+   Your system correctly defines and collects:
+7.
+- Training: 17 metrics (13 process + 4 evaluation)
+- Trading: 24 metrics (9 portfolio + 7 position + 8 trades)
+- Model: 12 metrics (including optimizer metrics)
+- Execution: 11 metrics ✓
+- Environment: 10+ metrics (including dynamic reward components)
+- System: 3 metrics (your collectors) + W&B auto-collected system metrics
 
 
 self.static_feature_names: List[str] = [
