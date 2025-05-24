@@ -1,1 +1,104 @@
-/outputs/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# W&B (Weights & Biases)
+wandb/
+# Keep the wandb directory structure but ignore the contents
+!wandb/.gitkeep
+
+# Hydra outputs
+outputs/
+# If you want to keep some outputs, you can be more specific:
+# outputs/*/*/*.log
+# outputs/*/*/models/
+
+# Multirun outputs (Hydra sweep)
+multirun/
+
+# Logs
+logs/
+*.log
+!logs/.gitkeep
+
+# Model checkpoints (keep best models)
+*.pt
+*.pth
+*.ckpt
+# Keep the best_models directory
+!best_models/
+!best_models/**/*.pt
+!best_models/**/*.json
+
+# Data files (keep your market data)
+# *.csv
+# *.parquet
+# *.h5
+# But keep the data structure
+!dnb/
+!dnb/**/*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Poetry
+poetry.lock.bak
+
+# Config overrides (if you have local configs)
+config/local/
+
+# Test outputs
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Documentation builds
+docs/_build/
+docs/_static/
+docs/_templates/

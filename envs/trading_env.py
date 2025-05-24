@@ -98,6 +98,7 @@ class TradingEnvironment(gym.Env):
         # Action tracking for metrics and logging
         self.action_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
         self.step_count_for_debug = 0
+        self.win_loss_counts = {"wins": 0, "losses": 0}
 
         # Observation Space
         model_cfg = self.config.model
@@ -731,6 +732,18 @@ class TradingEnvironment(gym.Env):
                 
                 self.metrics_integrator.metrics_manager.collect_step_visualization(viz_data)
                 
+                # Send to dashboard
+                dashboard_data = {
+                    'step': self.current_step,
+                    'price': viz_price,
+                    'volume': market_state_next_t.get('total_volume', 0) if market_state_next_t else 0,
+                    'position': portfolio_state_next_t['positions'].get(self.primary_asset, {}).get('quantity', 0),
+                    'reward': reward,
+                    'equity': portfolio_state_next_t['total_equity'],
+                    'action': action_name
+                }
+                self.metrics_integrator.metrics_manager.update_dashboard_step(dashboard_data)
+                
                 # Record trades for visualization
                 if fill_details_list:
                     for fill in fill_details_list:
@@ -742,6 +755,16 @@ class TradingEnvironment(gym.Env):
                             'fees': fill['commission'] + fill['fees']
                         }
                         self.metrics_integrator.metrics_manager.collect_trade_visualization(trade_data)
+                        
+                        # Send trade to dashboard
+                        dashboard_trade = {
+                            'step': self.current_step,
+                            'action': trade_data['action'].upper(),
+                            'price': trade_data['price'],
+                            'quantity': trade_data['quantity'],
+                            'pnl': trade_data['pnl']
+                        }
+                        self.metrics_integrator.metrics_manager.update_dashboard_trade(dashboard_trade)
 
             self.metrics_integrator.record_environment_step(
                 reward=reward,
@@ -792,6 +815,18 @@ class TradingEnvironment(gym.Env):
                 # Generate and send episode visualizations
                 if hasattr(self.metrics_integrator, 'metrics_manager'):
                     self.metrics_integrator.metrics_manager.end_episode_visualization()
+                    
+                    # Send episode summary to dashboard
+                    episode_pnl = info['episode_summary']['session_net_profit_equity_change']
+                    episode_data = {
+                        'episode': self.episode_number,
+                        'total_reward': self.episode_total_reward,
+                        'total_pnl': episode_pnl,
+                        'steps': self.current_step,
+                        'win_rate': (self.win_loss_counts['wins'] / max(1, self.win_loss_counts['wins'] + self.win_loss_counts['losses'])) * 100 if hasattr(self, 'win_loss_counts') else 0,
+                        'reset': True
+                    }
+                    self.metrics_integrator.metrics_manager.update_dashboard_episode(episode_data)
 
             # Enhanced episode summary logging
             total_actions = sum(self.action_counts.values())
