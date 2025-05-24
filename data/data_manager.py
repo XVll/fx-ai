@@ -1,4 +1,4 @@
-# data/data_manager.py
+# data/data_manager.py - FIXED: Clean, efficient logging with data loading stats
 from typing import Dict, List, Union, Tuple, Optional, Any
 import pandas as pd
 from datetime import datetime
@@ -10,10 +10,7 @@ from data.utils.helpers import ensure_timezone_aware
 
 class DataManager:
     """
-    Centralized data management class responsible for:
-    - Loading and caching data in memory
-    - Providing access to different data types
-    - Managing data lifecycle (loading, unloading)
+    Centralized data management with clean, informative logging.
     """
 
     def __init__(self, provider: DataProvider, logger=None):
@@ -24,7 +21,7 @@ class DataManager:
             provider: DataProvider instance (historical or live)
             logger: Optional logger
         """
-        self.provider = provider
+        self.provider:HistoricalDataProvider = provider
         self.logger = logger or logging.getLogger(__name__)
 
         # Data cache structure:
@@ -39,6 +36,15 @@ class DataManager:
         self.current_symbol = None
         self.is_live = isinstance(provider, LiveDataProvider)
 
+        # Session stats for better logging
+        self.session_stats = {
+            'total_rows_loaded': 0,
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'data_types_loaded': set(),
+            'symbols_loaded': set()
+        }
+
     def _log(self, message: str, level: int = logging.INFO):
         """Helper method for logging."""
         if self.logger:
@@ -52,12 +58,13 @@ class DataManager:
                             start_time: datetime, end_time: datetime) -> Optional[pd.DataFrame]:
         """Check if data is in memory cache and return it if found."""
         if symbol not in self.data_cache or data_type not in self.data_cache[symbol]:
+            self.session_stats['cache_misses'] += 1
             return None
 
         # First check if any existing cache key exactly matches our request
         cache_key = self._create_cache_key(start_time, end_time)
         if cache_key in self.data_cache[symbol][data_type]:
-            self._log(f"Cache hit for {symbol} {data_type} in memory cache")
+            self.session_stats['cache_hits'] += 1
             return self.data_cache[symbol][data_type][cache_key]
 
         # If no exact match, check if we have a superset of the data
@@ -69,15 +76,17 @@ class DataManager:
 
                     # If the cached data fully contains our request
                     if df_start <= start_time and df_end >= end_time:
-                        self._log(f"Partial cache hit for {symbol} {data_type} in memory cache")
                         # Extract the slice we need and cache it for next time
                         result = df[start_time:end_time]
                         if not result.empty:
                             self._save_to_memory_cache(symbol, data_type, start_time, end_time, result)
+                            self.session_stats['cache_hits'] += 1
                             return result
                 except Exception as e:
-                    self._log(f"Error checking cache: {e}", logging.DEBUG)
+                    # Silent fail for cache checking
+                    pass
 
+        self.session_stats['cache_misses'] += 1
         return None
 
     def _save_to_memory_cache(self, symbol: str, data_type: str,
@@ -128,15 +137,13 @@ class DataManager:
                   end_time: Union[datetime, str],
                   data_types: List[str] = None) -> Dict[str, Dict[str, pd.DataFrame]]:
         """
-        Load data for symbols in a date range.
+        Load data for symbols in a date range with comprehensive logging.
 
         Args:
             symbols: Symbol or list of symbols to load data for
             start_time: Start time for data
             end_time: End time for data
             data_types: List of data types to load. If None, loads all available types
-                        Supported types: 'bars_1s', 'bars_1m', 'bars_5m', 'bars_1d',
-                                        'trades', 'quotes', 'status'
 
         Returns:
             Dictionary mapping symbols to dictionaries of data types
@@ -161,13 +168,20 @@ class DataManager:
         start_dt = ensure_timezone_aware(start_time, is_end_time=False)
         end_dt = ensure_timezone_aware(end_time, is_end_time=True)
 
+        # Initialize session tracking
+        load_start_time = datetime.now()
+        total_rows_this_load = 0
+        successful_loads = {}
+        failed_loads = {}
+
         # Load data for each symbol
         results = {}
         for symbol in symbols:
             self.current_symbol = symbol
-            self._log(f"Loading data for {symbol} from {start_dt} to {end_dt}")
+            self.session_stats['symbols_loaded'].add(symbol)
 
             symbol_data = {}
+            symbol_rows = 0
 
             # Process each data type
             for data_type in data_types:
@@ -175,7 +189,6 @@ class DataManager:
                 if data_type.startswith('bars_'):
                     timeframe = data_type.split('_')[1]
                     if timeframe not in ["1s", "1m", "5m", "1d"]:
-                        self._log(f"Skipping unsupported timeframe: {timeframe}")
                         continue
 
                 try:
@@ -186,7 +199,6 @@ class DataManager:
                         continue
 
                     # Load from provider
-                    self._log(f"Loading {data_type} from provider for {symbol}")
                     df = self._load_from_provider(symbol, data_type, start_dt, end_dt)
 
                     if df is not None and not df.empty:
@@ -197,23 +209,44 @@ class DataManager:
                         self._update_loaded_ranges(symbol, data_type, start_dt, end_dt)
 
                         symbol_data[data_type] = df
-                        self._log(f"Loaded {len(df)} rows of {data_type} data for {symbol}")
-                    else:
-                        self._log(f"No {data_type} data found for {symbol}", logging.WARNING)
+                        rows_loaded = len(df)
+                        symbol_rows += rows_loaded
+                        total_rows_this_load += rows_loaded
+                        self.session_stats['total_rows_loaded'] += rows_loaded
+                        self.session_stats['data_types_loaded'].add(data_type)
+
+                        successful_loads[f"{symbol}_{data_type}"] = rows_loaded
 
                 except Exception as e:
-                    self._log(f"Error loading {data_type} for {symbol}: {e}", logging.ERROR)
-                    import traceback
-                    self._log(f"Traceback: {traceback.format_exc()}", logging.DEBUG)
+                    failed_loads[f"{symbol}_{data_type}"] = str(e)
 
             results[symbol] = symbol_data
+
+        # Comprehensive load summary
+        load_duration = (datetime.now() - load_start_time).total_seconds()
+
+        if successful_loads or failed_loads:
+            self._log(f"📈 Data Load Summary:")
+            self._log(f"   ⏱️  Duration: {load_duration:.2f}s")
+            self._log(f"   📊 Total rows: {total_rows_this_load:,}")
+            self._log(f"   ✅ Successful: {len(successful_loads)} data types")
+
+            if successful_loads:
+                top_loads = sorted(successful_loads.items(), key=lambda x: x[1], reverse=True)[:3]
+                for data_type, rows in top_loads:
+                    self._log(f"      • {data_type}: {rows:,} rows")
+
+            if failed_loads:
+                self._log(f"   ❌ Failed: {len(failed_loads)} data types", logging.WARNING)
+                for data_type, error in list(failed_loads.items())[:2]:  # Show only first 2 errors
+                    self._log(f"      • {data_type}: {error}", logging.WARNING)
 
         return results
 
     def _load_from_provider(self, symbol: str, data_type: str,
                             start_dt: datetime, end_dt: datetime) -> pd.DataFrame:
         """Load data from the provider based on data type."""
-        provider = self.provider
+        provider:HistoricalDataProvider = self.provider
 
         if data_type == 'trades':
             return provider.get_trades(symbol, start_dt, end_dt)
@@ -225,7 +258,6 @@ class DataManager:
             timeframe = data_type.split('_')[1]
             return provider.get_bars(symbol, timeframe, start_dt, end_dt)
         else:
-            self._log(f"Unknown data type: {data_type}", logging.WARNING)
             return pd.DataFrame()
 
     def get_bars(self, symbol: str = None, timeframe: str = "1m",
@@ -247,7 +279,6 @@ class DataManager:
         symbol = symbol or self.current_symbol
 
         if not symbol:
-            self._log("No symbol specified and no current symbol set", logging.WARNING)
             return pd.DataFrame()
 
         # Check if data is cached
@@ -265,42 +296,26 @@ class DataManager:
 
         # If we get here, need to load the data
         if self.is_live:
-            self._log(f"No {timeframe} data in cache and cannot load historical data with live provider",
-                      logging.WARNING)
             return pd.DataFrame()
 
         # Try to load if we have a historical provider
         if isinstance(self.provider, HistoricalDataProvider):
             # For backwards compatibility, wrap in a call to load_data
             if start_time is None or end_time is None:
-                self._log(f"Must specify start_time and end_time for uncached data", logging.WARNING)
                 return pd.DataFrame()
 
             result = self.load_data([symbol], start_time, end_time, [data_type])
             return result.get(symbol, {}).get(data_type, pd.DataFrame())
         else:
-            self._log(f"No {timeframe} data in cache for {symbol}", logging.WARNING)
             return pd.DataFrame()
 
     def get_trades(self, symbol: str = None,
                    start_time: Union[datetime, str] = None,
                    end_time: Union[datetime, str] = None) -> pd.DataFrame:
-        """
-        Get trades data.
-
-        Args:
-            symbol: Symbol to get data for. If None, uses current_symbol
-            start_time: Start time filter. If None, returns all cached data
-            end_time: End time filter. If None, returns all cached data
-
-        Returns:
-            DataFrame with trades data
-        """
-        # Use current symbol if not specified
+        """Get trades data."""
         symbol = symbol or self.current_symbol
 
         if not symbol:
-            self._log("No symbol specified and no current symbol set", logging.WARNING)
             return pd.DataFrame()
 
         # Similar structure to get_bars - check cache, then load if needed
@@ -315,41 +330,25 @@ class DataManager:
 
         # If we get here, need to load the data
         if self.is_live:
-            self._log(f"No trades data in cache and cannot load historical data with live provider",
-                      logging.WARNING)
             return pd.DataFrame()
 
         # Try to load if we have a historical provider
         if isinstance(self.provider, HistoricalDataProvider):
             if start_time is None or end_time is None:
-                self._log(f"Must specify start_time and end_time for uncached data", logging.WARNING)
                 return pd.DataFrame()
 
             result = self.load_data([symbol], start_time, end_time, ['trades'])
             return result.get(symbol, {}).get('trades', pd.DataFrame())
         else:
-            self._log(f"No trades data in cache for {symbol}", logging.WARNING)
             return pd.DataFrame()
 
     def get_quotes(self, symbol: str = None,
                    start_time: Union[datetime, str] = None,
                    end_time: Union[datetime, str] = None) -> pd.DataFrame:
-        """
-        Get quotes data.
-
-        Args:
-            symbol: Symbol to get data for. If None, uses current_symbol
-            start_time: Start time filter. If None, returns all cached data
-            end_time: End time filter. If None, returns all cached data
-
-        Returns:
-            DataFrame with quotes data
-        """
-        # Similar to get_trades but for quotes
+        """Get quotes data."""
         symbol = symbol or self.current_symbol
 
         if not symbol:
-            self._log("No symbol specified and no current symbol set", logging.WARNING)
             return pd.DataFrame()
 
         if start_time and end_time:
@@ -361,40 +360,24 @@ class DataManager:
                 return cached_data
 
         if self.is_live:
-            self._log(f"No quotes data in cache and cannot load historical data with live provider",
-                      logging.WARNING)
             return pd.DataFrame()
 
         if isinstance(self.provider, HistoricalDataProvider):
             if start_time is None or end_time is None:
-                self._log(f"Must specify start_time and end_time for uncached data", logging.WARNING)
                 return pd.DataFrame()
 
             result = self.load_data([symbol], start_time, end_time, ['quotes'])
             return result.get(symbol, {}).get('quotes', pd.DataFrame())
         else:
-            self._log(f"No quotes data in cache for {symbol}", logging.WARNING)
             return pd.DataFrame()
 
     def get_status(self, symbol: str = None,
                    start_time: Union[datetime, str] = None,
                    end_time: Union[datetime, str] = None) -> pd.DataFrame:
-        """
-        Get status data.
-
-        Args:
-            symbol: Symbol to get data for. If None, uses current_symbol
-            start_time: Start time filter. If None, returns all cached data
-            end_time: End time filter. If None, returns all cached data
-
-        Returns:
-            DataFrame with status data
-        """
-        # Similar to get_trades but for status
+        """Get status data."""
         symbol = symbol or self.current_symbol
 
         if not symbol:
-            self._log("No symbol specified and no current symbol set", logging.WARNING)
             return pd.DataFrame()
 
         if start_time and end_time:
@@ -406,34 +389,24 @@ class DataManager:
                 return cached_data
 
         if self.is_live:
-            self._log(f"No status data in cache and cannot load historical data with live provider",
-                      logging.WARNING)
             return pd.DataFrame()
 
         if isinstance(self.provider, HistoricalDataProvider):
             if start_time is None or end_time is None:
-                self._log(f"Must specify start_time and end_time for uncached data", logging.WARNING)
                 return pd.DataFrame()
 
             result = self.load_data([symbol], start_time, end_time, ['status'])
             return result.get(symbol, {}).get('status', pd.DataFrame())
         else:
-            self._log(f"No status data in cache for {symbol}", logging.WARNING)
             return pd.DataFrame()
 
     def clear_cache(self, symbol: str = None):
-        """
-        Clear data from cache for a symbol or all symbols.
-
-        Args:
-            symbol: Symbol to clear data for. If None, clears all cache
-        """
+        """Clear data from cache for a symbol or all symbols."""
         if symbol:
             if symbol in self.data_cache:
                 del self.data_cache[symbol]
                 if symbol in self.loaded_ranges:
                     del self.loaded_ranges[symbol]
-                self._log(f"Cleared cache for {symbol}")
 
                 # Reset current symbol if it was cleared
                 if self.current_symbol == symbol:
@@ -442,16 +415,9 @@ class DataManager:
             self.data_cache = {}
             self.loaded_ranges = {}
             self.current_symbol = None
-            self._log("Cleared all data cache")
 
     def initialize_live_data(self, symbol: str, timeframes: List[str] = None):
-        """
-        Initialize live data streaming for a symbol.
-
-        Args:
-            symbol: Symbol to stream data for
-            timeframes: List of timeframes to subscribe to
-        """
+        """Initialize live data streaming for a symbol."""
         if not self.is_live:
             self._log("Cannot initialize live data with historical provider", logging.WARNING)
             return
@@ -480,12 +446,26 @@ class DataManager:
 
         # Subscribe to the data
         self.provider.subscribe([symbol], data_types)
-        self._log(f"Initialized live data for {symbol} with timeframes {timeframes}")
+        self._log(f"🔴 Live data initialized for {symbol} with timeframes {timeframes}")
+
+    def get_session_stats(self) -> Dict[str, Any]:
+        """Get comprehensive session statistics."""
+        return {
+            **self.session_stats,
+            'cache_hit_rate': self.session_stats['cache_hits'] / max(1, self.session_stats['cache_hits'] + self.session_stats['cache_misses']) * 100,
+            'cached_symbols': len(self.data_cache),
+            'data_types_loaded': list(self.session_stats['data_types_loaded']),
+            'symbols_loaded': list(self.session_stats['symbols_loaded'])
+        }
 
     def close(self):
         """Close the data manager and release resources."""
-        if self.is_live and isinstance(self.provider, LiveDataProvider):
-            self.provider.close()
+        stats = self.get_session_stats()
+
+        self._log(f"📊 Data Manager Session Summary:")
+        self._log(f"   📈 Total rows loaded: {stats['total_rows_loaded']:,}")
+        self._log(f"   🎯 Cache hit rate: {stats['cache_hit_rate']:.1f}%")
+        self._log(f"   📂 Symbols: {len(stats['symbols_loaded'])}")
+        self._log(f"   📋 Data types: {len(stats['data_types_loaded'])}")
 
         self.clear_cache()
-        self._log("Data manager closed")

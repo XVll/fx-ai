@@ -1,4 +1,4 @@
-# agent/ppo_agent.py - Updated PPO agent with metrics integration (no dashboard)
+# agent/ppo_agent.py - IMPROVED: Better stage-based logging for episodes, updates, rollouts
 
 import os
 import logging
@@ -91,7 +91,22 @@ class PPOTrainer:
         self.is_evaluating = False
         self.training_start_time = 0.0
 
-        self.logger.info(f"PPOTrainer initialized with metrics integration. Device: {self.device}")
+        # Stage timing
+        self.stage_timers = {}
+
+        self.logger.info(f"🤖 PPOTrainer initialized with metrics integration. Device: {self.device}")
+
+    def _start_timer(self, stage: str):
+        """Start timing for a stage."""
+        self.stage_timers[stage] = time.time()
+
+    def _end_timer(self, stage: str) -> float:
+        """End timing for a stage and return duration."""
+        if stage in self.stage_timers:
+            duration = time.time() - self.stage_timers[stage]
+            del self.stage_timers[stage]
+            return duration
+        return 0.0
 
     def _convert_action_for_env(self, action_tensor: torch.Tensor) -> Any:
         """Converts model's action tensor to environment-compatible format."""
@@ -105,24 +120,26 @@ class PPOTrainer:
                 return action_tensor.cpu().numpy().item()
 
     def collect_rollout_data(self) -> Dict[str, Any]:
-        """Collect rollout data with metrics tracking."""
-        self.logger.info(f"Starting rollout data collection for {self.rollout_steps} steps")
-        self.buffer.clear()
+        """Collect rollout data with comprehensive logging."""
+        self._start_timer("rollout")
 
-        # Start rollout timing
-        rollout_start_time = time.time()
+        self.logger.info(f"🎯 ROLLOUT START: Collecting {self.rollout_steps} steps")
+        self.buffer.clear()
 
         current_env_state_np, _ = self.env.reset()
 
         for callback in self.callbacks:
             callback.on_rollout_start(self)
 
+        # Rollout tracking
         collected_steps = 0
         episode_rewards_in_rollout = []
         episode_lengths_in_rollout = []
+        episode_details = []
         current_episode_reward = 0.0
         current_episode_length = 0
         episode_start_time = time.time()
+        total_invalid_actions = 0
 
         while collected_steps < self.rollout_steps:
             single_step_tensors = {
@@ -158,6 +175,11 @@ class PPOTrainer:
             try:
                 next_env_state_np, reward, terminated, truncated, info = self.env.step(env_action)
                 done = terminated or truncated
+
+                # Track invalid actions
+                if info.get('invalid_action_in_step', False):
+                    total_invalid_actions += 1
+
             except Exception as e:
                 self.logger.error(f"Error during environment step: {e}")
                 break
@@ -191,6 +213,15 @@ class PPOTrainer:
                 episode_rewards_in_rollout.append(current_episode_reward)
                 episode_lengths_in_rollout.append(current_episode_length)
 
+                # Store episode details for summary
+                episode_details.append({
+                    'reward': current_episode_reward,
+                    'length': current_episode_length,
+                    'duration': episode_duration,
+                    'final_equity': info.get('portfolio_equity', 0),
+                    'termination_reason': info.get('termination_reason', 'UNKNOWN')
+                })
+
                 # Record episode metrics
                 self.metrics.end_episode(current_episode_reward, current_episode_length)
 
@@ -213,28 +244,50 @@ class PPOTrainer:
 
         self.buffer.prepare_data_for_training()
 
-        # Calculate rollout metrics
-        rollout_time = time.time() - rollout_start_time
-        self.metrics.record_rollout_time(rollout_time)
+        # Calculate comprehensive rollout metrics
+        rollout_duration = self._end_timer("rollout")
+        self.metrics.record_rollout_time(rollout_duration)
 
-        steps_per_second = collected_steps / rollout_time if rollout_time > 0 else 0
+        steps_per_second = collected_steps / rollout_duration if rollout_duration > 0 else 0
         mean_episode_reward = np.mean(episode_rewards_in_rollout) if episode_rewards_in_rollout else 0
+        std_episode_reward = np.std(episode_rewards_in_rollout) if len(episode_rewards_in_rollout) > 1 else 0
         mean_episode_length = np.mean(episode_lengths_in_rollout) if episode_lengths_in_rollout else 0
+
+        # Termination reason analysis
+        termination_counts = {}
+        if episode_details:
+            for ep in episode_details:
+                reason = ep['termination_reason']
+                termination_counts[reason] = termination_counts.get(reason, 0) + 1
 
         rollout_stats = {
             "collected_steps": collected_steps,
             "mean_reward": mean_episode_reward,
+            "std_reward": std_episode_reward,
             "mean_episode_length": mean_episode_length,
             "num_episodes_in_rollout": len(episode_rewards_in_rollout),
-            "rollout_time": rollout_time,
+            "rollout_time": rollout_duration,
             "steps_per_second": steps_per_second,
             "global_step_counter": self.global_step_counter,
-            "global_episode_counter": self.global_episode_counter
+            "global_episode_counter": self.global_episode_counter,
+            "invalid_actions": total_invalid_actions
         }
 
-        self.logger.info(f"Rollout finished. Collected {collected_steps} steps, "
-                         f"{len(episode_rewards_in_rollout)} episodes, "
-                         f"Mean reward: {mean_episode_reward:.2f}")
+        # Comprehensive rollout summary
+        self.logger.info(f"🎯 ROLLOUT COMPLETE:")
+        self.logger.info(f"   ⏱️  Duration: {rollout_duration:.1f}s ({steps_per_second:.1f} steps/s)")
+        self.logger.info(f"   📊 Episodes: {len(episode_rewards_in_rollout)} | Steps: {collected_steps:,}")
+        self.logger.info(f"   💰 Rewards: μ={mean_episode_reward:.3f} σ={std_episode_reward:.3f}")
+        self.logger.info(f"   📏 Avg Length: {mean_episode_length:.1f} steps")
+
+        if total_invalid_actions > 0:
+            invalid_rate = (total_invalid_actions / collected_steps) * 100
+            self.logger.info(f"   ⚠️  Invalid Actions: {total_invalid_actions} ({invalid_rate:.1f}%)")
+
+        if termination_counts:
+            top_reasons = sorted(termination_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+            reasons_str = " | ".join([f"{reason}: {count}" for reason, count in top_reasons])
+            self.logger.info(f"   🏁 Terminations: {reasons_str}")
 
         return rollout_stats
 
@@ -284,7 +337,10 @@ class PPOTrainer:
         self.buffer.returns = returns
 
     def update_policy(self) -> Dict[str, float]:
-        """PPO policy update with metrics tracking."""
+        """PPO policy update with detailed logging."""
+        self._start_timer("update")
+
+        self.logger.info(f"🔄 UPDATE START: PPO epoch {self.global_update_counter + 1}")
 
         # Start update timing
         self.metrics.start_update()
@@ -429,6 +485,7 @@ class PPOTrainer:
 
         # End update timing
         self.metrics.end_update()
+        update_duration = self._end_timer("update")
 
         update_metrics = {
             "actor_loss": avg_actor_loss,
@@ -443,14 +500,24 @@ class PPOTrainer:
             "global_update_counter": self.global_update_counter
         }
 
+        # Comprehensive update summary
+        self.logger.info(f"🔄 UPDATE COMPLETE:")
+        self.logger.info(f"   ⏱️  Duration: {update_duration:.1f}s | Batches: {total_batches}")
+        self.logger.info(f"   🎭 Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
+        self.logger.info(f"   📊 Entropy: {avg_entropy:.4f} | Clip Rate: {avg_clipfrac * 100:.1f}%")
+        self.logger.info(f"   🧠 KL Div: {avg_approx_kl:.4f} | Explained Var: {avg_explained_variance * 100:.1f}%")
+        self.logger.info(f"   📈 Grad Norm: {avg_gradient_norm:.4f}")
+
         for callback in self.callbacks:
             callback.on_update_end(self, update_metrics)
 
         return update_metrics
 
     def train(self, total_training_steps: int, eval_freq_steps: Optional[int] = None):
-        """Main training loop with metrics tracking."""
-        self.logger.info(f"Starting PPO training for {total_training_steps} environment steps")
+        """Main training loop with comprehensive stage logging."""
+        self.logger.info(f"🚀 TRAINING START: {total_training_steps:,} steps planned")
+        self.logger.info(f"   🎯 Rollout size: {self.rollout_steps} | Batch size: {self.batch_size}")
+        self.logger.info(f"   🔄 PPO epochs: {self.ppo_epochs} | Learning rate: {self.lr}")
 
         # Start training metrics
         self.metrics.start_training()
@@ -474,6 +541,19 @@ class PPOTrainer:
             for callback in self.callbacks:
                 callback.on_update_iteration_end(self, self.global_update_counter, update_metrics, rollout_info)
 
+            # Progress logging
+            progress = (self.global_step_counter / total_training_steps) * 100
+            remaining_steps = total_training_steps - self.global_step_counter
+
+            if self.global_update_counter % 5 == 0:  # Log every 5 updates
+                elapsed_time = time.time() - self.training_start_time
+                steps_per_hour = (self.global_step_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
+                eta_hours = remaining_steps / steps_per_hour if steps_per_hour > 0 else 0
+
+                self.logger.info(f"📈 PROGRESS: {progress:.1f}% | Steps: {self.global_step_counter:,}/{total_training_steps:,}")
+                self.logger.info(f"   ⏱️  Rate: {steps_per_hour:.0f} steps/hr | ETA: {eta_hours:.1f}h")
+                self.logger.info(f"   🏆 Episodes: {self.global_episode_counter} | Updates: {self.global_update_counter}")
+
             # Evaluation
             if eval_freq_steps and (self.global_update_counter % (eval_freq_steps // self.rollout_steps) == 0
                                     or self.global_step_counter >= total_training_steps):
@@ -494,16 +574,29 @@ class PPOTrainer:
                 latest_model_path = os.path.join(self.model_dir, "latest_model.pt")
                 self.save_model(latest_model_path)
 
-        final_stats = {"total_steps_trained": self.global_step_counter, "total_updates": self.global_update_counter}
+        # Training completion
+        total_time = time.time() - self.training_start_time
+        final_stats = {
+            "total_steps_trained": self.global_step_counter,
+            "total_updates": self.global_update_counter,
+            "total_episodes": self.global_episode_counter,
+            "training_time_hours": total_time / 3600
+        }
+
+        self.logger.info(f"🎉 TRAINING COMPLETE!")
+        self.logger.info(f"   ⏱️  Total time: {total_time / 3600:.2f} hours")
+        self.logger.info(
+            f"   📊 Final stats: {self.global_step_counter:,} steps | {self.global_episode_counter} episodes | {self.global_update_counter} updates")
 
         for callback in self.callbacks:
             callback.on_training_end(self, final_stats)
 
-        self.logger.info(f"Training finished! Total steps: {self.global_step_counter}, Updates: {self.global_update_counter}")
         return final_stats
 
     def evaluate(self, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
-        """Evaluation with metrics tracking."""
+        """Evaluation with detailed logging."""
+        self.logger.info(f"🔍 EVALUATION START: {n_episodes} episodes")
+        self._start_timer("evaluation")
 
         # Start evaluation metrics
         self.metrics.start_evaluation()
@@ -513,6 +606,7 @@ class PPOTrainer:
 
         episode_rewards = []
         episode_lengths = []
+        episode_details = []
 
         for i in range(n_episodes):
             env_state_np, _ = self.env.reset()
@@ -541,6 +635,11 @@ class PPOTrainer:
 
             episode_rewards.append(current_episode_reward)
             episode_lengths.append(current_episode_length)
+            episode_details.append({
+                'reward': current_episode_reward,
+                'length': current_episode_length,
+                'final_equity': info.get('portfolio_equity', 0)
+            })
 
         # End evaluation metrics
         self.metrics.end_evaluation(episode_rewards, episode_lengths)
@@ -548,15 +647,25 @@ class PPOTrainer:
         self.model.train()
         self.is_evaluating = False
 
+        eval_duration = self._end_timer("evaluation")
+
         eval_results = {
             "mean_reward": np.mean(episode_rewards) if episode_rewards else 0,
             "std_reward": np.std(episode_rewards) if episode_rewards else 0,
+            "min_reward": np.min(episode_rewards) if episode_rewards else 0,
+            "max_reward": np.max(episode_rewards) if episode_rewards else 0,
             "mean_length": np.mean(episode_lengths) if episode_lengths else 0,
             "episode_rewards": episode_rewards,
             "episode_lengths": episode_lengths
         }
 
-        self.logger.info(f"Evaluation complete! Mean: {eval_results['mean_reward']:.2f} ± {eval_results['std_reward']:.2f}")
+        # Comprehensive evaluation summary
+        self.logger.info(f"🔍 EVALUATION COMPLETE:")
+        self.logger.info(f"   ⏱️  Duration: {eval_duration:.1f}s")
+        self.logger.info(f"   💰 Rewards: μ={eval_results['mean_reward']:.3f} σ={eval_results['std_reward']:.3f}")
+        self.logger.info(f"   📊 Range: [{eval_results['min_reward']:.3f}, {eval_results['max_reward']:.3f}]")
+        self.logger.info(f"   📏 Avg Length: {eval_results['mean_length']:.1f} steps")
+
         return eval_results
 
     def save_model(self, path: str) -> None:
