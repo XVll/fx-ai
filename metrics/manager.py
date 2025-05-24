@@ -412,8 +412,13 @@ class MetricsManager:
         """Update dashboard with episode end data"""
         if self._dashboard_enabled and self.dashboard_collector:
             self.dashboard_collector.on_episode_end(episode_data)
-            
-    def update_dashboard_features(self, feature_data: Dict[str, Any]):
-        """Update dashboard with feature data"""
+    
+    def update_dashboard_training(self, training_data: Dict[str, Any]):
+        """Update dashboard with training progress"""
         if self._dashboard_enabled and self.dashboard_collector:
-            self.dashboard_collector.on_features(feature_data)
+            self.dashboard_collector.on_training_update(training_data)
+    
+    def update_dashboard_ppo(self, ppo_data: Dict[str, Any]):
+        """Update dashboard with PPO metrics"""
+        if self._dashboard_enabled and self.dashboard_collector:
+            self.dashboard_collector.on_ppo_metrics(ppo_data)
