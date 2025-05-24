@@ -236,6 +236,14 @@ def run_training(cfg: Config):
             # Don't send any metrics during initialization to avoid zeros in charts
             # W&B connection is already tested in the transmitter's _send_test_metric()
             logging.info("📊 W&B connection established - metrics will start flowing during training")
+            
+            # Enable dashboard if requested
+            if cfg.get('enable_dashboard', False):
+                metrics_manager.enable_dashboard(
+                    port=cfg.get('dashboard_port', 8050),
+                    open_browser=cfg.get('dashboard_open_browser', True)
+                )
+                logging.info("🚀 Live dashboard enabled at http://localhost:8050")
 
         else:
             logging.warning("W&B disabled - no metrics will be tracked")

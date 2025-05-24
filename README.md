@@ -12,7 +12,7 @@
   4. Execution (11 metrics)
     - total_fills, total_volume, total_turnover, total_commission, total_fees, total_slippage, avg_commission_per_share, avg_slippage_bps, avg_fill_size, total_transaction_costs, transaction_cost_bps
   5. Environment (7+ metrics)
-    - Core: total_env_steps, step_reward, step_reward_mean, episode_reward_current, invalid_action_rate, action_hold_pct, action_buy_pct, action_sell_pct
+    - Core: total_env_steps, step_reward, step_reward_mean, **episode_reward_current**, invalid_action_rate, action_hold_pct, action_buy_pct, action_sell_pct
     - Dynamic reward components and action efficiency metrics
   6. System (3 metrics)
     - uptime_seconds, memory_usage_mb, cpu_usage_pct

@@ -1,0 +1,30 @@
+{
+  "version": 42,
+  "timestamp": "20250524_191453",
+  "reward": -18.919905217728314,
+  "metrics": {
+    "actor_loss": 0.006886988747282885,
+    "critic_loss": 0.1761824839944893,
+    "entropy": 1.8776019588112831,
+    "clipfrac": 0.1713623046875,
+    "approx_kl": 0.023845829977653922,
+    "value_function_explained_variance": 0.8990499101579189,
+    "gradient_norm": 3.657965531339869,
+    "global_step_counter": 8192,
+    "global_episode_counter": 6,
+    "global_update_counter": 2,
+    "collected_steps": 4096,
+    "mean_reward": -18.919905217728314,
+    "std_reward": 12.917220428488873,
+    "mean_episode_length": 824.0,
+    "num_episodes_in_rollout": 3,
+    "rollout_time": 128.57949304580688,
+    "steps_per_second": 31.855779665741768,
+    "invalid_actions": 1160,
+    "update_iter": 2,
+    "timestamp": 1748103293.1712,
+    "is_periodic_sync": true
+  },
+  "source": "/Users/fx/Repositories/FxAIv2/outputs/2025-05-24/18-59-54/models/latest_checkpoint_iter2.pt",
+  "symbol": "MLGO"
+}
