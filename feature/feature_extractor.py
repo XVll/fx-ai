@@ -1,11 +1,10 @@
-# feature/feature_extractor.py - CLEAN: Minimal logging, focused on feature extraction
+# feature/feature_extractor.py - CLEAN: Minimal logging, focus on feature extraction
 
 import logging
 from typing import Dict, Optional, Any
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from collections import deque
 
 from config.config import ModelConfig
 from simulators.market_simulator import MarketSimulator
@@ -21,7 +20,7 @@ class FeatureExtractor:
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
 
-        # Feature dimensions from config
+        # Feature dimensions
         self.hf_seq_len = config.hf_seq_len
         self.hf_feat_dim = config.hf_feat_dim
         self.mf_seq_len = config.mf_seq_len
@@ -30,364 +29,309 @@ class FeatureExtractor:
         self.lf_feat_dim = config.lf_feat_dim
         self.static_feat_dim = config.static_feat_dim
 
-        # Feature history buffers
-        self.hf_buffer = deque(maxlen=self.hf_seq_len)
-        self.mf_buffer = deque(maxlen=self.mf_seq_len)
-        self.lf_buffer = deque(maxlen=self.lf_seq_len)
-
-        # Previous values for rate calculations
-        self.prev_price = None
-        self.prev_volume = None
-
-        # Only log initialization
-        self.logger.info(f"FeatureExtractor initialized for {symbol}")
+        # Cache for efficiency
+        self._last_features = None
+        self._last_timestamp = None
 
     def reset(self):
-        """Reset buffers for new episode"""
-        self.hf_buffer.clear()
-        self.mf_buffer.clear()
-        self.lf_buffer.clear()
-        self.prev_price = None
-        self.prev_volume = None
+        """Reset feature extractor state"""
+        self._last_features = None
+        self._last_timestamp = None
 
     def extract_features(self) -> Optional[Dict[str, np.ndarray]]:
-        """Extract all features with error handling"""
+        """Extract features for current market state"""
         try:
-            market_state = self.market_simulator.get_current_market_state()
-            if not market_state:
+            current_market_state = self.market_simulator.get_current_market_state()
+            if not current_market_state:
                 return None
 
-            # Extract each feature type
-            hf_features = self._extract_hf_features(market_state)
-            mf_features = self._extract_mf_features(market_state)
-            lf_features = self._extract_lf_features(market_state)
-            static_features = self._extract_static_features(market_state)
+            current_timestamp = current_market_state.get('timestamp_utc')
 
-            if hf_features is None or mf_features is None or lf_features is None or static_features is None:
+            # Use cache if same timestamp
+            if (self._last_features is not None and
+                    current_timestamp == self._last_timestamp):
+                return self._last_features
+
+            # Extract different frequency features
+            hf_features = self._extract_hf_features(current_market_state)
+            mf_features = self._extract_mf_features(current_market_state)
+            lf_features = self._extract_lf_features(current_market_state)
+            static_features = self._extract_static_features(current_market_state)
+
+            if any(feat is None for feat in [hf_features, mf_features, lf_features, static_features]):
                 return None
 
-            return {
+            features = {
                 'hf': hf_features,
                 'mf': mf_features,
                 'lf': lf_features,
                 'static': static_features
             }
 
+            # Cache results
+            self._last_features = features
+            self._last_timestamp = current_timestamp
+
+            return features
+
         except Exception as e:
             self.logger.error(f"Feature extraction failed: {e}")
             return None
 
     def _extract_hf_features(self, market_state: Dict[str, Any]) -> Optional[np.ndarray]:
-        """Extract high-frequency features (1-second data)"""
+        """Extract high-frequency features from 1-second data"""
         try:
-            # Get current 1s bar and recent trades
-            current_1s_bar = market_state.get('current_1s_bar')
-            hf_data_window = market_state.get('hf_data_window', [])
+            hf_window = market_state.get('hf_data_window', [])
+            if len(hf_window) < self.hf_seq_len:
+                # Pad with the last available data or zeros
+                if hf_window:
+                    padding = [hf_window[-1]] * (self.hf_seq_len - len(hf_window))
+                    hf_window = padding + hf_window
+                else:
+                    return np.zeros((self.hf_seq_len, self.hf_feat_dim), dtype=np.float32)
 
-            # Calculate features from current state
-            current_price = market_state.get('current_price', 0.0)
-            bid_price = market_state.get('best_bid_price', 0.0)
-            ask_price = market_state.get('best_ask_price', 0.0)
-            bid_size = market_state.get('best_bid_size', 0.0)
-            ask_size = market_state.get('best_ask_size', 0.0)
+            # Take last N entries
+            hf_window = hf_window[-self.hf_seq_len:]
 
-            # Basic price and spread features
-            spread = ask_price - bid_price if ask_price > bid_price else 0.0
-            mid_price = (bid_price + ask_price) / 2 if (bid_price > 0 and ask_price > 0) else current_price
+            features_list = []
+            for window_entry in hf_window:
+                features = self._process_hf_window_entry(window_entry)
+                features_list.append(features)
 
-            # Price change from previous
-            price_change = 0.0
-            if self.prev_price and current_price > 0:
-                price_change = (current_price - self.prev_price) / self.prev_price
-            self.prev_price = current_price
-
-            # Volume and trade features
-            volume = 0.0
-            num_trades = 0.0
-            if current_1s_bar:
-                volume = current_1s_bar.get('volume', 0.0)
-                if 'trades' in current_1s_bar:
-                    num_trades = float(len(current_1s_bar['trades']))
-
-            # Volume change
-            volume_change = 0.0
-            if self.prev_volume and volume > 0:
-                volume_change = (volume - self.prev_volume) / max(self.prev_volume, 1.0)
-            self.prev_volume = volume
-
-            # OHLC features from 1s bar
-            bar_open = current_1s_bar.get('open', current_price) if current_1s_bar else current_price
-            bar_high = current_1s_bar.get('high', current_price) if current_1s_bar else current_price
-            bar_low = current_1s_bar.get('low', current_price) if current_1s_bar else current_price
-            bar_close = current_1s_bar.get('close', current_price) if current_1s_bar else current_price
-
-            # OHLC ratios
-            bar_range = (bar_high - bar_low) / max(bar_close, 0.01) if bar_close > 0 else 0.0
-            body_ratio = abs(bar_close - bar_open) / max(bar_high - bar_low, 0.0001)
-
-            # Order book imbalance
-            book_imbalance = 0.0
-            if bid_size + ask_size > 0:
-                book_imbalance = (bid_size - ask_size) / (bid_size + ask_size)
-
-            # Create feature vector (20 features to match config)
-            features = np.array([
-                current_price / 100.0,  # Normalized price
-                price_change,  # Price change rate
-                spread / max(current_price, 0.01),  # Relative spread
-                mid_price / 100.0,  # Normalized mid price
-                volume / 1000.0,  # Normalized volume
-                volume_change,  # Volume change rate
-                num_trades / 10.0,  # Normalized trade count
-                bid_size / 1000.0,  # Normalized bid size
-                ask_size / 1000.0,  # Normalized ask size
-                book_imbalance,  # Order book imbalance
-                bar_range,  # Bar range ratio
-                body_ratio,  # Candle body ratio
-                (bar_close - bar_open) / max(bar_open, 0.01),  # Bar return
-                (bar_high - bar_open) / max(bar_open, 0.01),  # Upper wick
-                (bar_open - bar_low) / max(bar_open, 0.01),  # Lower wick
-                1.0 if current_1s_bar and not current_1s_bar.get('is_synthetic', False) else 0.0,  # Data quality
-                0.0,  # Reserved for momentum
-                0.0,  # Reserved for volatility
-                0.0,  # Reserved for trend
-                0.0  # Reserved for market microstructure
-            ], dtype=np.float32)
-
-            # Handle NaN/inf values
-            features = np.nan_to_num(features, nan=0.0, posinf=1.0, neginf=-1.0)
-            features = np.clip(features, -10.0, 10.0)
-
-            # Add to buffer
-            self.hf_buffer.append(features)
-
-            # Create sequence of required length
-            if len(self.hf_buffer) < self.hf_seq_len:
-                # Pad with first available feature
-                padding = [features] * (self.hf_seq_len - len(self.hf_buffer))
-                sequence = np.array(padding + list(self.hf_buffer), dtype=np.float32)
-            else:
-                sequence = np.array(list(self.hf_buffer), dtype=np.float32)
-
-            return sequence
+            return np.array(features_list, dtype=np.float32)
 
         except Exception as e:
-            self.logger.error(f"HF feature extraction failed: {e}")
+            self.logger.debug(f"HF feature extraction error: {e}")
             return np.zeros((self.hf_seq_len, self.hf_feat_dim), dtype=np.float32)
 
-    def _extract_mf_features(self, market_state: Dict[str, Any]) -> Optional[np.ndarray]:
-        """Extract medium-frequency features (1-minute data)"""
+    def _process_hf_window_entry(self, window_entry: Dict[str, Any]) -> np.ndarray:
+        """Process a single HF window entry into features"""
+        features = np.zeros(self.hf_feat_dim, dtype=np.float32)
+
         try:
-            bars_1m = market_state.get('1m_bars_window', [])
-
-            if not bars_1m or len(bars_1m) < self.mf_seq_len:
-                return np.zeros((self.mf_seq_len, self.mf_feat_dim), dtype=np.float32)
-
-            # Take the most recent bars
-            recent_bars = bars_1m[-self.mf_seq_len:]
-            features_list = []
-
-            for i, bar in enumerate(recent_bars):
-                if bar is None:
-                    features_list.append(np.zeros(self.mf_feat_dim, dtype=np.float32))
-                    continue
-
-                # Extract OHLCV
-                open_price = bar.get('open', 0.0)
-                high_price = bar.get('high', 0.0)
-                low_price = bar.get('low', 0.0)
-                close_price = bar.get('close', 0.0)
-                volume = bar.get('volume', 0.0)
-
-                # Calculate technical indicators
-                returns = 0.0
-                volatility = 0.0
-
-                if i > 0 and recent_bars[i - 1]:
-                    prev_close = recent_bars[i - 1].get('close', 0.0)
-                    if prev_close > 0:
-                        returns = (close_price - prev_close) / prev_close
-
-                # Range and body ratios
-                price_range = (high_price - low_price) / max(close_price, 0.01) if close_price > 0 else 0.0
-                body_size = abs(close_price - open_price) / max(close_price, 0.01) if close_price > 0 else 0.0
-
-                # Volume analysis
-                vol_norm = volume / 1000.0
+            # Get 1s bar data
+            bar_1s = window_entry.get('1s_bar')
+            if bar_1s:
+                features[0] = float(bar_1s.get('open', 0.0))
+                features[1] = float(bar_1s.get('high', 0.0))
+                features[2] = float(bar_1s.get('low', 0.0))
+                features[3] = float(bar_1s.get('close', 0.0))
+                features[4] = float(bar_1s.get('volume', 0.0))
 
                 # VWAP if available
-                vwap = bar.get('vwap', close_price)
-                vwap_deviation = (close_price - vwap) / max(vwap, 0.01) if vwap > 0 else 0.0
+                if 'vwap' in bar_1s and bar_1s['vwap'] is not None:
+                    features[5] = float(bar_1s['vwap'])
+                else:
+                    # Use close as fallback
+                    features[5] = features[3]
 
-                # Create feature vector (20 features)
-                features = np.array([
-                    close_price / 100.0,  # Normalized close
-                    returns,  # Returns
-                    volatility,  # Volatility (placeholder)
-                    price_range,  # Price range
-                    body_size,  # Body size
-                    vol_norm,  # Normalized volume
-                    vwap_deviation,  # VWAP deviation
-                    (high_price - close_price) / max(close_price, 0.01),  # Upper shadow
-                    (close_price - low_price) / max(close_price, 0.01),  # Lower shadow
-                    1.0 if not bar.get('is_synthetic', False) else 0.0,  # Data quality
-                    0.0, 0.0, 0.0, 0.0, 0.0,  # Reserved for additional indicators
-                    0.0, 0.0, 0.0, 0.0, 0.0  # Reserved for more features
-                ], dtype=np.float32)
+            # Trade count and quote updates
+            trades = window_entry.get('trades', [])
+            quotes = window_entry.get('quotes', [])
+            features[6] = float(len(trades))
+            features[7] = float(len(quotes))
 
-                # Handle NaN/inf values
-                features = np.nan_to_num(features, nan=0.0, posinf=1.0, neginf=-1.0)
-                features = np.clip(features, -10.0, 10.0)
+            # Trade size statistics
+            if trades:
+                trade_sizes = [float(t.get('size', 0)) for t in trades if 'size' in t]
+                if trade_sizes:
+                    features[8] = np.mean(trade_sizes)  # avg trade size
+                    features[9] = np.max(trade_sizes)  # max trade size
 
+            # Quote spread
+            if quotes:
+                last_quote = quotes[-1]
+                bid = float(last_quote.get('bid_price', 0))
+                ask = float(last_quote.get('ask_price', 0))
+                if bid > 0 and ask > bid:
+                    features[10] = ask - bid  # spread
+                    features[11] = (ask - bid) / ((ask + bid) / 2) * 10000  # spread bps
+
+            # Fill remaining features with derived values or zeros
+            if len(features) > 12:
+                # Price momentum (close vs open)
+                if features[0] > 0 and features[3] > 0:
+                    features[12] = (features[3] - features[0]) / features[0]
+
+                # Volume momentum (placeholder)
+                if len(features) > 13:
+                    features[13] = features[4] / max(1.0, np.mean([features[4], 1.0]))
+
+        except Exception as e:
+            self.logger.debug(f"HF entry processing error: {e}")
+
+        return features
+
+    def _extract_mf_features(self, market_state: Dict[str, Any]) -> Optional[np.ndarray]:
+        """Extract medium-frequency features from 1-minute bars"""
+        try:
+            bars_1m = market_state.get('1m_bars_window', [])
+            if len(bars_1m) < self.mf_seq_len:
+                # Pad if needed
+                if bars_1m:
+                    padding = [bars_1m[-1]] * (self.mf_seq_len - len(bars_1m))
+                    bars_1m = padding + bars_1m
+                else:
+                    return np.zeros((self.mf_seq_len, self.mf_feat_dim), dtype=np.float32)
+
+            # Take last N bars
+            bars_1m = bars_1m[-self.mf_seq_len:]
+
+            features_list = []
+            for bar in bars_1m:
+                features = self._process_mf_bar(bar)
                 features_list.append(features)
 
             return np.array(features_list, dtype=np.float32)
 
         except Exception as e:
-            self.logger.error(f"MF feature extraction failed: {e}")
+            self.logger.debug(f"MF feature extraction error: {e}")
             return np.zeros((self.mf_seq_len, self.mf_feat_dim), dtype=np.float32)
 
+    def _process_mf_bar(self, bar: Dict[str, Any]) -> np.ndarray:
+        """Process a 1-minute bar into features"""
+        features = np.zeros(self.mf_feat_dim, dtype=np.float32)
+
+        try:
+            features[0] = float(bar.get('open', 0.0))
+            features[1] = float(bar.get('high', 0.0))
+            features[2] = float(bar.get('low', 0.0))
+            features[3] = float(bar.get('close', 0.0))
+            features[4] = float(bar.get('volume', 0.0))
+
+            # Calculate additional features
+            o, h, l, c, v = features[0], features[1], features[2], features[3], features[4]
+
+            if o > 0:
+                features[5] = (c - o) / o  # return
+                features[6] = (h - l) / o  # range/open ratio
+
+            if h > l and h > 0:
+                features[7] = (c - l) / (h - l)  # close position in range
+
+            if v > 0:
+                features[8] = (c * v) if c > 0 else 0  # volume * price
+
+            # Additional technical indicators (simple versions)
+            if len(features) > 9:
+                features[9] = h - l  # absolute range
+                if len(features) > 10:
+                    features[10] = (h + l + c) / 3  # typical price
+
+        except Exception as e:
+            self.logger.debug(f"MF bar processing error: {e}")
+
+        return features
+
     def _extract_lf_features(self, market_state: Dict[str, Any]) -> Optional[np.ndarray]:
-        """Extract low-frequency features (5-minute data)"""
+        """Extract low-frequency features from 5-minute bars"""
         try:
             bars_5m = market_state.get('5m_bars_window', [])
+            if len(bars_5m) < self.lf_seq_len:
+                # Pad if needed
+                if bars_5m:
+                    padding = [bars_5m[-1]] * (self.lf_seq_len - len(bars_5m))
+                    bars_5m = padding + bars_5m
+                else:
+                    return np.zeros((self.lf_seq_len, self.lf_feat_dim), dtype=np.float32)
 
-            if not bars_5m or len(bars_5m) < self.lf_seq_len:
-                return np.zeros((self.lf_seq_len, self.lf_feat_dim), dtype=np.float32)
+            # Take last N bars
+            bars_5m = bars_5m[-self.lf_seq_len:]
 
-            # Take the most recent bars
-            recent_bars = bars_5m[-self.lf_seq_len:]
             features_list = []
-
-            for i, bar in enumerate(recent_bars):
-                if bar is None:
-                    features_list.append(np.zeros(self.lf_feat_dim, dtype=np.float32))
-                    continue
-
-                # Extract OHLCV
-                open_price = bar.get('open', 0.0)
-                high_price = bar.get('high', 0.0)
-                low_price = bar.get('low', 0.0)
-                close_price = bar.get('close', 0.0)
-                volume = bar.get('volume', 0.0)
-
-                # Calculate longer-term indicators
-                returns = 0.0
-                momentum = 0.0
-
-                # Multi-period analysis
-                if i >= 1 and recent_bars[i - 1]:
-                    prev_close = recent_bars[i - 1].get('close', 0.0)
-                    if prev_close > 0:
-                        returns = (close_price - prev_close) / prev_close
-
-                if i >= 4 and recent_bars[i - 4]:  # 5-period momentum
-                    old_close = recent_bars[i - 4].get('close', 0.0)
-                    if old_close > 0:
-                        momentum = (close_price - old_close) / old_close
-
-                # Trend analysis
-                trend_strength = 0.0
-                if i >= 2:
-                    prices = [recent_bars[j].get('close', 0.0) for j in range(max(0, i - 2), i + 1)
-                              if recent_bars[j]]
-                    if len(prices) >= 3:
-                        trend_strength = (prices[-1] - prices[0]) / max(prices[0], 0.01)
-
-                # Volume analysis
-                vol_norm = volume / 5000.0  # 5-min volume normalization
-
-                # Support/Resistance levels (simplified)
-                support_level = min([recent_bars[j].get('low', float('inf'))
-                                     for j in range(max(0, i - 9), i + 1)
-                                     if recent_bars[j]])
-                resistance_level = max([recent_bars[j].get('high', 0.0)
-                                        for j in range(max(0, i - 9), i + 1)
-                                        if recent_bars[j]])
-
-                support_dist = (close_price - support_level) / max(close_price, 0.01) if support_level != float('inf') else 0.0
-                resistance_dist = (resistance_level - close_price) / max(close_price, 0.01) if resistance_level > 0 else 0.0
-
-                # Create feature vector (20 features)
-                features = np.array([
-                    close_price / 100.0,  # Normalized close
-                    returns,  # Period returns
-                    momentum,  # Multi-period momentum
-                    trend_strength,  # Trend strength
-                    vol_norm,  # Normalized volume
-                    support_dist,  # Distance to support
-                    resistance_dist,  # Distance to resistance
-                    (high_price - low_price) / max(close_price, 0.01),  # Range
-                    (close_price - open_price) / max(open_price, 0.01),  # Body
-                    1.0 if not bar.get('is_synthetic', False) else 0.0,  # Data quality
-                    0.0, 0.0, 0.0, 0.0, 0.0,  # Reserved for RSI, MACD, etc.
-                    0.0, 0.0, 0.0, 0.0, 0.0  # Reserved for more indicators
-                ], dtype=np.float32)
-
-                # Handle NaN/inf values
-                features = np.nan_to_num(features, nan=0.0, posinf=1.0, neginf=-1.0)
-                features = np.clip(features, -10.0, 10.0)
-
+            for bar in bars_5m:
+                features = self._process_lf_bar(bar)
                 features_list.append(features)
 
             return np.array(features_list, dtype=np.float32)
 
         except Exception as e:
-            self.logger.error(f"LF feature extraction failed: {e}")
+            self.logger.debug(f"LF feature extraction error: {e}")
             return np.zeros((self.lf_seq_len, self.lf_feat_dim), dtype=np.float32)
+
+    def _process_lf_bar(self, bar: Dict[str, Any]) -> np.ndarray:
+        """Process a 5-minute bar into features"""
+        features = np.zeros(self.lf_feat_dim, dtype=np.float32)
+
+        try:
+            features[0] = float(bar.get('open', 0.0))
+            features[1] = float(bar.get('high', 0.0))
+            features[2] = float(bar.get('low', 0.0))
+            features[3] = float(bar.get('close', 0.0))
+            features[4] = float(bar.get('volume', 0.0))
+
+            # Calculate additional features similar to MF but for longer timeframe
+            o, h, l, c, v = features[0], features[1], features[2], features[3], features[4]
+
+            if o > 0:
+                features[5] = (c - o) / o  # return
+                features[6] = (h - l) / o  # range/open ratio
+
+            if h > l and h > 0:
+                features[7] = (c - l) / (h - l)  # close position in range
+
+            if v > 0:
+                features[8] = (c * v) if c > 0 else 0  # volume * price
+
+            # Additional features for 5m timeframe
+            if len(features) > 9:
+                features[9] = h - l  # absolute range
+                if len(features) > 10:
+                    features[10] = (h + l + c) / 3  # typical price
+                    if len(features) > 11:
+                        # Volume-weighted metrics
+                        features[11] = v / max(1.0, np.mean([v, 1000.0]))  # normalized volume
+
+        except Exception as e:
+            self.logger.debug(f"LF bar processing error: {e}")
+
+        return features
 
     def _extract_static_features(self, market_state: Dict[str, Any]) -> Optional[np.ndarray]:
         """Extract static/contextual features"""
         try:
-            # Market session information
-            session = market_state.get('market_session', 'UNKNOWN')
-            session_encoding = {
-                'PREMARKET': 0.0,
-                'REGULAR': 1.0,
-                'POSTMARKET': 0.5,
-                'CLOSED': -1.0,
-                'UNKNOWN': 0.0
-            }.get(session, 0.0)
+            features = np.zeros((1, self.static_feat_dim), dtype=np.float32)
 
-            # Previous day context
-            prev_day_data = market_state.get('previous_day_data', {})
-            prev_close = prev_day_data.get('close', 0.0)
+            # Current market state info
             current_price = market_state.get('current_price', 0.0)
+            prev_day_close = market_state.get('previous_day_close', 0.0)
 
-            # Distance from previous close
-            prev_close_distance = 0.0
-            if prev_close > 0 and current_price > 0:
-                prev_close_distance = (current_price - prev_close) / prev_close
+            if prev_day_close and prev_day_close > 0 and current_price > 0:
+                features[0, 0] = (current_price - prev_day_close) / prev_day_close  # day change
 
-            # Intraday range
-            intraday_high = market_state.get('intraday_high', current_price)
-            intraday_low = market_state.get('intraday_low', current_price)
+            # Market session indicator
+            session = market_state.get('market_session', 'UNKNOWN')
+            if session == 'PREMARKET':
+                features[0, 1] = 0.25
+            elif session == 'REGULAR':
+                features[0, 1] = 1.0
+            elif session == 'POSTMARKET':
+                features[0, 1] = 0.75
+            else:
+                features[0, 1] = 0.0
 
-            intraday_position = 0.0
-            if intraday_high > intraday_low and current_price > 0:
-                intraday_position = (current_price - intraday_low) / (intraday_high - intraday_low)
+            # Intraday high/low relative position
+            intraday_high = market_state.get('intraday_high')
+            intraday_low = market_state.get('intraday_low')
 
-            # Market volatility proxy
-            volatility_proxy = 0.0
-            if intraday_high > 0 and intraday_low > 0:
-                volatility_proxy = (intraday_high - intraday_low) / max(current_price, 0.01)
+            if (intraday_high and intraday_low and current_price > 0 and
+                    intraday_high > intraday_low):
+                range_position = (current_price - intraday_low) / (intraday_high - intraday_low)
+                features[0, 2] = range_position
 
-            # Create static feature vector (5 features)
-            features = np.array([
-                session_encoding,  # Market session
-                prev_close_distance,  # Distance from prev close
-                intraday_position,  # Position in intraday range
-                volatility_proxy,  # Volatility proxy
-                1.0  # Market state indicator
-            ], dtype=np.float32)
+            # Price levels relative to previous day
+            prev_day_data = market_state.get('previous_day_data', {})
+            if prev_day_data and current_price > 0:
+                prev_high = prev_day_data.get('high', 0)
+                prev_low = prev_day_data.get('low', 0)
 
-            # Handle NaN/inf values
-            features = np.nan_to_num(features, nan=0.0, posinf=1.0, neginf=-1.0)
-            features = np.clip(features, -5.0, 5.0)
+                if prev_high > 0:
+                    features[0, 3] = current_price / prev_high
+                if prev_low > 0 and len(features[0]) > 4:
+                    features[0, 4] = current_price / prev_low
 
-            # Ensure correct shape for model
-            return features.reshape(1, -1)
+            return features
 
         except Exception as e:
-            self.logger.error(f"Static feature extraction failed: {e}")
+            self.logger.debug(f"Static feature extraction error: {e}")
             return np.zeros((1, self.static_feat_dim), dtype=np.float32)
