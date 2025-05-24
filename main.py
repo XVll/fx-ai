@@ -1,4 +1,4 @@
-# main.py - UPDATED: Metrics-based training without dashboard
+# main.py - FIXED: Properly activate metrics system for W&B transmission
 
 import os
 import sys
@@ -38,7 +38,7 @@ cleanup_called = False
 current_trainer = None
 current_env = None
 current_data_manager = None
-metrics_manager:MetricsManager = None
+metrics_manager: MetricsManager = None
 
 logger = logging.getLogger(__name__)
 
@@ -211,17 +211,35 @@ def run_training(cfg: Config):
         # Initialize metrics system
         if cfg.wandb.enabled:
             logging.info("📊 Initializing metrics system with W&B integration")
+
+            # Create run name
+            run_name = None
+            if continuous_mode:
+                run_name = f"continuous_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
             metrics_manager, metrics_integrator = create_trading_metrics_system(
                 project_name=cfg.wandb.project_name,
                 symbol=symbol,
                 initial_capital=cfg.simulation.portfolio_config.initial_cash,
                 entity=cfg.wandb.entity,
-                run_name=f"continuous_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}" if continuous_mode else None
+                run_name=run_name
             )
+
+            # FIXED: Start auto-transmission of metrics
+            metrics_manager.start_auto_transmit()
 
             # Start system tracking
             metrics_integrator.start_system_tracking()
-            logging.info("✅ Metrics system initialized and tracking started")
+
+            logging.info("✅ Metrics system initialized, auto-transmission started")
+
+            # Force an initial metric to test W&B connection
+            metrics_manager.record_metric(
+                "system_startup",
+                1.0,
+                description="System startup test metric"
+            )
+
         else:
             logging.warning("W&B disabled - no metrics will be tracked")
             metrics_manager = None
@@ -282,15 +300,16 @@ def run_training(cfg: Config):
             logging.error(f"Error creating model: {e}")
             raise
 
-        # Update a metrics system with the model
+        # Update metrics system with the model
         optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
         if metrics_integrator:
-            # Add model and optimizer to a metrics system
+            # Add model and optimizer to metrics system
             from metrics.collectors.model_metrics import ModelMetricsCollector, OptimizerMetricsCollector
             model_collector = ModelMetricsCollector(model)
             optimizer_collector = OptimizerMetricsCollector(optimizer)
             metrics_manager.register_collector(model_collector)
             metrics_manager.register_collector(optimizer_collector)
+            logging.info("📊 Model and optimizer collectors registered with metrics system")
 
         # Load best model for continuous training
         loaded_metadata = {}
@@ -298,9 +317,6 @@ def run_training(cfg: Config):
             best_model_info = model_manager.find_best_model()
             if best_model_info:
                 logging.info(f"📂 Loading best model: {best_model_info['path']}")
-
-                if not metrics_integrator:
-                    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
 
                 model, training_state = model_manager.load_model(model, optimizer, best_model_info['path'])
                 loaded_metadata = training_state.get('metadata', {})
