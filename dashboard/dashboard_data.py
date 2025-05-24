@@ -97,6 +97,19 @@ class Trade:
 
 
 @dataclass
+class Execution:
+    """Single execution record (fill)"""
+    timestamp: datetime
+    side: str  # BUY/SELL
+    quantity: float
+    symbol: str
+    price: float
+    commission: float = 0.0
+    fees: float = 0.0
+    slippage: float = 0.0
+
+
+@dataclass
 class EpisodeData:
     """Data for a single episode"""
     episode_num: int
@@ -111,9 +124,14 @@ class EpisodeData:
     # Episode-specific data
     actions: Deque[Action] = field(default_factory=lambda: deque(maxlen=1000))
     trades: Deque[Trade] = field(default_factory=lambda: deque(maxlen=100))
+    executions: Deque[Execution] = field(default_factory=lambda: deque(maxlen=100))
     price_history: Deque[float] = field(default_factory=lambda: deque(maxlen=1000))
     reward_history: Deque[float] = field(default_factory=lambda: deque(maxlen=1000))
     position_history: Deque[float] = field(default_factory=lambda: deque(maxlen=1000))
+    
+    # Episode termination info
+    truncated: bool = False
+    truncation_reason: str = ""
     
     # Action statistics
     action_counts: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
@@ -198,6 +216,7 @@ class DashboardState:
         
         # Global tracking (across all episodes)
         self.global_trades: Deque[Trade] = deque(maxlen=500)
+        self.global_executions: Deque[Execution] = deque(maxlen=500)
         self.global_actions: Deque[Action] = deque(maxlen=5000)
         
         # Reward components
@@ -210,6 +229,10 @@ class DashboardState:
         self.model_name: str = "N/A"
         self.session_start_time: datetime = datetime.now()
         
+        # OHLC data for candlestick charts
+        self.ohlc_data: Deque[Dict[str, Any]] = deque(maxlen=100)  # Keep last 100 bars
+        self.last_bar_timestamp = None  # Track last bar to avoid duplicates
+        
     def start_new_episode(self, episode_num: int):
         """Start a new episode"""
         # Save current episode if exists
@@ -219,11 +242,26 @@ class DashboardState:
         # Create new episode
         self.current_episode = EpisodeData(episode_num=episode_num)
         
-    def end_current_episode(self, reason: str = "Completed"):
+        # Reset action analysis for new episode
+        self.action_analysis.invalid_actions_count = 0
+        self.action_analysis.action_bias = {}
+        
+    def end_current_episode(self, reason: str = "Completed", truncated: bool = False):
         """End current episode"""
         if self.current_episode:
             self.current_episode.status = "Completed"
             self.current_episode.termination_reason = reason
+            self.current_episode.truncated = truncated
+            # Set truncation reason for normal episode endings
+            if truncated:
+                # If truncated, set a meaningful truncation reason
+                if reason == "TRUNCATED" or reason == "Completed":
+                    self.current_episode.truncation_reason = "Max steps reached"
+                else:
+                    self.current_episode.truncation_reason = reason
+            elif reason not in ['BANKRUPTCY', 'MAX_LOSS_REACHED', 'INVALID_ACTION_LIMIT_REACHED', 'END_OF_SESSION_DATA', 'OBSERVATION_FAILURE']:
+                # For other normal completions
+                self.current_episode.truncation_reason = "Normal completion"
             self.current_episode.end_time = datetime.now()
             self.episode_history.append(self.current_episode)
             self.current_episode = None
@@ -304,7 +342,7 @@ class DashboardState:
             self.current_episode.action_rewards[action_type].append(reward)
     
     def add_trade(self, trade_data: Dict[str, Any]):
-        """Add a trade"""
+        """Add a completed trade"""
         trade = Trade(
             timestamp=datetime.now(),
             side=trade_data.get('side', 'UNKNOWN'),
@@ -326,17 +364,48 @@ class DashboardState:
             if trade.pnl:
                 self.current_episode.total_pnl += trade.pnl
     
+    def add_execution(self, execution_data: Dict[str, Any]):
+        """Add an execution (fill)"""
+        execution = Execution(
+            timestamp=datetime.now(),
+            side=execution_data.get('side', 'UNKNOWN'),
+            quantity=execution_data.get('quantity', 0),
+            symbol=execution_data.get('symbol', self.market_data.symbol),
+            price=execution_data.get('price', 0),
+            commission=execution_data.get('commission', 0),
+            fees=execution_data.get('fees', 0),
+            slippage=execution_data.get('slippage', 0)
+        )
+        
+        # Add to global
+        self.global_executions.append(execution)
+        
+        # Add to current episode
+        if self.current_episode:
+            self.current_episode.executions.append(execution)
+    
     def update_training_progress(self, data: Dict[str, Any]):
         """Update training progress"""
         self.training_progress.mode = data.get('mode', self.training_progress.mode)
         self.training_progress.current_stage = data.get('stage', self.training_progress.current_stage)
         self.training_progress.updates = data.get('updates', self.training_progress.updates)
         self.training_progress.global_steps = data.get('global_steps', self.training_progress.global_steps)
+        self.training_progress.total_episodes = data.get('total_episodes', self.training_progress.total_episodes)
         
-        # Calculate timing metrics
-        if self.training_progress.global_steps > 0:
+        # Update timing metrics if provided
+        if 'steps_per_second' in data:
+            self.training_progress.steps_per_second = data['steps_per_second']
+        elif self.training_progress.global_steps > 0:
             elapsed = (datetime.now() - self.training_progress.start_time).total_seconds()
             self.training_progress.steps_per_second = self.training_progress.global_steps / elapsed
+            
+        # Update other timing metrics
+        if 'overall_progress' in data:
+            self.training_progress.overall_progress = data['overall_progress']
+        if 'stage_progress' in data:
+            self.training_progress.stage_progress = data['stage_progress']
+        if 'stage_status' in data:
+            self.training_progress.stage_status = data['stage_status']
     
     def update_ppo_metrics(self, data: Dict[str, Any]):
         """Update PPO metrics"""
@@ -369,9 +438,15 @@ class DashboardState:
         return []
     
     def get_recent_trades(self, n: int = 5) -> List[Trade]:
-        """Get recent trades from current episode"""
+        """Get recent completed trades from current episode"""
         if self.current_episode:
             return list(self.current_episode.trades)[-n:]
+        return []
+    
+    def get_recent_executions(self, n: int = 5) -> List[Execution]:
+        """Get recent executions from current episode"""
+        if self.current_episode:
+            return list(self.current_episode.executions)[-n:]
         return []
     
     def get_episode_history(self, n: int = 3) -> List[EpisodeData]:

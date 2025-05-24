@@ -6,11 +6,9 @@ Compact layout with separate current episode and overall training views.
 import dash
 from dash import dcc, html, Input, Output, State
 import plotly.graph_objs as go
-import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from datetime import datetime
 import threading
 import webbrowser
 import logging
@@ -218,10 +216,20 @@ class LiveTradingDashboard:
                         html.Div(id='recent-actions')
                     ], className='panel'),
                     
-                    # Recent Trades Panel
+                    # Trading Activity Panel (Combined)
                     html.Div([
-                        html.H3("⚡ Recent Trades", className='panel-title'),
-                        html.Div(id='recent-trades')
+                        html.H3("📈 Trading Activity", className='panel-title'),
+                        html.Div([
+                            html.Div([
+                                html.H4("Recent Executions", style={'fontSize': '10px', 'margin': '0 0 5px 0', 'color': '#ffd32a'}),
+                                html.Div(id='recent-executions')
+                            ], style={'marginBottom': '10px'}),
+                            html.Div([
+                                html.H4("Completed Trades", style={'fontSize': '10px', 'margin': '0 0 5px 0', 'color': '#00d084'}),
+                                html.Div(id='recent-trades'),
+                                html.Div("(Round-trip tracking coming soon)", style={'fontSize': '9px', 'color': '#666', 'fontStyle': 'italic'})
+                            ])
+                        ])
                     ], className='panel'),
                     
                     # Episode Analysis Panel
@@ -457,22 +465,21 @@ class LiveTradingDashboard:
             [Input('interval-component', 'n_intervals')]
         )
         def update_recent_trades(n):
-            trades = self.state.get_recent_trades(5)
+            trades = self.state.get_recent_trades(3)
             
             if not trades:
-                return html.Div("No trades yet", style={'color': '#999', 'textAlign': 'center'})
+                return html.Div("No completed trades yet", style={'color': '#999', 'textAlign': 'center', 'fontSize': '10px'})
             
             rows = []
             for trade in reversed(trades):
-                pnl_class = 'positive' if trade.pnl and trade.pnl > 0 else 'negative'
+                pnl_class = 'positive' if trade.pnl and trade.pnl > 0 else 'negative' if trade.pnl and trade.pnl < 0 else 'neutral'
                 row = html.Tr([
                     html.Td(trade.timestamp.strftime("%H:%M:%S")),
                     html.Td(trade.side),
-                    html.Td(f"{trade.quantity:.2f}"),
-                    html.Td(trade.symbol),
+                    html.Td(f"{trade.quantity:.1f}"),
                     html.Td(f"${trade.entry_price:.2f}"),
                     html.Td(f"${trade.exit_price:.2f}" if trade.exit_price else "-"),
-                    html.Td(f"${trade.pnl:.2f}" if trade.pnl else "-", className=pnl_class)
+                    html.Td(f"${trade.pnl:.1f}" if trade.pnl else "-", className=pnl_class)
                 ])
                 rows.append(row)
             
@@ -482,10 +489,44 @@ class LiveTradingDashboard:
                         html.Th("Time"),
                         html.Th("Side"),
                         html.Th("Qty"),
-                        html.Th("Sym"),
                         html.Th("Entry"),
                         html.Th("Exit"),
                         html.Th("P&L")
+                    ])
+                ]),
+                html.Tbody(rows)
+            ])
+        
+        @self.app.callback(
+            Output('recent-executions', 'children'),
+            [Input('interval-component', 'n_intervals')]
+        )
+        def update_recent_executions(n):
+            executions = self.state.get_recent_executions(5)
+            
+            if not executions:
+                return html.Div("No executions yet", style={'color': '#999', 'textAlign': 'center', 'fontSize': '10px'})
+            
+            rows = []
+            for execution in reversed(executions):
+                side_class = 'positive' if execution.side == 'BUY' else 'negative'
+                row = html.Tr([
+                    html.Td(execution.timestamp.strftime("%H:%M:%S")),
+                    html.Td(execution.side, className=side_class),
+                    html.Td(f"{execution.quantity:.1f}"),
+                    html.Td(f"${execution.price:.2f}"),
+                    html.Td(f"${execution.fees:.2f}" if execution.fees > 0 else "-")
+                ])
+                rows.append(row)
+            
+            return html.Table([
+                html.Thead([
+                    html.Tr([
+                        html.Th("Time"),
+                        html.Th("Side"),
+                        html.Th("Qty"),
+                        html.Th("Price"),
+                        html.Th("Fees")
                     ])
                 ]),
                 html.Tbody(rows)
@@ -528,11 +569,17 @@ class LiveTradingDashboard:
             if history:
                 history_rows = []
                 for ep in reversed(history):
+                    # Show termination or truncation reason
+                    reason = ep.termination_reason if ep.termination_reason else "Unknown"
+                    if ep.truncated and ep.truncation_reason:
+                        reason = f"T: {ep.truncation_reason}"
+                    reason_display = reason[:12] + "..." if len(reason) > 12 else reason
+                    
                     row = html.Tr([
                         html.Td(f"{ep.episode_num}"),
                         html.Td(ep.status),
-                        html.Td(ep.termination_reason[:15] + "..." if len(ep.termination_reason) > 15 else ep.termination_reason),
-                        html.Td(f"{ep.total_reward:.2f}")
+                        html.Td(reason_display, title=reason),  # Show full reason on hover
+                        html.Td(f"{ep.total_reward:.1f}")
                     ])
                     history_rows.append(row)
                 
@@ -543,7 +590,7 @@ class LiveTradingDashboard:
                             html.Tr([
                                 html.Th("Ep #"),
                                 html.Th("Status"),
-                                html.Th("Reason"),
+                                html.Th("End Reason"),
                                 html.Th("Reward")
                             ])
                         ]),
@@ -562,42 +609,46 @@ class LiveTradingDashboard:
         def update_training_progress(n):
             prog = self.state.training_progress
             
+            # Ensure progress percentages are valid
+            overall_progress = max(0, min(100, prog.overall_progress))
+            stage_progress = max(0, min(100, prog.stage_progress))
+            
             content = html.Div([
                 html.Div([
                     html.Span("Mode:", className='metric-label'),
-                    html.Span(prog.mode, className='metric-value')
+                    html.Span(prog.mode or "Idle", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Current Stage:", className='metric-label'),
-                    html.Span(prog.current_stage, className='metric-value')
+                    html.Span(prog.current_stage or "Waiting", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Overall Progress:", className='metric-label'),
                     html.Div([
-                        html.Div(style={'width': f"{prog.overall_progress}%"}, className='progress-fill')
+                        html.Div(style={'width': f"{overall_progress}%"}, className='progress-fill')
                     ], className='progress-bar', style={'flex': 1, 'marginLeft': '10px'})
                 ], className='metric-row', style={'alignItems': 'center'}),
                 html.Div([
                     html.Span("Stage Progress:", className='metric-label'),
                     html.Div([
-                        html.Div(style={'width': f"{prog.stage_progress}%"}, className='progress-fill')
+                        html.Div(style={'width': f"{stage_progress}%"}, className='progress-fill')
                     ], className='progress-bar', style={'flex': 1, 'marginLeft': '10px'})
                 ], className='metric-row', style={'alignItems': 'center'}),
                 html.Div([
                     html.Span("Stage Status:", className='metric-label'),
-                    html.Span(prog.stage_status, className='metric-value', style={'fontSize': '10px'})
+                    html.Span(prog.stage_status or "N/A", className='metric-value', style={'fontSize': '10px'})
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Updates:", className='metric-label'),
-                    html.Span(f"{prog.updates}", className='metric-value')
+                    html.Span(f"{prog.updates:,}" if prog.updates > 0 else "0", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Episodes:", className='metric-label'),
-                    html.Span(f"{prog.total_episodes}", className='metric-value')
+                    html.Span(f"{prog.total_episodes:,}" if prog.total_episodes > 0 else "0", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Global Steps:", className='metric-label'),
-                    html.Span(f"{prog.global_steps:,}", className='metric-value')
+                    html.Span(f"{prog.global_steps:,}" if prog.global_steps > 0 else "0", className='metric-value')
                 ], className='metric-row'),
             ])
             
@@ -702,7 +753,7 @@ class LiveTradingDashboard:
             content = [
                 html.Div([
                     html.Span("Invalid Actions:", className='metric-label'),
-                    html.Span(f"{analysis.invalid_actions_count}", className='metric-value negative')
+                    html.Span(f"{analysis.invalid_actions_count}", className='metric-value negative' if analysis.invalid_actions_count > 0 else 'metric-value')
                 ], className='metric-row'),
                 html.H4("Action Bias:", style={'fontSize': '11px', 'margin': '10px 0 5px 0'})
             ]
@@ -756,35 +807,122 @@ class LiveTradingDashboard:
                 subplot_titles=('Price & Trades (Current Episode)', 'Position', 'Reward')
             )
             
-            steps = list(range(len(episode.price_history)))
-            
-            # Price line
-            if episode.price_history:
-                fig.add_trace(
-                    go.Scatter(x=steps, y=list(episode.price_history), 
-                              name='Price', line=dict(color='#00d084', width=1)),
-                    row=1, col=1
-                )
-            
-            # Add trades for current episode only
-            for trade in episode.trades:
-                idx = len(episode.price_history) - 1  # Approximate position
-                color = '#00d084' if trade.side == 'BUY' else '#ff4757'
-                symbol = 'triangle-up' if trade.side == 'BUY' else 'triangle-down'
+            # Use OHLC candlestick chart if we have market data with bars
+            if hasattr(self.state, 'ohlc_data') and len(self.state.ohlc_data) > 0:
+                # Create candlestick chart with recent 1-minute bars
+                ohlc_list = list(self.state.ohlc_data)
+                num_bars = min(60, len(ohlc_list))  # Show last 60 bars (1 hour of 1-minute data)
+                recent_bars = ohlc_list[-num_bars:] if num_bars > 0 else []
                 
-                fig.add_trace(
-                    go.Scatter(
-                        x=[idx], y=[trade.entry_price],
-                        mode='markers',
-                        marker=dict(size=8, color=color, symbol=symbol),
-                        showlegend=False,
-                        hovertext=f"{trade.side} @ ${trade.entry_price:.2f}"
-                    ),
-                    row=1, col=1
-                )
+                if recent_bars:
+                    # Extract timestamps and OHLC values
+                    timestamps = []
+                    opens = []
+                    highs = []
+                    lows = []
+                    closes = []
+                    volumes = []
+                    
+                    for i, bar in enumerate(recent_bars):
+                        # Use index for x-axis but store timestamp for hover info
+                        timestamps.append(i)
+                        opens.append(bar.get('open', 0))
+                        highs.append(bar.get('high', 0))
+                        lows.append(bar.get('low', 0))
+                        closes.append(bar.get('close', 0))
+                        volumes.append(bar.get('volume', 0))
+                    
+                    # Only add candlestick if we have valid data
+                    if any(opens) and any(closes):
+                        fig.add_trace(
+                            go.Candlestick(
+                                x=timestamps,
+                                open=opens,
+                                high=highs,
+                                low=lows,
+                                close=closes,
+                                name='Price',
+                                showlegend=False,
+                                increasing=dict(line=dict(color='green')),
+                                decreasing=dict(line=dict(color='red')),
+                                hovertext='<b>%{x}</b><br>' +
+                                             'O: $%{open:.2f}<br>' +
+                                             'H: $%{high:.2f}<br>' +
+                                             'L: $%{low:.2f}<br>' +
+                                             'C: $%{close:.2f}<br>' +
+                                             '<extra></extra>'
+                            ),
+                            row=1, col=1
+                        )
+                    else:
+                        # Fallback to line chart if no valid OHLC
+                        steps = list(range(len(episode.price_history)))
+                        if episode.price_history:
+                            fig.add_trace(
+                                go.Scatter(x=steps, y=list(episode.price_history), 
+                                          name='Price', line=dict(color='#00d084', width=1)),
+                                row=1, col=1
+                            )
+                else:
+                    # Fallback to line chart
+                    steps = list(range(len(episode.price_history)))
+                    if episode.price_history:
+                        fig.add_trace(
+                            go.Scatter(x=steps, y=list(episode.price_history), 
+                                      name='Price', line=dict(color='#00d084', width=1)),
+                            row=1, col=1
+                        )
+            else:
+                # Fallback to line chart
+                steps = list(range(len(episode.price_history)))
+                if episode.price_history:
+                    fig.add_trace(
+                        go.Scatter(x=steps, y=list(episode.price_history), 
+                                  name='Price', line=dict(color='#00d084', width=1)),
+                        row=1, col=1
+                    )
+            
+            # Add trades/executions on the chart
+            if episode.executions:
+                # Map executions to bar indices
+                exec_x = []
+                exec_y = []
+                exec_colors = []
+                exec_symbols = []
+                exec_texts = []
+                
+                for execution in episode.executions:
+                    # Find the corresponding bar index for this execution
+                    # For now, distribute executions evenly across available bars
+                    if hasattr(self.state, 'ohlc_data') and len(self.state.ohlc_data) > 0:
+                        # Use execution index relative to the number of bars
+                        bar_index = min(len(timestamps) - 1, int((len(timestamps) - 1) * (episode.executions.index(execution) / max(1, len(episode.executions) - 1))))
+                    else:
+                        bar_index = min(episode.executions.index(execution), len(episode.price_history) - 1) if episode.price_history else 0
+                    
+                    exec_x.append(bar_index)
+                    exec_y.append(execution.price)
+                    exec_colors.append('#00d084' if execution.side == 'BUY' else '#ff4757')
+                    exec_symbols.append('triangle-up' if execution.side == 'BUY' else 'triangle-down')
+                    exec_texts.append(f"{execution.side} {execution.quantity:.2f} @ ${execution.price:.2f}")
+                
+                if exec_x:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=exec_x,
+                            y=exec_y,
+                            mode='markers',
+                            marker=dict(size=10, color=exec_colors, symbol=exec_symbols, line=dict(width=1, color='white')),
+                            showlegend=False,
+                            hovertext=exec_texts,
+                            name='Executions'
+                        ),
+                        row=1, col=1
+                    )
             
             # Position
             if episode.position_history:
+                steps = list(range(len(episode.position_history)))
                 fig.add_trace(
                     go.Scatter(x=steps, y=list(episode.position_history),
                               name='Position', fill='tozeroy',
@@ -794,6 +932,7 @@ class LiveTradingDashboard:
             
             # Rewards
             if episode.reward_history:
+                steps = list(range(len(episode.reward_history)))
                 cumulative_rewards = np.cumsum(list(episode.reward_history))
                 fig.add_trace(
                     go.Scatter(x=steps, y=cumulative_rewards.tolist(),
@@ -808,13 +947,14 @@ class LiveTradingDashboard:
                 height=250,
                 showlegend=False,
                 margin=dict(l=40, r=10, t=30, b=30),
-                font=dict(size=10)
+                font=dict(size=10),
+                xaxis_rangeslider_visible=False  # Hide range slider for cleaner look
             )
             
-            fig.update_xaxes(title_text="Step", row=3, col=1)
-            fig.update_yaxes(title_text="Price", row=1, col=1)
-            fig.update_yaxes(title_text="Pos", row=2, col=1)
-            fig.update_yaxes(title_text="Reward", row=3, col=1)
+            fig.update_xaxes(title_text="Time Step", row=3, col=1)
+            fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+            fig.update_yaxes(title_text="Position", row=2, col=1)
+            fig.update_yaxes(title_text="Cumulative Reward", row=3, col=1)
             
             return fig
         
@@ -874,12 +1014,19 @@ class LiveTradingDashboard:
         )
         def update_footer(n):
             prog = self.state.training_progress
+            analysis = self.state.action_analysis
+            
+            # Calculate some real-time stats
+            current_episode = self.state.current_episode
+            total_actions = sum(current_episode.action_counts.values()) if current_episode else 0
+            invalid_rate = (analysis.invalid_actions_count / max(1, total_actions)) * 100 if total_actions > 0 else 0
             
             return html.Div([
                 html.Span(f"Steps/Sec: {prog.steps_per_second:.1f}"),
-                html.Span(f"Time/Update: {prog.time_per_update:.2f}s"),
-                html.Span(f"Time/Episode: {prog.time_per_episode:.1f}s")
-            ], style={'display': 'flex', 'gap': '20px'})
+                html.Span(f"Invalid Actions: {analysis.invalid_actions_count} ({invalid_rate:.1f}%)"),
+                html.Span(f"Total Steps: {prog.global_steps:,}"),
+                html.Span(f"Session Time: {self.state.session_elapsed_time}")
+            ], style={'display': 'flex', 'gap': '20px', 'fontSize': '10px'})
     
     def _process_queue_updates(self):
         """Process all pending updates from queue"""

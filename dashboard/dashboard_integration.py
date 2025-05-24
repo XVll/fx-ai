@@ -41,6 +41,30 @@ class DashboardMetricsCollector:
         }
         self.dashboard.update_market(market_update)
         
+        # Update OHLC data if available from market state
+        if 'market_state' in step_data and step_data['market_state']:
+            market_state = step_data['market_state']
+            if isinstance(market_state, dict) and '1m_bars_window' in market_state:
+                bars_window = market_state.get('1m_bars_window', [])
+                if bars_window and isinstance(bars_window, list):
+                    # Process all bars in the window
+                    for bar in bars_window:
+                        if bar and isinstance(bar, dict) and all(k in bar for k in ['open', 'high', 'low', 'close']):
+                            # Check if this is a new bar based on timestamp
+                            bar_timestamp = bar.get('timestamp')
+                            if bar_timestamp and bar_timestamp != self.dashboard.state.last_bar_timestamp:
+                                ohlc_bar = {
+                                    'timestamp': bar_timestamp,
+                                    'open': float(bar['open']),
+                                    'high': float(bar['high']),
+                                    'low': float(bar['low']),
+                                    'close': float(bar['close']),
+                                    'volume': float(bar.get('volume', 0))
+                                }
+                                # Add to dashboard state
+                                self.dashboard.state.ohlc_data.append(ohlc_bar)
+                                self.dashboard.state.last_bar_timestamp = bar_timestamp
+        
         # Update position
         position_update = {
             'symbol': step_data.get('symbol', 'N/A'),
@@ -58,7 +82,7 @@ class DashboardMetricsCollector:
         }
         self.dashboard.update_portfolio(portfolio_update)
         
-        # Update action
+        # Update action with invalid action tracking
         if 'action' in step_data and 'reward' in step_data:
             self.dashboard.update_action(
                 step=step_data.get('step', 0),
@@ -66,9 +90,13 @@ class DashboardMetricsCollector:
                 size=step_data.get('size', 1.0),
                 reward=step_data.get('reward', 0.0)
             )
+            
+        # Track invalid actions for footer metrics
+        if step_data.get('invalid_action', False):
+            self.dashboard.state.action_analysis.invalid_actions_count += 1
     
     def on_trade(self, trade_data: Dict[str, Any]):
-        """Handle trade execution"""
+        """Handle completed trade"""
         if not self.is_started:
             return
         
@@ -76,18 +104,35 @@ class DashboardMetricsCollector:
             'side': trade_data.get('action', 'UNKNOWN').upper(),
             'quantity': abs(trade_data.get('quantity', 0)),
             'symbol': trade_data.get('symbol', 'N/A'),
-            'entry_price': trade_data.get('price', 0),
+            'entry_price': trade_data.get('entry_price', 0),
             'exit_price': trade_data.get('exit_price'),
             'pnl': trade_data.get('pnl', 0),
             'fees': trade_data.get('fees', 0)
         }
         self.dashboard.update_trade(trade_update)
+        
+    def on_execution(self, execution_data: Dict[str, Any]):
+        """Handle execution (fill)"""
+        if not self.is_started:
+            return
+            
+        execution_update = {
+            'side': execution_data.get('order_side', 'UNKNOWN').upper(),
+            'quantity': execution_data.get('executed_quantity', 0),
+            'symbol': execution_data.get('asset_id', 'N/A'),
+            'price': execution_data.get('executed_price', 0),
+            'commission': execution_data.get('commission', 0),
+            'fees': execution_data.get('fees', 0),
+            'slippage': execution_data.get('slippage_cost_total', 0)
+        }
+        self.dashboard.state.add_execution(execution_update)
     
     def on_episode_start(self, episode_num: int):
         """Handle episode start"""
         if not self.is_started:
             return
         
+        # Don't maintain our own counter, use the provided episode number
         self.current_episode_num = episode_num
         self.dashboard.start_episode(episode_num)
     
@@ -97,6 +142,8 @@ class DashboardMetricsCollector:
             return
         
         reason = episode_data.get('termination_reason', 'Completed')
+        truncated = episode_data.get('truncated', False)
+        self.dashboard.state.end_current_episode(reason, truncated)
         self.dashboard.end_episode(reason)
     
     def on_training_update(self, training_data: Dict[str, Any]):
