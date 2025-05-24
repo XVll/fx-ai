@@ -58,6 +58,10 @@ class MetricsManager:
         
         # Visualization collector reference
         self.visualization_collector = None
+        
+        # Dashboard integration
+        self.dashboard_collector = None
+        self._dashboard_enabled = False
 
         self.logger.info("MetricsManager initialized")
 
@@ -373,3 +377,43 @@ class MetricsManager:
                         transmitter.transmit(viz_metrics, self.current_step)
                     except Exception as e:
                         self.logger.error(f"Error transmitting visualizations: {e}")
+                        
+    # Dashboard methods
+    def enable_dashboard(self, port: int = 8050, open_browser: bool = True):
+        """Enable and start the live dashboard"""
+        if not self._dashboard_enabled:
+            try:
+                from dashboard.dashboard_integration import DashboardMetricsCollector
+                self.dashboard_collector = DashboardMetricsCollector()
+                self.dashboard_collector.start(open_browser=open_browser)
+                self._dashboard_enabled = True
+                self.logger.info(f"Dashboard enabled on port {port}")
+            except Exception as e:
+                self.logger.error(f"Failed to start dashboard: {e}")
+                
+    def disable_dashboard(self):
+        """Disable and stop the dashboard"""
+        if self._dashboard_enabled and self.dashboard_collector:
+            self.dashboard_collector.stop()
+            self._dashboard_enabled = False
+            self.logger.info("Dashboard disabled")
+            
+    def update_dashboard_step(self, step_data: Dict[str, Any]):
+        """Update dashboard with step data"""
+        if self._dashboard_enabled and self.dashboard_collector:
+            self.dashboard_collector.on_step(step_data)
+            
+    def update_dashboard_trade(self, trade_data: Dict[str, Any]):
+        """Update dashboard with trade data"""
+        if self._dashboard_enabled and self.dashboard_collector:
+            self.dashboard_collector.on_trade(trade_data)
+            
+    def update_dashboard_episode(self, episode_data: Dict[str, Any]):
+        """Update dashboard with episode end data"""
+        if self._dashboard_enabled and self.dashboard_collector:
+            self.dashboard_collector.on_episode_end(episode_data)
+            
+    def update_dashboard_features(self, feature_data: Dict[str, Any]):
+        """Update dashboard with feature data"""
+        if self._dashboard_enabled and self.dashboard_collector:
+            self.dashboard_collector.on_features(feature_data)
