@@ -144,8 +144,12 @@ class RewardCalculator:
 
         # Log significant events only
         if abs(total_reward) > 0.01 or fill_details_list or terminated:
+            action_name = action_type.name if hasattr(action_type, 'name') else str(action_type)
+
             if terminated and termination_reason:
                 self.logger.warning(f"Episode terminated: {termination_reason.value}, Final reward: {total_reward:.4f}")
+            elif fill_details_list:
+                self.logger.debug(f"{action_name} executed, Reward: {total_reward:.4f}, Equity change: ${equity_change:.2f}")
 
         return total_reward
 
