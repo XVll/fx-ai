@@ -1,4 +1,4 @@
-# main_continuous.py - UPDATED: Integration with comprehensive dashboard
+# main_continuous.py - UPDATED: Metrics-based training without dashboard
 
 import os
 import sys
@@ -10,7 +10,6 @@ from datetime import datetime
 
 import hydra
 import torch
-import wandb
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 
@@ -29,12 +28,13 @@ from data.provider.dummy_data_provider import DummyDataProvider
 
 from envs.trading_env import TradingEnvironment
 from envs.wrappers.observation_wrapper import NormalizeDictObservation
-from envs.env_dashboard import TradingDashboard, TrainingStage  # UPDATED: Import comprehensive dashboard
 
 from agent.ppo_agent import PPOTrainer
 from agent.callbacks import ModelCheckpointCallback, EarlyStoppingCallback
-from agent.wandb_callback import WandbCallback
 from utils.model_manager import ModelManager
+
+# Import new metrics system
+from metrics.factory import create_trading_metrics_system
 
 # Global variables for signal handling
 training_interrupted = False
@@ -42,9 +42,8 @@ cleanup_called = False
 current_trainer = None
 current_env = None
 current_data_manager = None
-dashboard = None
+metrics_manager = None
 
-# Setup Rich logging at module level but with a simple handler that won't conflict
 logger = logging.getLogger(__name__)
 
 
@@ -64,7 +63,6 @@ def signal_handler(signum, frame):
     console.print("=" * 50)
 
     def force_exit():
-        import time
         time.sleep(10)
         if training_interrupted and not cleanup_called:
             console.print("\n[bold red]Graceful shutdown timeout. Force exiting...[/bold red]")
@@ -77,7 +75,7 @@ def signal_handler(signum, frame):
 
 def cleanup_resources():
     """Clean up resources gracefully"""
-    global cleanup_called, current_trainer, current_env, current_data_manager, dashboard
+    global cleanup_called, current_trainer, current_env, current_data_manager, metrics_manager
 
     if cleanup_called:
         return
@@ -86,10 +84,13 @@ def cleanup_resources():
     try:
         logging.info("Starting resource cleanup...")
 
-        # UPDATED: Stop comprehensive dashboard first
-        if dashboard and dashboard._running:
-            dashboard.stop()
-            logging.info("Comprehensive dashboard stopped")
+        # Close metrics manager
+        if metrics_manager:
+            try:
+                metrics_manager.close()
+                logging.info("Metrics manager closed")
+            except Exception as e:
+                logging.error(f"Error closing metrics manager: {e}")
 
         # Stop trainer
         if current_trainer and hasattr(current_trainer, 'model'):
@@ -118,14 +119,6 @@ def cleanup_resources():
                 logging.info("Data manager closed")
             except Exception as e:
                 logging.error(f"Error closing data manager: {e}")
-
-        # Finalize W&B if active
-        if wandb.run:
-            try:
-                wandb.finish()
-                logging.info("W&B run finished")
-            except Exception as e:
-                logging.error(f"Error finishing W&B: {e}")
 
         logging.info("Resource cleanup completed")
 
@@ -202,8 +195,8 @@ def create_data_provider(config: Config):
 
 @hydra.main(version_base="1.2", config_path="config", config_name="config")
 def run_training(cfg: Config):
-    """Main training function with comprehensive dashboard integration"""
-    global current_trainer, current_env, current_data_manager, dashboard
+    """Main training function with metrics integration"""
+    global current_trainer, current_env, current_data_manager, metrics_manager
 
     # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
@@ -211,7 +204,7 @@ def run_training(cfg: Config):
         signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        # Setup basic logging first (will be reconfigured by comprehensive dashboard)
+        # Setup logging
         setup_rich_logging(level=logging.INFO, show_time=True, show_path=False)
 
         # Get output directory
@@ -226,25 +219,13 @@ def run_training(cfg: Config):
         os.makedirs(model_dir, exist_ok=True)
 
         # Log startup info
-        logging.info("🚀 Starting FX-AI Training System with Comprehensive Dashboard")
+        logging.info("🚀 Starting FX-AI Training System with Metrics Integration")
         logging.info(f"📁 Output directory: {output_dir}")
 
         # Save config for reference
         config_path = os.path.join(output_dir, "config_used.yaml")
         with open(config_path, 'w') as f:
             f.write(OmegaConf.to_yaml(cfg))
-        logging.info(f"💾 Configuration saved to: {config_path}")
-
-        # UPDATED: Initialize comprehensive dashboard early and start it immediately
-        if cfg.env.render_mode == "dashboard":
-            # UPDATED: Use comprehensive dashboard with configurable log height
-            dashboard_log_height = getattr(cfg.env, 'dashboard_log_height', 25)
-            dashboard = TradingDashboard(log_height=dashboard_log_height)
-            dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.1, "Setting up system...")
-            dashboard.start()
-            logging.info("Comprehensive Trading Dashboard started and logging configured")
-        else:
-            dashboard = None
 
         # Check continuous training mode
         continuous_mode = getattr(cfg.training, 'enabled', False)
@@ -255,28 +236,6 @@ def run_training(cfg: Config):
         if continuous_mode:
             logging.info(f"🔄 Continuous training mode enabled. Best models dir: {best_models_dir}")
 
-        # Initialize W&B if enabled
-        if cfg.wandb.enabled:
-            try:
-                dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.2, "Initializing W&B...")
-                wandb.init(
-                    project=cfg.wandb.project_name,
-                    entity=cfg.wandb.entity,
-                    config=OmegaConf.to_container(cfg, resolve=True),
-                    save_code=cfg.wandb.log_code,
-                    dir=output_dir
-                )
-                logging.info(f"📊 W&B initialized: {wandb.run.name} ({wandb.run.id})")
-            except Exception as e:
-                logging.error(f"Failed to initialize W&B: {e}")
-                logging.warning("Continuing without W&B...")
-
-        # Create data provider and manager
-        dashboard.set_training_stage(TrainingStage.LOADING_DATA, 0.3, "Creating data provider...")
-        logging.info("📂 Initializing data provider and manager")
-        data_provider = create_data_provider(cfg)
-        current_data_manager = DataManager(provider=data_provider, logger=logging.getLogger("DataManager"))
-
         # Get symbol and date range
         symbol = cfg.data.symbol
         start_date = cfg.data.start_date
@@ -285,13 +244,29 @@ def run_training(cfg: Config):
         logging.info(f"📈 Trading symbol: {symbol}")
         logging.info(f"📅 Date range: {start_date} to {end_date}")
 
-        # UPDATED: Set comprehensive dashboard symbol and capital
-        if dashboard:
-            dashboard.set_symbol(symbol)
-            dashboard.set_initial_capital(cfg.simulation.portfolio_config.initial_cash)
-            # Set model name with symbol for display
-            model_name = f"PPO_Transformer_v1.0_{symbol}"
-            dashboard.set_model_name(model_name)
+        # Initialize metrics system
+        if cfg.wandb.enabled:
+            logging.info("📊 Initializing metrics system with W&B integration")
+            metrics_manager, metrics_integrator = create_trading_metrics_system(
+                project_name=cfg.wandb.project_name,
+                symbol=symbol,
+                initial_capital=cfg.simulation.portfolio_config.initial_cash,
+                entity=cfg.wandb.entity,
+                run_name=f"continuous_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}" if continuous_mode else None
+            )
+
+            # Start system tracking
+            metrics_integrator.start_system_tracking()
+            logging.info("✅ Metrics system initialized and tracking started")
+        else:
+            logging.warning("W&B disabled - no metrics will be tracked")
+            metrics_manager = None
+            metrics_integrator = None
+
+        # Create data provider and manager
+        logging.info("📂 Initializing data provider and manager")
+        data_provider = create_data_provider(cfg)
+        current_data_manager = DataManager(provider=data_provider, logger=logging.getLogger("DataManager"))
 
         # Initialize model manager
         model_manager = ModelManager(
@@ -303,13 +278,12 @@ def run_training(cfg: Config):
         )
 
         # Create environment
-        dashboard.set_training_stage(TrainingStage.SETTING_UP_ENV, 0.4, "Creating trading environment...")
-        logging.info(f"🏗️ Creating comprehensive trading environment for {symbol}")
+        logging.info(f"🏗️ Creating trading environment for {symbol}")
         current_env = TradingEnvironment(
             config=cfg,
             data_manager=current_data_manager,
             logger=logging.getLogger("TradingEnv"),
-            dashboard=dashboard,  # UPDATED: Pass comprehensive dashboard
+            metrics_integrator=metrics_integrator  # Pass metrics instead of dashboard
         )
 
         # Setup environment session
@@ -333,7 +307,6 @@ def run_training(cfg: Config):
         device = select_device(cfg.training.device)
 
         # Create model
-        dashboard.set_training_stage(TrainingStage.LOADING_MODEL, 0.5, "Creating transformer model...")
         logging.info("🧠 Creating multi-branch transformer model")
         model_config = OmegaConf.to_container(cfg.model, resolve=True)
 
@@ -350,15 +323,26 @@ def run_training(cfg: Config):
             logging.error(f"Error creating model: {e}")
             raise
 
+        # Update metrics system with model
+        if metrics_integrator:
+            optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
+            # Add model and optimizer to metrics system
+            from metrics.collectors.model_metrics import ModelMetricsCollector, OptimizerMetricsCollector
+            model_collector = ModelMetricsCollector(model)
+            optimizer_collector = OptimizerMetricsCollector(optimizer)
+            metrics_manager.register_collector(model_collector)
+            metrics_manager.register_collector(optimizer_collector)
+
         # Load best model for continuous training
         loaded_metadata = {}
         if continuous_mode and load_best_model:
             best_model_info = model_manager.find_best_model()
             if best_model_info:
                 logging.info(f"📂 Loading best model: {best_model_info['path']}")
-                dashboard.set_training_stage(TrainingStage.LOADING_MODEL, 0.7, "Loading previous model...")
 
-                optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
+                if not metrics_integrator:
+                    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
+
                 model, training_state = model_manager.load_model(model, optimizer, best_model_info['path'])
                 loaded_metadata = training_state.get('metadata', {})
 
@@ -370,7 +354,6 @@ def run_training(cfg: Config):
                 logging.info("🆕 No previous model found. Starting fresh.")
 
         # Set up training callbacks
-        dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.8, "Setting up callbacks...")
         logging.info("⚙️ Setting up training callbacks")
         callbacks = [
             ModelCheckpointCallback(
@@ -390,23 +373,6 @@ def run_training(cfg: Config):
                 )
             )
             logging.info(f"⏹️ Early stopping enabled (patience: {cfg.callbacks.early_stopping.patience})")
-
-        # Add W&B callback if enabled
-        if cfg.wandb.enabled:
-            try:
-                wandb_callback = WandbCallback(
-                    project_name=cfg.wandb.project_name,
-                    entity=cfg.wandb.entity,
-                    log_freq=cfg.wandb.log_frequency.steps,
-                    config=OmegaConf.to_container(cfg, resolve=True),
-                    log_model=cfg.wandb.log_model,
-                    log_code=cfg.wandb.log_code
-                )
-                callbacks.append(wandb_callback)
-                logging.info("📊 W&B callback added successfully")
-            except Exception as e:
-                logging.error(f"Failed to initialize W&B callback: {e}")
-                logging.warning("Continuing without W&B callback...")
 
         # Add continuous training callback if in continuous mode
         if continuous_mode:
@@ -441,42 +407,17 @@ def run_training(cfg: Config):
             "rollout_steps": cfg.training.buffer_size
         }
 
-        logging.info("⚙️ Training parameters configured")
-
         # Create trainer
-        dashboard.set_training_stage(TrainingStage.INITIALIZING, 0.9, "Creating PPO trainer...")
         current_trainer = PPOTrainer(
             env=current_env,
             model=model,
+            metrics_integrator=metrics_integrator,  # Pass metrics integrator
             model_config=model_config,
             device=device,
             output_dir=output_dir,
-            use_wandb=cfg.wandb.enabled,
             callbacks=callbacks,
-            dashboard=dashboard,  # UPDATED: Pass comprehensive dashboard to trainer
             **training_params
         )
-
-        # UPDATED: Update comprehensive dashboard with initial training info
-        if dashboard:
-            dashboard.set_training_info(
-                episode_num=0,
-                total_episodes=0,
-                total_steps=0,
-                update_count=0,
-                buffer_size=cfg.training.buffer_size,
-                is_training=False,
-                is_evaluating=False,
-                learning_rate=cfg.training.lr
-            )
-
-            # Update comprehensive dashboard with training metrics
-            dashboard.update_training_metrics({
-                'learning_rate': cfg.training.lr,
-                'batch_size': cfg.training.batch_size,
-                'buffer_size': cfg.training.buffer_size,
-                'rollout_steps': cfg.training.buffer_size
-            })
 
         # Check for interruption before training
         if training_interrupted:
@@ -486,9 +427,12 @@ def run_training(cfg: Config):
         # Train the model
         total_updates = cfg.training.total_updates
         total_steps = total_updates * cfg.training.buffer_size
-        dashboard.set_training_stage(TrainingStage.COLLECTING_ROLLOUT, 0.0, f"Starting training for {total_updates} updates")
 
-        logging.info(f"🚀 Starting comprehensive training for approximately {total_steps} steps ({total_updates} updates)")
+        logging.info(f"🚀 Starting training for approximately {total_steps} steps ({total_updates} updates)")
+
+        # Start training metrics
+        if metrics_integrator:
+            metrics_integrator.start_training()
 
         # Evaluate before training if in continuous mode
         if continuous_mode and getattr(cfg.training, 'startup_evaluation', False) and load_best_model:
@@ -496,14 +440,10 @@ def run_training(cfg: Config):
                 logging.warning("Training interrupted before startup evaluation")
                 return {}
 
-            dashboard.set_training_stage(TrainingStage.EVALUATING, 0.0, "Initial evaluation...")
             logging.info("🔍 Performing initial evaluation...")
             try:
                 eval_stats = current_trainer.evaluate(n_episodes=5)
                 logging.info(f"📊 Initial evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}")
-
-                if cfg.wandb.enabled and wandb.run:
-                    wandb.log({"initial_eval": eval_stats})
             except Exception as e:
                 if training_interrupted:
                     logging.warning("Evaluation interrupted by user")
@@ -515,140 +455,37 @@ def run_training(cfg: Config):
             return {}
 
         try:
-            # UPDATED: Enhanced training loop with comprehensive dashboard updates
-            training_stats = {}
-            update_counter = 0
-            last_dashboard_update = 0
-
-            while update_counter < total_updates and not training_interrupted:
-                try:
-                    # Update comprehensive dashboard for rollout collection
-                    progress = update_counter / total_updates
-                    if update_counter - last_dashboard_update >= 1:  # Update every iteration
-                        dashboard.set_training_stage(
-                            TrainingStage.COLLECTING_ROLLOUT,
-                            progress,
-                            f"Update {update_counter + 1}/{total_updates} - Collecting rollout..."
-                        )
-
-                        # UPDATED: Update comprehensive training info on dashboard
-                        if dashboard:
-                            dashboard.set_training_info(
-                                episode_num=getattr(current_trainer, 'global_episode_counter', 0),
-                                total_episodes=0,
-                                total_steps=getattr(current_trainer, 'global_step_counter', 0),
-                                update_count=update_counter,
-                                buffer_size=cfg.training.buffer_size,
-                                is_training=True,
-                                is_evaluating=False,
-                                learning_rate=cfg.training.lr
-                            )
-                        last_dashboard_update = update_counter
-
-                    if training_interrupted:
-                        break
-
-                    # Collect rollout data
-                    rollout_stats = current_trainer.collect_rollout_data()
-
-                    if training_interrupted:
-                        break
-
-                    # Update comprehensive dashboard for policy update
-                    dashboard.set_training_stage(
-                        TrainingStage.UPDATING_POLICY,
-                        progress,
-                        f"Update {update_counter + 1}/{total_updates} - Updating policy..."
-                    )
-
-                    # Update policy
-                    update_metrics = current_trainer.update_policy()
-
-                    # UPDATED: Update comprehensive dashboard with metrics
-                    if update_counter % 2 == 0 and dashboard:  # Update metrics every other iteration
-                        combined_metrics = {}
-                        combined_metrics.update(rollout_stats)
-                        combined_metrics.update(update_metrics)
-                        combined_metrics.update({
-                            'update_count': update_counter + 1,
-                            'total_updates': total_updates,
-                            'progress': progress
-                        })
-
-                        dashboard.update_training_metrics(combined_metrics)
-
-                    # Call callbacks
-                    for callback in current_trainer.callbacks:
-                        if hasattr(callback, 'on_update_iteration_end'):
-                            callback.on_update_iteration_end(current_trainer, update_counter, update_metrics, rollout_stats)
-
-                    update_counter += 1
-
-                    # Log progress less frequently to avoid spam
-                    if update_counter % 10 == 0:
-                        logging.info(f"📈 Completed {update_counter}/{total_updates} updates. "
-                                     f"Mean reward: {rollout_stats.get('mean_reward', 0):.2f}")
-
-                except KeyboardInterrupt:
-                    logging.warning("Training interrupted by KeyboardInterrupt")
-                    break
-                except Exception as e:
-                    if training_interrupted:
-                        logging.warning("Training interrupted during update")
-                        break
-                    else:
-                        logging.error(f"Error during training update {update_counter}: {e}")
-                        continue
+            # Main training loop
+            training_stats = current_trainer.train(
+                total_training_steps=total_steps,
+                eval_freq_steps=total_steps // 10  # Evaluate 10 times during training
+            )
 
             # Handle training completion
             if training_interrupted:
                 logging.warning("⚠️ Training was interrupted by user")
-                dashboard.set_training_stage(TrainingStage.ERROR, 1.0, "Training interrupted by user")
                 training_stats = {
                     "interrupted": True,
-                    "completed_updates": update_counter,
+                    "completed_updates": getattr(current_trainer, 'global_update_counter', 0),
                     "total_planned_updates": total_updates
                 }
             else:
                 logging.info("🎉 Training completed successfully!")
-                dashboard.set_training_stage(TrainingStage.COMPLETED, 1.0, f"Training completed - {update_counter} updates")
                 training_stats = {
                     "total_episodes": getattr(current_trainer, 'global_episode_counter', 0),
                     "total_steps": getattr(current_trainer, 'global_step_counter', 0),
-                    "completed_updates": update_counter,
+                    "completed_updates": getattr(current_trainer, 'global_update_counter', 0),
                     "interrupted": False
                 }
-
-            # Final model evaluation (only if not interrupted)
-            if not training_interrupted:
-                dashboard.set_training_stage(TrainingStage.EVALUATING, 1.0, "Final evaluation...")
-                logging.info("🔍 Evaluating best model")
-
-                best_model_info = model_manager.find_best_model()
-                if best_model_info:
-                    model, _ = model_manager.load_model(model, None, best_model_info['path'])
-                    logging.info(f"📂 Loaded best model for evaluation: {best_model_info['path']}")
-
-                try:
-                    eval_stats = current_trainer.evaluate(n_episodes=10)
-                    logging.info(f"📊 Final evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}")
-
-                    if cfg.wandb.enabled and wandb.run:
-                        wandb.log({"final_eval": eval_stats})
-                except Exception as e:
-                    logging.error(f"Error during final evaluation: {e}")
 
             return training_stats
 
         except KeyboardInterrupt:
             logging.warning("⚠️ Training interrupted by user")
-            dashboard.set_training_stage(TrainingStage.ERROR, 1.0, "Training interrupted")
             return {"interrupted": True}
 
     except Exception as e:
         logging.error(f"Critical error: {e}")
-        if dashboard:
-            dashboard.set_training_stage(TrainingStage.ERROR, 1.0, f"Critical error: {str(e)[:50]}...")
         return {"error": str(e)}
 
     finally:
