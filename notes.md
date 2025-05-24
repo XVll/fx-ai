@@ -11,7 +11,7 @@ Todo:
 # Log in to W&B
 wandb login
 ```
-
+ For this task we created files inside metrics folder to set foundation manager, transmitters, collectors,integrators etc, now we will continue to integrate rest of the project, ignore obselete files after these changes and list them so I will delete. While implementing changes adjust logging too, log important stuff, warning and errors since we do already keep track all metrics no need to log them again, I like to read console, when there is 100 log flowing every second it becomes unreadable. Also unneceassary log configuration and preperation since we do not use live dashboard they are not need ed just rich handler.
 ### Optimizing hyperparameters
 
 ```bash
