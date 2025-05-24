@@ -273,6 +273,13 @@ class TradingEnvironment(gym.Env):
                                "termination_reason": TerminationReasonEnum.SETUP_FAILURE.value}
 
         current_sim_time = initial_market_state['timestamp_utc']
+        
+        # Start visualization tracking after we have the market state
+        if self.metrics_integrator and hasattr(self.metrics_integrator, 'metrics_manager'):
+            episode_date = current_sim_time.strftime('%Y-%m-%d')
+            self.metrics_integrator.metrics_manager.start_episode_visualization(
+                self.episode_number, self.primary_asset, episode_date
+            )
 
         self.portfolio_manager.reset(episode_start_timestamp=current_sim_time)
         self.initial_capital_for_session = self.portfolio_manager.initial_capital
@@ -692,6 +699,49 @@ class TradingEnvironment(gym.Env):
             # Record environment step
             action_name = self._last_decoded_action['type'].name if self._last_decoded_action else 'UNKNOWN'
             is_invalid = bool(self._last_decoded_action.get('invalid_reason')) if self._last_decoded_action else False
+            
+            # Collect visualization data
+            if hasattr(self.metrics_integrator, 'metrics_manager'):
+                # Use the most recent price available
+                viz_price = price_for_decision_val  # Always defined
+                if market_state_next_t:
+                    viz_price = market_state_next_t.get('current_price', price_for_decision_val)
+                
+                viz_data = {
+                    'price': viz_price,
+                    'volume': market_state_next_t.get('total_volume', 0) if market_state_next_t else 0,
+                    'position': portfolio_state_next_t['positions'].get(self.primary_asset, {}).get('quantity', 0),
+                    'reward': reward,
+                    'action': action_name,
+                    'vwap': market_state_next_t.get('vwap', 0) if market_state_next_t else 0,
+                }
+                
+                # Add feature data if available
+                if hasattr(self.feature_extractor, 'last_features'):
+                    features = self.feature_extractor.last_features
+                    if features:
+                        viz_data.update({
+                            'rsi': features.get('rsi', 0),
+                            'volatility': features.get('volatility_1m', 0),
+                            'sma_fast': features.get('sma_20', 0),
+                            'sma_slow': features.get('sma_50', 0),
+                            'momentum': features.get('momentum_1m', 0),
+                            'volume_ratio': features.get('volume_ratio', 0),
+                        })
+                
+                self.metrics_integrator.metrics_manager.collect_step_visualization(viz_data)
+                
+                # Record trades for visualization
+                if fill_details_list:
+                    for fill in fill_details_list:
+                        trade_data = {
+                            'action': 'buy' if fill['order_side'] == OrderSideEnum.BUY else 'sell',
+                            'price': fill['executed_price'],
+                            'quantity': fill['executed_quantity'],
+                            'pnl': portfolio_state_next_t['realized_pnl_session'] - self._last_portfolio_state_before_action['realized_pnl_session'],
+                            'fees': fill['commission'] + fill['fees']
+                        }
+                        self.metrics_integrator.metrics_manager.collect_trade_visualization(trade_data)
 
             self.metrics_integrator.record_environment_step(
                 reward=reward,
@@ -705,7 +755,11 @@ class TradingEnvironment(gym.Env):
             self._update_portfolio_metrics(portfolio_state_next_t)
 
             # Update position metrics
-            self._update_position_metrics(portfolio_state_next_t, price_for_next_val or price_for_decision_val)
+            # Use the most recent price available for position metrics
+            position_price = price_for_decision_val
+            if market_state_next_t:
+                position_price = market_state_next_t.get('current_price', price_for_decision_val)
+            self._update_position_metrics(portfolio_state_next_t, position_price)
 
         if terminated or truncated:
             # Comprehensive episode summary
@@ -734,6 +788,10 @@ class TradingEnvironment(gym.Env):
             if self.metrics_integrator:
                 self.metrics_integrator.end_episode(self.episode_total_reward, self.current_step)
                 self.metrics_integrator.record_episode_end(self.episode_total_reward)
+                
+                # Generate and send episode visualizations
+                if hasattr(self.metrics_integrator, 'metrics_manager'):
+                    self.metrics_integrator.metrics_manager.end_episode_visualization()
 
             # Enhanced episode summary logging
             total_actions = sum(self.action_counts.values())
