@@ -11,6 +11,7 @@ from .collectors.model_metrics import ModelMetricsCollector, OptimizerMetricsCol
 from .collectors.training_metrics import TrainingMetricsCollector, EvaluationMetricsCollector
 from .collectors.trading_metrics import PortfolioMetricsCollector, PositionMetricsCollector, TradeMetricsCollector
 from .collectors.execution_metrics import ExecutionMetricsCollector, EnvironmentMetricsCollector, SystemMetricsCollector
+from .collectors.visualization_metrics import VisualizationMetrics
 from .core import MetricCategory, MetricFilter
 
 
@@ -75,6 +76,11 @@ class MetricsFactory:
     def create_system_collectors() -> List:
         """Create system-related collectors"""
         return [SystemMetricsCollector()]
+    
+    @staticmethod
+    def create_visualization_collectors() -> List:
+        """Create visualization-related collectors"""
+        return [VisualizationMetrics()]
 
     @staticmethod
     def create_complete_metrics_system(
@@ -116,6 +122,9 @@ class MetricsFactory:
         # System collectors (optional)
         if include_system:
             collectors.extend(MetricsFactory.create_system_collectors())
+            
+        # Visualization collectors (always included for episode tracking)
+        collectors.extend(MetricsFactory.create_visualization_collectors())
 
         # Register all collectors
         for collector in collectors:

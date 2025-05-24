@@ -55,6 +55,9 @@ class MetricsManager:
 
         # Frequency-based collection tracking
         self._last_collections: Dict[str, float] = defaultdict(float)
+        
+        # Visualization collector reference
+        self.visualization_collector = None
 
         self.logger.info("MetricsManager initialized")
 
@@ -67,6 +70,10 @@ class MetricsManager:
             # Register collector's metrics
             for metric_name, metadata in collector._metrics.items():
                 self._metric_registry[metric_name] = metadata
+                
+            # Special handling for visualization collector
+            if hasattr(collector, 'start_episode') and hasattr(collector, 'end_episode'):
+                self.visualization_collector = collector
 
             self.logger.info(f"Registered collector: {collector_id} with {len(collector._metrics)} metrics")
             return collector_id
@@ -338,3 +345,31 @@ class MetricsManager:
             "is_evaluating": self.is_evaluating,
             "auto_transmit_active": self._transmit_thread is not None
         }
+        
+    # Episode visualization methods
+    def start_episode_visualization(self, episode_num: int, symbol: str, date: str):
+        """Start collecting visualization data for a new episode"""
+        if self.visualization_collector:
+            self.visualization_collector.start_episode(episode_num, symbol, date)
+            
+    def collect_step_visualization(self, step_data: Dict[str, Any]):
+        """Collect visualization data for a single step"""
+        if self.visualization_collector:
+            self.visualization_collector.collect_step(step_data)
+            
+    def collect_trade_visualization(self, trade_data: Dict[str, Any]):
+        """Record a trade for visualization"""
+        if self.visualization_collector:
+            self.visualization_collector.collect_trade(trade_data)
+            
+    def end_episode_visualization(self):
+        """Generate and transmit episode visualizations"""
+        if self.visualization_collector:
+            viz_metrics = self.visualization_collector.end_episode()
+            if viz_metrics:
+                # Transmit visualization metrics through all transmitters
+                for transmitter in self.transmitters:
+                    try:
+                        transmitter.transmit(viz_metrics, self.current_step)
+                    except Exception as e:
+                        self.logger.error(f"Error transmitting visualizations: {e}")
