@@ -1,4 +1,33 @@
-  self.static_feature_names: List[str] = [
+# Metrics
+ 1. Training (13 metrics)
+    - Process metrics: episode_count, episode_reward_mean/std, episode_length_mean, episode_duration_mean, global_step, steps_per_second, update_count, update_duration, rollout_duration, training_duration, episodes_per_hour, updates_per_hour
+    - Evaluation metrics: eval_reward_mean/std, eval_length_mean, eval_count
+  2. Trading (15 metrics)
+    - Portfolio (9): total_equity, cash_balance, unrealized_pnl, realized_pnl_session, total_return_pct, max_drawdown_pct, current_drawdown_pct, sharpe_ratio, volatility_pct
+    - Position (6): quantity, side, avg_entry_price, market_value, unrealized_pnl, unrealized_pnl_pct, current_price
+    - Trades (8): total_trades, win_rate, avg_trade_pnl, avg_winning_trade, avg_losing_trade, profit_factor, largest_win, largest_loss
+  3. Model (12 metrics)
+    - Model metrics: actor_loss, critic_loss, total_loss, entropy, gradient_norm, gradient_max, param_norm, param_count, clip_fraction, approx_kl, explained_variance, learning_rate
+    - Optimizer metrics: learning_rate, momentum, weight_decay
+  4. Execution (11 metrics)
+    - total_fills, total_volume, total_turnover, total_commission, total_fees, total_slippage, avg_commission_per_share, avg_slippage_bps, avg_fill_size, total_transaction_costs, transaction_cost_bps
+  5. Environment (7+ metrics)
+    - Core: total_env_steps, step_reward, step_reward_mean, episode_reward_current, invalid_action_rate, action_hold_pct, action_buy_pct, action_sell_pct
+    - Dynamic reward components and action efficiency metrics
+  6. System (3 metrics)
+    - uptime_seconds, memory_usage_mb, cpu_usage_pct
+Your system correctly defines and collects:
+
+  - Training: 17 metrics (13 process + 4 evaluation)
+  - Trading: 24 metrics (9 portfolio + 7 position + 8 trades)
+  - Model: 12 metrics (including optimizer metrics)
+  - Execution: 11 metrics ✓
+  - Environment: 10+ metrics (including dynamic reward components)
+  - System: 3 metrics (your collectors) + W&B auto-collected system metrics
+
+
+
+self.static_feature_names: List[str] = [
             "S_Time_Of_Day_Seconds_Encoded_Sin",
             "S_Time_Of_Day_Seconds_Encoded_Cos",
             "S_Market_Cap_Million",

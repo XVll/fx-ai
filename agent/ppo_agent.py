@@ -555,7 +555,8 @@ class PPOTrainer:
                 self.logger.info(f"   🏆 Episodes: {self.global_episode_counter} | Updates: {self.global_update_counter}")
 
             # Evaluation
-            if eval_freq_steps and (self.global_update_counter % (eval_freq_steps // self.rollout_steps) == 0
+            eval_freq_updates = max(1, eval_freq_steps // self.rollout_steps) if eval_freq_steps else 0
+            if eval_freq_steps and (self.global_update_counter % eval_freq_updates == 0
                                     or self.global_step_counter >= total_training_steps):
 
                 eval_stats = self.evaluate(n_episodes=10)

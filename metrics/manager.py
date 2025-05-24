@@ -105,7 +105,11 @@ class MetricsManager:
         """Update the current state for metric collection"""
         with self._lock:
             if step is not None:
+                old_step = self.current_step
                 self.current_step = step
+                # Debug logging for step changes
+                if old_step != step and step % 50 == 0:
+                    self.logger.debug(f"Step updated: {old_step} -> {step}")
             if episode is not None:
                 self.current_episode = episode
             if update is not None:
@@ -131,6 +135,10 @@ class MetricsManager:
         current_time = time.time()
 
         with self._lock:
+            # Capture state values at the start of collection to ensure consistency
+            collection_step = self.current_step
+            collection_episode = self.current_episode
+            
             for collector_id, collector in self.collectors.items():
                 if not collector.enabled:
                     continue
@@ -152,9 +160,9 @@ class MetricsManager:
                 try:
                     collector_metrics = collector.collect()
                     for name, value in collector_metrics.items():
-                        # Add current state to metric value
-                        value.step = self.current_step
-                        value.episode = self.current_episode
+                        # Add current state to metric value using captured values
+                        value.step = collection_step
+                        value.episode = collection_episode
                         value.timestamp = current_time
 
                         collected_metrics[name] = value
@@ -207,6 +215,10 @@ class MetricsManager:
                          filter_obj: Optional[MetricFilter] = None):
         """Transmit metrics to all registered transmitters"""
 
+        # Capture current step atomically before collection/transmission
+        with self._lock:
+            transmit_step = self.current_step
+
         if metrics is None:
             # Collect metrics from all collectors
             metrics = self.collect_metrics()
@@ -223,10 +235,10 @@ class MetricsManager:
                     filtered_metrics[name] = value
             metrics = filtered_metrics
 
-        # Transmit to all transmitters
+        # Transmit to all transmitters using the captured step
         for transmitter in self.transmitters:
             try:
-                transmitter.transmit(metrics, self.current_step)
+                transmitter.transmit(metrics, transmit_step)
             except Exception as e:
                 self.logger.error(f"Error transmitting with {type(transmitter).__name__}: {e}")
 
@@ -285,7 +297,9 @@ class MetricsManager:
         """Background loop for automatic metric transmission"""
         while not self._stop_auto_transmit.wait(self.transmit_interval):
             try:
-                self.transmit_metrics()
+                # Only transmit if we have actual data (training has started)
+                if self.current_step > 0 or self.is_training:
+                    self.transmit_metrics()
             except Exception as e:
                 self.logger.error(f"Error in auto transmit loop: {e}")
 

@@ -141,20 +141,20 @@ class ModelMetricsCollector(MetricCollector):
             # Parameter count (only calculate once)
             if "param_count" not in self._previous_values:
                 param_count = sum(p.numel() for p in self.model.parameters())
-                metrics[self.register_metric("param_count", self._get_metadata("param_count"))] = MetricValue(param_count)
+                metrics[f"{self.category.value}.{self.name}.param_count"] = MetricValue(param_count)
                 self._previous_values["param_count"] = param_count
 
             # Parameter norm
             param_norm = self._calculate_parameter_norm()
             if param_norm is not None:
-                metrics[self.register_metric("param_norm", self._get_metadata("param_norm"))] = MetricValue(param_norm)
+                metrics[f"{self.category.value}.{self.name}.param_norm"] = MetricValue(param_norm)
 
             # Gradient metrics (if gradients are available)
             grad_norm, grad_max = self._calculate_gradient_metrics()
             if grad_norm is not None:
-                metrics[self.register_metric("gradient_norm", self._get_metadata("gradient_norm"))] = MetricValue(grad_norm)
+                metrics[f"{self.category.value}.{self.name}.gradient_norm"] = MetricValue(grad_norm)
             if grad_max is not None:
-                metrics[self.register_metric("gradient_max", self._get_metadata("gradient_max"))] = MetricValue(grad_max)
+                metrics[f"{self.category.value}.{self.name}.gradient_max"] = MetricValue(grad_max)
 
         except Exception as e:
             self.logger.debug(f"Error collecting model metrics: {e}")
@@ -164,29 +164,32 @@ class ModelMetricsCollector(MetricCollector):
     def record_loss_metrics(self, actor_loss: float, critic_loss: float,
                             entropy: float, total_loss: Optional[float] = None):
         """Record loss metrics manually"""
-        metrics = {self.register_metric("actor_loss", self._get_metadata("actor_loss")): MetricValue(actor_loss),
-                   self.register_metric("critic_loss", self._get_metadata("critic_loss")): MetricValue(critic_loss),
-                   self.register_metric("entropy", self._get_metadata("entropy")): MetricValue(entropy)}
+        metrics = {
+            f"{self.category.value}.{self.name}.actor_loss": MetricValue(actor_loss),
+            f"{self.category.value}.{self.name}.critic_loss": MetricValue(critic_loss),
+            f"{self.category.value}.{self.name}.entropy": MetricValue(entropy)
+        }
 
         if total_loss is None:
             total_loss = actor_loss + critic_loss
-        metrics[self.register_metric("total_loss", self._get_metadata("total_loss"))] = MetricValue(total_loss)
+        metrics[f"{self.category.value}.{self.name}.total_loss"] = MetricValue(total_loss)
 
         return metrics
 
     def record_ppo_metrics(self, clip_fraction: float, approx_kl: float,
                            explained_variance: float):
         """Record PPO-specific metrics"""
-        metrics = {self.register_metric("clip_fraction", self._get_metadata("clip_fraction")): MetricValue(clip_fraction * 100),
-                   self.register_metric("approx_kl", self._get_metadata("approx_kl")): MetricValue(approx_kl),
-                   self.register_metric("explained_variance", self._get_metadata("explained_variance")): MetricValue(explained_variance * 100)}
+        metrics = {
+            f"{self.category.value}.{self.name}.clip_fraction": MetricValue(clip_fraction * 100),
+            f"{self.category.value}.{self.name}.approx_kl": MetricValue(approx_kl),
+            f"{self.category.value}.{self.name}.explained_variance": MetricValue(explained_variance * 100)
+        }
 
         return metrics
 
     def record_learning_rate(self, learning_rate: float):
         """Record current learning rate"""
-        metric_name = self.register_metric("learning_rate", self._get_metadata("learning_rate"))
-        return {metric_name: MetricValue(learning_rate)}
+        return {f"{self.category.value}.{self.name}.learning_rate": MetricValue(learning_rate)}
 
     def _calculate_parameter_norm(self) -> Optional[float]:
         """Calculate the norm of all model parameters"""
@@ -294,16 +297,16 @@ class OptimizerMetricsCollector(MetricCollector):
 
                 # Learning rate
                 lr = param_group.get('lr', 0.0)
-                metrics[self.register_metric("learning_rate", self._get_metadata("learning_rate"))] = MetricValue(lr)
+                metrics[f"{self.category.value}.{self.name}.learning_rate"] = MetricValue(lr)
 
                 # Momentum (if available)
                 momentum = param_group.get('momentum')
                 if momentum is not None:
-                    metrics[self.register_metric("momentum", self._get_metadata("momentum"))] = MetricValue(momentum)
+                    metrics[f"{self.category.value}.{self.name}.momentum"] = MetricValue(momentum)
 
                 # Weight decay
                 weight_decay = param_group.get('weight_decay', 0.0)
-                metrics[self.register_metric("weight_decay", self._get_metadata("weight_decay"))] = MetricValue(weight_decay)
+                metrics[f"{self.category.value}.{self.name}.weight_decay"] = MetricValue(weight_decay)
 
         except Exception as e:
             self.logger.debug(f"Error collecting optimizer metrics: {e}")

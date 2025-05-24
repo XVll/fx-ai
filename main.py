@@ -233,12 +233,9 @@ def run_training(cfg: Config):
 
             logging.info("✅ Metrics system initialized, auto-transmission started")
 
-            # Force an initial metric to test W&B connection
-            metrics_manager.record_metric(
-                "system_startup",
-                1.0,
-                description="System startup test metric"
-            )
+            # Don't send any metrics during initialization to avoid zeros in charts
+            # W&B connection is already tested in the transmitter's _send_test_metric()
+            logging.info("📊 W&B connection established - metrics will start flowing during training")
 
         else:
             logging.warning("W&B disabled - no metrics will be tracked")
