@@ -7,7 +7,7 @@ import yaml
 import os
 
 def main():
-    sys.argv.extend(["sweep_config_file=sweep_config.yaml"])
+    sys.argv.extend(["sweep_config_file=default.yaml"])
     sys.argv.extend(["project=fx-ai"])
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", type=str, default="fx-ai", help="WandB project name")
@@ -17,13 +17,13 @@ def main():
 
     # Load the sweep config from YAML
     try:
-        with open('sweep_config.yaml', 'r') as f:
+        with open('default.yaml', 'r') as f:
             sweep_config = yaml.safe_load(f)
     except FileNotFoundError:
-        print("ERROR: sweep_config.yaml not found. Please ensure it's in the same directory.")
+        print("ERROR: default.yaml not found. Please ensure it's in the same directory.")
         return
     except yaml.YAMLError as e:
-        print(f"ERROR: Could not parse sweep_config.yaml: {e}")
+        print(f"ERROR: Could not parse default.yaml: {e}")
         return
 
     # Modify parameter keys to include '++' for Hydra override
@@ -38,7 +38,7 @@ def main():
                 new_parameters[key] = value
         sweep_config['parameters'] = new_parameters
     else:
-        print("WARNING: No 'parameters' section found in sweep_config.yaml or it is empty.")
+        print("WARNING: No 'parameters' section found in default.yaml or it is empty.")
         # Allow proceeding if the sweep has no tunable parameters (unlikely for a sweep)
 
     # Ensure the command structure uses args_no_hyphens

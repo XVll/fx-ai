@@ -16,13 +16,13 @@ wandb login
 
 ```bash
 # Run a sweep
-python run_sweep.py --config sweep_config.yaml --count 20
+python sweep.py --config default.yaml --count 20
 
 # Train with optimized parameters
 python main.py model.d_model=96 training.lr=0.0002 env.reward_scaling=2.5
 
 # Customize the sweep
-python run_sweep.py --config sweep_config.yaml --name "lr_and_layers_sweep" --count 20
+python sweep.py --config default.yaml --name "lr_and_layers_sweep" --count 20
 ```
 
 ### Analyzing trading performance

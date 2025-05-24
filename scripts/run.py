@@ -87,7 +87,7 @@ def main():
         return
 
     # Determine which script to use
-    script_path = "main_continuous.py" if os.path.exists("main_continuous.py") else "main.py"
+    script_path = "main.py" if os.path.exists("main.py") else "main.py"
 
     # Run the appropriate command
     if args.command == "train":
@@ -162,7 +162,7 @@ def run_backtest(args, script_path):
 
 def run_sweep(args):
     """Run hyperparameter sweep with the specified arguments."""
-    cmd = ["python", "run_sweep.py", f"--project={args.project}", f"--count={args.count}"]
+    cmd = ["python", "sweep.py", f"--project={args.project}", f"--count={args.count}"]
 
     # Run the command
     logger.info(f"Running command: {' '.join(cmd)}")
