@@ -130,33 +130,32 @@ class ExecutionMetricsCollector(MetricCollector):
 
         try:
             # Basic counters
-            metrics[self.register_metric("total_fills", self._get_metadata("total_fills"))] = MetricValue(self.total_fills)
-            metrics[self.register_metric("total_volume", self._get_metadata("total_volume"))] = MetricValue(self.total_volume)
-            metrics[self.register_metric("total_turnover", self._get_metadata("total_turnover"))] = MetricValue(self.total_turnover)
-            metrics[self.register_metric("total_commission", self._get_metadata("total_commission"))] = MetricValue(self.total_commission)
-            metrics[self.register_metric("total_fees", self._get_metadata("total_fees"))] = MetricValue(self.total_fees)
-            metrics[self.register_metric("total_slippage", self._get_metadata("total_slippage"))] = MetricValue(self.total_slippage)
+            metrics[f"{self.category.value}.{self.name}.total_fills"] = MetricValue(self.total_fills)
+            metrics[f"{self.category.value}.{self.name}.total_volume"] = MetricValue(self.total_volume)
+            metrics[f"{self.category.value}.{self.name}.total_turnover"] = MetricValue(self.total_turnover)
+            metrics[f"{self.category.value}.{self.name}.total_commission"] = MetricValue(self.total_commission)
+            metrics[f"{self.category.value}.{self.name}.total_fees"] = MetricValue(self.total_fees)
+            metrics[f"{self.category.value}.{self.name}.total_slippage"] = MetricValue(self.total_slippage)
 
             # Calculated metrics
             total_costs = self.total_commission + self.total_fees + self.total_slippage
-            metrics[self.register_metric("total_transaction_costs", self._get_metadata("total_transaction_costs"))] = MetricValue(total_costs)
+            metrics[f"{self.category.value}.{self.name}.total_transaction_costs"] = MetricValue(total_costs)
 
             if self.total_volume > 0:
                 avg_commission_per_share = self.total_commission / self.total_volume
-                metrics[self.register_metric("avg_commission_per_share", self._get_metadata("avg_commission_per_share"))] = MetricValue(
-                    avg_commission_per_share)
+                metrics[f"{self.category.value}.{self.name}.avg_commission_per_share"] = MetricValue(avg_commission_per_share)
 
             if self.total_turnover > 0:
                 cost_bps = (total_costs / self.total_turnover) * 10000
-                metrics[self.register_metric("transaction_cost_bps", self._get_metadata("transaction_cost_bps"))] = MetricValue(cost_bps)
+                metrics[f"{self.category.value}.{self.name}.transaction_cost_bps"] = MetricValue(cost_bps)
 
             if self.slippage_history and self.total_turnover > 0:
                 avg_slippage_bps = np.mean(self.slippage_history)
-                metrics[self.register_metric("avg_slippage_bps", self._get_metadata("avg_slippage_bps"))] = MetricValue(avg_slippage_bps)
+                metrics[f"{self.category.value}.{self.name}.avg_slippage_bps"] = MetricValue(avg_slippage_bps)
 
             if self.fill_sizes:
                 avg_fill_size = np.mean(self.fill_sizes)
-                metrics[self.register_metric("avg_fill_size", self._get_metadata("avg_fill_size"))] = MetricValue(avg_fill_size)
+                metrics[f"{self.category.value}.{self.name}.avg_fill_size"] = MetricValue(avg_fill_size)
 
         except Exception as e:
             self.logger.debug(f"Error collecting execution metrics: {e}")
@@ -316,19 +315,19 @@ class EnvironmentMetricsCollector(MetricCollector):
 
         try:
             # Basic counters
-            metrics[self.register_metric("total_env_steps", self._get_metadata("total_env_steps"))] = MetricValue(self.total_steps)
+            metrics[f"{self.category.value}.{self.name}.total_env_steps"] = MetricValue(self.total_steps)
 
             # Step rewards
             if self.step_rewards:
                 current_reward = self.step_rewards[-1]
                 mean_reward = np.mean(self.step_rewards)
-                metrics[self.register_metric("step_reward", self._get_metadata("step_reward"))] = MetricValue(current_reward)
-                metrics[self.register_metric("step_reward_mean", self._get_metadata("step_reward_mean"))] = MetricValue(mean_reward)
+                metrics[f"{self.category.value}.{self.name}.step_reward"] = MetricValue(current_reward)
+                metrics[f"{self.category.value}.{self.name}.step_reward_mean"] = MetricValue(mean_reward)
 
             # Invalid action rate
             if self.total_steps > 0:
                 invalid_rate = (self.invalid_actions / self.total_steps) * 100
-                metrics[self.register_metric("invalid_action_rate", self._get_metadata("invalid_action_rate"))] = MetricValue(invalid_rate)
+                metrics[f"{self.category.value}.{self.name}.invalid_action_rate"] = MetricValue(invalid_rate)
 
             # Action distribution
             total_actions = sum(self.action_counts.values())
@@ -337,9 +336,9 @@ class EnvironmentMetricsCollector(MetricCollector):
                 buy_pct = (self.action_counts.get('BUY', 0) / total_actions) * 100
                 sell_pct = (self.action_counts.get('SELL', 0) / total_actions) * 100
 
-                metrics[self.register_metric("action_hold_pct", self._get_metadata("action_hold_pct"))] = MetricValue(hold_pct)
-                metrics[self.register_metric("action_buy_pct", self._get_metadata("action_buy_pct"))] = MetricValue(buy_pct)
-                metrics[self.register_metric("action_sell_pct", self._get_metadata("action_sell_pct"))] = MetricValue(sell_pct)
+                metrics[f"{self.category.value}.{self.name}.action_hold_pct"] = MetricValue(hold_pct)
+                metrics[f"{self.category.value}.{self.name}.action_buy_pct"] = MetricValue(buy_pct)
+                metrics[f"{self.category.value}.{self.name}.action_sell_pct"] = MetricValue(sell_pct)
 
         except Exception as e:
             self.logger.debug(f"Error collecting environment metrics: {e}")
@@ -489,17 +488,17 @@ class SystemMetricsCollector(MetricCollector):
             # Uptime
             if self.start_time:
                 uptime = time.time() - self.start_time
-                metrics[self.register_metric("uptime_seconds", self._get_metadata("uptime_seconds"))] = MetricValue(uptime)
+                metrics[f"{self.category.value}.{self.name}.uptime_seconds"] = MetricValue(uptime)
 
             # Memory usage
             process = psutil.Process()
             memory_mb = process.memory_info().rss / 1024 / 1024
-            metrics[self.register_metric("memory_usage_mb", self._get_metadata("memory_usage_mb"))] = MetricValue(memory_mb)
+            metrics[f"{self.category.value}.{self.name}.memory_usage_mb"] = MetricValue(memory_mb)
             self.memory_usage_history.append(memory_mb)
 
             # CPU usage
             cpu_pct = psutil.cpu_percent(interval=None)
-            metrics[self.register_metric("cpu_usage_pct", self._get_metadata("cpu_usage_pct"))] = MetricValue(cpu_pct)
+            metrics[f"{self.category.value}.{self.name}.cpu_usage_pct"] = MetricValue(cpu_pct)
 
         except ImportError:
             # psutil not available

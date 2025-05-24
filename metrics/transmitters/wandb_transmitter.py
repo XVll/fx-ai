@@ -98,6 +98,7 @@ class WandBTransmitter(MetricTransmitter):
     def _send_test_metric(self):
         """Send a test metric to verify W&B connection."""
         try:
+            # Don't specify step for initialization metrics to avoid warnings
             wandb.log({"system/test_metric": 1.0, "system/initialization_time": wandb.run.start_time})
             self.logger.info("✅ W&B connection test successful")
         except Exception as e:
@@ -154,7 +155,14 @@ class WandBTransmitter(MetricTransmitter):
                     wandb_metrics["global_step"] = step
 
                 # Log to W&B with error handling
-                wandb.log(wandb_metrics, step=step)
+                # Don't log step if it's 0 to avoid W&B warnings during initialization
+                if step is not None and step > 0:
+                    wandb.log(wandb_metrics, step=step)
+                    # Debug logging for step tracking
+                    if step % 100 == 0:
+                        self.logger.debug(f"W&B transmitted metrics at step {step}")
+                else:
+                    wandb.log(wandb_metrics)
 
                 self._total_metrics_sent += total_metrics_this_batch
 

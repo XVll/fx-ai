@@ -162,52 +162,52 @@ class TrainingMetricsCollector(MetricCollector):
 
         try:
             # Episode metrics
-            metrics[self.register_metric("episode_count", self._get_metadata("episode_count"))] = MetricValue(self.current_episode)
+            metrics[f"{self.category.value}.{self.name}.episode_count"] = MetricValue(self.current_episode)
 
             if self.episode_rewards:
                 mean_reward = np.mean(self.episode_rewards)
                 std_reward = np.std(self.episode_rewards) if len(self.episode_rewards) > 1 else 0.0
-                metrics[self.register_metric("episode_reward_mean", self._get_metadata("episode_reward_mean"))] = MetricValue(mean_reward)
-                metrics[self.register_metric("episode_reward_std", self._get_metadata("episode_reward_std"))] = MetricValue(std_reward)
+                metrics[f"{self.category.value}.{self.name}.episode_reward_mean"] = MetricValue(mean_reward)
+                metrics[f"{self.category.value}.{self.name}.episode_reward_std"] = MetricValue(std_reward)
 
             if self.episode_lengths:
                 mean_length = np.mean(self.episode_lengths)
-                metrics[self.register_metric("episode_length_mean", self._get_metadata("episode_length_mean"))] = MetricValue(mean_length)
+                metrics[f"{self.category.value}.{self.name}.episode_length_mean"] = MetricValue(mean_length)
 
             if self.episode_times:
                 mean_duration = np.mean(self.episode_times)
-                metrics[self.register_metric("episode_duration_mean", self._get_metadata("episode_duration_mean"))] = MetricValue(mean_duration)
+                metrics[f"{self.category.value}.{self.name}.episode_duration_mean"] = MetricValue(mean_duration)
 
             # Step metrics
-            metrics[self.register_metric("global_step", self._get_metadata("global_step"))] = MetricValue(self.current_step)
+            metrics[f"{self.category.value}.{self.name}.global_step"] = MetricValue(self.current_step)
 
             if self.steps_per_second_history:
                 sps = np.mean(self.steps_per_second_history)
-                metrics[self.register_metric("steps_per_second", self._get_metadata("steps_per_second"))] = MetricValue(sps)
+                metrics[f"{self.category.value}.{self.name}.steps_per_second"] = MetricValue(sps)
 
             # Update metrics
-            metrics[self.register_metric("update_count", self._get_metadata("update_count"))] = MetricValue(self.current_update)
+            metrics[f"{self.category.value}.{self.name}.update_count"] = MetricValue(self.current_update)
 
             if self.update_times:
                 mean_update_time = np.mean(self.update_times)
-                metrics[self.register_metric("update_duration", self._get_metadata("update_duration"))] = MetricValue(mean_update_time)
+                metrics[f"{self.category.value}.{self.name}.update_duration"] = MetricValue(mean_update_time)
 
             if self.rollout_times:
                 mean_rollout_time = np.mean(self.rollout_times)
-                metrics[self.register_metric("rollout_duration", self._get_metadata("rollout_duration"))] = MetricValue(mean_rollout_time)
+                metrics[f"{self.category.value}.{self.name}.rollout_duration"] = MetricValue(mean_rollout_time)
 
             # Training session metrics
             if self.training_start_time:
                 training_duration = current_time - self.training_start_time
-                metrics[self.register_metric("training_duration", self._get_metadata("training_duration"))] = MetricValue(training_duration)
+                metrics[f"{self.category.value}.{self.name}.training_duration"] = MetricValue(training_duration)
 
                 # Performance rates
                 if training_duration > 0:
                     episodes_per_hour = (self.current_episode / training_duration) * 3600
-                    metrics[self.register_metric("episodes_per_hour", self._get_metadata("episodes_per_hour"))] = MetricValue(episodes_per_hour)
+                    metrics[f"{self.category.value}.{self.name}.episodes_per_hour"] = MetricValue(episodes_per_hour)
 
                     updates_per_hour = (self.current_update / training_duration) * 3600
-                    metrics[self.register_metric("updates_per_hour", self._get_metadata("updates_per_hour"))] = MetricValue(updates_per_hour)
+                    metrics[f"{self.category.value}.{self.name}.updates_per_hour"] = MetricValue(updates_per_hour)
 
         except Exception as e:
             self.logger.debug(f"Error collecting training metrics: {e}")
@@ -353,10 +353,10 @@ class EvaluationMetricsCollector(MetricCollector):
             std_reward = np.std(self.eval_rewards) if len(self.eval_rewards) > 1 else 0.0
             mean_length = np.mean(self.eval_lengths) if self.eval_lengths else 0.0
 
-            metrics[self.register_metric("eval_reward_mean", self._get_metadata("eval_reward_mean"))] = MetricValue(mean_reward)
-            metrics[self.register_metric("eval_reward_std", self._get_metadata("eval_reward_std"))] = MetricValue(std_reward)
-            metrics[self.register_metric("eval_length_mean", self._get_metadata("eval_length_mean"))] = MetricValue(mean_length)
-            metrics[self.register_metric("eval_count", self._get_metadata("eval_count"))] = MetricValue(self.eval_count)
+            metrics[f"{self.category.value}.{self.name}.eval_reward_mean"] = MetricValue(mean_reward)
+            metrics[f"{self.category.value}.{self.name}.eval_reward_std"] = MetricValue(std_reward)
+            metrics[f"{self.category.value}.{self.name}.eval_length_mean"] = MetricValue(mean_length)
+            metrics[f"{self.category.value}.{self.name}.eval_count"] = MetricValue(self.eval_count)
 
         except Exception as e:
             self.logger.debug(f"Error collecting evaluation metrics: {e}")
