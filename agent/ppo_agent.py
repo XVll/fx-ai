@@ -14,7 +14,7 @@ from config.config import ModelConfig
 from envs.trading_env import TradingEnvironment
 from ai.transformer import MultiBranchTransformer
 from agent.utils import ReplayBuffer, convert_state_dict_to_tensors
-from agent.callbacks import TrainingCallback
+from agent.base_callbacks import TrainingCallback
 from metrics.factory import MetricsIntegrator
 from metrics.manager import MetricsManager
 

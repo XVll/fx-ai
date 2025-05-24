@@ -1,67 +1,21 @@
-# config/env/comprehensive_dashboard.yaml
-# Enhanced environment configuration with comprehensive dashboard features
+# config/env/trading.yaml - CLEAN: Simple trading environment configuration
 
 # General parameters
 training_mode: "backtesting"
-render_interval: 1  # Update every step for real-time feel
 max_episode_loss_percent: 0.9
 bankruptcy_threshold_factor: 0.9
 max_invalid_actions_per_episode: 50000
 
+# Environment settings
 state_dimension: 6000
 max_steps: 2048
 normalize_state: true
 random_reset: true
 max_position: 1.0
 position_multipliers: [0.25, 0.5, 0.75, 1.0]
-render_mode: "dashboard"  # Enable comprehensive dashboard
+render_mode: "none"  # Simple render mode without dashboard
 
-# UPDATED: Comprehensive dashboard configuration
-dashboard:
-  enabled: true
-  log_height: 15  # Height of log panel (in lines)
-  update_frequency: 0.3  # Update every 0.3 seconds for smooth experience
-  max_history_length: 1000  # Number of recent actions/fills to display
-
-  # Panel configuration
-  panels:
-    market_data:
-      show_price_changes: true
-      show_spread_bps: true
-      highlight_session_changes: true
-
-    position:
-      show_pnl_vs_entry: true
-      show_position_duration: true
-      color_code_sides: true
-
-    portfolio:
-      show_sharpe_ratio: true
-      show_max_drawdown: true
-      show_trade_count: true
-      performance_alerts: true
-
-    training_progress:
-      show_sparklines: true
-      show_eta: true
-      detailed_stage_info: true
-
-    ppo_metrics:
-      show_advanced_metrics: true
-      track_metric_history: true
-      sparkline_length: 8
-
-    reward_system:
-      show_component_breakdown: true
-      show_impact_analysis: true
-      track_reward_trends: true
-
-    action_analysis:
-      show_bias_detection: true
-      track_win_rates: true
-      show_efficiency_metrics: true
-
-# Enhanced reward configuration for better dashboard analytics
+# Reward configuration
 reward:
   weight_equity_change: 1.0
   weight_realized_pnl: 0.1
@@ -73,17 +27,3 @@ reward:
   terminal_penalty_max_loss: 10.0
   reward_scaling_factor: 0.01
   log_reward_components: true
-
-  # UPDATED: Enhanced reward tracking for dashboard
-  component_analysis:
-    enabled: true
-    track_trends: true
-    bias_detection: true
-    impact_threshold: 0.001
-
-# Performance optimization for dashboard
-performance:
-  dashboard_update_interval: 0.3  # Seconds between dashboard updates
-  metrics_history_length: 100  # Number of historical data points to keep
-  log_buffer_size: 150  # Number of log entries to keep in memory
-  sparkline_update_frequency: 5  # Update sparklines every N steps

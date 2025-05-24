@@ -1,4 +1,4 @@
-# sweep_config.yaml
+# default.yaml
 program: main.py
 method: bayes
 metric:
