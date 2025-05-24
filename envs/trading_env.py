@@ -259,6 +259,12 @@ class TradingEnvironment(gym.Env):
         if self.metrics_integrator:
             self.metrics_integrator.start_episode()
 
+        # Sync episode number with training info (for dashboard)
+        self.set_training_info(episode_num=self.episode_number, 
+                              total_episodes=self.total_episodes,
+                              total_steps=self.total_steps, 
+                              update_count=self.update_count)
+
         # Reset simulators
         self.execution_manager.reset(np_random_seed_source=self.np_random)
 
@@ -282,9 +288,15 @@ class TradingEnvironment(gym.Env):
                 self.episode_number, self.primary_asset, episode_date
             )
             
-            # Start dashboard episode tracking
+            # Start dashboard episode tracking with the correct episode number
             if hasattr(self.metrics_integrator.metrics_manager, 'dashboard_collector') and self.metrics_integrator.metrics_manager.dashboard_collector:
                 self.metrics_integrator.metrics_manager.dashboard_collector.on_episode_start(self.episode_number)
+                
+            # Update metrics manager state with current episode
+            self.metrics_integrator.metrics_manager.update_state(
+                episode=self.episode_number,
+                is_training=True
+            )
 
         self.portfolio_manager.reset(episode_start_timestamp=current_sim_time)
         self.initial_capital_for_session = self.portfolio_manager.initial_capital
@@ -736,7 +748,7 @@ class TradingEnvironment(gym.Env):
                 
                 self.metrics_integrator.metrics_manager.collect_step_visualization(viz_data)
                 
-                # Send to dashboard
+                # Send to dashboard with market state for OHLC data
                 pos_data = portfolio_state_next_t['positions'].get(self.primary_asset, {})
                 dashboard_data = {
                     'step': self.current_step,
@@ -753,7 +765,9 @@ class TradingEnvironment(gym.Env):
                     'realized_pnl': portfolio_state_next_t['realized_pnl_session'],
                     'unrealized_pnl': portfolio_state_next_t['unrealized_pnl'],
                     'action': action_name,
-                    'size': self._last_decoded_action.get('size_float', 1.0) if self._last_decoded_action else 1.0
+                    'size': self._last_decoded_action.get('size_float', 1.0) if self._last_decoded_action else 1.0,
+                    'invalid_action': is_invalid,  # Track invalid actions
+                    'market_state': market_state_next_t  # Pass full market state for OHLC
                 }
                 self.metrics_integrator.metrics_manager.update_dashboard_step(dashboard_data)
                 
@@ -769,17 +783,18 @@ class TradingEnvironment(gym.Env):
                         }
                         self.metrics_integrator.metrics_manager.collect_trade_visualization(trade_data)
                         
-                        # Send trade to dashboard
-                        dashboard_trade = {
-                            'step': self.current_step,
-                            'action': trade_data['action'].upper(),
-                            'symbol': self.primary_asset,
-                            'price': trade_data['price'],
-                            'quantity': trade_data['quantity'],
-                            'pnl': trade_data['pnl'],
-                            'fees': trade_data['fees']
+                        # Send execution to dashboard (not trade yet)
+                        dashboard_execution = {
+                            'order_side': fill['order_side'].value,
+                            'executed_quantity': fill['executed_quantity'],
+                            'asset_id': fill['asset_id'],
+                            'executed_price': fill['executed_price'],
+                            'commission': fill['commission'],
+                            'fees': fill['fees'],
+                            'slippage_cost_total': fill['slippage_cost_total']
                         }
-                        self.metrics_integrator.metrics_manager.update_dashboard_trade(dashboard_trade)
+                        if hasattr(self.metrics_integrator.metrics_manager, 'dashboard_collector') and self.metrics_integrator.metrics_manager.dashboard_collector:
+                            self.metrics_integrator.metrics_manager.dashboard_collector.on_execution(dashboard_execution)
                         
                         # Track win/loss
                         if trade_data['pnl'] > 0:
@@ -846,6 +861,7 @@ class TradingEnvironment(gym.Env):
                         'steps': self.current_step,
                         'win_rate': (self.win_loss_counts['wins'] / max(1, self.win_loss_counts['wins'] + self.win_loss_counts['losses'])) * 100,
                         'termination_reason': info['episode_summary']['termination_reason'],
+                        'truncated': truncated,
                         'reset': True
                     }
                     self.metrics_integrator.metrics_manager.update_dashboard_episode(episode_data)
