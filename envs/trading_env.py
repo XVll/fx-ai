@@ -281,6 +281,10 @@ class TradingEnvironment(gym.Env):
             self.metrics_integrator.metrics_manager.start_episode_visualization(
                 self.episode_number, self.primary_asset, episode_date
             )
+            
+            # Start dashboard episode tracking
+            if hasattr(self.metrics_integrator.metrics_manager, 'dashboard_collector') and self.metrics_integrator.metrics_manager.dashboard_collector:
+                self.metrics_integrator.metrics_manager.dashboard_collector.on_episode_start(self.episode_number)
 
         self.portfolio_manager.reset(episode_start_timestamp=current_sim_time)
         self.initial_capital_for_session = self.portfolio_manager.initial_capital
@@ -733,14 +737,23 @@ class TradingEnvironment(gym.Env):
                 self.metrics_integrator.metrics_manager.collect_step_visualization(viz_data)
                 
                 # Send to dashboard
+                pos_data = portfolio_state_next_t['positions'].get(self.primary_asset, {})
                 dashboard_data = {
                     'step': self.current_step,
+                    'symbol': self.primary_asset,
                     'price': viz_price,
+                    'bid': market_state_next_t.get('best_bid_price', viz_price * 0.9999) if market_state_next_t else viz_price * 0.9999,
+                    'ask': market_state_next_t.get('best_ask_price', viz_price * 1.0001) if market_state_next_t else viz_price * 1.0001,
                     'volume': market_state_next_t.get('total_volume', 0) if market_state_next_t else 0,
-                    'position': portfolio_state_next_t['positions'].get(self.primary_asset, {}).get('quantity', 0),
+                    'position': pos_data.get('quantity', 0),
+                    'avg_entry_price': pos_data.get('avg_entry_price', viz_price),
                     'reward': reward,
                     'equity': portfolio_state_next_t['total_equity'],
-                    'action': action_name
+                    'cash': portfolio_state_next_t['cash'],
+                    'realized_pnl': portfolio_state_next_t['realized_pnl_session'],
+                    'unrealized_pnl': portfolio_state_next_t['unrealized_pnl'],
+                    'action': action_name,
+                    'size': self._last_decoded_action.get('size_float', 1.0) if self._last_decoded_action else 1.0
                 }
                 self.metrics_integrator.metrics_manager.update_dashboard_step(dashboard_data)
                 
@@ -760,11 +773,19 @@ class TradingEnvironment(gym.Env):
                         dashboard_trade = {
                             'step': self.current_step,
                             'action': trade_data['action'].upper(),
+                            'symbol': self.primary_asset,
                             'price': trade_data['price'],
                             'quantity': trade_data['quantity'],
-                            'pnl': trade_data['pnl']
+                            'pnl': trade_data['pnl'],
+                            'fees': trade_data['fees']
                         }
                         self.metrics_integrator.metrics_manager.update_dashboard_trade(dashboard_trade)
+                        
+                        # Track win/loss
+                        if trade_data['pnl'] > 0:
+                            self.win_loss_counts['wins'] += 1
+                        elif trade_data['pnl'] < 0:
+                            self.win_loss_counts['losses'] += 1
 
             self.metrics_integrator.record_environment_step(
                 reward=reward,
@@ -823,7 +844,8 @@ class TradingEnvironment(gym.Env):
                         'total_reward': self.episode_total_reward,
                         'total_pnl': episode_pnl,
                         'steps': self.current_step,
-                        'win_rate': (self.win_loss_counts['wins'] / max(1, self.win_loss_counts['wins'] + self.win_loss_counts['losses'])) * 100 if hasattr(self, 'win_loss_counts') else 0,
+                        'win_rate': (self.win_loss_counts['wins'] / max(1, self.win_loss_counts['wins'] + self.win_loss_counts['losses'])) * 100,
+                        'termination_reason': info['episode_summary']['termination_reason'],
                         'reset': True
                     }
                     self.metrics_integrator.metrics_manager.update_dashboard_episode(episode_data)

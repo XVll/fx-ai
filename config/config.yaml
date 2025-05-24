@@ -21,3 +21,10 @@ quick_test: false
 
 # Project name
 project_name: "Fx AI"
+
+# Dashboard configuration
+dashboard:
+  enabled: true  # Enabled by default for better monitoring
+  port: 8050
+  open_browser: true
+  update_interval: 500  # milliseconds
