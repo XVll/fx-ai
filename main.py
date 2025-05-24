@@ -45,11 +45,11 @@ logger = logging.getLogger(__name__)
 
 def signal_handler(signum, frame):
     """Handle Ctrl+C gracefully"""
-    global training_interrupted, cleanup_called
+    global training_interrupted, cleanup_called, metrics_manager
 
     if cleanup_called:
         console.print("\n[bold red]Force exit...[/bold red]")
-        sys.exit(1)
+        os._exit(1)  # Force immediate exit
 
     training_interrupted = True
     console.print("\n" + "=" * 50)
@@ -57,12 +57,19 @@ def signal_handler(signum, frame):
     console.print("Attempting graceful shutdown...")
     console.print("Press Ctrl+C again to force exit")
     console.print("=" * 50)
+    
+    # Stop dashboard immediately if running
+    if metrics_manager and hasattr(metrics_manager, 'dashboard_collector') and metrics_manager.dashboard_collector:
+        try:
+            metrics_manager.dashboard_collector.stop()
+        except:
+            pass
 
     def force_exit():
-        time.sleep(10)
+        time.sleep(5)  # Reduced from 10 to 5 seconds
         if training_interrupted and not cleanup_called:
             console.print("\n[bold red]Graceful shutdown timeout. Force exiting...[/bold red]")
-            sys.exit(1)
+            os._exit(1)
 
     timer = threading.Timer(10, force_exit)
     timer.daemon = True
@@ -237,13 +244,25 @@ def run_training(cfg: Config):
             # W&B connection is already tested in the transmitter's _send_test_metric()
             logging.info("📊 W&B connection established - metrics will start flowing during training")
             
-            # Enable dashboard if requested
-            if cfg.get('enable_dashboard', False):
-                metrics_manager.enable_dashboard(
-                    port=cfg.get('dashboard_port', 8050),
-                    open_browser=cfg.get('dashboard_open_browser', True)
+            # Enable dashboard if configured
+            if cfg.dashboard.enabled:
+                # Pass update interval to dashboard
+                from dashboard import LiveTradingDashboard
+                dashboard = LiveTradingDashboard(
+                    port=cfg.dashboard.port, 
+                    update_interval=cfg.dashboard.update_interval
                 )
-                logging.info("🚀 Live dashboard enabled at http://localhost:8050")
+                from dashboard import DashboardMetricsCollector
+                dashboard_collector = DashboardMetricsCollector(dashboard)
+                metrics_manager.dashboard_collector = dashboard_collector
+                metrics_manager._dashboard_enabled = True
+                
+                dashboard_collector.start(open_browser=cfg.dashboard.open_browser)
+                logging.info(f"🚀 Live dashboard enabled at http://localhost:{cfg.dashboard.port} (update interval: {cfg.dashboard.update_interval}ms)")
+                
+                # Set initial model info
+                model_name = f"PPO_Transformer_{symbol}"
+                dashboard_collector.set_model_info(model_name)
 
         else:
             logging.warning("W&B disabled - no metrics will be tracked")

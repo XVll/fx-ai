@@ -6,14 +6,11 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.traceback import install
 
-# Install rich traceback handler for better error displays
-install(show_locals=True)
-
 # Global console instance
 console = Console()
 
 
-def setup_rich_logging(level: int = logging.INFO, show_time: bool = True, show_path: bool = False):
+def setup_rich_logging(level: int = logging.INFO, show_time: bool = True, show_path: bool = False, compact_errors: bool = True):
     """
     Set up Rich logging for clean console output.
 
@@ -21,7 +18,23 @@ def setup_rich_logging(level: int = logging.INFO, show_time: bool = True, show_p
         level: Logging level (logging.DEBUG, INFO, WARNING, ERROR)
         show_time: Whether to show timestamps
         show_path: Whether to show file paths
+        compact_errors: Whether to show compact error tracebacks
     """
+    # Install rich traceback handler with compact settings
+    if compact_errors:
+        install(
+            show_locals=False,  # Don't show local variables
+            width=100,          # Limit width
+            extra_lines=3,      # Show only 3 lines of context
+            word_wrap=True,     # Wrap long lines
+            suppress=[          # Suppress these modules in traceback
+                "gymnasium", "torch", "numpy", "pandas", 
+                "wandb", "hydra", "dash", "plotly", "werkzeug"
+            ]
+        )
+    else:
+        install(show_locals=True)
+    
     # Clear any existing handlers
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
@@ -32,7 +45,7 @@ def setup_rich_logging(level: int = logging.INFO, show_time: bool = True, show_p
         show_time=show_time,
         show_path=show_path,
         rich_tracebacks=True,
-        tracebacks_show_locals=True,
+        tracebacks_show_locals=not compact_errors,
         markup=True
     )
 
