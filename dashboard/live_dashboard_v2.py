@@ -650,8 +650,11 @@ class LiveTradingDashboard:
                 subplot_titles=('', '')
             )
             
-            # Collect all available 1m bars from ohlc_data
-            all_bars = list(self.state.ohlc_data) if hasattr(self.state, 'ohlc_data') else []
+            # Collect all available 1m bars - prefer full day data if available
+            if hasattr(self.state, 'full_day_1m_bars') and self.state.full_day_1m_bars:
+                all_bars = list(self.state.full_day_1m_bars)
+            else:
+                all_bars = list(self.state.ohlc_data) if hasattr(self.state, 'ohlc_data') else []
             
             # Initialize variables to avoid warnings
             timestamps = []
@@ -1344,16 +1347,19 @@ class LiveTradingDashboard:
             uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             
             # Get stats
-            total_episodes = len(self.state.episode_history)
             total_trades = sum(len(ep.trades) for ep in self.state.episode_history)
-            current_ep = self.state.current_episode
+            
+            # Performance metrics
+            steps_per_sec = self.state.training_progress.steps_per_second
+            time_per_update = self.state.training_progress.time_per_update
+            time_per_episode = self.state.training_progress.time_per_episode
             
             footer_content = [
                 html.Span(f"Uptime: {uptime}"),
-                html.Span(f"Episodes: {total_episodes}"),
                 html.Span(f"Total Trades: {total_trades}"),
-                html.Span(f"Steps/sec: {self.state.training_progress.steps_per_second:.1f}"),
-                html.Span(f"Current Step: {current_ep.steps if current_ep else 0}")
+                html.Span(f"Steps/Sec: {steps_per_sec:.1f}"),
+                html.Span(f"Time/Update: {time_per_update:.2f}s"),
+                html.Span(f"Time/Episode: {time_per_episode:.1f}s")
             ]
             
             return footer_content
