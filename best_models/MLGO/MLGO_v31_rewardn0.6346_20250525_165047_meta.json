@@ -1,0 +1,17 @@
+{
+  "version": 31,
+  "timestamp": "20250525_165047",
+  "reward": -0.6346275003365953,
+  "metrics": {
+    "total_steps_trained": 8192,
+    "total_updates": 2,
+    "total_episodes": 4,
+    "training_time_hours": 0.31748794191413454,
+    "session_duration": 1142.9582901000977,
+    "best_reward": -0.6346275003365953,
+    "is_final": true,
+    "timestamp": 1748181047.180511
+  },
+  "source": "/Users/fx/Repositories/FxAIv2/outputs/2025-05-25/16-30-04/models/final_model.pt",
+  "symbol": "MLGO"
+}
