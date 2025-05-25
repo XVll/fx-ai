@@ -136,6 +136,15 @@ class DashboardMetricsCollector:
             'fees': execution_data.get('fees', 0),
             'slippage': execution_data.get('slippage_cost_total', 0)
         }
+        
+        # Add timestamp from execution data if available
+        if 'timestamp' in execution_data:
+            execution_update['timestamp'] = execution_data['timestamp']
+        elif 'market_state' in execution_data and execution_data['market_state']:
+            market_state = execution_data['market_state']
+            if isinstance(market_state, dict) and 'timestamp_utc' in market_state:
+                execution_update['timestamp'] = market_state['timestamp_utc']
+                
         self.dashboard.state.add_execution(execution_update)
     
     def on_episode_start(self, episode_num: int):

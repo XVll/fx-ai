@@ -625,152 +625,129 @@ class LiveTradingDashboard:
             
             episode = self.state.current_episode
             
-            # Initialize variables
-            timestamps = []
-            time_labels = []
-            
-            # Create subplots with only 2 rows (price and reward)
+            # Create subplots
             fig = make_subplots(
                 rows=2, cols=1,
                 shared_xaxes=True,
                 vertical_spacing=0.05,
                 row_heights=[0.7, 0.3],
-                subplot_titles=('', '')  # Remove titles for more space
+                subplot_titles=('', '')
             )
             
-            # Try to use OHLC data first, then fall back to price history
-            price_data_plotted = False
+            # Collect all available 1m bars from ohlc_data
+            all_bars = list(self.state.ohlc_data) if hasattr(self.state, 'ohlc_data') else []
             
-            if hasattr(self.state, 'ohlc_data') and len(self.state.ohlc_data) > 0:
-                ohlc_list = list(self.state.ohlc_data)
-                num_bars = min(300, len(ohlc_list))  # Show more data
-                recent_bars = ohlc_list[-num_bars:] if num_bars > 0 else []
+            if all_bars:
+                # Sort bars by timestamp to ensure correct order
+                all_bars.sort(key=lambda x: x.get('timestamp', datetime.min))
                 
-                if recent_bars:
-                    # Extract timestamps and convert to NY time
-                    timestamps = []
-                    time_labels = []
-                    for i, bar in enumerate(recent_bars):
-                        timestamps.append(i)
-                        if 'timestamp' in bar and bar['timestamp']:
-                            # Convert to NY time string
-                            ts = bar['timestamp']
-                            if isinstance(ts, datetime):
-                                time_labels.append(ts.strftime("%H:%M"))
-                            else:
-                                time_labels.append(f"{i}")
+                # Create candlestick chart with all available bars
+                timestamps = []
+                opens = []
+                highs = []
+                lows = []
+                closes = []
+                time_labels = []
+                
+                for bar in all_bars:
+                    ts = bar.get('timestamp')
+                    if ts:
+                        timestamps.append(ts)
+                        opens.append(bar.get('open', 0))
+                        highs.append(bar.get('high', 0))
+                        lows.append(bar.get('low', 0))
+                        closes.append(bar.get('close', 0))
+                        
+                        # Create time label
+                        if isinstance(ts, datetime):
+                            time_labels.append(ts.strftime("%H:%M"))
                         else:
-                            time_labels.append(f"{i}")
-                    
-                    # Extract prices for line chart
-                    closes = [bar.get('close', 0) for bar in recent_bars]
-                    
-                    if any(closes):
-                        # Add price line
-                        fig.add_trace(
-                            go.Scatter(
-                                x=timestamps,
-                                y=closes,
-                                mode='lines',
-                                name='Price',
-                                line=dict(color='#00d084', width=2),
-                                showlegend=False,
-                                hovertemplate='Price: $%{y:.2f}<br>Time: %{text}<extra></extra>',
-                                text=time_labels
-                            ),
-                            row=1, col=1
-                        )
-                        price_data_plotted = True
-            
-            # Fall back to price history if OHLC not available or not plotted
-            if not price_data_plotted and episode.price_history:
-                price_list = list(episode.price_history)
-                num_points = min(500, len(price_list))  # Show last 500 points
-                recent_prices = price_list[-num_points:] if num_points > 0 else []
+                            time_labels.append(str(ts))
                 
-                if recent_prices:
-                    timestamps = list(range(len(recent_prices)))
-                    time_labels = [f"Step {i}" for i in range(len(recent_prices))]
-                    
+                if timestamps:
+                    # Add candlestick chart
                     fig.add_trace(
-                        go.Scatter(
+                        go.Candlestick(
                             x=timestamps,
-                            y=recent_prices,
-                            mode='lines',
+                            open=opens,
+                            high=highs,
+                            low=lows,
+                            close=closes,
                             name='Price',
-                            line=dict(color='#00d084', width=2),
-                            showlegend=False,
-                            hovertemplate='Price: $%{y:.2f}<br>%{text}<extra></extra>',
-                            text=time_labels
+                            increasing_line_color='#00d084',
+                            decreasing_line_color='#ff4757',
+                            showlegend=False
                         ),
                         row=1, col=1
                     )
-                    price_data_plotted = True
-            
-            # Add execution markers on the chart
-            if price_data_plotted and episode.executions:
-                exec_x = []
-                exec_y = []
-                exec_colors = []
-                exec_symbols = []
-                exec_text = []
-                
-                recent_executions = list(episode.executions)[-50:]  # Last 50 executions
-                for execution in recent_executions:
-                    # Map to most recent price point
-                    exec_idx = len(timestamps) - 1  # Default to most recent
                     
-                    # Simple mapping - just use the execution price
-                    exec_x.append(exec_idx)
-                    exec_y.append(execution.price)
-                    exec_colors.append('#00d084' if execution.side == 'BUY' else '#ff4757')
-                    exec_symbols.append('triangle-up' if execution.side == 'BUY' else 'triangle-down')
-                    exec_text.append(f"{execution.side} {execution.quantity:.0f} @ ${execution.price:.2f}")
-                
-                if exec_x:  # Only add if we have executions
-                    fig.add_trace(
-                        go.Scatter(
-                            x=exec_x, y=exec_y,
-                            mode='markers',
-                            marker=dict(size=10, color=exec_colors, symbol=exec_symbols, line=dict(width=1, color='white')),
-                            showlegend=False,
-                            name='Executions',
-                            hovertext=exec_text,
-                            hoverinfo='text'
-                        ),
-                        row=1, col=1
-                    )
+                    # Add execution markers if we have executions
+                    if episode.executions:
+                        exec_timestamps = []
+                        exec_prices = []
+                        exec_colors = []
+                        exec_symbols = []
+                        exec_text = []
+                        
+                        for execution in episode.executions:
+                            # Use execution timestamp directly
+                            exec_ts = execution.timestamp
+                            if exec_ts:
+                                exec_timestamps.append(exec_ts)
+                                exec_prices.append(execution.price)
+                                exec_colors.append('#00d084' if execution.side == 'BUY' else '#ff4757')
+                                exec_symbols.append('triangle-up' if execution.side == 'BUY' else 'triangle-down')
+                                exec_text.append(f"{execution.side} {execution.quantity:.0f} @ ${execution.price:.2f}")
+                        
+                        if exec_timestamps:
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=exec_timestamps,
+                                    y=exec_prices,
+                                    mode='markers',
+                                    marker=dict(
+                                        size=12,
+                                        color=exec_colors,
+                                        symbol=exec_symbols,
+                                        line=dict(width=2, color='white')
+                                    ),
+                                    showlegend=False,
+                                    name='Executions',
+                                    hovertext=exec_text,
+                                    hoverinfo='text'
+                                ),
+                                row=1, col=1
+                            )
             
-            # Remove position chart - we'll show positions on the main chart
-            
-            # Cumulative reward
+            # Cumulative reward chart
             if episode.reward_history:
-                steps = list(range(len(episode.reward_history)))
+                # Create time-based x-axis for rewards
+                reward_steps = list(range(len(episode.reward_history)))
                 cumulative_rewards = []
                 cum_sum = 0
                 for r in episode.reward_history:
                     cum_sum += r
                     cumulative_rewards.append(cum_sum)
                 
-                # Ensure we use the same x-axis range as price chart
-                x_range = timestamps if 'timestamps' in locals() else steps
-                x_values = x_range[-len(cumulative_rewards):] if len(x_range) >= len(cumulative_rewards) else list(range(len(cumulative_rewards)))
+                # Only show last 300 points for clarity
+                display_steps = reward_steps[-300:] if len(reward_steps) > 300 else reward_steps
+                display_rewards = cumulative_rewards[-300:] if len(cumulative_rewards) > 300 else cumulative_rewards
                 
                 fig.add_trace(
                     go.Scatter(
-                        x=x_values[-120:], 
-                        y=cumulative_rewards[-120:], 
-                        fill='tozeroy', 
+                        x=display_steps,
+                        y=display_rewards,
+                        fill='tozeroy',
                         fillcolor='rgba(0, 208, 132, 0.1)',
-                        line=dict(color='#00d084', width=2), 
+                        line=dict(color='#00d084', width=2),
                         showlegend=False,
                         name='Cumulative Reward',
-                        hovertemplate='Reward: %{y:.3f}<extra></extra>'
+                        hovertemplate='Step: %{x}<br>Reward: %{y:.3f}<extra></extra>'
                     ),
                     row=2, col=1
                 )
             
-            # Update layout for compactness
+            # Update layout
             fig.update_layout(
                 height=400,
                 margin=dict(l=60, r=20, t=20, b=40),
@@ -778,18 +755,17 @@ class LiveTradingDashboard:
                 plot_bgcolor='#0e1117',
                 font=dict(size=11, color='#e6e6e6'),
                 showlegend=False,
-                xaxis2_title="Time/Step",
+                xaxis2_title="Step",
                 yaxis1_title="Price ($)",
                 yaxis2_title="Cumulative Reward",
                 hovermode='x unified'
             )
             
-            # Update x-axis to show time labels if available
-            if 'time_labels' in locals() and time_labels:
-                # Show time labels every 10 bars to avoid crowding
-                tickvals = list(range(0, len(time_labels), 10))
-                ticktext = [time_labels[i] for i in tickvals]
-                fig.update_xaxes(tickmode='array', tickvals=tickvals, ticktext=ticktext, row=1, col=1)
+            # Configure x-axis for time display
+            fig.update_xaxes(
+                rangeslider_visible=False,
+                row=1, col=1
+            )
             
             # Update axes styling
             for i in range(1, 3):
