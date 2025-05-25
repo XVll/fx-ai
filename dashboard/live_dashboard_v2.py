@@ -870,46 +870,58 @@ class LiveTradingDashboard:
                           style={'color': '#999', 'fontSize': '11px', 'textAlign': 'center'})
                 ])
             
-            # Filter active components
-            active_components = [(name, comp) for name, comp in self.state.reward_components.items() 
-                               if comp.times_triggered > 0]
+            # Get all components, not just active ones
+            all_components = list(self.state.reward_components.items())
             
-            if not active_components:
+            if not all_components:
                 return html.Div([
                     html.P("Waiting for rewards...", 
                           style={'color': '#999', 'fontSize': '11px', 'textAlign': 'center'})
                 ])
             
-            # Sort by absolute magnitude
+            # Sort by absolute total impact (so most impactful components are at top)
             sorted_components = sorted(
-                active_components,
-                key=lambda x: abs(x[1].avg_magnitude),
+                all_components,
+                key=lambda x: abs(x[1].total_impact) if x[1].times_triggered > 0 else 0,
                 reverse=True
-            )[:10]  # Show all 10 components
+            )
             
-            # Add header row with TotRew column
+            # Add header row with TotRew column and better spacing
             rows = [
                 html.Div([
-                    html.Span("Component", style={'flex': '1', 'fontSize': '10px', 'color': '#999'}),
-                    html.Span("Avg Value", style={'fontSize': '10px', 'color': '#999', 'width': '55px', 'textAlign': 'right'}),
-                    html.Span("TotRew", style={'fontSize': '10px', 'color': '#999', 'width': '50px', 'textAlign': 'right'}),
-                    html.Span("Count", style={'fontSize': '10px', 'color': '#999', 'width': '35px', 'textAlign': 'center'}),
-                    html.Span("%", style={'fontSize': '10px', 'color': '#999', 'width': '25px', 'textAlign': 'right'})
+                    html.Span("Component", style={'flex': '1', 'fontSize': '10px', 'color': '#999', 'paddingRight': '10px'}),
+                    html.Span("Avg", style={'fontSize': '10px', 'color': '#999', 'width': '60px', 'textAlign': 'right', 'paddingRight': '10px'}),
+                    html.Span("Total", style={'fontSize': '10px', 'color': '#999', 'width': '60px', 'textAlign': 'right', 'paddingRight': '10px'}),
+                    html.Span("Count", style={'fontSize': '10px', 'color': '#999', 'width': '45px', 'textAlign': 'center', 'paddingRight': '10px'}),
+                    html.Span("%", style={'fontSize': '10px', 'color': '#999', 'width': '35px', 'textAlign': 'right'})
                 ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '3px', 'borderBottom': '1px solid #3d4158', 'paddingBottom': '2px'})
             ]
             
             for name, comp in sorted_components:
-                display_name = name.replace('_', ' ').title()[:20]  # Truncate long names
-                color = '#00d084' if comp.component_type == "Reward" else '#ff6b6b'
+                display_name = name.replace('_', ' ').title()
+                
+                # Determine color based on the actual value or component type
+                if comp.times_triggered > 0:
+                    # Use actual average magnitude to determine color
+                    color = '#00d084' if comp.avg_magnitude >= 0 else '#ff4757'
+                else:
+                    # For components that haven't triggered, use a neutral color
+                    color = '#666'
+                
+                # Format values - show "--" for components that haven't triggered
+                avg_display = f"{comp.avg_magnitude:+.3f}" if comp.times_triggered > 0 else "--"
+                total_display = f"{comp.total_impact:+.3f}" if comp.times_triggered > 0 else "--"
                 
                 rows.append(html.Div([
-                    html.Span(display_name, style={'flex': '1', 'fontSize': '11px'}),
-                    html.Span(f"{comp.avg_magnitude:+.3f}", 
-                             style={'color': color, 'fontSize': '11px', 'fontFamily': 'monospace', 'width': '70px', 'textAlign': 'right'}),
+                    html.Span(display_name, style={'flex': '1', 'fontSize': '11px', 'paddingRight': '10px'}),
+                    html.Span(avg_display, 
+                             style={'color': color, 'fontSize': '11px', 'fontFamily': 'monospace', 'width': '60px', 'textAlign': 'right', 'paddingRight': '10px'}),
+                    html.Span(total_display, 
+                             style={'color': color, 'fontSize': '11px', 'fontFamily': 'monospace', 'width': '60px', 'textAlign': 'right', 'paddingRight': '10px'}),
                     html.Span(f"{comp.times_triggered}", 
-                             style={'color': '#666', 'fontSize': '10px', 'width': '40px', 'textAlign': 'center'}),
-                    html.Span(f"{comp.percent_of_total:.0f}%", 
-                             style={'color': '#666', 'fontSize': '10px', 'width': '30px', 'textAlign': 'right'})
+                             style={'color': '#666', 'fontSize': '10px', 'width': '45px', 'textAlign': 'center', 'paddingRight': '10px'}),
+                    html.Span(f"{comp.percent_of_total:.0f}%" if comp.times_triggered > 0 else "0%", 
+                             style={'color': '#666', 'fontSize': '10px', 'width': '35px', 'textAlign': 'right'})
                 ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '1px'}))
             
             return html.Div(rows)
@@ -947,14 +959,15 @@ class LiveTradingDashboard:
                 return html.Div("No completed trades", style={'color': '#999', 'fontSize': '11px'})
             
             rows = []
-            # Add header with status column
+            # Add header with status and holding time columns
             rows.append(html.Div([
-                html.Span("Status", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
-                html.Span("Side", style={'fontSize': '10px', 'color': '#999', 'width': '10%'}),
-                html.Span("Qty", style={'fontSize': '10px', 'color': '#999', 'width': '10%'}),
-                html.Span("Entry", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
-                html.Span("Exit", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
-                html.Span("P&L", style={'fontSize': '10px', 'color': '#999', 'width': '35%', 'textAlign': 'right'}),
+                html.Span("Status", style={'fontSize': '10px', 'color': '#999', 'width': '12%'}),
+                html.Span("Side", style={'fontSize': '10px', 'color': '#999', 'width': '8%'}),
+                html.Span("Qty", style={'fontSize': '10px', 'color': '#999', 'width': '8%'}),
+                html.Span("Entry", style={'fontSize': '10px', 'color': '#999', 'width': '12%'}),
+                html.Span("Exit", style={'fontSize': '10px', 'color': '#999', 'width': '12%'}),
+                html.Span("Hold Time", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
+                html.Span("P&L", style={'fontSize': '10px', 'color': '#999', 'width': '33%', 'textAlign': 'right'}),
             ], style={'display': 'flex', 'marginBottom': '3px', 'borderBottom': '1px solid #3d4158', 'paddingBottom': '2px'}))
             
             for trade in trades[-3:]:
@@ -970,22 +983,25 @@ class LiveTradingDashboard:
                 
                 # Main trade row
                 rows.append(html.Div([
-                    html.Span(status, style={'fontSize': '10px', 'color': status_color, 'fontWeight': 'bold', 'width': '15%'}),
-                    html.Span(f"{trade.side}", className=side_class, style={'fontSize': '10px', 'width': '10%'}),
-                    html.Span(f"{trade.quantity:.0f}", style={'fontSize': '10px', 'width': '10%'}),
-                    html.Span(f"${trade.entry_price:.2f}", style={'fontSize': '10px', 'width': '15%'}),
-                    html.Span(f"${trade.exit_price:.2f}" if trade.exit_price else "--", style={'fontSize': '10px', 'width': '15%'}),
-                    html.Span(pnl_display, className=pnl_class, style={'fontWeight': 'bold', 'fontSize': '10px', 'width': '35%', 'textAlign': 'right'}),
+                    html.Span(status, style={'fontSize': '10px', 'color': status_color, 'fontWeight': 'bold', 'width': '12%'}),
+                    html.Span(f"{trade.side}", className=side_class, style={'fontSize': '10px', 'width': '8%'}),
+                    html.Span(f"{trade.quantity:.0f}", style={'fontSize': '10px', 'width': '8%'}),
+                    html.Span(f"${trade.entry_price:.2f}", style={'fontSize': '10px', 'width': '12%'}),
+                    html.Span(f"${trade.exit_price:.2f}" if trade.exit_price else "--", style={'fontSize': '10px', 'width': '12%'}),
+                    html.Span(trade.holding_time_formatted if hasattr(trade, 'holding_time_formatted') else "--", 
+                             style={'fontSize': '10px', 'width': '15%', 'color': '#999'}),
+                    html.Span(pnl_display, className=pnl_class, style={'fontWeight': 'bold', 'fontSize': '10px', 'width': '33%', 'textAlign': 'right'}),
                 ], style={'display': 'flex', 'marginBottom': '1px'}))
                 
                 # Add costs detail row if trade is closed and has costs
                 total_costs = trade.commission + trade.fees + trade.slippage
                 if status == "CLOSED" and total_costs > 0:
                     rows.append(html.Div([
-                        html.Span("", style={'width': '15%'}),  # Empty space under status
-                        html.Span("Costs:", style={'fontSize': '9px', 'color': '#666', 'width': '10%'}),
-                        html.Span(f"Slip: ${trade.slippage:.2f}", style={'fontSize': '9px', 'color': '#999', 'width': '25%'}),
-                        html.Span(f"Comm: ${trade.commission:.2f}", style={'fontSize': '9px', 'color': '#999', 'width': '25%'}),
+                        html.Span("", style={'width': '12%'}),  # Empty space under status
+                        html.Span("Costs:", style={'fontSize': '9px', 'color': '#666', 'width': '8%'}),
+                        html.Span(f"Slip: ${trade.slippage:.2f}", style={'fontSize': '9px', 'color': '#999', 'width': '20%'}),
+                        html.Span(f"Comm: ${trade.commission:.2f}", style={'fontSize': '9px', 'color': '#999', 'width': '20%'}),
+                        html.Span("", style={'width': '15%'}),  # Empty space under hold time
                         html.Span(f"Total: ${total_costs:.2f}", style={'fontSize': '9px', 'color': '#ff6b6b', 'width': '25%', 'textAlign': 'right'}),
                     ], style={'display': 'flex', 'marginBottom': '3px', 'paddingLeft': '10px'}))
             
@@ -1051,44 +1067,104 @@ class LiveTradingDashboard:
         def update_ppo_metrics(n):
             ppo = self.state.ppo_metrics
             
+            def create_sparkline(values):
+                """Create a simple text-based sparkline"""
+                if not values or len(values) < 2:
+                    return ""
+                
+                # Convert to list if needed
+                vals = list(values)
+                
+                # Normalize values to 0-7 range for 8 spark characters
+                min_val = min(vals)
+                max_val = max(vals)
+                if max_val == min_val:
+                    return "▁" * len(vals)
+                
+                spark_chars = "▁▂▃▄▅▆▇█"
+                sparkline = ""
+                
+                for val in vals:
+                    # Normalize to 0-7
+                    normalized = int((val - min_val) / (max_val - min_val) * 7)
+                    sparkline += spark_chars[normalized]
+                
+                return sparkline
+            
             content = html.Div([
                 html.Div([
                     html.Span("Learning Rate:", className='metric-label'),
-                    html.Span(f"{ppo.learning_rate:.1e}", className='metric-value')
+                    html.Span([
+                        f"{ppo.learning_rate:.1e} ",
+                        html.Span(create_sparkline(ppo.learning_rate_history), 
+                                 style={'color': '#666', 'fontFamily': 'monospace', 'fontSize': '10px'})
+                    ], className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Batch Mean Reward:", className='metric-label'),
-                    html.Span(f"{ppo.mean_reward_batch:.4f}", className='metric-value')
+                    html.Span([
+                        f"{ppo.mean_reward_batch:.4f} ",
+                        html.Span(create_sparkline(ppo.mean_reward_history), 
+                                 style={'color': '#666', 'fontFamily': 'monospace', 'fontSize': '10px'})
+                    ], className='metric-value')
                 ], className='metric-row'),
                 html.Hr(style={'margin': '3px 0', 'borderColor': '#3d4158'}),
                 html.Div([
                     html.Span("Policy Loss:", className='metric-label'),
-                    html.Span(f"{ppo.policy_loss:.4f}", className='metric-value')
+                    html.Span([
+                        f"{ppo.policy_loss:.4f} ",
+                        html.Span(create_sparkline(ppo.policy_loss_history), 
+                                 style={'color': '#666', 'fontFamily': 'monospace', 'fontSize': '10px'})
+                    ], className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Value Loss:", className='metric-label'),
-                    html.Span(f"{ppo.value_loss:.4f}", className='metric-value')
+                    html.Span([
+                        f"{ppo.value_loss:.4f} ",
+                        html.Span(create_sparkline(ppo.value_loss_history), 
+                                 style={'color': '#666', 'fontFamily': 'monospace', 'fontSize': '10px'})
+                    ], className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Total Loss:", className='metric-label'),
-                    html.Span(f"{ppo.total_loss:.4f}", className='metric-value')
+                    html.Span([
+                        f"{ppo.total_loss:.4f} ",
+                        html.Span(create_sparkline(ppo.total_loss_history), 
+                                 style={'color': '#666', 'fontFamily': 'monospace', 'fontSize': '10px'})
+                    ], className='metric-value')
                 ], className='metric-row'),
                 html.Hr(style={'margin': '3px 0', 'borderColor': '#3d4158'}),
                 html.Div([
                     html.Span("Entropy:", className='metric-label'),
-                    html.Span(f"{ppo.entropy:.4f}", className='metric-value')
+                    html.Span([
+                        f"{ppo.entropy:.4f} ",
+                        html.Span(create_sparkline(ppo.entropy_history), 
+                                 style={'color': '#666', 'fontFamily': 'monospace', 'fontSize': '10px'})
+                    ], className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Clip Fraction:", className='metric-label'),
-                    html.Span(f"{ppo.clip_fraction:.3f}", className='metric-value')
+                    html.Span([
+                        f"{ppo.clip_fraction:.3f} ",
+                        html.Span(create_sparkline(ppo.clip_fraction_history), 
+                                 style={'color': '#666', 'fontFamily': 'monospace', 'fontSize': '10px'})
+                    ], className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("KL Divergence:", className='metric-label'),
-                    html.Span(f"{ppo.approx_kl:.4f}", className='metric-value')
+                    html.Span([
+                        f"{ppo.approx_kl:.4f} ",
+                        html.Span(create_sparkline(ppo.approx_kl_history), 
+                                 style={'color': '#666', 'fontFamily': 'monospace', 'fontSize': '10px'})
+                    ], className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Explained Var:", className='metric-label'),
-                    html.Span(f"{ppo.explained_variance:.3f}", className='metric-value')
+                    html.Span([
+                        f"{ppo.explained_variance:.3f} ",
+                        html.Span(create_sparkline(ppo.explained_variance_history), 
+                                 style={'color': '#666', 'fontFamily': 'monospace', 'fontSize': '10px'})
+                    ], className='metric-value')
                 ], className='metric-row'),
             ])
             

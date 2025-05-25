@@ -109,6 +109,33 @@ class Trade:
     fees: float = 0.0
     commission: float = 0.0
     slippage: float = 0.0
+    entry_timestamp: Optional[datetime] = None  # When position was opened
+    exit_timestamp: Optional[datetime] = None  # When position was closed
+    
+    @property
+    def holding_time_seconds(self) -> Optional[float]:
+        """Calculate holding time in seconds"""
+        if self.entry_timestamp and self.exit_timestamp:
+            return (self.exit_timestamp - self.entry_timestamp).total_seconds()
+        return None
+    
+    @property
+    def holding_time_formatted(self) -> str:
+        """Format holding time for display"""
+        seconds = self.holding_time_seconds
+        if seconds is None:
+            return "--"
+        
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            minutes = int(seconds / 60)
+            secs = int(seconds % 60)
+            return f"{minutes}m{secs}s" if secs > 0 else f"{minutes}m"
+        else:
+            hours = int(seconds / 3600)
+            minutes = int((seconds % 3600) / 60)
+            return f"{hours}h{minutes}m" if minutes > 0 else f"{hours}h"
 
 
 @dataclass
@@ -185,6 +212,7 @@ class PPOMetrics:
     """PPO training metrics"""
     learning_rate: float = 0.0
     mean_reward_batch: float = 0.0
+    total_reward_batch: float = 0.0  # Total reward in batch
     policy_loss: float = 0.0
     value_loss: float = 0.0
     total_loss: float = 0.0
@@ -194,10 +222,15 @@ class PPOMetrics:
     explained_variance: float = 0.0
     
     # Historical data for sparklines
+    learning_rate_history: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
+    mean_reward_history: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
     policy_loss_history: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
     value_loss_history: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
+    total_loss_history: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
     entropy_history: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
     clip_fraction_history: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
+    approx_kl_history: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
+    explained_variance_history: Deque[float] = field(default_factory=lambda: deque(maxlen=20))
 
 
 @dataclass
@@ -478,8 +511,10 @@ class DashboardState:
     
     def update_ppo_metrics(self, data: Dict[str, Any]):
         """Update PPO metrics"""
+        # Update values
         self.ppo_metrics.learning_rate = data.get('lr', self.ppo_metrics.learning_rate)
         self.ppo_metrics.mean_reward_batch = data.get('mean_reward', self.ppo_metrics.mean_reward_batch)
+        self.ppo_metrics.total_reward_batch = data.get('total_reward', data.get('mean_reward', 0) * 2048)  # Estimate if not provided
         
         # Update losses and add to history
         if 'policy_loss' in data:
@@ -499,6 +534,14 @@ class DashboardState:
         self.ppo_metrics.clip_fraction = data.get('clip_fraction', self.ppo_metrics.clip_fraction)
         self.ppo_metrics.approx_kl = data.get('approx_kl', self.ppo_metrics.approx_kl)
         self.ppo_metrics.explained_variance = data.get('explained_variance', self.ppo_metrics.explained_variance)
+        
+        # Update histories for sparklines
+        self.ppo_metrics.learning_rate_history.append(self.ppo_metrics.learning_rate)
+        self.ppo_metrics.mean_reward_history.append(self.ppo_metrics.mean_reward_batch)
+        self.ppo_metrics.total_loss_history.append(self.ppo_metrics.total_loss)
+        self.ppo_metrics.clip_fraction_history.append(self.ppo_metrics.clip_fraction)
+        self.ppo_metrics.approx_kl_history.append(self.ppo_metrics.approx_kl)
+        self.ppo_metrics.explained_variance_history.append(self.ppo_metrics.explained_variance)
     
     def update_reward_components(self, components_data: Dict[str, float]):
         """Update reward components from raw data"""
@@ -506,29 +549,33 @@ class DashboardState:
         step_total_impact = sum(abs(v) for v in components_data.values() if v != 0)
         
         for name, value in components_data.items():
-            if value == 0:  # Skip zero values
-                continue
+            # Process all components, including zero values
                 
             if name not in self.reward_components:
-                # Create new component
+                # Create new component - determine type based on name
+                # Most components with "penalty" in the name are penalties
+                is_penalty = "penalty" in name.lower() or name.lower() in ["mae_penalty", "mfe_penalty", "terminal_penalty"]
                 self.reward_components[name] = RewardComponent(
                     name=name,
-                    component_type="Reward" if value >= 0 else "Penalty"
+                    component_type="Penalty" if is_penalty else "Reward"
                 )
             
             component = self.reward_components[name]
-            component.times_triggered += 1
             
-            # Update running average
-            if component.times_triggered == 1:
-                component.avg_magnitude = value
-            else:
-                # Exponential moving average for smoother updates
-                alpha = 0.1  # Smoothing factor
-                component.avg_magnitude = alpha * value + (1 - alpha) * component.avg_magnitude
-            
-            # Update total impact (cumulative)
-            component.total_impact += value
+            # Only increment trigger count if value is non-zero
+            if value != 0:
+                component.times_triggered += 1
+                
+                # Update running average
+                if component.times_triggered == 1:
+                    component.avg_magnitude = value
+                else:
+                    # Exponential moving average for smoother updates
+                    alpha = 0.1  # Smoothing factor
+                    component.avg_magnitude = alpha * value + (1 - alpha) * component.avg_magnitude
+                
+                # Update total impact (cumulative)
+                component.total_impact += value
         
         # Calculate overall percentages based on total cumulative impact
         total_cumulative_impact = sum(abs(comp.total_impact) for comp in self.reward_components.values())
