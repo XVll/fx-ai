@@ -6,15 +6,15 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
 # These imports will fail initially (TDD)
-from feature.v2.mf.velocity_features import (
+from feature.mf.velocity_features import (
     PriceVelocity1mFeature, PriceVelocity5mFeature,
     VolumeVelocity1mFeature, VolumeVelocity5mFeature
 )
-from feature.v2.mf.ema_features import (
+from feature.mf.ema_features import (
     DistanceToEMA9_1mFeature, DistanceToEMA20_1mFeature,
     DistanceToEMA9_5mFeature, DistanceToEMA20_5mFeature
 )
-from feature.v2.mf.candle_features import (
+from feature.mf.candle_features import (
     PositionInCurrentCandle1mFeature, PositionInCurrentCandle5mFeature,
     BodySizeRelative1mFeature, BodySizeRelative5mFeature
 )

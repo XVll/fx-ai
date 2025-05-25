@@ -6,11 +6,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
 # These imports will fail initially (TDD)
-from feature.v2.lf.range_features import (
+from feature.lf.range_features import (
     PositionInDailyRangeFeature, PositionInPrevDayRangeFeature,
     PriceChangeFromPrevCloseFeature
 )
-from feature.v2.lf.level_features import (
+from feature.lf.level_features import (
     DistanceToClosestSupportFeature, DistanceToClosestResistanceFeature,
     WholeDollarProximityFeature, HalfDollarProximityFeature
 )

@@ -1,8 +1,8 @@
 """Support/resistance and price level features"""
 import numpy as np
 from typing import Dict, Any, List, Optional
-from ..base.feature_base import BaseFeature, FeatureConfig
-from ..base.feature_registry import feature_registry
+from feature.feature_base import BaseFeature, FeatureConfig
+from feature.feature_registry import feature_registry
 
 
 def detect_support_levels(daily_bars: List[Dict], lookback: int = 20) -> List[float]:

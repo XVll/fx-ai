@@ -6,8 +6,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
 # These imports will fail initially (TDD)
-from feature.v2.base.feature_manager import FeatureManager
-from feature.v2.base.feature_pipeline import FeaturePipeline
+from feature.feature_manager import FeatureManager
+from feature.feature_pipeline import FeaturePipeline
 
 
 class TestFeatureSystemIntegration:
