@@ -74,6 +74,9 @@ class Portfolio:
     max_drawdown: float = 0.0
     num_trades: int = 0
     initial_equity: float = 25000.0
+    total_commission: float = 0.0
+    total_slippage: float = 0.0
+    total_fees: float = 0.0
     
     @property
     def session_pnl_percent(self) -> float:
@@ -97,13 +100,15 @@ class Action:
 class Trade:
     """Single trade record"""
     timestamp: datetime
-    side: str  # BUY/SELL
+    side: str  # LONG/SHORT (or BUY/SELL for legacy)
     quantity: float
     symbol: str
     entry_price: float
     exit_price: Optional[float] = None
     pnl: Optional[float] = None
     fees: float = 0.0
+    commission: float = 0.0
+    slippage: float = 0.0
 
 
 @dataclass
@@ -338,6 +343,14 @@ class DashboardState:
         self.portfolio.unrealized_pnl = data.get('unrealized_pnl', self.portfolio.unrealized_pnl)
         self.portfolio.session_pnl = self.portfolio.total_equity - self.portfolio.initial_equity
         
+        # Update costs
+        if 'total_commission' in data:
+            self.portfolio.total_commission = data['total_commission']
+        if 'total_slippage' in data:
+            self.portfolio.total_slippage = data['total_slippage']
+        if 'total_fees' in data:
+            self.portfolio.total_fees = data['total_fees']
+        
         # Update metrics
         if 'sharpe_ratio' in data:
             self.portfolio.sharpe_ratio = data['sharpe_ratio']
@@ -382,7 +395,9 @@ class DashboardState:
             entry_price=trade_data.get('entry_price', 0),
             exit_price=trade_data.get('exit_price'),
             pnl=trade_data.get('pnl', 0),
-            fees=trade_data.get('fees', 0)
+            fees=trade_data.get('fees', 0),
+            commission=trade_data.get('commission', 0),
+            slippage=trade_data.get('slippage', 0)
         )
         
         # Add to global

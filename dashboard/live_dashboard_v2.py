@@ -251,6 +251,12 @@ class LiveTradingDashboard:
                 
                 # Column 2 - Actions & Analysis
                 html.Div([
+                    # Reward System Panel - moved here from column 3
+                    html.Div([
+                        html.H3("🏆 Reward Components", className='panel-title'),
+                        html.Div(id='reward-system')
+                    ], className='panel'),
+                    
                     # Action Bias Summary Panel
                     html.Div([
                         html.H3("🎯 Action Bias Summary", className='panel-title'),
@@ -299,12 +305,6 @@ class LiveTradingDashboard:
                     html.Div([
                         html.H3("🧠 PPO Core Metrics", className='panel-title'),
                         html.Div(id='ppo-metrics')
-                    ], className='panel'),
-                    
-                    # Reward System Panel
-                    html.Div([
-                        html.H3("🏆 Reward Components", className='panel-title'),
-                        html.Div(id='reward-system')
                     ], className='panel'),
                 ]),
                 ], className='main-container'),
@@ -456,10 +456,21 @@ class LiveTradingDashboard:
                     html.Span(f"${p.unrealized_pnl:+,.2f}", 
                              className=f'metric-value {"positive" if p.unrealized_pnl >= 0 else "negative"}')
                 ], className='metric-row'),
+                html.Hr(style={'margin': '3px 0', 'borderColor': '#3d4158'}),
                 html.Div([
                     html.Span("Trades:", className='metric-label'),
                     html.Span(f"{p.num_trades}", className='metric-value')
                 ], className='metric-row'),
+                html.Div([
+                    html.Span("Total Costs:", className='metric-label'),
+                    html.Span(f"${p.total_commission + p.total_fees + p.total_slippage:.2f}", 
+                             className='metric-value negative', style={'fontSize': '10px'})
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("", className='metric-label'),
+                    html.Span(f"Slip: ${p.total_slippage:.2f} | Comm: ${p.total_commission:.2f}", 
+                             style={'fontSize': '9px', 'color': '#666'})
+                ], className='metric-row', style={'marginTop': '-2px'}),
             ])
             
             return content
@@ -955,7 +966,9 @@ class LiveTradingDashboard:
                 pnl_display = f"${trade.pnl:+.2f}" if trade.exit_price and trade.pnl is not None else "--"
                 pnl_class = 'positive' if trade.pnl and trade.pnl >= 0 else 'negative' if trade.pnl and trade.pnl < 0 else ''
                 
-                side_class = 'positive' if trade.side == 'BUY' else 'negative'
+                side_class = 'positive' if trade.side in ['BUY', 'LONG'] else 'negative'
+                
+                # Main trade row
                 rows.append(html.Div([
                     html.Span(status, style={'fontSize': '10px', 'color': status_color, 'fontWeight': 'bold', 'width': '15%'}),
                     html.Span(f"{trade.side}", className=side_class, style={'fontSize': '10px', 'width': '10%'}),
@@ -963,7 +976,18 @@ class LiveTradingDashboard:
                     html.Span(f"${trade.entry_price:.2f}", style={'fontSize': '10px', 'width': '15%'}),
                     html.Span(f"${trade.exit_price:.2f}" if trade.exit_price else "--", style={'fontSize': '10px', 'width': '15%'}),
                     html.Span(pnl_display, className=pnl_class, style={'fontWeight': 'bold', 'fontSize': '10px', 'width': '35%', 'textAlign': 'right'}),
-                ], style={'display': 'flex', 'marginBottom': '2px'}))
+                ], style={'display': 'flex', 'marginBottom': '1px'}))
+                
+                # Add costs detail row if trade is closed and has costs
+                total_costs = trade.commission + trade.fees + trade.slippage
+                if status == "CLOSED" and total_costs > 0:
+                    rows.append(html.Div([
+                        html.Span("", style={'width': '15%'}),  # Empty space under status
+                        html.Span("Costs:", style={'fontSize': '9px', 'color': '#666', 'width': '10%'}),
+                        html.Span(f"Slip: ${trade.slippage:.2f}", style={'fontSize': '9px', 'color': '#999', 'width': '25%'}),
+                        html.Span(f"Comm: ${trade.commission:.2f}", style={'fontSize': '9px', 'color': '#999', 'width': '25%'}),
+                        html.Span(f"Total: ${total_costs:.2f}", style={'fontSize': '9px', 'color': '#ff6b6b', 'width': '25%', 'textAlign': 'right'}),
+                    ], style={'display': 'flex', 'marginBottom': '3px', 'paddingLeft': '10px'}))
             
             return html.Div(rows)
         
