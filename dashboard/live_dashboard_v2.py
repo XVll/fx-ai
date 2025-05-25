@@ -86,7 +86,8 @@ class LiveTradingDashboard:
                         grid-template-columns: 40% 30% 30%;
                         gap: 10px;
                         max-width: 100%;
-                        height: calc(100vh - 60px);
+                        height: auto;
+                        min-height: 500px;
                     }
                     .panel {
                         background-color: #1e2130;
@@ -223,38 +224,30 @@ class LiveTradingDashboard:
                 html.Div(id='live-time', style={'fontFamily': 'monospace', 'fontSize': '10px'})
             ], className='main-header'),
             
-            # Main content grid with charts integrated
+            # Main content area
             html.Div([
-                # Column 1 - Market & Trading
+                # Top section - 3 column grid for panels
                 html.Div([
-                    # Market Data Panel
+                    # Column 1 - Market & Trading
                     html.Div([
-                        html.H3("📊 Market Data", className='panel-title'),
-                        html.Div(id='market-content')
-                    ], className='panel'),
-                    
-                    # Position Status Panel
-                    html.Div([
-                        html.H3("💼 Position Status", className='panel-title'),
-                        html.Div(id='position-content')
-                    ], className='panel'),
-                    
-                    # Portfolio Panel
-                    html.Div([
-                        html.H3("📈 Portfolio", className='panel-title'),
-                        html.Div(id='portfolio-content')
-                    ], className='panel'),
-                    
-                    # Price Chart Panel
-                    html.Div([
-                        html.H3("📊 Price Chart", className='panel-title'),
-                        dcc.Graph(
-                            id='episode-chart', 
-                            style={'height': '350px'},
-                            config={'displayModeBar': False}
-                        )
-                    ], className='panel', style={'gridRow': 'span 2'}),
-                ]),
+                        # Market Data Panel
+                        html.Div([
+                            html.H3("📊 Market Data", className='panel-title'),
+                            html.Div(id='market-content')
+                        ], className='panel'),
+                        
+                        # Position Status Panel
+                        html.Div([
+                            html.H3("💼 Position Status", className='panel-title'),
+                            html.Div(id='position-content')
+                        ], className='panel'),
+                        
+                        # Portfolio Panel
+                        html.Div([
+                            html.H3("📈 Portfolio", className='panel-title'),
+                            html.Div(id='portfolio-content')
+                        ], className='panel'),
+                    ]),
                 
                 # Column 2 - Actions & Analysis
                 html.Div([
@@ -314,7 +307,20 @@ class LiveTradingDashboard:
                         html.Div(id='reward-system')
                     ], className='panel'),
                 ]),
-            ], className='main-container'),
+                ], className='main-container'),
+                
+                # Bottom section - Full-width chart
+                html.Div([
+                    html.Div([
+                        html.H3("📈 Market Analysis", className='panel-title'),
+                        dcc.Graph(
+                            id='full-day-chart', 
+                            style={'height': '400px'},
+                            config={'displayModeBar': False}
+                        )
+                    ], className='panel')
+                ], style={'margin': '10px 20px', 'width': 'calc(100% - 40px)'}),
+            ]),
             
             # Footer
             html.Div(id='footer-stats', className='footer'),
@@ -930,24 +936,33 @@ class LiveTradingDashboard:
                 return html.Div("No completed trades", style={'color': '#999', 'fontSize': '11px'})
             
             rows = []
-            # Add header
+            # Add header with status column
             rows.append(html.Div([
-                html.Span("Side", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
-                html.Span("Qty", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
-                html.Span("Entry", style={'fontSize': '10px', 'color': '#999', 'width': '20%'}),
-                html.Span("Exit", style={'fontSize': '10px', 'color': '#999', 'width': '20%'}),
-                html.Span("P&L", style={'fontSize': '10px', 'color': '#999', 'width': '30%', 'textAlign': 'right'}),
+                html.Span("Status", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
+                html.Span("Side", style={'fontSize': '10px', 'color': '#999', 'width': '10%'}),
+                html.Span("Qty", style={'fontSize': '10px', 'color': '#999', 'width': '10%'}),
+                html.Span("Entry", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
+                html.Span("Exit", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
+                html.Span("P&L", style={'fontSize': '10px', 'color': '#999', 'width': '35%', 'textAlign': 'right'}),
             ], style={'display': 'flex', 'marginBottom': '3px', 'borderBottom': '1px solid #3d4158', 'paddingBottom': '2px'}))
             
             for trade in trades[-3:]:
-                pnl_class = 'positive' if trade.pnl >= 0 else 'negative'
+                # Determine status based on exit_price
+                status = "CLOSED" if trade.exit_price else "OPEN"
+                status_color = '#00d084' if status == "CLOSED" else '#ffd32a'
+                
+                # Only show PnL for closed trades
+                pnl_display = f"${trade.pnl:+.2f}" if trade.exit_price and trade.pnl is not None else "--"
+                pnl_class = 'positive' if trade.pnl and trade.pnl >= 0 else 'negative' if trade.pnl and trade.pnl < 0 else ''
+                
                 side_class = 'positive' if trade.side == 'BUY' else 'negative'
                 rows.append(html.Div([
-                    html.Span(f"{trade.side}", className=side_class, style={'fontSize': '10px', 'width': '15%'}),
-                    html.Span(f"{trade.quantity:.0f}", style={'fontSize': '10px', 'width': '15%'}),
-                    html.Span(f"${trade.entry_price:.2f}", style={'fontSize': '10px', 'width': '20%'}),
-                    html.Span(f"${trade.exit_price:.2f}" if trade.exit_price else "--", style={'fontSize': '10px', 'width': '20%'}),
-                    html.Span(f"${trade.pnl:+.2f}", className=pnl_class, style={'fontWeight': 'bold', 'fontSize': '10px', 'width': '30%', 'textAlign': 'right'}),
+                    html.Span(status, style={'fontSize': '10px', 'color': status_color, 'fontWeight': 'bold', 'width': '15%'}),
+                    html.Span(f"{trade.side}", className=side_class, style={'fontSize': '10px', 'width': '10%'}),
+                    html.Span(f"{trade.quantity:.0f}", style={'fontSize': '10px', 'width': '10%'}),
+                    html.Span(f"${trade.entry_price:.2f}", style={'fontSize': '10px', 'width': '15%'}),
+                    html.Span(f"${trade.exit_price:.2f}" if trade.exit_price else "--", style={'fontSize': '10px', 'width': '15%'}),
+                    html.Span(pnl_display, className=pnl_class, style={'fontWeight': 'bold', 'fontSize': '10px', 'width': '35%', 'textAlign': 'right'}),
                 ], style={'display': 'flex', 'marginBottom': '2px'}))
             
             return html.Div(rows)
@@ -1054,6 +1069,167 @@ class LiveTradingDashboard:
             ])
             
             return content
+        
+        @self.app.callback(
+            Output('full-day-chart', 'figure'),
+            [Input('interval-component', 'n_intervals')]
+        )
+        def update_full_day_chart(n):
+            """Create simplified full-width chart"""
+            # Create empty figure first
+            fig = go.Figure()
+            
+            # Try to use actual OHLC data if available
+            if hasattr(self.state, 'ohlc_data') and self.state.ohlc_data:
+                all_bars = list(self.state.ohlc_data)
+                if all_bars:
+                    # Sort by timestamp
+                    all_bars.sort(key=lambda x: x.get('timestamp', datetime.min))
+                    
+                    # Extract data
+                    timestamps = []
+                    opens = []
+                    highs = []
+                    lows = []
+                    closes = []
+                    
+                    for bar in all_bars:
+                        if all(k in bar for k in ['timestamp', 'open', 'high', 'low', 'close']):
+                            timestamps.append(bar['timestamp'])
+                            opens.append(bar['open'])
+                            highs.append(bar['high'])
+                            lows.append(bar['low'])
+                            closes.append(bar['close'])
+                    
+                    if timestamps:
+                        # Add candlestick
+                        fig.add_trace(
+                            go.Candlestick(
+                                x=timestamps,
+                                open=opens,
+                                high=highs,
+                                low=lows,
+                                close=closes,
+                                name='Price',
+                                increasing_line_color='#00d084',
+                                decreasing_line_color='#ff4757'
+                            )
+                        )
+                        
+                        # Add executions if available
+                        if self.state.current_episode and self.state.current_episode.executions:
+                            exec_data = []
+                            for e in self.state.current_episode.executions:
+                                exec_data.append({
+                                    'time': e.timestamp,
+                                    'price': e.price,
+                                    'side': e.side,
+                                    'qty': e.quantity
+                                })
+                            
+                            if exec_data:
+                                buy_execs = [e for e in exec_data if e['side'] == 'BUY']
+                                sell_execs = [e for e in exec_data if e['side'] == 'SELL']
+                                
+                                # Add buy markers
+                                if buy_execs:
+                                    fig.add_trace(
+                                        go.Scatter(
+                                            x=[e['time'] for e in buy_execs],
+                                            y=[e['price'] for e in buy_execs],
+                                            mode='markers',
+                                            marker=dict(
+                                                symbol='triangle-up',
+                                                size=12,
+                                                color='#00d084',
+                                                line=dict(width=2, color='white')
+                                            ),
+                                            name='Buy',
+                                            text=[f"Buy {e['qty']:.0f}" for e in buy_execs],
+                                            hoverinfo='text+y'
+                                        )
+                                    )
+                                
+                                # Add sell markers
+                                if sell_execs:
+                                    fig.add_trace(
+                                        go.Scatter(
+                                            x=[e['time'] for e in sell_execs],
+                                            y=[e['price'] for e in sell_execs],
+                                            mode='markers',
+                                            marker=dict(
+                                                symbol='triangle-down',
+                                                size=12,
+                                                color='#ff4757',
+                                                line=dict(width=2, color='white')
+                                            ),
+                                            name='Sell',
+                                            text=[f"Sell {e['qty']:.0f}" for e in sell_execs],
+                                            hoverinfo='text+y'
+                                        )
+                                    )
+            
+            # Update layout
+            fig.update_layout(
+                height=400,
+                margin=dict(l=60, r=20, t=40, b=40),
+                paper_bgcolor='#1e2130',
+                plot_bgcolor='#0e1117',
+                font=dict(size=11, color='#e6e6e6'),
+                showlegend=False,
+                title=f"{self.state.market_data.symbol} - Trading Day",
+                xaxis_title="Time",
+                yaxis_title="Price ($)",
+                hovermode='x unified'
+            )
+            
+            # Style axes
+            fig.update_xaxes(
+                rangeslider_visible=False,
+                gridcolor='#3d4158',
+                gridwidth=0.5
+            )
+            
+            fig.update_yaxes(
+                gridcolor='#3d4158',
+                gridwidth=0.5
+            )
+            
+            # Update layout
+            fig.update_layout(
+                height=400,
+                margin=dict(l=60, r=20, t=30, b=40),
+                paper_bgcolor='#1e2130',
+                plot_bgcolor='#0e1117',
+                font=dict(size=11, color='#e6e6e6'),
+                showlegend=False,
+                title=dict(
+                    text=f"{self.state.market_data.symbol} - Full Trading Day",
+                    font=dict(size=14),
+                    x=0.5,
+                    xanchor='center'
+                ),
+                hovermode='x unified',
+                xaxis_title="Time (ET)",
+                yaxis_title="Price ($)"
+            )
+            
+            # Configure axes
+            fig.update_xaxes(
+                rangeslider_visible=False,
+                gridcolor='#3d4158',
+                gridwidth=0.5,
+                tickformat='%H:%M',
+                dtick=3600000  # Show hourly ticks
+            )
+            
+            fig.update_yaxes(
+                gridcolor='#3d4158',
+                gridwidth=0.5,
+                tickformat='$,.2f'
+            )
+            
+            return fig
         
         @self.app.callback(
             Output('footer-stats', 'children'),
