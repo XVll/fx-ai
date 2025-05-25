@@ -271,6 +271,7 @@ class TradingEnvironment(gym.Env):
         # Reset action debug counts
         self.action_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
         self.step_count_for_debug = 0
+        self.win_loss_counts = {"wins": 0, "losses": 0}
 
         # Increment episode number
         self.episode_number += 1
@@ -792,19 +793,10 @@ class TradingEnvironment(gym.Env):
                 }
                 self.metrics_integrator.metrics_manager.update_dashboard_step(dashboard_data)
                 
-                # Record trades for visualization
+                # Send executions to dashboard (not trades - trades are handled by portfolio callback)
                 if fill_details_list:
                     for fill in fill_details_list:
-                        trade_data = {
-                            'action': 'buy' if fill['order_side'] == OrderSideEnum.BUY else 'sell',
-                            'price': fill['executed_price'],
-                            'quantity': fill['executed_quantity'],
-                            'pnl': portfolio_state_next_t['realized_pnl_session'] - self._last_portfolio_state_before_action['realized_pnl_session'],
-                            'fees': fill['commission'] + fill['fees']
-                        }
-                        self.metrics_integrator.metrics_manager.collect_trade_visualization(trade_data)
-                        
-                        # Send execution to dashboard (not trade yet)
+                        # Only send execution data to dashboard
                         dashboard_execution = {
                             'order_side': fill['order_side'].value,
                             'executed_quantity': fill['executed_quantity'],
@@ -820,12 +812,6 @@ class TradingEnvironment(gym.Env):
                             dashboard_execution['timestamp'] = market_state_next_t['timestamp_utc']
                         if hasattr(self.metrics_integrator.metrics_manager, 'dashboard_collector') and self.metrics_integrator.metrics_manager.dashboard_collector:
                             self.metrics_integrator.metrics_manager.dashboard_collector.on_execution(dashboard_execution)
-                        
-                        # Track win/loss
-                        if trade_data['pnl'] > 0:
-                            self.win_loss_counts['wins'] += 1
-                        elif trade_data['pnl'] < 0:
-                            self.win_loss_counts['losses'] += 1
 
             self.metrics_integrator.record_environment_step(
                 reward=reward,
@@ -971,6 +957,13 @@ class TradingEnvironment(gym.Env):
     def _on_trade_completed(self, trade: Dict[str, Any]):
         """Callback for when a trade is completed"""
         try:
+            # Update win/loss counts based on PnL
+            pnl = trade.get('realized_pnl', 0.0)
+            if pnl > 0:
+                self.win_loss_counts['wins'] += 1
+            elif pnl < 0:
+                self.win_loss_counts['losses'] += 1
+            
             # Convert trade data to dashboard format
             dashboard_trade = {
                 'action': 'BUY' if trade['entry_quantity_total'] > 0 else 'SELL',
@@ -978,7 +971,7 @@ class TradingEnvironment(gym.Env):
                 'symbol': trade.get('asset_id', self.primary_asset),
                 'entry_price': trade['avg_entry_price'],
                 'exit_price': trade.get('avg_exit_price'),
-                'pnl': trade.get('realized_pnl', 0.0),
+                'pnl': pnl,
                 'fees': trade.get('commission_total', 0.0) + trade.get('fees_total', 0.0)
             }
             

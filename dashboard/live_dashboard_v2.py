@@ -398,7 +398,7 @@ class LiveTradingDashboard:
                     html.Span(f"{abs(pos.quantity):,.0f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
-                    html.Span("Entry Price:", className='metric-label'),
+                    html.Span("Avg Price:", className='metric-label'),
                     html.Span(f"${pos.avg_entry_price:.2f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
@@ -406,12 +406,11 @@ class LiveTradingDashboard:
                     html.Span(f"${pos.current_price:.2f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
-                    html.Span("P&L ($):", className='metric-label'),
-                    html.Span(f"${pos.pnl_dollars:+,.2f}", className=f'metric-value {pnl_color}')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("P&L (%):", className='metric-label'),
-                    html.Span(f"{pos.pnl_percent:+.2f}%", className=f'metric-value {pnl_color}')
+                    html.Span("P&L:", className='metric-label'),
+                    html.Span([
+                        f"${pos.pnl_dollars:+,.2f} ",
+                        html.Span(f"({pos.pnl_percent:+.2f}%)", style={'fontSize': '10px'})
+                    ], className=f'metric-value {pnl_color}')
                 ], className='metric-row'),
             ])
             
@@ -625,24 +624,26 @@ class LiveTradingDashboard:
             
             episode = self.state.current_episode
             
-            # Create subplots
+            # Create subplots with more space for price chart
             fig = make_subplots(
                 rows=2, cols=1,
                 shared_xaxes=True,
-                vertical_spacing=0.05,
-                row_heights=[0.7, 0.3],
+                vertical_spacing=0.03,
+                row_heights=[0.8, 0.2],  # Give more space to price chart
                 subplot_titles=('', '')
             )
             
             # Collect all available 1m bars from ohlc_data
             all_bars = list(self.state.ohlc_data) if hasattr(self.state, 'ohlc_data') else []
             
+            # Initialize variables to avoid warnings
+            timestamps = []
+            
             if all_bars:
                 # Sort bars by timestamp to ensure correct order
                 all_bars.sort(key=lambda x: x.get('timestamp', datetime.min))
                 
                 # Create candlestick chart with all available bars
-                timestamps = []
                 opens = []
                 highs = []
                 lows = []
@@ -674,9 +675,10 @@ class LiveTradingDashboard:
                             low=lows,
                             close=closes,
                             name='Price',
-                            increasing_line_color='#00d084',
-                            decreasing_line_color='#ff4757',
+                            increasing= dict(line=dict(color='#00d084')),
+                            decreasing=dict(line=dict(color='#ff4757')),
                             showlegend=False
+
                         ),
                         row=1, col=1
                     )
@@ -720,6 +722,7 @@ class LiveTradingDashboard:
                             )
             
             # Cumulative reward chart
+            display_steps = []  # Initialize to avoid warnings
             if episode.reward_history:
                 # Create time-based x-axis for rewards
                 reward_steps = list(range(len(episode.reward_history)))
@@ -729,9 +732,9 @@ class LiveTradingDashboard:
                     cum_sum += r
                     cumulative_rewards.append(cum_sum)
                 
-                # Only show last 300 points for clarity
-                display_steps = reward_steps[-300:] if len(reward_steps) > 300 else reward_steps
-                display_rewards = cumulative_rewards[-300:] if len(cumulative_rewards) > 300 else cumulative_rewards
+                # Show all reward data to match price chart timeline  
+                display_steps = reward_steps
+                display_rewards = cumulative_rewards
                 
                 fig.add_trace(
                     go.Scatter(
@@ -747,25 +750,40 @@ class LiveTradingDashboard:
                     row=2, col=1
                 )
             
-            # Update layout
+            # Update layout to fill bottom space completely
             fig.update_layout(
-                height=400,
+                height=600,  # Fill more vertical space
                 margin=dict(l=60, r=20, t=20, b=40),
                 paper_bgcolor='#1e2130',
                 plot_bgcolor='#0e1117',
-                font=dict(size=11, color='#e6e6e6'),
+                font=dict(size=10, color='#e6e6e6'),
                 showlegend=False,
                 xaxis2_title="Step",
                 yaxis1_title="Price ($)",
                 yaxis2_title="Cumulative Reward",
-                hovermode='x unified'
+                hovermode='x unified',
+                autosize=True  # Allow chart to resize
             )
             
-            # Configure x-axis for time display
-            fig.update_xaxes(
-                rangeslider_visible=False,
-                row=1, col=1
-            )
+            # Configure x-axis to show full day without scrolling
+            if timestamps:
+                fig.update_xaxes(
+                    rangeslider_visible=False,
+                    range=[timestamps[0], timestamps[-1]],  # Show full range
+                    fixedrange=True,  # Allow zoom but default to full range
+                    row=1, col=1
+                )
+                # Also apply to reward chart x-axis if we have reward data
+                if 'display_steps' in locals() and display_steps:
+                    fig.update_xaxes(
+                        range=[0, len(display_steps) - 1],
+                        row=2, col=1
+                    )
+            else:
+                fig.update_xaxes(
+                    rangeslider_visible=False,
+                    row=1, col=1
+                )
             
             # Update axes styling
             for i in range(1, 3):
@@ -852,13 +870,14 @@ class LiveTradingDashboard:
                 reverse=True
             )[:10]  # Show all 10 components
             
-            # Add header row
+            # Add header row with TotRew column
             rows = [
                 html.Div([
                     html.Span("Component", style={'flex': '1', 'fontSize': '10px', 'color': '#999'}),
-                    html.Span("Avg Value", style={'fontSize': '10px', 'color': '#999', 'width': '70px', 'textAlign': 'right'}),
-                    html.Span("Count", style={'fontSize': '10px', 'color': '#999', 'width': '40px', 'textAlign': 'center'}),
-                    html.Span("%", style={'fontSize': '10px', 'color': '#999', 'width': '30px', 'textAlign': 'right'})
+                    html.Span("Avg Value", style={'fontSize': '10px', 'color': '#999', 'width': '55px', 'textAlign': 'right'}),
+                    html.Span("TotRew", style={'fontSize': '10px', 'color': '#999', 'width': '50px', 'textAlign': 'right'}),
+                    html.Span("Count", style={'fontSize': '10px', 'color': '#999', 'width': '35px', 'textAlign': 'center'}),
+                    html.Span("%", style={'fontSize': '10px', 'color': '#999', 'width': '25px', 'textAlign': 'right'})
                 ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '3px', 'borderBottom': '1px solid #3d4158', 'paddingBottom': '2px'})
             ]
             
