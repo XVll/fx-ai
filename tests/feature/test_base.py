@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
 # Import statements will fail initially (TDD)
-from feature.v2.base.feature_base import BaseFeature, FeatureConfig
-from feature.v2.base.feature_registry import FeatureRegistry
-from feature.v2.base.feature_manager import FeatureManager
-from feature.v2.base.normalizers import MinMaxNormalizer, StandardNormalizer
+from feature.feature_base import BaseFeature, FeatureConfig
+from feature.feature_registry import FeatureRegistry
+from feature.feature_manager import FeatureManager
+from feature.normalizers import MinMaxNormalizer, StandardNormalizer
 
 
 class TestBaseFeature:

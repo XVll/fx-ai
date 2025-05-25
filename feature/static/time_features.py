@@ -3,8 +3,8 @@ import numpy as np
 import pytz
 from datetime import datetime, timezone
 from typing import Dict, Any
-from ..base.feature_base import BaseFeature, FeatureConfig
-from ..base.feature_registry import feature_registry
+from feature.feature_base import BaseFeature, FeatureConfig
+from feature.feature_registry import feature_registry
 
 
 @feature_registry.register("time_of_day_sin", category="static")
