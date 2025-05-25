@@ -42,15 +42,23 @@ class FeatureManager:
         available_features = {
             'hf': [
                 'price_velocity', 'price_acceleration', 'spread_compression',
-                'quote_velocity', 'tape_imbalance', 'tape_aggression_ratio'
+                'quote_velocity', 'tape_imbalance', 'tape_aggression_ratio',
+                'volume_velocity', 'volume_acceleration', 'quote_imbalance'
             ],
             'mf': [
                 '1m_position_in_current_candle', '5m_position_in_current_candle',
+                '1m_position_in_previous_candle', '5m_position_in_previous_candle',
                 '1m_body_size_relative', '5m_body_size_relative',
+                '1m_upper_wick_relative', '5m_upper_wick_relative',
+                '1m_lower_wick_relative', '5m_lower_wick_relative',
                 '1m_ema9_distance', '1m_ema20_distance',
                 '5m_ema9_distance', '5m_ema20_distance',
                 '1m_price_velocity', '5m_price_velocity',
-                '1m_volume_velocity', '5m_volume_velocity'
+                '1m_price_acceleration', '5m_price_acceleration',
+                '1m_volume_velocity', '5m_volume_velocity',
+                '1m_volume_acceleration', '5m_volume_acceleration',
+                '1m_swing_high_distance', '1m_swing_low_distance',
+                '5m_swing_high_distance', '5m_swing_low_distance'
             ],
             'lf': [
                 'support_distance', 'resistance_distance',
@@ -60,6 +68,10 @@ class FeatureManager:
             ],
             'static': [
                 'market_session_type', 'time_of_day_sin', 'time_of_day_cos'
+            ],
+            'portfolio': [
+                'position_size', 'average_price', 'unrealized_pnl',
+                'time_in_position', 'max_adverse_excursion'
             ]
         }
         
