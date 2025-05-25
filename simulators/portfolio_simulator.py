@@ -86,9 +86,10 @@ class PortfolioState(TypedDict):
 class PortfolioManager:
     """Clean portfolio management with essential logging only"""
 
-    def __init__(self, logger: logging.Logger, config: Config, tradable_assets: List[str]):
+    def __init__(self, logger: logging.Logger, config: Config, tradable_assets: List[str], trade_callback=None):
         self.logger = logger
         self.config = config
+        self.trade_callback = trade_callback  # Callback for completed trades
 
         # Core configuration
         self.initial_capital: float = config.simulation.portfolio_config.initial_cash
@@ -337,6 +338,10 @@ class PortfolioManager:
 
                     self.trade_log.append(trade)
                     del self.open_trades[trade['trade_id']]
+                    
+                    # Notify callback about completed trade
+                    if self.trade_callback:
+                        self.trade_callback(trade)
 
         # Update timestamp
         pos_data['last_update_timestamp'] = fill['fill_timestamp']

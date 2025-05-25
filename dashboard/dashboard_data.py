@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Any, Deque
 from collections import deque, defaultdict
 from datetime import datetime
 import time
+import pytz
 
 
 @dataclass
@@ -25,7 +26,15 @@ class MarketData:
     @property
     def time_ny(self) -> str:
         """Get NY time"""
-        return self.timestamp.strftime("%H:%M:%S")
+        # Convert to NY timezone if not already
+        ny_tz = pytz.timezone('America/New_York')
+        if self.timestamp.tzinfo is None:
+            # Assume UTC if no timezone
+            utc_time = pytz.utc.localize(self.timestamp)
+            ny_time = utc_time.astimezone(ny_tz)
+        else:
+            ny_time = self.timestamp.astimezone(ny_tz)
+        return ny_time.strftime("%H:%M:%S")
 
 
 @dataclass
@@ -155,6 +164,14 @@ class TrainingProgress:
     steps_per_second: float = 0.0
     time_per_update: float = 0.0
     time_per_episode: float = 0.0
+    
+    # Enhanced stage-specific information
+    rollout_steps: int = 0
+    rollout_total: int = 2048  # Default PPO rollout size
+    current_epoch: int = 0
+    total_epochs: int = 10
+    current_batch: int = 0
+    total_batches: int = 32
 
 
 @dataclass
@@ -222,15 +239,18 @@ class DashboardState:
         # Reward components
         self.reward_components: Dict[str, RewardComponent] = {}
         
-        # Action analysis
+        # Action analysis - global (training-wide)
         self.action_analysis = ActionAnalysis()
+        self.global_action_counts = defaultdict(int)
+        self.global_action_rewards = defaultdict(list)
         
         # Model info
         self.model_name: str = "N/A"
         self.session_start_time: datetime = datetime.now()
+        self.start_time = time.time()  # For uptime tracking
         
         # OHLC data for candlestick charts
-        self.ohlc_data: Deque[Dict[str, Any]] = deque(maxlen=100)  # Keep last 100 bars
+        self.ohlc_data: Deque[Dict[str, Any]] = deque(maxlen=500)  # Keep last 500 bars for better visibility
         self.last_bar_timestamp = None  # Track last bar to avoid duplicates
         
     def start_new_episode(self, episode_num: int):
@@ -242,9 +262,7 @@ class DashboardState:
         # Create new episode
         self.current_episode = EpisodeData(episode_num=episode_num)
         
-        # Reset action analysis for new episode
-        self.action_analysis.invalid_actions_count = 0
-        self.action_analysis.action_bias = {}
+        # Don't reset action analysis - it's global now
         
     def end_current_episode(self, reason: str = "Completed", truncated: bool = False):
         """End current episode"""
@@ -274,7 +292,12 @@ class DashboardState:
         self.market_data.ask = data.get('ask', self.market_data.ask)
         self.market_data.spread = self.market_data.ask - self.market_data.bid
         self.market_data.volume = data.get('volume', self.market_data.volume)
-        self.market_data.timestamp = datetime.now()
+        
+        # Use provided timestamp or current time
+        if 'timestamp' in data and data['timestamp']:
+            self.market_data.timestamp = data['timestamp']
+        else:
+            self.market_data.timestamp = datetime.now()
         
         # Update position current price
         self.position.current_price = self.market_data.price
@@ -329,6 +352,8 @@ class DashboardState:
         
         # Add to global
         self.global_actions.append(action)
+        self.global_action_counts[action_type] += 1
+        self.global_action_rewards[action_type].append(reward)
         
         # Add to current episode
         if self.current_episode:
@@ -406,6 +431,20 @@ class DashboardState:
             self.training_progress.stage_progress = data['stage_progress']
         if 'stage_status' in data:
             self.training_progress.stage_status = data['stage_status']
+            
+        # Update enhanced stage-specific information
+        if 'rollout_steps' in data:
+            self.training_progress.rollout_steps = data['rollout_steps']
+        if 'rollout_total' in data:
+            self.training_progress.rollout_total = data['rollout_total']
+        if 'current_epoch' in data:
+            self.training_progress.current_epoch = data['current_epoch']
+        if 'total_epochs' in data:
+            self.training_progress.total_epochs = data['total_epochs']
+        if 'current_batch' in data:
+            self.training_progress.current_batch = data['current_batch']
+        if 'total_batches' in data:
+            self.training_progress.total_batches = data['total_batches']
     
     def update_ppo_metrics(self, data: Dict[str, Any]):
         """Update PPO metrics"""
@@ -431,6 +470,42 @@ class DashboardState:
         self.ppo_metrics.approx_kl = data.get('approx_kl', self.ppo_metrics.approx_kl)
         self.ppo_metrics.explained_variance = data.get('explained_variance', self.ppo_metrics.explained_variance)
     
+    def update_reward_components(self, components_data: Dict[str, float]):
+        """Update reward components from raw data"""
+        # Calculate total impact for this step
+        step_total_impact = sum(abs(v) for v in components_data.values() if v != 0)
+        
+        for name, value in components_data.items():
+            if value == 0:  # Skip zero values
+                continue
+                
+            if name not in self.reward_components:
+                # Create new component
+                self.reward_components[name] = RewardComponent(
+                    name=name,
+                    component_type="Reward" if value >= 0 else "Penalty"
+                )
+            
+            component = self.reward_components[name]
+            component.times_triggered += 1
+            
+            # Update running average
+            if component.times_triggered == 1:
+                component.avg_magnitude = value
+            else:
+                # Exponential moving average for smoother updates
+                alpha = 0.1  # Smoothing factor
+                component.avg_magnitude = alpha * value + (1 - alpha) * component.avg_magnitude
+            
+            # Update total impact (cumulative)
+            component.total_impact += value
+        
+        # Calculate overall percentages based on total cumulative impact
+        total_cumulative_impact = sum(abs(comp.total_impact) for comp in self.reward_components.values())
+        if total_cumulative_impact > 0:
+            for comp in self.reward_components.values():
+                comp.percent_of_total = (abs(comp.total_impact) / total_cumulative_impact) * 100
+    
     def get_recent_actions(self, n: int = 5) -> List[Action]:
         """Get recent actions from current episode"""
         if self.current_episode:
@@ -454,20 +529,16 @@ class DashboardState:
         return list(self.episode_history)[-n:]
     
     def calculate_action_bias(self):
-        """Calculate action bias statistics for current episode"""
-        if not self.current_episode:
-            return
-        
-        episode = self.current_episode
-        total_actions = sum(episode.action_counts.values())
+        """Calculate action bias statistics globally (training-wide)"""
+        total_actions = sum(self.global_action_counts.values())
         
         if total_actions == 0:
             return
         
         action_bias = {}
         for action_type in ['HOLD', 'BUY', 'SELL']:
-            count = episode.action_counts.get(action_type, 0)
-            rewards = episode.action_rewards.get(action_type, [])
+            count = self.global_action_counts.get(action_type, 0)
+            rewards = self.global_action_rewards.get(action_type, [])
             
             action_bias[action_type] = {
                 'count': count,
@@ -478,6 +549,14 @@ class DashboardState:
             }
         
         self.action_analysis.action_bias = action_bias
+    
+    def update_trade(self, trade_data: Dict[str, Any]):
+        """Update/add a trade - alias for add_trade with side mapping"""
+        # Map action to side for compatibility
+        if 'action' in trade_data and 'side' not in trade_data:
+            trade_data = trade_data.copy()
+            trade_data['side'] = trade_data['action']
+        self.add_trade(trade_data)
     
     @property
     def session_elapsed_time(self) -> str:

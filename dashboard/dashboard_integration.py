@@ -39,6 +39,13 @@ class DashboardMetricsCollector:
             'ask': step_data.get('ask', step_data.get('price', 0) * 1.0001),
             'volume': step_data.get('volume', 0),
         }
+        
+        # Add timestamp from market state if available
+        if 'market_state' in step_data and step_data['market_state']:
+            market_state = step_data['market_state']
+            if isinstance(market_state, dict) and 'timestamp_utc' in market_state:
+                market_update['timestamp'] = market_state['timestamp_utc']
+                
         self.dashboard.update_market(market_update)
         
         # Update OHLC data if available from market state
@@ -94,6 +101,10 @@ class DashboardMetricsCollector:
         # Track invalid actions for footer metrics
         if step_data.get('invalid_action', False):
             self.dashboard.state.action_analysis.invalid_actions_count += 1
+            
+        # Update reward components if present
+        if 'reward_components' in step_data and step_data['reward_components']:
+            self.dashboard.update_reward_components(step_data['reward_components'])
     
     def on_trade(self, trade_data: Dict[str, Any]):
         """Handle completed trade"""
@@ -166,3 +177,15 @@ class DashboardMetricsCollector:
             return
         
         self.dashboard.set_model_info(model_name)
+    
+    def on_reward_components(self, reward_data: Dict[str, Any]):
+        """Handle reward component updates"""
+        if not self.is_started:
+            return
+            
+        # Update reward components display
+        if hasattr(self.dashboard.state, 'reward_components'):
+            self.dashboard.state.reward_components = reward_data
+        
+        # Update dashboard with reward breakdown
+        self.dashboard.update_reward_components(reward_data)

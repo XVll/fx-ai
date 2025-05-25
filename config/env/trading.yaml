@@ -1,4 +1,4 @@
-# config/env/trading.yaml - CLEAN: Simple trading environment configuration
+# config/env/trading.yaml - Enhanced with reward system v2
 
 # General parameters
 training_mode: "backtesting"
@@ -13,9 +13,12 @@ normalize_state: true
 random_reset: true
 max_position: 1.0
 position_multipliers: [0.25, 0.5, 0.75, 1.0]
-render_mode: "none"  # Simple render mode without dashboard
+render_mode: "none"
 
-# Reward configuration
+# Enable advanced reward system
+use_reward_v2: true
+
+# Legacy reward configuration (used when use_reward_v2: false)
 reward:
   weight_equity_change: 1.0
   weight_realized_pnl: 0.1
@@ -27,3 +30,85 @@ reward:
   terminal_penalty_max_loss: 10.0
   reward_scaling_factor: 0.01
   log_reward_components: true
+
+# Advanced reward system v2 configuration
+reward_v2:
+  components:
+    # Foundational rewards
+    realized_pnl:
+      enabled: true
+      weight: 1.0
+      clip_min: -10.0
+      clip_max: 10.0
+      
+    mark_to_market:
+      enabled: true
+      weight: 0.5
+      max_leverage: 2.0
+      clip_min: -5.0
+      clip_max: 5.0
+      
+    differential_sharpe:
+      enabled: true
+      weight: 0.3
+      window_size: 20
+      min_periods: 5
+      sharpe_scale: 0.1
+      
+    # Shaping rewards
+    holding_time_penalty:
+      enabled: true
+      weight: 1.0
+      max_holding_time: 60
+      penalty_per_step: 0.001
+      progressive_penalty: true
+      
+    overtrading_penalty:
+      enabled: true
+      weight: 1.0
+      frequency_window: 100
+      max_trades_per_window: 5
+      penalty_per_excess_trade: 0.01
+      exponential_penalty: true
+      
+    quick_profit_incentive:
+      enabled: true
+      weight: 1.0
+      quick_profit_time: 30
+      bonus_rate: 0.5
+      
+    drawdown_penalty:
+      enabled: true
+      weight: 1.0
+      warning_threshold: 0.02
+      severe_threshold: 0.05
+      base_penalty: 0.01
+      
+    # Trade-specific penalties
+    mae_penalty:
+      enabled: true
+      weight: 1.0
+      mae_threshold: 0.02
+      base_penalty: 0.1
+      loss_multiplier: 1.5
+      
+    mfe_penalty:
+      enabled: true
+      weight: 1.0
+      give_back_threshold: 0.5
+      base_penalty: 0.05
+      reversal_multiplier: 2.0
+      
+    # Terminal penalties
+    terminal_penalty:
+      enabled: true
+      weight: 1.0
+      bankruptcy_penalty: 100.0
+      max_loss_penalty: 50.0
+      default_penalty: 10.0
+      
+  # Global aggregator settings
+  aggregator:
+    global_scale: 0.01
+    use_smoothing: true
+    smoothing_window: 10

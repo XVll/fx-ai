@@ -13,6 +13,7 @@ from gymnasium import spaces
 from config.config import Config
 from data.data_manager import DataManager
 from envs.reward import RewardCalculator
+from rewards.calculator import RewardSystemV2
 from feature.feature_extractor import FeatureExtractor
 from simulators.execution_simulator import ExecutionSimulator
 from simulators.market_simulator import MarketSimulator
@@ -88,7 +89,8 @@ class TradingEnvironment(gym.Env):
         self.execution_manager: Optional[ExecutionSimulator] = None
         self.portfolio_manager: Optional[PortfolioManager] = None
         self.feature_extractor: Optional[FeatureExtractor] = None
-        self.reward_calculator: Optional[RewardCalculator] = None
+        self.reward_calculator: Optional[Union[RewardCalculator, RewardSystemV2]] = None
+        self.use_reward_v2 = getattr(env_cfg, 'use_reward_v2', False)
 
         # Action Space
         self.action_types = list(ActionTypeEnum)
@@ -183,7 +185,8 @@ class TradingEnvironment(gym.Env):
         self.portfolio_manager = PortfolioManager(
             logger=logging.getLogger(f"{__name__}.PortfolioMgr"),
             config=self.config,
-            tradable_assets=[self.primary_asset]
+            tradable_assets=[self.primary_asset],
+            trade_callback=self._on_trade_completed
         )
 
         self.feature_extractor = FeatureExtractor(
@@ -193,11 +196,28 @@ class TradingEnvironment(gym.Env):
             logger=logging.getLogger(f"{__name__}.FeatureExt")
         )
 
-        self.reward_calculator = RewardCalculator(
-            config=self.config,
-            metrics_integrator=self.metrics_integrator,
-            logger=logging.getLogger(f"{__name__}.RewardCalc")
-        )
+        # Initialize reward system based on configuration
+        if self.use_reward_v2:
+            self.reward_calculator = RewardSystemV2(
+                config=self.config,
+                metrics_integrator=self.metrics_integrator,
+                logger=logging.getLogger(f"{__name__}.RewardV2")
+            )
+            self.logger.info("Using RewardSystemV2 with comprehensive component tracking")
+            
+            # Register reward components with metrics integrator
+            if self.metrics_integrator and hasattr(self.reward_calculator, 'components'):
+                for component in self.reward_calculator.components:
+                    self.metrics_integrator.register_reward_component(
+                        component.metadata.name,
+                        component.metadata.type.value
+                    )
+        else:
+            self.reward_calculator = RewardCalculator(
+                config=self.config,
+                metrics_integrator=self.metrics_integrator,
+                logger=logging.getLogger(f"{__name__}.RewardCalc")
+            )
 
         self.execution_manager = ExecutionSimulator(
             logger=logging.getLogger(f"{__name__}.ExecSim"),
@@ -767,7 +787,8 @@ class TradingEnvironment(gym.Env):
                     'action': action_name,
                     'size': self._last_decoded_action.get('size_float', 1.0) if self._last_decoded_action else 1.0,
                     'invalid_action': is_invalid,  # Track invalid actions
-                    'market_state': market_state_next_t  # Pass full market state for OHLC
+                    'market_state': market_state_next_t,  # Pass full market state for OHLC
+                    'reward_components': self.reward_calculator.get_last_reward_components()  # Include reward components
                 }
                 self.metrics_integrator.metrics_manager.update_dashboard_step(dashboard_data)
                 
@@ -942,6 +963,27 @@ class TradingEnvironment(gym.Env):
         if is_truncated:
             info['TimeLimit.truncated'] = True
         return info
+
+    def _on_trade_completed(self, trade: Dict[str, Any]):
+        """Callback for when a trade is completed"""
+        try:
+            # Convert trade data to dashboard format
+            dashboard_trade = {
+                'action': 'BUY' if trade['entry_quantity_total'] > 0 else 'SELL',
+                'quantity': abs(trade['entry_quantity_total']),
+                'symbol': trade.get('asset_id', self.primary_asset),
+                'entry_price': trade['avg_entry_price'],
+                'exit_price': trade.get('avg_exit_price'),
+                'pnl': trade.get('realized_pnl', 0.0),
+                'fees': trade.get('commission_total', 0.0) + trade.get('fees_total', 0.0)
+            }
+            
+            # Send to dashboard if available
+            if hasattr(self.metrics_integrator.metrics_manager, 'dashboard_collector') and self.metrics_integrator.metrics_manager.dashboard_collector:
+                self.metrics_integrator.metrics_manager.dashboard_collector.on_trade(dashboard_trade)
+                
+        except Exception as e:
+            self.logger.warning(f"Error in trade callback: {e}")
 
     def render(self, info_dict: Optional[Dict[str, Any]] = None):
         """Render method - basic console output"""
