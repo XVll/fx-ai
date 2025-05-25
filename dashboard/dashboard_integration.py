@@ -48,29 +48,75 @@ class DashboardMetricsCollector:
                 
         self.dashboard.update_market(market_update)
         
-        # Update OHLC data if available from market state
+        # Load full day 1m bars data if available from market state (do this once per day)
         if 'market_state' in step_data and step_data['market_state']:
             market_state = step_data['market_state']
-            if isinstance(market_state, dict) and '1m_bars_window' in market_state:
-                bars_window = market_state.get('1m_bars_window', [])
-                if bars_window and isinstance(bars_window, list):
-                    # Process all bars in the window
-                    for bar in bars_window:
-                        if bar and isinstance(bar, dict) and all(k in bar for k in ['open', 'high', 'low', 'close']):
-                            # Check if this is a new bar based on timestamp
-                            bar_timestamp = bar.get('timestamp')
-                            if bar_timestamp and bar_timestamp != self.dashboard.state.last_bar_timestamp:
+            symbol = step_data.get('symbol', 'N/A')
+            current_date = market_update.get('timestamp')
+            
+            # Extract date for comparison
+            date_key = None
+            if current_date:
+                from datetime import datetime
+                if hasattr(current_date, 'date'):
+                    date_key = current_date.date()
+                elif isinstance(current_date, str):
+                    try:
+                        parsed_date = datetime.fromisoformat(current_date.replace('Z', '+00:00'))
+                        date_key = parsed_date.date()
+                    except:
+                        pass
+            
+            # Check if we need to load full day data (new day or new symbol)
+            if (date_key and symbol and 
+                (self.dashboard.state.full_day_date != date_key or 
+                 self.dashboard.state.full_day_symbol != symbol)):
+                
+                # Get full day 1m bars from market state if available
+                if 'full_day_1m_bars' in market_state and market_state['full_day_1m_bars']:
+                    full_bars = market_state['full_day_1m_bars']
+                    if isinstance(full_bars, list):
+                        self.dashboard.state.full_day_1m_bars = []
+                        for bar in full_bars:
+                            if bar and isinstance(bar, dict) and all(k in bar for k in ['open', 'high', 'low', 'close']):
                                 ohlc_bar = {
-                                    'timestamp': bar_timestamp,
+                                    'timestamp': bar.get('timestamp'),
                                     'open': float(bar['open']),
                                     'high': float(bar['high']),
                                     'low': float(bar['low']),
                                     'close': float(bar['close']),
                                     'volume': float(bar.get('volume', 0))
                                 }
-                                # Add to dashboard state
-                                self.dashboard.state.ohlc_data.append(ohlc_bar)
-                                self.dashboard.state.last_bar_timestamp = bar_timestamp
+                                self.dashboard.state.full_day_1m_bars.append(ohlc_bar)
+                        
+                        # Replace incremental ohlc_data with full day data
+                        self.dashboard.state.ohlc_data.clear()
+                        self.dashboard.state.ohlc_data.extend(self.dashboard.state.full_day_1m_bars)
+                        
+                        # Update tracking variables
+                        self.dashboard.state.full_day_date = date_key
+                        self.dashboard.state.full_day_symbol = symbol
+                        logger.info(f"Loaded {len(self.dashboard.state.full_day_1m_bars)} 1m bars for {symbol} on {date_key}")
+                
+                # Fallback to incremental update if full day data not available
+                elif '1m_bars_window' in market_state:
+                    bars_window = market_state.get('1m_bars_window', [])
+                    if bars_window and isinstance(bars_window, list):
+                        # Process all bars in the window (only add new ones)
+                        for bar in bars_window:
+                            if bar and isinstance(bar, dict) and all(k in bar for k in ['open', 'high', 'low', 'close']):
+                                bar_timestamp = bar.get('timestamp')
+                                if bar_timestamp and bar_timestamp != self.dashboard.state.last_bar_timestamp:
+                                    ohlc_bar = {
+                                        'timestamp': bar_timestamp,
+                                        'open': float(bar['open']),
+                                        'high': float(bar['high']),
+                                        'low': float(bar['low']),
+                                        'close': float(bar['close']),
+                                        'volume': float(bar.get('volume', 0))
+                                    }
+                                    self.dashboard.state.ohlc_data.append(ohlc_bar)
+                                    self.dashboard.state.last_bar_timestamp = bar_timestamp
         
         # Update position
         position_update = {
