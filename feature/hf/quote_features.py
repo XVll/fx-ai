@@ -142,3 +142,79 @@ class QuoteVelocityFeature(BaseFeature):
             "lookback": 2,
             "fields": ["hf_data_window"]
         }
+
+@feature_registry.register("quote_imbalance", category="hf")
+class QuoteImbalanceFeature(BaseFeature):
+    """Quote volume imbalance - bid size vs ask size"""
+    
+    def __init__(self, config: FeatureConfig = None):
+        if config is None:
+            config = FeatureConfig(name="quote_imbalance", normalize=False)
+        super().__init__(config)
+    
+    def calculate_raw(self, market_data: Dict[str, Any]) -> float:
+        """Calculate bid/ask size imbalance in current second"""
+        hf_window = market_data.get('hf_data_window', [])
+        
+        if not hf_window:
+            return 0.0
+        
+        # Get quotes from current window (last entry)
+        curr_window = hf_window[-1]
+        
+        if 'quotes' not in curr_window:
+            return 0.0
+        
+        quotes = curr_window.get('quotes', [])
+        
+        if not quotes:
+            return 0.0
+        
+        # Aggregate bid and ask sizes
+        total_bid_size = 0.0
+        total_ask_size = 0.0
+        
+        for quote in quotes:
+            # Get sizes with validation
+            bid_size = quote.get('bid_size', 0)
+            ask_size = quote.get('ask_size', 0)
+            
+            # Validate and convert to float
+            try:
+                bid_size = float(bid_size) if bid_size is not None else 0.0
+                ask_size = float(ask_size) if ask_size is not None else 0.0
+            except (TypeError, ValueError):
+                continue
+            
+            # Only count positive sizes
+            if bid_size > 0:
+                total_bid_size += bid_size
+            if ask_size > 0:
+                total_ask_size += ask_size
+        
+        # Calculate imbalance
+        total_size = total_bid_size + total_ask_size
+        
+        if total_size == 0:
+            return 0.0  # No size data
+        
+        # Imbalance = (bid - ask) / (bid + ask)
+        # Range: [-1, 1] where -1 = all ask, +1 = all bid
+        imbalance = (total_bid_size - total_ask_size) / total_size
+        
+        return imbalance
+    
+    def get_default_value(self) -> float:
+        """Default to balanced (neutral)"""
+        return 0.0
+    
+    def get_normalization_params(self) -> Dict[str, Any]:
+        """Already normalized to [-1, 1]"""
+        return {}
+    
+    def get_requirements(self) -> Dict[str, Any]:
+        return {
+            "data_type": "quotes",
+            "lookback": 1,
+            "fields": ["quotes", "hf_data_window"]
+        }

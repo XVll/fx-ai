@@ -27,6 +27,8 @@ The FxAIv2 feature system is a modular, extensible framework for extracting and 
 
 ## Implemented Features
 
+Total: **50 features** across 5 categories (all 50 expected features implemented)
+
 ### Static Features (3 implemented)
 Features that change slowly or represent time/session information.
 
@@ -36,48 +38,52 @@ Features that change slowly or represent time/session information.
 | S_Time_Of_Day_Cos | `time_of_day_cos` | [-1, 1] | Cosine encoding of time (complement to sine) |
 | S_Market_Session_Type | `market_session_type` | [0, 1] | 0=closed, 0.25=pre, 1.0=regular, 0.75=post |
 
-### High-Frequency Features (6 implemented)
+### High-Frequency Features (9 implemented)
 Features calculated from 1-second data over a 60-second window.
 
 | Feature | Implementation | Range | Description |
 |---------|----------------|-------|-------------|
 | HF_1s_Price_Velocity | `price_velocity` | [-1, 1] | Rate of price change (normalized to ±10%/sec) |
 | HF_1s_Price_Acceleration | `price_acceleration` | [-1, 1] | Change in price velocity |
+| HF_1s_Volume_Velocity | `volume_velocity` | [-1, 1] | Rate of volume change (normalized to ±1000%/sec) |
+| HF_1s_Volume_Acceleration | `volume_acceleration` | [-1, 1] | Change in volume velocity |
 | HF_Tape_1s_Imbalance | `tape_imbalance` | [-1, 1] | Buy vs sell volume ratio |
 | HF_Tape_1s_Aggression_Ratio | `tape_aggression_ratio` | [-1, 1] | Orders hitting bid vs ask |
 | HF_Quote_1s_Spread_Compression | `spread_compression` | [-1, 1] | Change in bid-ask spread |
+| HF_Quote_1s_Quote_Imbalance | `quote_imbalance` | [-1, 1] | Bid vs ask size imbalance |
 | - | `quote_velocity` | [-1, 1] | Mid-price velocity from quotes |
 
-**Not Implemented:**
-- HF_1s_Volume_Velocity
-- HF_1s_Volume_Acceleration
-- HF_Quote_1s_Quote_Imbalance
-
-### Medium-Frequency Features (12 implemented)
+### Medium-Frequency Features (26 implemented)
 Features calculated from 1-minute and 5-minute bars over 30-minute windows.
 
 | Feature | Implementation | Range | Description |
 |---------|----------------|-------|-------------|
 | MF_1m_Price_Velocity | `1m_price_velocity` | [-1, 1] | 1-minute price change rate |
 | MF_5m_Price_Velocity | `5m_price_velocity` | [-1, 1] | 5-minute price change rate |
+| MF_1m_Price_Acceleration | `1m_price_acceleration` | [-1, 1] | 1-minute price acceleration |
+| MF_5m_Price_Acceleration | `5m_price_acceleration` | [-1, 1] | 5-minute price acceleration |
 | MF_1m_Volume_Velocity | `1m_volume_velocity` | [-1, 1] | 1-minute volume change rate |
 | MF_5m_Volume_Velocity | `5m_volume_velocity` | [-1, 1] | 5-minute volume change rate |
+| MF_1m_Volume_Acceleration | `1m_volume_acceleration` | [-1, 1] | 1-minute volume acceleration |
+| MF_5m_Volume_Acceleration | `5m_volume_acceleration` | [-1, 1] | 5-minute volume acceleration |
 | MF_1m_Dist_To_EMA9 | `1m_ema9_distance` | [-1, 1] | Distance to 9-period EMA (±50% max) |
 | MF_1m_Dist_To_EMA20 | `1m_ema20_distance` | [-1, 1] | Distance to 20-period EMA |
 | MF_5m_Dist_To_EMA9 | `5m_ema9_distance` | [-1, 1] | 5m 9-period EMA distance |
 | MF_5m_Dist_To_EMA20 | `5m_ema20_distance` | [-1, 1] | 5m 20-period EMA distance |
 | MF_1m_Position_Current_Candle | `1m_position_in_current_candle` | [0, 1] | Position in current 1m candle |
 | MF_5m_Position_In_CurrentCandle | `5m_position_in_current_candle` | [0, 1] | Position in current 5m candle |
+| MF_1m_Position_In_PreviousCandle | `1m_position_in_previous_candle` | [0, 1] | Position in previous 1m candle |
+| MF_5m_Position_In_PreviousCandle | `5m_position_in_previous_candle` | [0, 1] | Position in previous 5m candle |
 | MF_1m_BodySize_Rel | `1m_body_size_relative` | [0, 1] | Body size relative to range |
 | MF_5m_BodySize_Rel | `5m_body_size_relative` | [0, 1] | 5m body size relative |
-
-**Not Implemented:**
-- MF_1m/5m_Price_Acceleration
-- MF_1m/5m_Volume_Acceleration
-- MF_1m/5m_Position_In_PreviousCandle
-- MF_1m/5m_UpperWick_Rel
-- MF_1m/5m_LowerWick_Rel
-- MF_1m/5m_Swing_High/Low_Dist
+| MF_1m_UpperWick_Rel | `1m_upper_wick_relative` | [0, 1] | Upper wick size relative to range |
+| MF_5m_UpperWick_Rel | `5m_upper_wick_relative` | [0, 1] | 5m upper wick relative |
+| MF_1m_LowerWick_Rel | `1m_lower_wick_relative` | [0, 1] | Lower wick size relative to range |
+| MF_5m_LowerWick_Rel | `5m_lower_wick_relative` | [0, 1] | 5m lower wick relative |
+| MF_1m_Swing_High_Dist | `1m_swing_high_distance` | [-1, 1] | Distance to 1m swing high |
+| MF_1m_Swing_Low_Dist | `1m_swing_low_distance` | [-1, 1] | Distance to 1m swing low |
+| MF_5m_Swing_High_Dist | `5m_swing_high_distance` | [-1, 1] | Distance to 5m swing high |
+| MF_5m_Swing_Low_Dist | `5m_swing_low_distance` | [-1, 1] | Distance to 5m swing low |
 
 ### Low-Frequency Features (7 implemented)
 Features calculated from daily data and intraday ranges.
@@ -92,14 +98,16 @@ Features calculated from daily data and intraday ranges.
 | LF_Whole_Dollar_Proximity | `whole_dollar_proximity` | [0, 1] | Distance to nearest $1.00 level |
 | LF_Half_Dollar_Proximity | `half_dollar_proximity` | [0, 1] | Distance to nearest $0.50 level |
 
-### Portfolio Features (5 documented, handled separately)
-Portfolio features are extracted directly in the FeatureExtractor, not through the modular system.
+### Portfolio Features (5 implemented)
+Portfolio features track the agent's current position and trading performance.
 
-- Portfolio_Current_Position_Size
-- Portfolio_Average_Price
-- Portfolio_Unrealized_PnL
-- Portfolio_Time_In_Position
-- Portfolio_Max_Adverse_Excursion
+| Feature | Implementation | Range | Description |
+|---------|----------------|-------|-------------|
+| Portfolio_Current_Position_Size | `position_size` | [-1, 1] | Current position size (normalized) |
+| Portfolio_Average_Price | `average_price` | [-1, 1] | Average entry price relative to current price |
+| Portfolio_Unrealized_PnL | `unrealized_pnl` | [-1, 1] | Current P&L (±10% clipped) |
+| Portfolio_Time_In_Position | `time_in_position` | [0, 1] | Time holding position (1 hour max) |
+| Portfolio_Max_Adverse_Excursion | `max_adverse_excursion` | [-1, 0] | Maximum drawdown in position |
 
 ## Data Flow
 
@@ -178,21 +186,19 @@ Each feature includes comprehensive tests covering:
 
 ## Future Enhancements
 
-1. **Missing Features** (24 total):
-   - Volume acceleration features
-   - Candle wick analysis
-   - Swing high/low distances
-   - Previous candle positions
-   - Quote imbalance
+1. **All 50 Features Implemented**: All originally planned features are now implemented and tested.
 
 2. **System Improvements**:
    - Configuration-based feature selection
    - Feature importance tracking
    - Online normalization parameter updates
    - Cross-feature dependencies
+   - Dynamic feature enabling/disabling
 
-3. **Data Enhancements**:
+3. **Potential New Features**:
    - Multi-day technical indicators
    - Market microstructure metrics
    - Cross-asset features
    - Sentiment indicators
+   - Order book depth features
+   - Options flow indicators

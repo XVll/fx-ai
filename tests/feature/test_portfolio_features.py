@@ -5,13 +5,13 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
 # These imports will fail initially - that's the point of TDD
-# from feature.portfolio import (
-#     PortfolioPositionSizeFeature,
-#     PortfolioAveragePriceFeature,
-#     PortfolioUnrealizedPnLFeature,
-#     PortfolioTimeInPositionFeature,
-#     PortfolioMaxAdverseExcursionFeature
-# )
+from feature.portfolio.portfolio_features import (
+    PortfolioPositionSizeFeature,
+    PortfolioAveragePriceFeature,
+    PortfolioUnrealizedPnLFeature,
+    PortfolioTimeInPositionFeature,
+    PortfolioMaxAdverseExcursionFeature
+)
 
 
 class TestPortfolioPositionFeatures:
@@ -19,9 +19,9 @@ class TestPortfolioPositionFeatures:
     
     def test_portfolio_position_size_feature(self):
         """Test current position size as percentage of portfolio"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.portfolio import PortfolioPositionSizeFeature
+        from feature.portfolio.portfolio_features import PortfolioPositionSizeFeature
         feature = PortfolioPositionSizeFeature()
         
         # Test with long position
@@ -51,9 +51,9 @@ class TestPortfolioPositionFeatures:
     
     def test_portfolio_position_size_edge_cases(self):
         """Test position size feature edge cases"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.portfolio import PortfolioPositionSizeFeature
+        from feature.portfolio.portfolio_features import PortfolioPositionSizeFeature
         feature = PortfolioPositionSizeFeature()
         
         # Test with no position
@@ -88,9 +88,9 @@ class TestPortfolioPositionFeatures:
     
     def test_portfolio_average_price_feature(self):
         """Test average entry price of current position"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.portfolio import PortfolioAveragePriceFeature
+        from feature.portfolio.portfolio_features import PortfolioAveragePriceFeature
         feature = PortfolioAveragePriceFeature()
         
         market_data = {
@@ -113,9 +113,9 @@ class TestPortfolioPositionFeatures:
     
     def test_portfolio_unrealized_pnl_feature(self):
         """Test unrealized P&L feature"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.portfolio import PortfolioUnrealizedPnLFeature
+        from feature.portfolio.portfolio_features import PortfolioUnrealizedPnLFeature
         feature = PortfolioUnrealizedPnLFeature()
         
         market_data = {
@@ -139,9 +139,9 @@ class TestPortfolioPositionFeatures:
     
     def test_portfolio_time_in_position_feature(self):
         """Test time in position feature"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.portfolio import PortfolioTimeInPositionFeature
+        from feature.portfolio.portfolio_features import PortfolioTimeInPositionFeature
         feature = PortfolioTimeInPositionFeature()
         
         current_time = datetime(2025, 1, 25, 15, 30, 0, tzinfo=timezone.utc)
@@ -165,9 +165,9 @@ class TestPortfolioPositionFeatures:
     
     def test_portfolio_max_adverse_excursion_feature(self):
         """Test maximum adverse excursion (MAE) during trade"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.portfolio import PortfolioMaxAdverseExcursionFeature
+        from feature.portfolio.portfolio_features import PortfolioMaxAdverseExcursionFeature
         feature = PortfolioMaxAdverseExcursionFeature()
         
         market_data = {
@@ -196,9 +196,9 @@ class TestPortfolioFeatureEdgeCases:
     
     def test_portfolio_features_no_position(self):
         """Test all portfolio features when no position is held"""
-        pytest.skip("Features not implemented yet")
+        # pytest.skip("Features not implemented yet")
         
-        from feature.portfolio import (
+        from feature.portfolio.portfolio_features import (
             PortfolioPositionSizeFeature,
             PortfolioAveragePriceFeature,
             PortfolioUnrealizedPnLFeature,
@@ -241,9 +241,9 @@ class TestPortfolioFeatureEdgeCases:
     
     def test_portfolio_features_missing_data(self):
         """Test portfolio features with missing or incomplete data"""
-        pytest.skip("Features not implemented yet")
+        # pytest.skip("Features not implemented yet")
         
-        from feature.portfolio import PortfolioPositionSizeFeature
+        from feature.portfolio.portfolio_features import PortfolioPositionSizeFeature
         feature = PortfolioPositionSizeFeature()
         
         # Missing portfolio state entirely
@@ -269,9 +269,9 @@ class TestPortfolioFeatureIntegration:
     
     def test_portfolio_features_sequence(self):
         """Test portfolio features maintain consistency over time"""
-        pytest.skip("Features not implemented yet")
+        # pytest.skip("Features not implemented yet")
         
-        from feature.portfolio import (
+        from feature.portfolio.portfolio_features import (
             PortfolioPositionSizeFeature,
             PortfolioTimeInPositionFeature,
             PortfolioUnrealizedPnLFeature

@@ -5,19 +5,19 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
 # These imports will fail initially - that's the point of TDD
-# from feature.mf.acceleration_features import (
-#     PriceAcceleration1mFeature, PriceAcceleration5mFeature,
-#     VolumeAcceleration1mFeature, VolumeAcceleration5mFeature
-# )
-# from feature.mf.candle_features import (
-#     PositionInPreviousCandle1mFeature, PositionInPreviousCandle5mFeature,
-#     UpperWickRelative1mFeature, LowerWickRelative1mFeature,
-#     UpperWickRelative5mFeature, LowerWickRelative5mFeature
-# )
-# from feature.mf.swing_features import (
-#     SwingHighDistance1mFeature, SwingLowDistance1mFeature,
-#     SwingHighDistance5mFeature, SwingLowDistance5mFeature
-# )
+from feature.mf.acceleration_features import (
+    PriceAcceleration1mFeature, PriceAcceleration5mFeature,
+    VolumeAcceleration1mFeature, VolumeAcceleration5mFeature
+)
+from feature.mf.candle_analysis_features import (
+    PositionInPreviousCandle1mFeature, PositionInPreviousCandle5mFeature,
+    UpperWickRelative1mFeature, LowerWickRelative1mFeature,
+    UpperWickRelative5mFeature, LowerWickRelative5mFeature
+)
+from feature.mf.swing_features import (
+    SwingHighDistance1mFeature, SwingLowDistance1mFeature,
+    SwingHighDistance5mFeature, SwingLowDistance5mFeature
+)
 
 
 class TestMissingMFAccelerationFeatures:
@@ -25,7 +25,7 @@ class TestMissingMFAccelerationFeatures:
     
     def test_price_acceleration_1m_feature(self):
         """Test 1-minute price acceleration calculation"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.mf.acceleration_features import PriceAcceleration1mFeature
         feature = PriceAcceleration1mFeature()
@@ -62,7 +62,7 @@ class TestMissingMFAccelerationFeatures:
     
     def test_price_acceleration_5m_feature(self):
         """Test 5-minute price acceleration calculation"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.mf.acceleration_features import PriceAcceleration5mFeature
         feature = PriceAcceleration5mFeature()
@@ -84,7 +84,7 @@ class TestMissingMFAccelerationFeatures:
     
     def test_volume_acceleration_features(self):
         """Test volume acceleration for 1m and 5m"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.mf.acceleration_features import (
             VolumeAcceleration1mFeature, VolumeAcceleration5mFeature
@@ -119,9 +119,9 @@ class TestMissingMFCandleFeatures:
     
     def test_position_in_previous_candle_1m_feature(self):
         """Test position of current price in previous 1m candle"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.mf.candle_features import PositionInPreviousCandle1mFeature
+        from feature.mf.candle_analysis_features import PositionInPreviousCandle1mFeature
         feature = PositionInPreviousCandle1mFeature()
         
         market_data = {
@@ -142,9 +142,9 @@ class TestMissingMFCandleFeatures:
     
     def test_position_in_previous_candle_edge_cases(self):
         """Test edge cases for previous candle position"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.mf.candle_features import PositionInPreviousCandle1mFeature
+        from feature.mf.candle_analysis_features import PositionInPreviousCandle1mFeature
         feature = PositionInPreviousCandle1mFeature()
         
         # Current price within previous candle range
@@ -167,9 +167,9 @@ class TestMissingMFCandleFeatures:
     
     def test_wick_relative_features(self):
         """Test upper and lower wick relative size features"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.mf.candle_features import (
+        from feature.mf.candle_analysis_features import (
             UpperWickRelative1mFeature, LowerWickRelative1mFeature
         )
         
@@ -209,9 +209,9 @@ class TestMissingMFCandleFeatures:
     
     def test_wick_features_edge_cases(self):
         """Test wick features with edge cases"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
-        from feature.mf.candle_features import (
+        from feature.mf.candle_analysis_features import (
             UpperWickRelative5mFeature, LowerWickRelative5mFeature
         )
         
@@ -260,7 +260,7 @@ class TestMissingMFSwingFeatures:
     
     def test_swing_high_distance_1m_feature(self):
         """Test distance to recent swing high on 1m timeframe"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.mf.swing_features import SwingHighDistance1mFeature
         feature = SwingHighDistance1mFeature()
@@ -293,7 +293,7 @@ class TestMissingMFSwingFeatures:
     
     def test_swing_low_distance_1m_feature(self):
         """Test distance to recent swing low on 1m timeframe"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.mf.swing_features import SwingLowDistance1mFeature
         feature = SwingLowDistance1mFeature()
@@ -321,7 +321,7 @@ class TestMissingMFSwingFeatures:
     
     def test_swing_features_5m(self):
         """Test 5-minute swing high/low features"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.mf.swing_features import (
             SwingHighDistance5mFeature, SwingLowDistance5mFeature
@@ -354,7 +354,7 @@ class TestMissingMFSwingFeatures:
     
     def test_swing_detection_edge_cases(self):
         """Test swing detection with edge cases"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.mf.swing_features import SwingHighDistance1mFeature
         feature = SwingHighDistance1mFeature()
