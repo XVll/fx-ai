@@ -11,7 +11,7 @@ class PriceVelocity1mFeature(BaseFeature):
     
     def __init__(self, config: FeatureConfig = None):
         if config is None:
-            config = FeatureConfig(name="1m_price_velocity", normalize=True)
+            config = FeatureConfig(name="price_velocity_1m", normalize=False)
         super().__init__(config)
     
     def calculate_raw(self, market_data: Dict[str, Any]) -> float:
@@ -54,7 +54,7 @@ class PriceVelocity5mFeature(BaseFeature):
     
     def __init__(self, config: FeatureConfig = None):
         if config is None:
-            config = FeatureConfig(name="5m_price_velocity", normalize=True)
+            config = FeatureConfig(name="5m_price_velocity", normalize=False)
         super().__init__(config)
     
     def calculate_raw(self, market_data: Dict[str, Any]) -> float:
@@ -97,7 +97,7 @@ class VolumeVelocity1mFeature(BaseFeature):
     
     def __init__(self, config: FeatureConfig = None):
         if config is None:
-            config = FeatureConfig(name="1m_volume_velocity", normalize=True)
+            config = FeatureConfig(name="1m_volume_velocity", normalize=False)
         super().__init__(config)
     
     def calculate_raw(self, market_data: Dict[str, Any]) -> float:

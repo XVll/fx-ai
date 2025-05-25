@@ -36,7 +36,7 @@ class DistanceToEMA9_1mFeature(BaseFeature):
     
     def __init__(self, config: FeatureConfig = None):
         if config is None:
-            config = FeatureConfig(name="1m_ema9_distance", normalize=True)
+            config = FeatureConfig(name="distance_to_ema9_1m", normalize=True)
         super().__init__(config)
     
     def calculate_raw(self, market_data: Dict[str, Any]) -> float:

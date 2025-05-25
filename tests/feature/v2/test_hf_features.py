@@ -5,8 +5,9 @@ import pandas as pd
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
-# These imports will fail initially (TDD)
 from feature.v2.hf.price_features import PriceVelocityFeature, PriceAccelerationFeature
+# These imports will fail initially (TDD)
+from feature.v2.hf.quote_features import SpreadCompressionFeature, QuoteVelocityFeature
 from feature.v2.hf.tape_features import TapeImbalanceFeature, TapeAggressionRatioFeature
 
 
@@ -300,18 +301,7 @@ class TestQuoteFeatures:
     
     def test_quote_spread_compression_feature(self):
         """Test bid-ask spread compression over 1 second"""
-        feature = feature = type('SpreadCompressionFeature', (), {
-            'calculate': lambda self, data: self._calc(data),
-            '_calc': lambda self, data: self._calculate_spread_compression(data),
-            '_calculate_spread_compression': lambda self, data: (
-                (data['hf_data_window'][-2]['quotes'][-1]['ask_price'] - 
-                 data['hf_data_window'][-2]['quotes'][-1]['bid_price']) -
-                (data['hf_data_window'][-1]['quotes'][-1]['ask_price'] - 
-                 data['hf_data_window'][-1]['quotes'][-1]['bid_price'])
-            ) if len(data.get('hf_data_window', [])) >= 2 and 
-                 all('quotes' in w and w['quotes'] for w in data['hf_data_window'][-2:]) else 0.0,
-            'get_requirements': lambda self: {"data_type": "quotes", "lookback": 2, "fields": ["quotes"]}
-        })()
+        feature = SpreadCompressionFeature()
         
         # Test spread tightening
         market_data = {
@@ -332,7 +322,7 @@ class TestQuoteFeatures:
         result = feature.calculate(market_data)
         
         # Compression = old_spread - new_spread = 0.10 - 0.05 = 0.05
-        assert result == 0.05  # Positive means spread compressed
+        assert abs(result - 0.05) < 1e-10  # Positive means spread compressed
         
         # Test spread widening
         market_data["hf_data_window"][1]["quotes"][0] = {
@@ -340,7 +330,7 @@ class TestQuoteFeatures:
         }
         
         result = feature.calculate(market_data)
-        assert result == -0.10  # Negative means spread widened
+        assert abs(result + 0.10) < 1e-10  # Negative means spread widened
 
 
 class TestHFFeatureIntegration:
