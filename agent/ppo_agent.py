@@ -603,6 +603,20 @@ class PPOTrainer:
 
         for callback in self.callbacks:
             callback.on_update_end(self, update_metrics)
+        
+        # Reset dashboard stage progress after update completes
+        if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
+            if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
+                training_data = {
+                    'mode': 'Training',
+                    'stage': 'Preparing Next Rollout',
+                    'updates': self.global_update_counter,
+                    'global_steps': self.global_step_counter,
+                    'total_episodes': self.global_episode_counter,
+                    'stage_progress': 0.0,  # Reset stage progress
+                    'stage_status': 'Update completed, preparing next rollout...'
+                }
+                self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
 
         return update_metrics
 
