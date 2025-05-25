@@ -118,7 +118,9 @@ class DashboardMetricsCollector:
             'entry_price': trade_data.get('entry_price', 0),
             'exit_price': trade_data.get('exit_price'),
             'pnl': trade_data.get('pnl', 0),
-            'fees': trade_data.get('fees', 0)
+            'fees': trade_data.get('fees', 0),
+            'commission': trade_data.get('commission', 0),
+            'slippage': trade_data.get('slippage', 0)
         }
         self.dashboard.update_trade(trade_update)
         
