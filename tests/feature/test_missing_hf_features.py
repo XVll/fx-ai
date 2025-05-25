@@ -5,8 +5,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
 # These imports will fail initially - that's the point of TDD
-# from feature.hf.volume_features import VolumeVelocityFeature, VolumeAccelerationFeature
-# from feature.hf.quote_features import QuoteImbalanceFeature
+from feature.hf.volume_features import VolumeVelocityFeature, VolumeAccelerationFeature
+from feature.hf.quote_features import QuoteImbalanceFeature
 
 
 class TestMissingHFVolumeFeatures:
@@ -15,7 +15,7 @@ class TestMissingHFVolumeFeatures:
     def test_hf_volume_velocity_feature(self):
         """Test 1-second volume velocity calculation"""
         # This test will fail until the feature is implemented
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.hf.volume_features import VolumeVelocityFeature
         feature = VolumeVelocityFeature()
@@ -50,7 +50,7 @@ class TestMissingHFVolumeFeatures:
     
     def test_hf_volume_velocity_edge_cases(self):
         """Test volume velocity edge cases"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.hf.volume_features import VolumeVelocityFeature
         feature = VolumeVelocityFeature()
@@ -93,7 +93,7 @@ class TestMissingHFVolumeFeatures:
     
     def test_hf_volume_acceleration_feature(self):
         """Test 1-second volume acceleration calculation"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.hf.volume_features import VolumeAccelerationFeature
         feature = VolumeAccelerationFeature()
@@ -132,7 +132,7 @@ class TestMissingHFQuoteFeatures:
     
     def test_quote_imbalance_feature(self):
         """Test quote volume imbalance (bid size vs ask size)"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.hf.quote_features import QuoteImbalanceFeature
         feature = QuoteImbalanceFeature()
@@ -168,7 +168,7 @@ class TestMissingHFQuoteFeatures:
     
     def test_quote_imbalance_edge_cases(self):
         """Test quote imbalance edge cases"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.hf.quote_features import QuoteImbalanceFeature
         feature = QuoteImbalanceFeature()
@@ -225,7 +225,7 @@ class TestMissingHFQuoteFeatures:
     
     def test_quote_imbalance_aggregation(self):
         """Test quote imbalance aggregation over time window"""
-        pytest.skip("Feature not implemented yet")
+        # pytest.skip("Feature not implemented yet")
         
         from feature.hf.quote_features import QuoteImbalanceFeature
         feature = QuoteImbalanceFeature()

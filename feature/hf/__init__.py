@@ -1,1 +1,1 @@
-# High-frequency features - 1 second timeframe
+# High-frequency features
