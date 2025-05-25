@@ -149,6 +149,9 @@ Databento Files → DataManager → MarketSimulator → FeatureExtractor → PPO
    - Real-time updates via queue-based communication
    - Comprehensive visualization of all metrics and components
 
+## Software Design Principles
+- Design for modularity and configuration: Build systems that accept definitions as input and work independently. Use configurable, loosely coupled components with clear interfaces, so the new functionality requires only new config definitions, not code changes.
+ 
 ## Important Notes
 
 - The system focuses on momentum/squeeze trading strategies for low-float stocks
@@ -157,4 +160,3 @@ Databento Files → DataManager → MarketSimulator → FeatureExtractor → PPO
 - Databento data files are stored in `dnb/Mlgo/` directory structure
 - Logging configured through `utils/logger.py` using Rich handler
 - Invalid action handling is configurable with tracking and limits
-- Design for modularity and configuration: Build systems that accept definitions as input and work independently. Use configurable, loosely-coupled components with clear interfaces so new functionality requires only new config definitions, not code changes.

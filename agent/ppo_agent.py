@@ -158,6 +158,20 @@ class PPOTrainer:
         total_invalid_actions = 0
 
         while collected_steps < self.rollout_steps:
+            # Update rollout progress periodically
+            if collected_steps % 100 == 0 and hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
+                if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
+                    training_data = {
+                        'mode': 'Training',
+                        'stage': 'Collecting Rollouts',
+                        'updates': self.global_update_counter,
+                        'global_steps': self.global_step_counter,
+                        'total_episodes': self.global_episode_counter,
+                        'rollout_steps': collected_steps,
+                        'rollout_total': self.rollout_steps,
+                        'stage_status': f"Collecting: {collected_steps}/{self.rollout_steps} steps"
+                    }
+                    self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
             single_step_tensors = {
                 k: torch.as_tensor(v, dtype=torch.float32).to(self.device)
                 for k, v in current_env_state_np.items()
@@ -425,8 +439,27 @@ class PPOTrainer:
 
         for epoch in range(self.ppo_epochs):
             np.random.shuffle(indices)
-
+            
+            current_batch = 0
             for start_idx in range(0, num_samples, self.batch_size):
+                current_batch += 1
+                
+                # Update dashboard with epoch/batch progress
+                if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
+                    if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
+                        training_data = {
+                            'mode': 'Training',
+                            'stage': 'PPO Update',
+                            'updates': self.global_update_counter,
+                            'global_steps': self.global_step_counter,
+                            'total_episodes': self.global_episode_counter,
+                            'current_epoch': epoch + 1,
+                            'total_epochs': self.ppo_epochs,
+                            'current_batch': current_batch,
+                            'total_batches': total_batches,
+                            'stage_status': f"Epoch {epoch + 1}/{self.ppo_epochs}, Batch {current_batch}/{total_batches}"
+                        }
+                        self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
                 batch_indices = indices[start_idx: start_idx + self.batch_size]
 
                 batch_states = {key: tensor_val[batch_indices] for key, tensor_val in states_dict.items()}

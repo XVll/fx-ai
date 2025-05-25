@@ -814,6 +814,10 @@ class TradingEnvironment(gym.Env):
                             'fees': fill['fees'],
                             'slippage_cost_total': fill['slippage_cost_total']
                         }
+                        
+                        # Add timestamp from market state
+                        if market_state_next_t and 'timestamp_utc' in market_state_next_t:
+                            dashboard_execution['timestamp'] = market_state_next_t['timestamp_utc']
                         if hasattr(self.metrics_integrator.metrics_manager, 'dashboard_collector') and self.metrics_integrator.metrics_manager.dashboard_collector:
                             self.metrics_integrator.metrics_manager.dashboard_collector.on_execution(dashboard_execution)
                         
