@@ -130,7 +130,7 @@ class DistanceToClosestResistanceFeature(BaseFeature):
     
     def __init__(self, config: FeatureConfig = None):
         if config is None:
-            config = FeatureConfig(name="resistance_distance", normalize=True)
+            config = FeatureConfig(name="resistance_distance", normalize=False)
         super().__init__(config)
     
     def calculate_raw(self, market_data: Dict[str, Any]) -> float:

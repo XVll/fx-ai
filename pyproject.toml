@@ -9,6 +9,7 @@ package-mode = false
 [tool.poe.tasks]
 backtest = "poetry run python scripts/run.py backtest --symbol MLGO --start-date 2025-03-27 --end-date 2025-03-27"
 train = "poetry run python scripts/run.py train --continue-training --symbol MLGO"
+test = "poetry run python -m pytest tests/feature/v2/test_hf_features.py -xvs"
 init = "poetry run python scripts/run.py train --symbol MLGO"
 quick = "poetry run python scripts/run.py train --quick-test --symbol MLGO"
 

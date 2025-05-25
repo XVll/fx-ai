@@ -11,7 +11,7 @@ class PositionInCurrentCandle1mFeature(BaseFeature):
     
     def __init__(self, config: FeatureConfig = None):
         if config is None:
-            config = FeatureConfig(name="1m_position_in_current_candle", normalize=False)
+            config = FeatureConfig(name="position_in_current_candle_1m", normalize=False)
         super().__init__(config)
     
     def calculate_raw(self, market_data: Dict[str, Any]) -> float:
