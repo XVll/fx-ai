@@ -71,16 +71,23 @@ class BaseFeature(ABC):
         params = self.get_normalization_params()
         
         if 'min' in params and 'max' in params:
-            # Min-max normalization
             min_val = params['min']
             max_val = params['max']
             
             if max_val == min_val:
-                return 0.5
+                return 0.0
             
-            # Clip and normalize
-            clipped = np.clip(raw_value, min_val, max_val)
-            return (clipped - min_val) / (max_val - min_val)
+            # Check if this is a symmetric range that should map to [-1, 1]
+            range_type = params.get('range_type', 'default')
+            
+            if range_type == 'symmetric' or (min_val < 0 and max_val > 0 and abs(min_val) == abs(max_val)):
+                # Symmetric normalization: maps to [-1, 1] with 0 -> 0
+                clipped = np.clip(raw_value, min_val, max_val)
+                return clipped / max_val
+            else:
+                # Standard min-max normalization: maps to [0, 1]
+                clipped = np.clip(raw_value, min_val, max_val)
+                return (clipped - min_val) / (max_val - min_val)
         
         return raw_value
     

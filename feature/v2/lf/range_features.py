@@ -75,15 +75,8 @@ class PositionInPrevDayRangeFeature(BaseFeature):
         # Calculate position
         position = (current_price - prev_low) / (prev_high - prev_low)
         
-        # Don't clamp - allow values outside [0, 1] to indicate gaps
-        # But for normalization, we'll handle extreme values
-        if position > 2.0:
-            return 1.0
-        elif position < -1.0:
-            return 0.0
-        else:
-            # Map [-1, 2] to [0, 1]
-            return (position + 1.0) / 3.0
+        # Return raw position - test expects this
+        return position
     
     def get_default_value(self) -> float:
         return 0.5

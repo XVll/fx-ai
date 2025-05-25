@@ -208,10 +208,11 @@ class FeatureManager:
                 # Extract features for each timestep
                 feature_matrix = []
                 for i in range(seq_len):
-                    if i < len(hf_window):
+                    if i < len(hf_window) and hf_window[i] is not None:
+                        bar_data = hf_window[i].get('1s_bar') or {}
                         step_data = {
                             'timestamp': hf_window[i].get('timestamp'),
-                            'current_price': hf_window[i].get('1s_bar', {}).get('close', 100.0),
+                            'current_price': bar_data.get('close', 100.0),
                             'hf_data_window': hf_window[max(0, i-10):i+1]
                         }
                     else:
