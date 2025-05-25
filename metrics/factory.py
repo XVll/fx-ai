@@ -12,7 +12,8 @@ from .collectors.training_metrics import TrainingMetricsCollector, EvaluationMet
 from .collectors.trading_metrics import PortfolioMetricsCollector, PositionMetricsCollector, TradeMetricsCollector
 from .collectors.execution_metrics import ExecutionMetricsCollector, EnvironmentMetricsCollector, SystemMetricsCollector
 from .collectors.visualization_metrics import VisualizationMetrics
-from .core import MetricCategory, MetricFilter
+from .collectors.reward_metrics import RewardMetricsCollector
+from .core import MetricCategory, MetricFilter, MetricValue
 
 
 class MetricsFactory:
@@ -81,6 +82,11 @@ class MetricsFactory:
     def create_visualization_collectors() -> List:
         """Create visualization-related collectors"""
         return [VisualizationMetrics()]
+    
+    @staticmethod
+    def create_reward_collectors() -> List:
+        """Create reward system collectors"""
+        return [RewardMetricsCollector()]
 
     @staticmethod
     def create_complete_metrics_system(
@@ -118,6 +124,9 @@ class MetricsFactory:
 
         # Execution collectors
         collectors.extend(MetricsFactory.create_execution_collectors())
+        
+        # Reward collectors
+        collectors.extend(MetricsFactory.create_reward_collectors())
 
         # System collectors (optional)
         if include_system:
@@ -275,12 +284,43 @@ class MetricsIntegrator:
         collector = self.get_collector('EnvironmentMetricsCollector')
         if collector:
             collector.record_step(reward, action, is_invalid, reward_components, episode_reward)
+            
+        # Also update reward metrics if components provided
+        if reward_components:
+            reward_collector = self.get_collector('RewardMetricsCollector')
+            if reward_collector:
+                reward_collector.update_reward(reward, reward_components)
 
     def record_episode_end(self, episode_reward: float):
         """Record episode end in environment"""
         collector = self.get_collector('EnvironmentMetricsCollector')
         if collector:
             collector.record_episode_end(episode_reward)
+            
+        # Reset reward collector for new episode
+        reward_collector = self.get_collector('RewardMetricsCollector')
+        if reward_collector:
+            reward_collector.reset_episode()
+            
+    # Reward integration methods
+    def register_reward_component(self, component_name: str, component_type: str):
+        """Register a reward component for tracking"""
+        collector = self.get_collector('RewardMetricsCollector')
+        if collector:
+            collector.register_component(component_name, component_type)
+            
+    def update_reward_metrics(self, total_reward: float, component_rewards: Dict[str, float]):
+        """Update reward metrics directly"""
+        collector = self.get_collector('RewardMetricsCollector')
+        if collector:
+            collector.update_reward(total_reward, component_rewards)
+            
+    def get_reward_statistics(self) -> Dict[str, Dict[str, float]]:
+        """Get reward component statistics"""
+        collector = self.get_collector('RewardMetricsCollector')
+        if collector:
+            return collector.get_component_statistics()
+        return {}
 
     # System integration methods
     def start_system_tracking(self):
@@ -288,6 +328,13 @@ class MetricsIntegrator:
         collector = self.get_collector('SystemMetricsCollector')
         if collector:
             collector.start_tracking()
+            
+    # Custom metrics
+    def record_custom_metrics(self, metrics: Dict[str, Any]):
+        """Record custom metrics directly to transmitters"""
+        # Convert to metric values
+        metric_values = {k: MetricValue(v) for k, v in metrics.items()}
+        self.metrics_manager.transmit_metrics(metric_values)
 
     # Transmission control
     def _transmit_metrics(self, metrics: Dict[str, Any]):

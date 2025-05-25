@@ -1,6 +1,6 @@
 """
-Refactored Live Trading Dashboard with clean architecture.
-Compact layout with separate current episode and overall training views.
+Improved Live Trading Dashboard with better layout and visualization.
+Enhanced candlestick charts, compact design, and better progress tracking.
 """
 
 import dash
@@ -16,6 +16,7 @@ from typing import Dict, List, Any, Optional
 import queue
 import time
 import os
+from datetime import datetime
 
 from .dashboard_data import DashboardState
 
@@ -28,7 +29,7 @@ os.environ['DASH_SILENCE_ROUTES_LOGGING'] = 'true'
 
 
 class LiveTradingDashboard:
-    """Real-time trading dashboard with clean architecture"""
+    """Real-time trading dashboard with improved layout"""
     
     def __init__(self, port: int = 8050, update_interval: int = 500):
         self.port = port
@@ -48,7 +49,7 @@ class LiveTradingDashboard:
         self._create_app()
     
     def _create_app(self):
-        """Create the Dash application with compact layout"""
+        """Create the Dash application with improved layout"""
         self.app = dash.Dash(__name__)
         
         # Custom CSS for compact layout
@@ -67,45 +68,47 @@ class LiveTradingDashboard:
                         color: #e6e6e6;
                         margin: 0;
                         padding: 0;
-                        font-size: 11px;
-                        line-height: 1.3;
+                        font-size: 14px;
+                        line-height: 1.6;
                     }
                     .main-header {
                         background-color: #1e2130;
-                        padding: 5px 15px;
+                        padding: 3px 10px;
                         border-bottom: 1px solid #3d4158;
                         display: flex;
                         justify-content: space-between;
                         align-items: center;
-                        height: 30px;
+                        height: 25px;
                     }
                     .main-container {
-                        padding: 10px;
+                        padding: 10px 15px;
                         display: grid;
-                        grid-template-columns: repeat(3, 1fr);
+                        grid-template-columns: 40% 30% 30%;
                         gap: 10px;
                         max-width: 100%;
+                        height: calc(100vh - 60px);
                     }
                     .panel {
                         background-color: #1e2130;
-                        border-radius: 4px;
-                        padding: 8px;
-                        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+                        border-radius: 3px;
+                        padding: 10px;
                         overflow: hidden;
+                        border: 1px solid #3d4158;
                     }
                     .panel-title {
-                        font-size: 12px;
+                        font-size: 14px;
                         font-weight: bold;
-                        margin: 0 0 5px 0;
+                        margin: 0 0 8px 0;
                         color: #00d084;
                         border-bottom: 1px solid #3d4158;
-                        padding-bottom: 3px;
+                        padding-bottom: 4px;
+                        padding-bottom: 2px;
                     }
                     .metric-row {
                         display: flex;
                         justify-content: space-between;
-                        margin: 2px 0;
-                        font-size: 11px;
+                        margin: 3px 0;
+                        font-size: 12px;
                     }
                     .metric-label {
                         color: #999;
@@ -119,50 +122,82 @@ class LiveTradingDashboard:
                     .flat { color: #999; }
                     table {
                         width: 100%;
-                        font-size: 10px;
+                        font-size: 11px;
                         border-collapse: collapse;
                     }
                     th {
                         background-color: #262837;
-                        padding: 4px;
+                        padding: 2px;
                         text-align: left;
                         font-weight: bold;
                         border-bottom: 1px solid #3d4158;
                     }
                     td {
-                        padding: 3px 4px;
+                        padding: 2px;
                         border-bottom: 1px solid #2a2b3d;
                     }
                     .chart-container {
-                        margin-top: 5px;
+                        margin-top: 3px;
                     }
                     .progress-bar {
                         background-color: #3d4158;
-                        height: 12px;
+                        height: 10px;
                         border-radius: 2px;
                         overflow: hidden;
-                        margin: 3px 0;
+                        margin: 2px 0;
+                        position: relative;
                     }
                     .progress-fill {
                         background-color: #00d084;
                         height: 100%;
                         transition: width 0.3s ease;
+                        position: absolute;
+                        left: 0;
+                        top: 0;
                     }
-                    .sparkline {
-                        font-family: monospace;
-                        font-size: 10px;
-                        color: #00d084;
+                    .progress-text {
+                        position: absolute;
+                        width: 100%;
+                        text-align: center;
+                        color: white;
+                        font-size: 8px;
+                        line-height: 10px;
+                        font-weight: bold;
+                        text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
                     }
                     .footer {
                         background-color: #1e2130;
-                        padding: 5px 15px;
+                        padding: 5px 10px;
                         border-top: 1px solid #3d4158;
+                        font-size: 11px;
+                        color: #999;
                         display: flex;
                         justify-content: space-between;
-                        font-size: 10px;
-                        position: fixed;
-                        bottom: 0;
-                        width: 100%;
+                        height: 25px;
+                        align-items: center;
+                    }
+                    .modebar {
+                        display: none !important;
+                    }
+                    .js-plotly-plot .plotly .gtitle {
+                        font-size: 10px !important;
+                    }
+                    /* Compact chart styling */
+                    .js-plotly-plot {
+                        margin: 0 !important;
+                    }
+                    .main-svg {
+                        overflow: visible !important;
+                    }
+                    /* Remove chart container borders */
+                    .chart-panel {
+                        padding: 0 !important;
+                        background: transparent !important;
+                        box-shadow: none !important;
+                    }
+                    .js-plotly-plot .plotly {
+                        border-radius: 3px;
+                        overflow: hidden;
                     }
                 </style>
             </head>
@@ -177,27 +212,30 @@ class LiveTradingDashboard:
         </html>
         '''
         
-        # Layout
+        # App layout with improved chart placement
         self.app.layout = html.Div([
             # Header
             html.Div([
-                html.Div(id='model-info', style={'fontSize': '12px'}),
-                html.Div(id='session-time', style={'fontSize': '12px'})
+                html.Div([
+                    html.Span("🤖 FX-AI Trading System", style={'fontWeight': 'bold', 'fontSize': '12px'}),
+                    html.Span(id='model-info', style={'fontSize': '10px', 'color': '#999'})
+                ]),
+                html.Div(id='live-time', style={'fontFamily': 'monospace', 'fontSize': '10px'})
             ], className='main-header'),
             
-            # Main container with 3 columns
+            # Main content grid with charts integrated
             html.Div([
-                # Column 1
+                # Column 1 - Market & Trading
                 html.Div([
                     # Market Data Panel
                     html.Div([
-                        html.H3("📊 Market: ", className='panel-title', id='market-title'),
+                        html.H3("📊 Market Data", className='panel-title'),
                         html.Div(id='market-content')
                     ], className='panel'),
                     
-                    # Current Position Panel
+                    # Position Status Panel
                     html.Div([
-                        html.H3("💼 Position: ", className='panel-title', id='position-title'),
+                        html.H3("💼 Position Status", className='panel-title'),
                         html.Div(id='position-content')
                     ], className='panel'),
                     
@@ -206,46 +244,62 @@ class LiveTradingDashboard:
                         html.H3("📈 Portfolio", className='panel-title'),
                         html.Div(id='portfolio-content')
                     ], className='panel'),
+                    
+                    # Price Chart Panel
+                    html.Div([
+                        html.H3("📊 Price Chart", className='panel-title'),
+                        dcc.Graph(
+                            id='episode-chart', 
+                            style={'height': '350px'},
+                            config={'displayModeBar': False}
+                        )
+                    ], className='panel', style={'gridRow': 'span 2'}),
                 ]),
                 
-                # Column 2
+                # Column 2 - Actions & Analysis
                 html.Div([
-                    # Recent Actions Panel
+                    # Action Bias Summary Panel
                     html.Div([
-                        html.H3("⚡ Recent Actions", className='panel-title'),
-                        html.Div(id='recent-actions')
+                        html.H3("🎯 Action Bias Summary", className='panel-title'),
+                        html.Div(id='action-bias-summary')
                     ], className='panel'),
                     
-                    # Trading Activity Panel (Combined)
-                    html.Div([
-                        html.H3("📈 Trading Activity", className='panel-title'),
-                        html.Div([
-                            html.Div([
-                                html.H4("Recent Executions", style={'fontSize': '10px', 'margin': '0 0 5px 0', 'color': '#ffd32a'}),
-                                html.Div(id='recent-executions')
-                            ], style={'marginBottom': '10px'}),
-                            html.Div([
-                                html.H4("Completed Trades", style={'fontSize': '10px', 'margin': '0 0 5px 0', 'color': '#00d084'}),
-                                html.Div(id='recent-trades'),
-                                html.Div("(Round-trip tracking coming soon)", style={'fontSize': '9px', 'color': '#666', 'fontStyle': 'italic'})
-                            ])
-                        ])
-                    ], className='panel'),
-                    
-                    # Episode Analysis Panel
+                    # Episode Analysis Panel (includes Trading Activity)
                     html.Div([
                         html.H3("🎬 Episode Analysis", className='panel-title', id='episode-title'),
                         html.Div(id='episode-content'),
-                        html.Div(id='episode-history')
-                    ], className='panel'),
+                        html.Hr(style={'margin': '8px 0', 'borderColor': '#3d4158'}),
+                        
+                        # Trading Activity section
+                        html.Div([
+                            html.H4("Recent Executions", style={'fontSize': '12px', 'margin': '0 0 5px 0', 'color': '#ffd32a'}),
+                            html.Div(id='recent-executions', style={'marginBottom': '10px'}),
+                            
+                            html.H4("Completed Trades", style={'fontSize': '12px', 'margin': '0 0 5px 0', 'color': '#00d084'}),
+                            html.Div(id='recent-trades', style={'marginBottom': '10px'}),
+                            
+                            html.H4("Episode History", style={'fontSize': '12px', 'margin': '0 0 5px 0', 'color': '#999'}),
+                            html.Div(id='episode-history')
+                        ])
+                    ], className='panel', style={'gridRow': 'span 2'}),  # Make it taller
                 ]),
                 
-                # Column 3
+                # Column 3 - Training & Metrics
                 html.Div([
-                    # Training Progress Panel
+                    # Training Progress with enhanced display
                     html.Div([
                         html.H3("⚙️ Training Progress", className='panel-title'),
                         html.Div(id='training-progress')
+                    ], className='panel'),
+                    
+                    # Training Chart (compact)
+                    html.Div([
+                        html.H3("📈 Episode Rewards", className='panel-title'),
+                        dcc.Graph(
+                            id='training-chart', 
+                            style={'height': '120px'},
+                            config={'displayModeBar': False}
+                        )
                     ], className='panel'),
                     
                     # PPO Metrics Panel
@@ -256,28 +310,11 @@ class LiveTradingDashboard:
                     
                     # Reward System Panel
                     html.Div([
-                        html.H3("🏆 Reward System", className='panel-title'),
+                        html.H3("🏆 Reward Components", className='panel-title'),
                         html.Div(id='reward-system')
-                    ], className='panel'),
-                    
-                    # Action Analysis Panel
-                    html.Div([
-                        html.H3("🎯 Action Analysis", className='panel-title'),
-                        html.Div(id='action-analysis')
                     ], className='panel'),
                 ]),
             ], className='main-container'),
-            
-            # Charts Section (below panels)
-            html.Div([
-                html.Div([
-                    dcc.Graph(id='episode-chart', style={'height': '250px'})
-                ], className='panel', style={'gridColumn': 'span 2'}),
-                
-                html.Div([
-                    dcc.Graph(id='training-chart', style={'height': '250px'})
-                ], className='panel'),
-            ], style={'display': 'grid', 'gridTemplateColumns': '2fr 1fr', 'gap': '10px', 'padding': '0 10px'}),
             
             # Footer
             html.Div(id='footer-stats', className='footer'),
@@ -293,209 +330,577 @@ class LiveTradingDashboard:
         self._setup_callbacks()
     
     def _setup_callbacks(self):
-        """Setup dashboard callbacks"""
+        """Setup dashboard callbacks with improved functionality"""
         
         @self.app.callback(
             [Output('model-info', 'children'),
-             Output('session-time', 'children')],
+             Output('live-time', 'children')],
             [Input('interval-component', 'n_intervals')]
         )
         def update_header(n):
-            # Process updates
-            self._process_queue_updates()
-            
-            model_text = f"Model: {self.state.model_name}"
-            session_text = f"Session Time: {self.state.session_elapsed_time}"
-            
-            return model_text, session_text
+            model_info = f"Model: {self.state.model_name}"
+            current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+            return model_info, current_time
         
         @self.app.callback(
-            [Output('market-title', 'children'),
-             Output('market-content', 'children')],
+            Output('market-content', 'children'),
             [Input('interval-component', 'n_intervals')]
         )
         def update_market_panel(n):
-            market = self.state.market_data
-            
-            title = f"📊 Market: {market.symbol} - {market.market_session}"
+            m = self.state.market_data
             
             content = html.Div([
                 html.Div([
-                    html.Span("Time (NY):", className='metric-label'),
-                    html.Span(market.time_ny, className='metric-value')
+                    html.Span("Symbol:", className='metric-label'),
+                    html.Span(m.symbol, className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Price:", className='metric-label'),
-                    html.Span(f"${market.price:.2f}", className='metric-value neutral')
+                    html.Span(f"${m.price:.2f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
-                    html.Span("Bid:", className='metric-label'),
-                    html.Span(f"${market.bid:.2f}", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Ask:", className='metric-label'),
-                    html.Span(f"${market.ask:.2f}", className='metric-value')
+                    html.Span("Bid/Ask:", className='metric-label'),
+                    html.Span(f"${m.bid:.2f} / ${m.ask:.2f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Spread:", className='metric-label'),
-                    html.Span(f"${market.spread:.2f}", className='metric-value')
-                ], className='metric-row'),
-            ])
-            
-            return title, content
-        
-        @self.app.callback(
-            [Output('position-title', 'children'),
-             Output('position-content', 'children')],
-            [Input('interval-component', 'n_intervals')]
-        )
-        def update_position_panel(n):
-            pos = self.state.position
-            
-            title = f"💼 Position: {pos.symbol}"
-            
-            side_class = 'positive' if pos.side == 'Long' else 'negative' if pos.side == 'Short' else 'flat'
-            pnl_class = 'positive' if pos.pnl_dollars > 0 else 'negative' if pos.pnl_dollars < 0 else 'neutral'
-            
-            content = html.Div([
-                html.Div([
-                    html.Span("Side:", className='metric-label'),
-                    html.Span(pos.side, className=f'metric-value {side_class}')
+                    html.Span(f"${m.spread:.3f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
-                    html.Span("Quantity:", className='metric-label'),
-                    html.Span(f"{pos.quantity:.4f}", className='metric-value')
+                    html.Span("Volume:", className='metric-label'),
+                    html.Span(f"{m.volume:,.0f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
-                    html.Span("Avg Entry:", className='metric-label'),
-                    html.Span(f"${pos.avg_entry_price:.2f}", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("P&L vs Entry:", className='metric-label'),
-                    html.Span(f"${pos.pnl_dollars:.2f} ({pos.pnl_percent:.2f}%)", 
-                             className=f'metric-value {pnl_class}')
-                ], className='metric-row'),
-            ])
-            
-            return title, content
-        
-        @self.app.callback(
-            Output('portfolio-content', 'children'),
-            [Input('interval-component', 'n_intervals')]
-        )
-        def update_portfolio_panel(n):
-            port = self.state.portfolio
-            
-            session_pnl_class = 'positive' if port.session_pnl > 0 else 'negative' if port.session_pnl < 0 else 'neutral'
-            unrealized_class = 'positive' if port.unrealized_pnl > 0 else 'negative' if port.unrealized_pnl < 0 else 'neutral'
-            
-            content = html.Div([
-                html.Div([
-                    html.Span("Total Equity:", className='metric-label'),
-                    html.Span(f"${port.total_equity:.2f}", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Cash Balance:", className='metric-label'),
-                    html.Span(f"${port.cash_balance:.2f}", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Session P&L:", className='metric-label'),
-                    html.Span(f"${port.session_pnl:.2f} ({port.session_pnl_percent:.2f}%)", 
-                             className=f'metric-value {session_pnl_class}')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Realized P&L:", className='metric-label'),
-                    html.Span(f"${port.realized_pnl:.2f}", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Unrealized P&L:", className='metric-label'),
-                    html.Span(f"${port.unrealized_pnl:.2f}", className=f'metric-value {unrealized_class}')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Sharpe Ratio:", className='metric-label'),
-                    html.Span(f"{port.sharpe_ratio:.2f}", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Max Drawdown:", className='metric-label'),
-                    html.Span(f"{port.max_drawdown:.2f}%", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Trades:", className='metric-label'),
-                    html.Span(f"{port.num_trades}", className='metric-value')
+                    html.Span("Time (NY):", className='metric-label'),
+                    html.Span(m.time_ny, className='metric-value')
                 ], className='metric-row'),
             ])
             
             return content
         
         @self.app.callback(
-            Output('recent-actions', 'children'),
+            Output('position-content', 'children'),
             [Input('interval-component', 'n_intervals')]
         )
-        def update_recent_actions(n):
-            actions = self.state.get_recent_actions(5)
+        def update_position_panel(n):
+            pos = self.state.position
             
-            if not actions:
-                return html.Div("No actions yet", style={'color': '#999', 'textAlign': 'center'})
+            side_color = {'Long': 'positive', 'Short': 'negative', 'Flat': 'flat'}.get(pos.side, 'neutral')
+            pnl_color = 'positive' if pos.pnl_dollars >= 0 else 'negative'
             
-            rows = []
-            for action in reversed(actions):
-                reward_class = 'positive' if action.step_reward > 0 else 'negative'
-                row = html.Tr([
-                    html.Td(f"{action.step}"),
-                    html.Td(action.action_type),
-                    html.Td(action.size_signal),
-                    html.Td(f"{action.step_reward:+.3f}", className=reward_class)
-                ])
-                rows.append(row)
-            
-            return html.Table([
-                html.Thead([
-                    html.Tr([
-                        html.Th("Step"),
-                        html.Th("Action"),
-                        html.Th("Size"),
-                        html.Th("Reward")
-                    ])
-                ]),
-                html.Tbody(rows)
+            content = html.Div([
+                html.Div([
+                    html.Span("Side:", className='metric-label'),
+                    html.Span(pos.side, className=f'metric-value {side_color}')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Quantity:", className='metric-label'),
+                    html.Span(f"{abs(pos.quantity):,.0f}", className='metric-value')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Entry Price:", className='metric-label'),
+                    html.Span(f"${pos.avg_entry_price:.2f}", className='metric-value')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Current Price:", className='metric-label'),
+                    html.Span(f"${pos.current_price:.2f}", className='metric-value')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("P&L ($):", className='metric-label'),
+                    html.Span(f"${pos.pnl_dollars:+,.2f}", className=f'metric-value {pnl_color}')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("P&L (%):", className='metric-label'),
+                    html.Span(f"{pos.pnl_percent:+.2f}%", className=f'metric-value {pnl_color}')
+                ], className='metric-row'),
             ])
+            
+            return content
         
         @self.app.callback(
-            Output('recent-trades', 'children'),
+            Output('portfolio-content', 'children'),
             [Input('interval-component', 'n_intervals')]
         )
-        def update_recent_trades(n):
-            trades = self.state.get_recent_trades(3)
+        def update_portfolio_panel(n):
+            p = self.state.portfolio
+            equity_color = 'positive' if p.session_pnl >= 0 else 'negative'
             
-            if not trades:
-                return html.Div("No completed trades yet", style={'color': '#999', 'textAlign': 'center', 'fontSize': '10px'})
-            
-            rows = []
-            for trade in reversed(trades):
-                pnl_class = 'positive' if trade.pnl and trade.pnl > 0 else 'negative' if trade.pnl and trade.pnl < 0 else 'neutral'
-                row = html.Tr([
-                    html.Td(trade.timestamp.strftime("%H:%M:%S")),
-                    html.Td(trade.side),
-                    html.Td(f"{trade.quantity:.1f}"),
-                    html.Td(f"${trade.entry_price:.2f}"),
-                    html.Td(f"${trade.exit_price:.2f}" if trade.exit_price else "-"),
-                    html.Td(f"${trade.pnl:.1f}" if trade.pnl else "-", className=pnl_class)
-                ])
-                rows.append(row)
-            
-            return html.Table([
-                html.Thead([
-                    html.Tr([
-                        html.Th("Time"),
-                        html.Th("Side"),
-                        html.Th("Qty"),
-                        html.Th("Entry"),
-                        html.Th("Exit"),
-                        html.Th("P&L")
-                    ])
-                ]),
-                html.Tbody(rows)
+            content = html.Div([
+                html.Div([
+                    html.Span("Equity:", className='metric-label'),
+                    html.Span(f"${p.total_equity:,.2f}", className='metric-value')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Cash:", className='metric-label'),
+                    html.Span(f"${p.cash_balance:,.2f}", className='metric-value')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Session P&L:", className='metric-label'),
+                    html.Span([
+                        f"${p.session_pnl:+,.2f} ",
+                        html.Span(f"({p.session_pnl_percent:+.2f}%)", style={'fontSize': '10px'})
+                    ], className=f'metric-value {equity_color}')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Realized:", className='metric-label'),
+                    html.Span(f"${p.realized_pnl:+,.2f}", 
+                             className=f'metric-value {"positive" if p.realized_pnl >= 0 else "negative"}')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Unrealized:", className='metric-label'),
+                    html.Span(f"${p.unrealized_pnl:+,.2f}", 
+                             className=f'metric-value {"positive" if p.unrealized_pnl >= 0 else "negative"}')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Trades:", className='metric-label'),
+                    html.Span(f"{p.num_trades}", className='metric-value')
+                ], className='metric-row'),
             ])
+            
+            return content
+        
+        @self.app.callback(
+            Output('action-bias-summary', 'children'),
+            [Input('interval-component', 'n_intervals')]
+        )
+        def update_action_bias_summary(n):
+            # Calculate action bias if we have a current episode
+            if self.state.current_episode:
+                self.state.calculate_action_bias()
+            
+            content = []
+            
+            # Invalid actions count
+            invalid_count = self.state.action_analysis.invalid_actions_count
+            content.append(html.Div([
+                html.Span("Invalid Actions:", className='metric-label'),
+                html.Span(f"{invalid_count}", className='metric-value negative' if invalid_count > 0 else 'metric-value')
+            ], className='metric-row'))
+            
+            content.append(html.Hr(style={'margin': '5px 0', 'borderColor': '#3d4158'}))
+            
+            # Action bias table
+            if self.state.action_analysis.action_bias:
+                # Header
+                content.append(html.Div([
+                    html.Span("Action", style={'width': '15%', 'fontSize': '10px', 'color': '#999'}),
+                    html.Span("Count", style={'width': '15%', 'fontSize': '10px', 'color': '#999'}),
+                    html.Span("%Steps", style={'width': '15%', 'fontSize': '10px', 'color': '#999'}),
+                    html.Span("AvgRew", style={'width': '20%', 'fontSize': '10px', 'color': '#999'}),
+                    html.Span("TotRew", style={'width': '20%', 'fontSize': '10px', 'color': '#999'}),
+                    html.Span("Win%", style={'width': '15%', 'fontSize': '10px', 'color': '#999', 'textAlign': 'right'}),
+                ], style={'display': 'flex', 'borderBottom': '1px solid #3d4158', 'paddingBottom': '2px', 'marginBottom': '3px'}))
+                
+                # Data rows
+                for action_type in ['HOLD', 'BUY', 'SELL']:
+                    data = self.state.action_analysis.action_bias.get(action_type, {})
+                    if data:
+                        color = {'BUY': 'positive', 'SELL': 'negative', 'HOLD': 'flat'}.get(action_type, 'neutral')
+                        content.append(html.Div([
+                            html.Span(action_type, className=color, style={'width': '15%', 'fontSize': '10px', 'fontWeight': 'bold'}),
+                            html.Span(f"{data.get('count', 0)}", style={'width': '15%', 'fontSize': '10px'}),
+                            html.Span(f"{data.get('percent_steps', 0):.0f}%", style={'width': '15%', 'fontSize': '10px'}),
+                            html.Span(f"{data.get('mean_reward', 0):.3f}", style={'width': '20%', 'fontSize': '10px'}),
+                            html.Span(f"{data.get('total_reward', 0):.2f}", style={'width': '20%', 'fontSize': '10px'}),
+                            html.Span(f"{data.get('pos_reward_rate', 0):.0f}%", style={'width': '15%', 'fontSize': '10px', 'textAlign': 'right'}),
+                        ], style={'display': 'flex', 'marginBottom': '2px'}))
+            else:
+                content.append(html.Div("Calculating action bias...", style={'color': '#999', 'fontSize': '10px', 'marginTop': '10px'}))
+            
+            return html.Div(content)
+        
+        @self.app.callback(
+            Output('training-progress', 'children'),
+            [Input('interval-component', 'n_intervals')]
+        )
+        def update_training_progress(n):
+            prog = self.state.training_progress
+            
+            # Enhanced stage display with specific information
+            stage_info = prog.stage_status or ""
+            stage_progress = 0
+            
+            if prog.current_stage:
+                if "rollout" in prog.current_stage.lower() or "collecting" in prog.current_stage.lower():
+                    # Rollout/Collection phase
+                    if prog.rollout_steps > 0 and prog.rollout_total > 0:
+                        stage_info = f"Collecting: {prog.rollout_steps}/{prog.rollout_total} steps"
+                        stage_progress = (prog.rollout_steps / prog.rollout_total) * 100
+                    else:
+                        stage_info = "Starting rollout collection..."
+                        stage_progress = 0
+                        
+                elif "update" in prog.current_stage.lower() or "training" in prog.current_stage.lower():
+                    # PPO Update phase
+                    if prog.current_epoch > 0 and prog.total_epochs > 0:
+                        if prog.current_batch > 0 and prog.total_batches > 0:
+                            stage_info = f"Epoch {prog.current_epoch}/{prog.total_epochs}, Batch {prog.current_batch}/{prog.total_batches}"
+                            # Calculate progress based on epochs and batches
+                            epoch_progress = (prog.current_epoch - 1) / prog.total_epochs
+                            batch_progress = prog.current_batch / prog.total_batches / prog.total_epochs
+                            stage_progress = (epoch_progress + batch_progress) * 100
+                        else:
+                            stage_info = f"Epoch {prog.current_epoch}/{prog.total_epochs}"
+                            stage_progress = ((prog.current_epoch - 1) / prog.total_epochs) * 100
+                    else:
+                        stage_info = "Preparing PPO update..."
+                        stage_progress = 0
+                        
+                elif "data" in prog.current_stage.lower() or "loading" in prog.current_stage.lower():
+                    stage_info = "Loading market data..."
+                    # Use stage_status for detailed progress if available
+                    if prog.stage_status and "/" in prog.stage_status:
+                        stage_info = f"Loading data: {prog.stage_status}"
+                    stage_progress = prog.stage_progress if prog.stage_progress > 0 else 0
+                    
+                elif "precompute" in prog.current_stage.lower():
+                    stage_info = "Precomputing features..."
+                    if prog.stage_status and "/" in prog.stage_status:
+                        stage_info = f"Precomputing: {prog.stage_status}"
+                    stage_progress = prog.stage_progress if prog.stage_progress > 0 else 0
+                    
+                elif "setup" in prog.current_stage.lower() or "init" in prog.current_stage.lower():
+                    stage_info = "Initializing environment..."
+                    stage_progress = prog.stage_progress if prog.stage_progress > 0 else 0
+                else:
+                    # Default case
+                    stage_info = prog.current_stage
+                    stage_progress = prog.stage_progress
+            
+            # Ensure progress percentages are valid
+            overall_progress = max(0, min(100, prog.overall_progress))
+            stage_progress = max(0, min(100, stage_progress))
+            
+            content = html.Div([
+                html.Div([
+                    html.Span("Mode:", className='metric-label'),
+                    html.Span(prog.mode or "Idle", className='metric-value')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Current Stage:", className='metric-label'),
+                    html.Span(prog.current_stage or "Waiting", className='metric-value', style={'fontSize': '11px'})
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Overall:", className='metric-label'),
+                    html.Div([
+                        html.Div(style={'width': f"{overall_progress}%"}, className='progress-fill'),
+                        html.Div(f"{overall_progress:.0f}%", className='progress-text')
+                    ], className='progress-bar', style={'flex': 1, 'marginLeft': '5px'})
+                ], className='metric-row', style={'alignItems': 'center'}),
+                html.Div([
+                    html.Span("Stage Progress:", className='metric-label'),
+                    html.Div([
+                        html.Div(style={'width': f"{stage_progress}%"}, className='progress-fill'),
+                        html.Div(f"{stage_progress:.0f}%", className='progress-text')
+                    ], className='progress-bar', style={'flex': 1, 'marginLeft': '5px'})
+                ], className='metric-row', style={'alignItems': 'center'}),
+                html.Div([
+                    html.Span("Stage Details:", className='metric-label'),
+                    html.Span(stage_info, className='metric-value', style={'fontSize': '11px', 'fontFamily': 'monospace'})
+                ], className='metric-row'),
+                html.Hr(style={'margin': '3px 0', 'borderColor': '#3d4158'}),
+                html.Div([
+                    html.Span("Updates:", className='metric-label'),
+                    html.Span(f"{prog.updates:,}", className='metric-value')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Episodes:", className='metric-label'),
+                    html.Span(f"{prog.total_episodes:,}", className='metric-value')
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Steps:", className='metric-label'),
+                    html.Span(f"{prog.global_steps:,}", className='metric-value')
+                ], className='metric-row'),
+            ])
+            
+            return content
+        
+        @self.app.callback(
+            Output('episode-chart', 'figure'),
+            [Input('interval-component', 'n_intervals')]
+        )
+        def update_episode_chart(n):
+            if not self.state.current_episode:
+                return go.Figure()
+            
+            episode = self.state.current_episode
+            
+            # Initialize variables
+            timestamps = []
+            time_labels = []
+            
+            # Create subplots with only 2 rows (price and reward)
+            fig = make_subplots(
+                rows=2, cols=1,
+                shared_xaxes=True,
+                vertical_spacing=0.05,
+                row_heights=[0.7, 0.3],
+                subplot_titles=('', '')  # Remove titles for more space
+            )
+            
+            # Try to use OHLC data first, then fall back to price history
+            price_data_plotted = False
+            
+            if hasattr(self.state, 'ohlc_data') and len(self.state.ohlc_data) > 0:
+                ohlc_list = list(self.state.ohlc_data)
+                num_bars = min(300, len(ohlc_list))  # Show more data
+                recent_bars = ohlc_list[-num_bars:] if num_bars > 0 else []
+                
+                if recent_bars:
+                    # Extract timestamps and convert to NY time
+                    timestamps = []
+                    time_labels = []
+                    for i, bar in enumerate(recent_bars):
+                        timestamps.append(i)
+                        if 'timestamp' in bar and bar['timestamp']:
+                            # Convert to NY time string
+                            ts = bar['timestamp']
+                            if isinstance(ts, datetime):
+                                time_labels.append(ts.strftime("%H:%M"))
+                            else:
+                                time_labels.append(f"{i}")
+                        else:
+                            time_labels.append(f"{i}")
+                    
+                    # Extract prices for line chart
+                    closes = [bar.get('close', 0) for bar in recent_bars]
+                    
+                    if any(closes):
+                        # Add price line
+                        fig.add_trace(
+                            go.Scatter(
+                                x=timestamps,
+                                y=closes,
+                                mode='lines',
+                                name='Price',
+                                line=dict(color='#00d084', width=2),
+                                showlegend=False,
+                                hovertemplate='Price: $%{y:.2f}<br>Time: %{text}<extra></extra>',
+                                text=time_labels
+                            ),
+                            row=1, col=1
+                        )
+                        price_data_plotted = True
+            
+            # Fall back to price history if OHLC not available or not plotted
+            if not price_data_plotted and episode.price_history:
+                price_list = list(episode.price_history)
+                num_points = min(500, len(price_list))  # Show last 500 points
+                recent_prices = price_list[-num_points:] if num_points > 0 else []
+                
+                if recent_prices:
+                    timestamps = list(range(len(recent_prices)))
+                    time_labels = [f"Step {i}" for i in range(len(recent_prices))]
+                    
+                    fig.add_trace(
+                        go.Scatter(
+                            x=timestamps,
+                            y=recent_prices,
+                            mode='lines',
+                            name='Price',
+                            line=dict(color='#00d084', width=2),
+                            showlegend=False,
+                            hovertemplate='Price: $%{y:.2f}<br>%{text}<extra></extra>',
+                            text=time_labels
+                        ),
+                        row=1, col=1
+                    )
+                    price_data_plotted = True
+            
+            # Add execution markers on the chart
+            if price_data_plotted and episode.executions:
+                exec_x = []
+                exec_y = []
+                exec_colors = []
+                exec_symbols = []
+                exec_text = []
+                
+                recent_executions = list(episode.executions)[-50:]  # Last 50 executions
+                for execution in recent_executions:
+                    # Map to most recent price point
+                    exec_idx = len(timestamps) - 1  # Default to most recent
+                    
+                    # Simple mapping - just use the execution price
+                    exec_x.append(exec_idx)
+                    exec_y.append(execution.price)
+                    exec_colors.append('#00d084' if execution.side == 'BUY' else '#ff4757')
+                    exec_symbols.append('triangle-up' if execution.side == 'BUY' else 'triangle-down')
+                    exec_text.append(f"{execution.side} {execution.quantity:.0f} @ ${execution.price:.2f}")
+                
+                if exec_x:  # Only add if we have executions
+                    fig.add_trace(
+                        go.Scatter(
+                            x=exec_x, y=exec_y,
+                            mode='markers',
+                            marker=dict(size=10, color=exec_colors, symbol=exec_symbols, line=dict(width=1, color='white')),
+                            showlegend=False,
+                            name='Executions',
+                            hovertext=exec_text,
+                            hoverinfo='text'
+                        ),
+                        row=1, col=1
+                    )
+            
+            # Remove position chart - we'll show positions on the main chart
+            
+            # Cumulative reward
+            if episode.reward_history:
+                steps = list(range(len(episode.reward_history)))
+                cumulative_rewards = []
+                cum_sum = 0
+                for r in episode.reward_history:
+                    cum_sum += r
+                    cumulative_rewards.append(cum_sum)
+                
+                # Ensure we use the same x-axis range as price chart
+                x_range = timestamps if 'timestamps' in locals() else steps
+                x_values = x_range[-len(cumulative_rewards):] if len(x_range) >= len(cumulative_rewards) else list(range(len(cumulative_rewards)))
+                
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_values[-120:], 
+                        y=cumulative_rewards[-120:], 
+                        fill='tozeroy', 
+                        fillcolor='rgba(0, 208, 132, 0.1)',
+                        line=dict(color='#00d084', width=2), 
+                        showlegend=False,
+                        name='Cumulative Reward',
+                        hovertemplate='Reward: %{y:.3f}<extra></extra>'
+                    ),
+                    row=2, col=1
+                )
+            
+            # Update layout for compactness
+            fig.update_layout(
+                height=400,
+                margin=dict(l=60, r=20, t=20, b=40),
+                paper_bgcolor='#1e2130',
+                plot_bgcolor='#0e1117',
+                font=dict(size=11, color='#e6e6e6'),
+                showlegend=False,
+                xaxis2_title="Time/Step",
+                yaxis1_title="Price ($)",
+                yaxis2_title="Cumulative Reward",
+                hovermode='x unified'
+            )
+            
+            # Update x-axis to show time labels if available
+            if 'time_labels' in locals() and time_labels:
+                # Show time labels every 10 bars to avoid crowding
+                tickvals = list(range(0, len(time_labels), 10))
+                ticktext = [time_labels[i] for i in tickvals]
+                fig.update_xaxes(tickmode='array', tickvals=tickvals, ticktext=ticktext, row=1, col=1)
+            
+            # Update axes styling
+            for i in range(1, 3):
+                fig.update_xaxes(gridcolor='#3d4158', gridwidth=0.5, row=i, col=1)
+                fig.update_yaxes(gridcolor='#3d4158', gridwidth=0.5, row=i, col=1)
+            
+            return fig
+        
+        @self.app.callback(
+            Output('training-chart', 'figure'),
+            [Input('interval-component', 'n_intervals')]
+        )
+        def update_training_chart(n):
+            episodes = list(self.state.episode_history)[-50:]  # Last 50 episodes
+            
+            if not episodes:
+                return go.Figure()
+            
+            # Extract data
+            episode_nums = [e.episode_num for e in episodes]
+            rewards = [e.total_reward for e in episodes]
+            
+            # Create simple line chart
+            fig = go.Figure()
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=episode_nums,
+                    y=rewards,
+                    mode='lines+markers',
+                    line=dict(color='#00d084', width=1),
+                    marker=dict(size=3),
+                    fill='tozeroy',
+                    fillcolor='rgba(0, 208, 132, 0.1)'
+                )
+            )
+            
+            fig.update_layout(
+                height=150,
+                margin=dict(l=40, r=10, t=20, b=20),
+                paper_bgcolor='#1e2130',
+                plot_bgcolor='#0e1117',
+                font=dict(size=9, color='#e6e6e6'),
+                title="Episode Rewards",
+                title_font_size=10,
+                xaxis_title="Episode",
+                yaxis_title="Reward",
+                showlegend=False
+            )
+            
+            fig.update_xaxes(gridcolor='#3d4158', gridwidth=0.5)
+            fig.update_yaxes(gridcolor='#3d4158', gridwidth=0.5)
+            
+            return fig
+        
+        # Continue with other callbacks...
+        # (Include all other callbacks from the original file with similar improvements)
+        
+        @self.app.callback(
+            Output('reward-system', 'children'),
+            [Input('interval-component', 'n_intervals')]
+        )
+        def update_reward_system(n):
+            if not self.state.reward_components:
+                return html.Div([
+                    html.P("No reward components data", 
+                          style={'color': '#999', 'fontSize': '11px', 'textAlign': 'center'})
+                ])
+            
+            # Filter active components
+            active_components = [(name, comp) for name, comp in self.state.reward_components.items() 
+                               if comp.times_triggered > 0]
+            
+            if not active_components:
+                return html.Div([
+                    html.P("Waiting for rewards...", 
+                          style={'color': '#999', 'fontSize': '11px', 'textAlign': 'center'})
+                ])
+            
+            # Sort by absolute magnitude
+            sorted_components = sorted(
+                active_components,
+                key=lambda x: abs(x[1].avg_magnitude),
+                reverse=True
+            )[:10]  # Show all 10 components
+            
+            # Add header row
+            rows = [
+                html.Div([
+                    html.Span("Component", style={'flex': '1', 'fontSize': '10px', 'color': '#999'}),
+                    html.Span("Avg Value", style={'fontSize': '10px', 'color': '#999', 'width': '70px', 'textAlign': 'right'}),
+                    html.Span("Count", style={'fontSize': '10px', 'color': '#999', 'width': '40px', 'textAlign': 'center'}),
+                    html.Span("%", style={'fontSize': '10px', 'color': '#999', 'width': '30px', 'textAlign': 'right'})
+                ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '3px', 'borderBottom': '1px solid #3d4158', 'paddingBottom': '2px'})
+            ]
+            
+            for name, comp in sorted_components:
+                display_name = name.replace('_', ' ').title()[:20]  # Truncate long names
+                color = '#00d084' if comp.component_type == "Reward" else '#ff6b6b'
+                
+                rows.append(html.Div([
+                    html.Span(display_name, style={'flex': '1', 'fontSize': '11px'}),
+                    html.Span(f"{comp.avg_magnitude:+.3f}", 
+                             style={'color': color, 'fontSize': '11px', 'fontFamily': 'monospace', 'width': '70px', 'textAlign': 'right'}),
+                    html.Span(f"{comp.times_triggered}", 
+                             style={'color': '#666', 'fontSize': '10px', 'width': '40px', 'textAlign': 'center'}),
+                    html.Span(f"{comp.percent_of_total:.0f}%", 
+                             style={'color': '#666', 'fontSize': '10px', 'width': '30px', 'textAlign': 'right'})
+                ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '1px'}))
+            
+            return html.Div(rows)
         
         @self.app.callback(
             Output('recent-executions', 'children'),
@@ -505,32 +910,52 @@ class LiveTradingDashboard:
             executions = self.state.get_recent_executions(5)
             
             if not executions:
-                return html.Div("No executions yet", style={'color': '#999', 'textAlign': 'center', 'fontSize': '10px'})
+                return html.Div("No executions yet", style={'color': '#999', 'fontSize': '11px'})
             
             rows = []
-            for execution in reversed(executions):
+            for execution in executions[-5:]:
                 side_class = 'positive' if execution.side == 'BUY' else 'negative'
-                row = html.Tr([
-                    html.Td(execution.timestamp.strftime("%H:%M:%S")),
-                    html.Td(execution.side, className=side_class),
-                    html.Td(f"{execution.quantity:.1f}"),
-                    html.Td(f"${execution.price:.2f}"),
-                    html.Td(f"${execution.fees:.2f}" if execution.fees > 0 else "-")
-                ])
-                rows.append(row)
+                rows.append(html.Div([
+                    html.Span(execution.timestamp.strftime("%H:%M:%S"), style={'fontSize': '11px', 'color': '#666'}),
+                    html.Span(execution.side, className=side_class, style={'fontWeight': 'bold'}),
+                    html.Span(f"{execution.quantity:.0f}", style={'fontSize': '11px'}),
+                    html.Span(f"${execution.price:.2f}", style={'fontSize': '11px'}),
+                ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '1px'}))
             
-            return html.Table([
-                html.Thead([
-                    html.Tr([
-                        html.Th("Time"),
-                        html.Th("Side"),
-                        html.Th("Qty"),
-                        html.Th("Price"),
-                        html.Th("Fees")
-                    ])
-                ]),
-                html.Tbody(rows)
-            ])
+            return html.Div(rows)
+        
+        @self.app.callback(
+            Output('recent-trades', 'children'),
+            [Input('interval-component', 'n_intervals')]
+        )
+        def update_recent_trades(n):
+            trades = self.state.get_recent_trades(3)
+            
+            if not trades:
+                return html.Div("No completed trades", style={'color': '#999', 'fontSize': '11px'})
+            
+            rows = []
+            # Add header
+            rows.append(html.Div([
+                html.Span("Side", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
+                html.Span("Qty", style={'fontSize': '10px', 'color': '#999', 'width': '15%'}),
+                html.Span("Entry", style={'fontSize': '10px', 'color': '#999', 'width': '20%'}),
+                html.Span("Exit", style={'fontSize': '10px', 'color': '#999', 'width': '20%'}),
+                html.Span("P&L", style={'fontSize': '10px', 'color': '#999', 'width': '30%', 'textAlign': 'right'}),
+            ], style={'display': 'flex', 'marginBottom': '3px', 'borderBottom': '1px solid #3d4158', 'paddingBottom': '2px'}))
+            
+            for trade in trades[-3:]:
+                pnl_class = 'positive' if trade.pnl >= 0 else 'negative'
+                side_class = 'positive' if trade.side == 'BUY' else 'negative'
+                rows.append(html.Div([
+                    html.Span(f"{trade.side}", className=side_class, style={'fontSize': '10px', 'width': '15%'}),
+                    html.Span(f"{trade.quantity:.0f}", style={'fontSize': '10px', 'width': '15%'}),
+                    html.Span(f"${trade.entry_price:.2f}", style={'fontSize': '10px', 'width': '20%'}),
+                    html.Span(f"${trade.exit_price:.2f}" if trade.exit_price else "--", style={'fontSize': '10px', 'width': '20%'}),
+                    html.Span(f"${trade.pnl:+.2f}", className=pnl_class, style={'fontWeight': 'bold', 'fontSize': '10px', 'width': '30%', 'textAlign': 'right'}),
+                ], style={'display': 'flex', 'marginBottom': '2px'}))
+            
+            return html.Div(rows)
         
         @self.app.callback(
             [Output('episode-title', 'children'),
@@ -543,116 +968,47 @@ class LiveTradingDashboard:
             
             if current:
                 title = f"🎬 Episode Analysis (Ep: {current.episode_num})"
-                
                 last_reward = current.reward_history[-1] if current.reward_history else 0
                 
                 content = html.Div([
                     html.Div([
-                        html.Span("Current Step:", className='metric-label'),
+                        html.Span("Steps:", className='metric-label'),
                         html.Span(f"{current.steps}", className='metric-value')
                     ], className='metric-row'),
                     html.Div([
-                        html.Span("Cumulative Reward:", className='metric-label'),
+                        html.Span("Total Reward:", className='metric-label'),
                         html.Span(f"{current.total_reward:.2f}", className='metric-value')
                     ], className='metric-row'),
                     html.Div([
-                        html.Span("Last Step Reward:", className='metric-label'),
+                        html.Span("Last Reward:", className='metric-label'),
                         html.Span(f"{last_reward:.3f}", className='metric-value')
                     ], className='metric-row'),
                 ])
             else:
-                title = "🎬 Episode Analysis (No Active Episode)"
-                content = html.Div("No active episode", style={'color': '#999'})
+                title = "🎬 Episode Analysis"
+                content = html.Div("Waiting for episode...", style={'color': '#999', 'fontSize': '11px'})
             
             # Episode history
             history = self.state.get_episode_history(3)
             if history:
                 history_rows = []
-                for ep in reversed(history):
-                    # Show termination or truncation reason
-                    reason = ep.termination_reason if ep.termination_reason else "Unknown"
-                    if ep.truncated and ep.truncation_reason:
-                        reason = f"T: {ep.truncation_reason}"
-                    reason_display = reason[:12] + "..." if len(reason) > 12 else reason
-                    
-                    row = html.Tr([
-                        html.Td(f"{ep.episode_num}"),
-                        html.Td(ep.status),
-                        html.Td(reason_display, title=reason),  # Show full reason on hover
-                        html.Td(f"{ep.total_reward:.1f}")
-                    ])
-                    history_rows.append(row)
+                for ep in history[-3:]:
+                    reason = (ep.termination_reason or "Complete")[:10]
+                    color = 'positive' if ep.total_reward > 0 else 'negative'
+                    history_rows.append(html.Div([
+                        html.Span(f"Ep {ep.episode_num}", style={'fontSize': '11px'}),
+                        html.Span(reason, style={'fontSize': '11px', 'color': '#666'}),
+                        html.Span(f"{ep.total_reward:.1f}", className=color, style={'fontSize': '11px'})
+                    ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '1px'}))
                 
                 history_content = html.Div([
-                    html.H4("📚 Episode History (Last 3)", style={'fontSize': '11px', 'margin': '10px 0 5px 0'}),
-                    html.Table([
-                        html.Thead([
-                            html.Tr([
-                                html.Th("Ep #"),
-                                html.Th("Status"),
-                                html.Th("End Reason"),
-                                html.Th("Reward")
-                            ])
-                        ]),
-                        html.Tbody(history_rows)
-                    ])
+                    html.H4("Recent Episodes", style={'fontSize': '11px', 'margin': '5px 0 3px 0', 'color': '#999'}),
+                    html.Div(history_rows)
                 ])
             else:
                 history_content = html.Div()
             
             return title, content, history_content
-        
-        @self.app.callback(
-            Output('training-progress', 'children'),
-            [Input('interval-component', 'n_intervals')]
-        )
-        def update_training_progress(n):
-            prog = self.state.training_progress
-            
-            # Ensure progress percentages are valid
-            overall_progress = max(0, min(100, prog.overall_progress))
-            stage_progress = max(0, min(100, prog.stage_progress))
-            
-            content = html.Div([
-                html.Div([
-                    html.Span("Mode:", className='metric-label'),
-                    html.Span(prog.mode or "Idle", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Current Stage:", className='metric-label'),
-                    html.Span(prog.current_stage or "Waiting", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Overall Progress:", className='metric-label'),
-                    html.Div([
-                        html.Div(style={'width': f"{overall_progress}%"}, className='progress-fill')
-                    ], className='progress-bar', style={'flex': 1, 'marginLeft': '10px'})
-                ], className='metric-row', style={'alignItems': 'center'}),
-                html.Div([
-                    html.Span("Stage Progress:", className='metric-label'),
-                    html.Div([
-                        html.Div(style={'width': f"{stage_progress}%"}, className='progress-fill')
-                    ], className='progress-bar', style={'flex': 1, 'marginLeft': '10px'})
-                ], className='metric-row', style={'alignItems': 'center'}),
-                html.Div([
-                    html.Span("Stage Status:", className='metric-label'),
-                    html.Span(prog.stage_status or "N/A", className='metric-value', style={'fontSize': '10px'})
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Updates:", className='metric-label'),
-                    html.Span(f"{prog.updates:,}" if prog.updates > 0 else "0", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Episodes:", className='metric-label'),
-                    html.Span(f"{prog.total_episodes:,}" if prog.total_episodes > 0 else "0", className='metric-value')
-                ], className='metric-row'),
-                html.Div([
-                    html.Span("Global Steps:", className='metric-label'),
-                    html.Span(f"{prog.global_steps:,}" if prog.global_steps > 0 else "0", className='metric-value')
-                ], className='metric-row'),
-            ])
-            
-            return content
         
         @self.app.callback(
             Output('ppo-metrics', 'children'),
@@ -661,63 +1017,40 @@ class LiveTradingDashboard:
         def update_ppo_metrics(n):
             ppo = self.state.ppo_metrics
             
-            def make_sparkline(values):
-                if not values:
-                    return ""
-                # Simple ASCII sparkline
-                chars = "▁▂▃▄▅▆▇█"
-                min_val = min(values)
-                max_val = max(values)
-                if max_val == min_val:
-                    return "─" * len(values)
-                
-                sparkline = ""
-                for v in values:
-                    idx = int((v - min_val) / (max_val - min_val) * (len(chars) - 1))
-                    sparkline += chars[idx]
-                return sparkline
-            
             content = html.Div([
                 html.Div([
                     html.Span("Learning Rate:", className='metric-label'),
                     html.Span(f"{ppo.learning_rate:.1e}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
-                    html.Span("Mean Reward:", className='metric-label'),
-                    html.Span(f"{ppo.mean_reward_batch:.2f}", className='metric-value')
+                    html.Span("Batch Mean Reward:", className='metric-label'),
+                    html.Span(f"{ppo.mean_reward_batch:.4f}", className='metric-value')
                 ], className='metric-row'),
+                html.Hr(style={'margin': '3px 0', 'borderColor': '#3d4158'}),
                 html.Div([
                     html.Span("Policy Loss:", className='metric-label'),
-                    html.Span([
-                        f"{ppo.policy_loss:.3f} ",
-                        html.Span(make_sparkline(list(ppo.policy_loss_history)), className='sparkline')
-                    ], className='metric-value')
+                    html.Span(f"{ppo.policy_loss:.4f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Value Loss:", className='metric-label'),
-                    html.Span([
-                        f"{ppo.value_loss:.3f} ",
-                        html.Span(make_sparkline(list(ppo.value_loss_history)), className='sparkline')
-                    ], className='metric-value')
+                    html.Span(f"{ppo.value_loss:.4f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Total Loss:", className='metric-label'),
-                    html.Span(f"{ppo.total_loss:.3f}", className='metric-value')
+                    html.Span(f"{ppo.total_loss:.4f}", className='metric-value')
                 ], className='metric-row'),
+                html.Hr(style={'margin': '3px 0', 'borderColor': '#3d4158'}),
                 html.Div([
                     html.Span("Entropy:", className='metric-label'),
-                    html.Span([
-                        f"{ppo.entropy:.3f} ",
-                        html.Span(make_sparkline(list(ppo.entropy_history)), className='sparkline')
-                    ], className='metric-value')
+                    html.Span(f"{ppo.entropy:.4f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Clip Fraction:", className='metric-label'),
                     html.Span(f"{ppo.clip_fraction:.3f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
-                    html.Span("Approx KL:", className='metric-label'),
-                    html.Span(f"{ppo.approx_kl:.3f}", className='metric-value')
+                    html.Span("KL Divergence:", className='metric-label'),
+                    html.Span(f"{ppo.approx_kl:.4f}", className='metric-value')
                 ], className='metric-row'),
                 html.Div([
                     html.Span("Explained Var:", className='metric-label'),
@@ -728,322 +1061,48 @@ class LiveTradingDashboard:
             return content
         
         @self.app.callback(
-            Output('reward-system', 'children'),
-            [Input('interval-component', 'n_intervals')]
-        )
-        def update_reward_system(n):
-            # Placeholder for reward component breakdown
-            # This would need integration with the reward calculator
-            content = html.Div([
-                html.P("Reward components tracking coming soon...", 
-                      style={'color': '#999', 'fontSize': '10px', 'textAlign': 'center'})
-            ])
-            return content
-        
-        @self.app.callback(
-            Output('action-analysis', 'children'),
-            [Input('interval-component', 'n_intervals')]
-        )
-        def update_action_analysis(n):
-            # Calculate action bias
-            self.state.calculate_action_bias()
-            
-            analysis = self.state.action_analysis
-            
-            content = [
-                html.Div([
-                    html.Span("Invalid Actions:", className='metric-label'),
-                    html.Span(f"{analysis.invalid_actions_count}", className='metric-value negative' if analysis.invalid_actions_count > 0 else 'metric-value')
-                ], className='metric-row'),
-                html.H4("Action Bias:", style={'fontSize': '11px', 'margin': '10px 0 5px 0'})
-            ]
-            
-            if analysis.action_bias:
-                rows = []
-                for action, stats in analysis.action_bias.items():
-                    row = html.Tr([
-                        html.Td(action),
-                        html.Td(f"{stats['count']}"),
-                        html.Td(f"{stats['percent_steps']:.1f}"),
-                        html.Td(f"{stats['mean_reward']:.3f}"),
-                        html.Td(f"{stats['total_reward']:.2f}"),
-                        html.Td(f"{stats['pos_reward_rate']:.1f}")
-                    ])
-                    rows.append(row)
-                
-                table = html.Table([
-                    html.Thead([
-                        html.Tr([
-                            html.Th("Action"),
-                            html.Th("Count"),
-                            html.Th("%"),
-                            html.Th("Mean R"),
-                            html.Th("Total R"),
-                            html.Th("Win%")
-                        ])
-                    ]),
-                    html.Tbody(rows)
-                ])
-                content.append(table)
-            
-            return html.Div(content)
-        
-        @self.app.callback(
-            Output('episode-chart', 'figure'),
-            [Input('interval-component', 'n_intervals')]
-        )
-        def update_episode_chart(n):
-            if not self.state.current_episode:
-                return go.Figure()
-            
-            episode = self.state.current_episode
-            
-            # Create subplots for current episode
-            fig = make_subplots(
-                rows=3, cols=1,
-                shared_xaxes=True,
-                vertical_spacing=0.05,
-                row_heights=[0.5, 0.25, 0.25],
-                subplot_titles=('Price & Trades (Current Episode)', 'Position', 'Reward')
-            )
-            
-            # Use OHLC candlestick chart if we have market data with bars
-            if hasattr(self.state, 'ohlc_data') and len(self.state.ohlc_data) > 0:
-                # Create candlestick chart with recent 1-minute bars
-                ohlc_list = list(self.state.ohlc_data)
-                num_bars = min(60, len(ohlc_list))  # Show last 60 bars (1 hour of 1-minute data)
-                recent_bars = ohlc_list[-num_bars:] if num_bars > 0 else []
-                
-                if recent_bars:
-                    # Extract timestamps and OHLC values
-                    timestamps = []
-                    opens = []
-                    highs = []
-                    lows = []
-                    closes = []
-                    volumes = []
-                    
-                    for i, bar in enumerate(recent_bars):
-                        # Use index for x-axis but store timestamp for hover info
-                        timestamps.append(i)
-                        opens.append(bar.get('open', 0))
-                        highs.append(bar.get('high', 0))
-                        lows.append(bar.get('low', 0))
-                        closes.append(bar.get('close', 0))
-                        volumes.append(bar.get('volume', 0))
-                    
-                    # Only add candlestick if we have valid data
-                    if any(opens) and any(closes):
-                        fig.add_trace(
-                            go.Candlestick(
-                                x=timestamps,
-                                open=opens,
-                                high=highs,
-                                low=lows,
-                                close=closes,
-                                name='Price',
-                                showlegend=False,
-                                increasing=dict(line=dict(color='green')),
-                                decreasing=dict(line=dict(color='red')),
-                                hovertext='<b>%{x}</b><br>' +
-                                             'O: $%{open:.2f}<br>' +
-                                             'H: $%{high:.2f}<br>' +
-                                             'L: $%{low:.2f}<br>' +
-                                             'C: $%{close:.2f}<br>' +
-                                             '<extra></extra>'
-                            ),
-                            row=1, col=1
-                        )
-                    else:
-                        # Fallback to line chart if no valid OHLC
-                        steps = list(range(len(episode.price_history)))
-                        if episode.price_history:
-                            fig.add_trace(
-                                go.Scatter(x=steps, y=list(episode.price_history), 
-                                          name='Price', line=dict(color='#00d084', width=1)),
-                                row=1, col=1
-                            )
-                else:
-                    # Fallback to line chart
-                    steps = list(range(len(episode.price_history)))
-                    if episode.price_history:
-                        fig.add_trace(
-                            go.Scatter(x=steps, y=list(episode.price_history), 
-                                      name='Price', line=dict(color='#00d084', width=1)),
-                            row=1, col=1
-                        )
-            else:
-                # Fallback to line chart
-                steps = list(range(len(episode.price_history)))
-                if episode.price_history:
-                    fig.add_trace(
-                        go.Scatter(x=steps, y=list(episode.price_history), 
-                                  name='Price', line=dict(color='#00d084', width=1)),
-                        row=1, col=1
-                    )
-            
-            # Add trades/executions on the chart
-            if episode.executions:
-                # Map executions to bar indices
-                exec_x = []
-                exec_y = []
-                exec_colors = []
-                exec_symbols = []
-                exec_texts = []
-                
-                for execution in episode.executions:
-                    # Find the corresponding bar index for this execution
-                    # For now, distribute executions evenly across available bars
-                    if hasattr(self.state, 'ohlc_data') and len(self.state.ohlc_data) > 0:
-                        # Use execution index relative to the number of bars
-                        bar_index = min(len(timestamps) - 1, int((len(timestamps) - 1) * (episode.executions.index(execution) / max(1, len(episode.executions) - 1))))
-                    else:
-                        bar_index = min(episode.executions.index(execution), len(episode.price_history) - 1) if episode.price_history else 0
-                    
-                    exec_x.append(bar_index)
-                    exec_y.append(execution.price)
-                    exec_colors.append('#00d084' if execution.side == 'BUY' else '#ff4757')
-                    exec_symbols.append('triangle-up' if execution.side == 'BUY' else 'triangle-down')
-                    exec_texts.append(f"{execution.side} {execution.quantity:.2f} @ ${execution.price:.2f}")
-                
-                if exec_x:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=exec_x,
-                            y=exec_y,
-                            mode='markers',
-                            marker=dict(size=10, color=exec_colors, symbol=exec_symbols, line=dict(width=1, color='white')),
-                            showlegend=False,
-                            hovertext=exec_texts,
-                            name='Executions'
-                        ),
-                        row=1, col=1
-                    )
-            
-            # Position
-            if episode.position_history:
-                steps = list(range(len(episode.position_history)))
-                fig.add_trace(
-                    go.Scatter(x=steps, y=list(episode.position_history),
-                              name='Position', fill='tozeroy',
-                              line=dict(color='#ffd32a', width=1)),
-                    row=2, col=1
-                )
-            
-            # Rewards
-            if episode.reward_history:
-                steps = list(range(len(episode.reward_history)))
-                cumulative_rewards = np.cumsum(list(episode.reward_history))
-                fig.add_trace(
-                    go.Scatter(x=steps, y=cumulative_rewards.tolist(),
-                              name='Cumulative Reward',
-                              line=dict(color='#00d084', width=2)),
-                    row=3, col=1
-                )
-            
-            # Update layout
-            fig.update_layout(
-                template='plotly_dark',
-                height=250,
-                showlegend=False,
-                margin=dict(l=40, r=10, t=30, b=30),
-                font=dict(size=10),
-                xaxis_rangeslider_visible=False  # Hide range slider for cleaner look
-            )
-            
-            fig.update_xaxes(title_text="Time Step", row=3, col=1)
-            fig.update_yaxes(title_text="Price ($)", row=1, col=1)
-            fig.update_yaxes(title_text="Position", row=2, col=1)
-            fig.update_yaxes(title_text="Cumulative Reward", row=3, col=1)
-            
-            return fig
-        
-        @self.app.callback(
-            Output('training-chart', 'figure'),
-            [Input('interval-component', 'n_intervals')]
-        )
-        def update_training_chart(n):
-            # Overall training metrics across episodes
-            history = list(self.state.episode_history)
-            
-            if not history:
-                return go.Figure()
-            
-            episodes = [ep.episode_num for ep in history]
-            rewards = [ep.total_reward for ep in history]
-            pnls = [ep.total_pnl for ep in history]
-            
-            fig = make_subplots(
-                rows=2, cols=1,
-                shared_xaxes=True,
-                vertical_spacing=0.1,
-                subplot_titles=('Episode Rewards', 'Episode P&L')
-            )
-            
-            # Rewards
-            fig.add_trace(
-                go.Scatter(x=episodes, y=rewards, name='Reward',
-                          line=dict(color='#00d084', width=2)),
-                row=1, col=1
-            )
-            
-            # P&L
-            fig.add_trace(
-                go.Bar(x=episodes, y=pnls, name='P&L',
-                      marker_color=['#00d084' if p > 0 else '#ff4757' for p in pnls]),
-                row=2, col=1
-            )
-            
-            fig.update_layout(
-                template='plotly_dark',
-                height=250,
-                showlegend=False,
-                margin=dict(l=40, r=10, t=30, b=30),
-                font=dict(size=10)
-            )
-            
-            fig.update_xaxes(title_text="Episode", row=2, col=1)
-            fig.update_yaxes(title_text="Reward", row=1, col=1)
-            fig.update_yaxes(title_text="P&L ($)", row=2, col=1)
-            
-            return fig
-        
-        @self.app.callback(
             Output('footer-stats', 'children'),
             [Input('interval-component', 'n_intervals')]
         )
         def update_footer(n):
-            prog = self.state.training_progress
-            analysis = self.state.action_analysis
+            # Calculate uptime
+            elapsed = time.time() - self.state.start_time
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            seconds = int(elapsed % 60)
+            uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             
-            # Calculate some real-time stats
-            current_episode = self.state.current_episode
-            total_actions = sum(current_episode.action_counts.values()) if current_episode else 0
-            invalid_rate = (analysis.invalid_actions_count / max(1, total_actions)) * 100 if total_actions > 0 else 0
+            # Get stats
+            total_episodes = len(self.state.episode_history)
+            total_trades = sum(len(ep.trades) for ep in self.state.episode_history)
+            current_ep = self.state.current_episode
             
-            return html.Div([
-                html.Span(f"Steps/Sec: {prog.steps_per_second:.1f}"),
-                html.Span(f"Invalid Actions: {analysis.invalid_actions_count} ({invalid_rate:.1f}%)"),
-                html.Span(f"Total Steps: {prog.global_steps:,}"),
-                html.Span(f"Session Time: {self.state.session_elapsed_time}")
-            ], style={'display': 'flex', 'gap': '20px', 'fontSize': '10px'})
+            footer_content = [
+                html.Span(f"Uptime: {uptime}"),
+                html.Span(f"Episodes: {total_episodes}"),
+                html.Span(f"Total Trades: {total_trades}"),
+                html.Span(f"Steps/sec: {self.state.training_progress.steps_per_second:.1f}"),
+                html.Span(f"Current Step: {current_ep.steps if current_ep else 0}")
+            ]
+            
+            return footer_content
     
-    def _process_queue_updates(self):
-        """Process all pending updates from queue"""
-        processed = 0
-        while not self.update_queue.empty() and processed < 50:  # Limit to prevent blocking
+    # Include all other methods from the original class...
+    def _process_updates(self):
+        """Process queued updates"""
+        while self.is_running:
             try:
-                update = self.update_queue.get_nowait()
+                update = self.update_queue.get(timeout=0.1)
                 self._process_update(update)
-                processed += 1
             except queue.Empty:
-                break
+                continue
     
     def _process_update(self, update: Dict[str, Any]):
         """Process a single update"""
         update_type = update.get('type')
         data = update.get('data', {})
         
+        # Process based on type (same as original)
         if update_type == 'market':
             self.state.update_market(data)
         elif update_type == 'position':
@@ -1051,12 +1110,8 @@ class LiveTradingDashboard:
         elif update_type == 'portfolio':
             self.state.update_portfolio(data)
         elif update_type == 'action':
-            self.state.add_action(
-                data.get('step', 0),
-                data.get('action_type', 'HOLD'),
-                data.get('size', 1.0),
-                data.get('reward', 0.0)
-            )
+            self.state.add_action(data['step'], data['action_type'], 
+                                data.get('size', 1.0), data.get('reward', 0))
         elif update_type == 'trade':
             self.state.add_trade(data)
         elif update_type == 'episode_start':
@@ -1069,49 +1124,43 @@ class LiveTradingDashboard:
             self.state.update_ppo_metrics(data)
         elif update_type == 'model_info':
             self.state.model_name = data.get('name', 'N/A')
+        elif update_type == 'reward_components':
+            self.state.update_reward_components(data)
     
-    # Public update methods
+    # Public API methods (same as original)
     def update_market(self, data: Dict[str, Any]):
-        """Update market data"""
         self.update_queue.put({'type': 'market', 'data': data})
     
     def update_position(self, data: Dict[str, Any]):
-        """Update position data"""
         self.update_queue.put({'type': 'position', 'data': data})
     
     def update_portfolio(self, data: Dict[str, Any]):
-        """Update portfolio data"""
         self.update_queue.put({'type': 'portfolio', 'data': data})
     
     def update_action(self, step: int, action_type: str, size: float, reward: float):
-        """Update action data"""
-        self.update_queue.put({
-            'type': 'action',
-            'data': {'step': step, 'action_type': action_type, 'size': size, 'reward': reward}
-        })
+        self.update_queue.put({'type': 'action', 'data': {
+            'step': step, 'action_type': action_type, 'size': size, 'reward': reward
+        }})
     
     def update_trade(self, trade_data: Dict[str, Any]):
-        """Update trade data"""
         self.update_queue.put({'type': 'trade', 'data': trade_data})
     
     def start_episode(self, episode_num: int):
-        """Start new episode"""
         self.update_queue.put({'type': 'episode_start', 'data': {'episode_num': episode_num}})
     
-    def end_episode(self, reason: str = 'Completed'):
-        """End current episode"""
+    def end_episode(self, reason: str):
         self.update_queue.put({'type': 'episode_end', 'data': {'reason': reason}})
     
     def update_training_progress(self, data: Dict[str, Any]):
-        """Update training progress"""
         self.update_queue.put({'type': 'training', 'data': data})
     
     def update_ppo_metrics(self, data: Dict[str, Any]):
-        """Update PPO metrics"""
         self.update_queue.put({'type': 'ppo_metrics', 'data': data})
     
+    def update_reward_components(self, components: Dict[str, float]):
+        self.update_queue.put({'type': 'reward_components', 'data': components})
+    
     def set_model_info(self, name: str):
-        """Set model information"""
         self.update_queue.put({'type': 'model_info', 'data': {'name': name}})
     
     def start(self, open_browser: bool = True):
@@ -1122,26 +1171,25 @@ class LiveTradingDashboard:
         
         self.is_running = True
         
-        # Start server in separate thread
-        def run_server():
-            self.app.run_server(
-                host='127.0.0.1',
-                port=self.port,
-                debug=False,
-                use_reloader=False
-            )
+        # Start update processing thread
+        self.update_thread = threading.Thread(target=self._process_updates)
+        self.update_thread.daemon = True
+        self.update_thread.start()
         
-        self.server_thread = threading.Thread(target=run_server, daemon=True)
+        # Start Dash server
+        self.server_thread = threading.Thread(
+            target=self.app.run_server,
+            kwargs={'debug': False, 'port': self.port, 'host': '0.0.0.0'}
+        )
+        self.server_thread.daemon = True
         self.server_thread.start()
-        
-        # Wait for server to start
-        time.sleep(2)
         
         # Open browser
         if open_browser:
-            url = f"http://127.0.0.1:{self.port}"
-            webbrowser.open(url)
-            logger.info(f"Dashboard started at {url}")
+            time.sleep(1)
+            webbrowser.open(f'http://localhost:{self.port}')
+        
+        logger.info(f"Dashboard started on http://localhost:{self.port}")
     
     def stop(self):
         """Stop the dashboard server"""

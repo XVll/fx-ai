@@ -23,6 +23,7 @@ def setup_rich_logging(level: int = logging.INFO, show_time: bool = True, show_p
     # Install rich traceback handler with compact settings
     if compact_errors:
         install(
+
             show_locals=False,  # Don't show local variables
             width=100,          # Limit width
             extra_lines=3,      # Show only 3 lines of context
@@ -44,7 +45,7 @@ def setup_rich_logging(level: int = logging.INFO, show_time: bool = True, show_p
         console=console,
         show_time=show_time,
         show_path=show_path,
-        rich_tracebacks=True,
+        rich_tracebacks=False,
         tracebacks_show_locals=not compact_errors,
         markup=True
     )
