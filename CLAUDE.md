@@ -160,3 +160,7 @@ Databento Files → DataManager → MarketSimulator → FeatureExtractor → PPO
 - Databento data files are stored in `dnb/Mlgo/` directory structure
 - Logging configured through `utils/logger.py` using Rich handler
 - Invalid action handling is configurable with tracking and limits
+
+## Memory
+
+- We will use docs directory to keep track of features, metrics, rewards and keep implementation in sync with them

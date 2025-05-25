@@ -1,0 +1,223 @@
+## Training Metrics ⚙️
+
+- **Actor Loss / actor_loss**
+    - Explanation: Error in the policy function, guiding policy updates.
+    - W&B: `wandb.log({'actor_loss': value})` (Per training step/batch)
+- **Critic Loss / critic_loss**
+    - Explanation: Error in the value function (e.g., Q-value prediction).
+    - W&B: `wandb.log({'critic_loss': value})` (Per training step/batch)
+- **Total Loss**
+    - Explanation: Sum of all loss components (e.g., actor, critic, entropy).
+    - W&B: `wandb.log({'total_loss': value})` (Per training step/batch)
+- **Policy Entropy / entropy**
+    - Explanation: Measure of the policy's randomness, encouraging exploration.
+    - W&B: `wandb.log({'policy_entropy': value})` (Per training step/batch)
+- **Value Function Estimates**
+    - Explanation: Agent's current prediction of future cumulative rewards.
+    - W&B: `wandb.Histogram({'value_estimates': values_array})`, `wandb.log({'mean_value_estimate': mean_value})` (Sampled per training step/batch)
+- **Episode Rewards (Raw, Smoothed) / episode_reward_mean / episode_reward_current**
+    - Explanation: Total reward obtained in an episode; raw and averaged for trend analysis.
+    - W&B: `wandb.log({'episode_reward': raw_value, 'smoothed_episode_reward': smoothed_value})` (Per episode)
+- **eval_reward_mean**
+    - Explanation: Average reward achieved during dedicated evaluation phases.
+    - W&B: `wandb.log({'eval_reward_mean': value})` (Per evaluation cycle)
+- **eval_length_mean**
+    - Explanation: Average number of steps taken during evaluation episodes.
+    - W&B: `wandb.log({'eval_length_mean': value})` (Per evaluation cycle)
+- **eval_count**
+    - Explanation: Number of episodes completed during an evaluation phase.
+    - W&B: `wandb.log({'eval_count': value})` (Per evaluation cycle)
+- **Explained Variance**
+    - Explanation: How much of the target value's variance is captured by the value function.
+    - W&B: `wandb.log({'explained_variance': value})` (Per training step/batch)
+- **Learning Rate / learning_rate**
+    - Explanation: The step size used by the optimizer during model updates.
+    - W&B: `wandb.log({'learning_rate': value})` (Per training step/batch, especially if scheduled)
+- **Approximation KL (approx_kl)**
+    - Explanation: KL divergence between policy before and after an update (common in PPO).
+    - W&B: `wandb.log({'approx_kl': value})` (Per training step/batch)
+- **Clip Fraction**
+    - Explanation: In PPO, the fraction of objective function samples that were clipped.
+    - W&B: `wandb.log({'clip_fraction': value})` (Per training step/batch)
+
+---
+
+## Trading Performance Metrics 📈
+
+- **Cumulative Realized P&L / realized_pnl**
+    - Explanation: Total profit or loss from all closed trades.
+    - W&B: `wandb.log({'cumulative_realized_pnl': value})` (Per evaluation episode/day, or running total)
+- **Total Equity**
+    - Explanation: Current total value of the portfolio (cash + holdings).
+    - W&B: `wandb.log({'total_equity': value})` (Per evaluation step/day)
+- **Cash Balance**
+    - Explanation: The amount of liquid cash available in the account.
+    - W&B: `wandb.log({'cash_balance': value})` (Per evaluation step/day)
+- **Unrealized P&L / unrealized_pnl**
+    - Explanation: Profit or loss on currently open positions if they were closed now.
+    - W&B: `wandb.log({'unrealized_pnl': value})` (Per evaluation step/day)
+- **Total Return (%) / total_return_pct**
+    - Explanation: Overall percentage gain or loss of the portfolio.
+    - W&B: `wandb.log({'total_return_pct': value})` (Per evaluation episode/day)
+- **Maximum Drawdown / max_drawdown_pct**
+    - Explanation: Largest percentage drop from a portfolio peak to a subsequent trough.
+    - W&B: `wandb.log({'max_drawdown_pct': value})` (Per evaluation episode/day)
+- **Sortino Ratio**
+    - Explanation: Risk-adjusted return, considering only downside volatility.
+    - W&B: `wandb.log({'sortino_ratio': value})` (Per evaluation episode/day)
+- **Win Rate / win_rate**
+    - Explanation: Percentage of trades that resulted in a profit.
+    - W&B: `wandb.log({'win_rate': value})` (Per evaluation episode/day)
+- **Avg Win/Loss (avg_winning_trade, avg_losing_trade)**
+    - Explanation: Average profit from winning trades and average loss from losing trades.
+    - W&B: `wandb.log({'avg_winning_trade': value, 'avg_losing_trade': value})` (Per evaluation episode/day)
+- **Profit Factor / profit_factor**
+    - Explanation: Ratio of gross profits to gross losses from trades.
+    - W&B: `wandb.log({'profit_factor': value})` (Per evaluation episode/day)
+- **Number of Trades / total_trades**
+    - Explanation: The total count of executed trades.
+    - W&B: `wandb.log({'total_trades': value})` (Per evaluation episode/day)
+- **Avg Holding Time / Trade Duration**
+    - Explanation: Average duration for which positions are held.
+    - W&B: `wandb.log({'avg_holding_time_seconds': value})` (Per evaluation); Individual durations via `wandb.Table` or `wandb.Histogram`
+- **Avg Trade Pnl**
+    - Explanation: The average profit or loss across all executed trades.
+    - W&B: `wandb.log({'avg_trade_pnl': value})` (Per evaluation episode/day)
+- **Slippage per trade / total_slippage / avg_slippage_bps**
+  - Explanation: Difference between intended and actual execution price, or total/average values.
+  - W&B: Individual: `wandb.Table(data=slippage_df)`, `wandb.Histogram({'slippage_bps': values})`; Aggregate: `wandb.log({'avg_slippage_bps': value})`
+- **Total Transaction Costs / total_transaction_costs**
+  - Explanation: Overall costs incurred from trading (commissions + fees).
+  - W&B: `wandb.log({'total_transaction_costs': value})` (Per evaluation episode/day)
+- **Trades on Price Chart As Images**
+  - Explanation: Visualizing trade entry and exit points on a price chart for verification.
+  - W&B: `wandb.Image({'price_chart_with_trades': plot_image})` (Periodically or on demand)
+- **Total Volume / total_volume**
+  - Explanation: Total quantity of the asset (e.g., shares) traded.
+  - W&B: `wandb.log({'total_volume_traded': value})` (Per evaluation episode/day)
+
+---
+
+## Model Internals & Diagnostics 🧠
+
+- **Input Feature Distributions**
+    - Explanation: Statistical distribution of each feature fed into the model.
+    - W&B: `wandb.Histogram({'feature_X_distribution': feature_X_array})` (For each feature X, periodically)
+- **Transformer Attention Weights**
+    - Explanation: Visualizing (e.g., heatmap) which inputs the model focuses on (if applicable).
+    - W&B: `wandb.Image({'attention_weights_heatmap': heatmap_image})` (Periodically, for sampled instances)
+- **Action Probabilities**
+    - Explanation: The model's output probabilities for each possible action.
+    - W&B: `wandb.Histogram({'action_probabilities': probs_array})`, `wandb.plot.line_series(xs=steps, ys=action_prob_matrix, keys=action_names, title="Action Probabilities")` (Sampled per step or aggregated)
+- **Feature Importance (SHAP/LIME)**
+    - Explanation: Measures the influence of each input feature on the model's predictions.
+    - W&B: `wandb.Table(dataframe=feature_importance_df)`, `wandb.Image({'shap_summary_plot': plot_image})` (Infrequently, e.g., major checkpoints)
+- **Gradient Norm / gradient_norm**
+    - Explanation: Magnitude of the gradients, indicating update strength and stability.
+    - W&B: `wandb.log({'gradient_norm': value})` (Per training step/batch)
+- **Gradient Max / gradient_max**
+    - Explanation: The largest absolute gradient value, useful for detecting explosions.
+    - W&B: `wandb.log({'gradient_max': value})` (Per training step/batch)
+- **Parameter Norm / param_norm**
+    - Explanation: Magnitude of the model's weights, can indicate exploding/vanishing weights.
+    - W&B: `wandb.log({'parameter_norm': value})` (Periodically after updates)
+- **Parameter Count / param_count**
+    - Explanation: Total number of trainable parameters in the neural network.
+    - W&B: `wandb.config.update({'parameter_count': value})` (Once at init) or `wandb.summary['parameter_count'] = value`
+- **Momentum**
+    - Explanation: Optimizer's momentum values if using optimizers like SGD with momentum or Adam.
+    - W&B: `wandb.log({'optimizer_momentum_beta1': value})` (Per training step if dynamic, else config)
+- **Weight Decay**
+    - Explanation: Coefficient for L2 regularization penalty on model weights.
+    - W&B: `wandb.log({'weight_decay_coefficient': value})` (Per training step if dynamic, else config)
+
+---
+
+## Environment & Action Metrics 🌍🎬
+
+- **Total Environment Steps / total_env_steps**
+    - Explanation: Cumulative count of interactions (steps) with the trading environment.
+    - W&B: `wandb.log({'total_env_steps': value})` (Continuously updated)
+- **Step Reward / step_reward**
+    - Explanation: Reward received from the environment at each individual time step.
+    - W&B: `wandb.log({'step_reward': value})` (Per environment step, if high granularity is needed)
+- **Step Reward Mean / step_reward_mean**
+    - Explanation: Average reward per environment step, often calculated over an episode.
+    - W&B: `wandb.log({'step_reward_mean': value})` (Per episode or batch)
+- **Invalid Action Rate**
+    - Explanation: Frequency of the agent attempting actions not permitted by the environment.
+    - W&B: `wandb.log({'invalid_action_rate': value})` (Per episode or evaluation)
+- **Action Hold Percentage / action_hold_pct**
+    - Explanation: Proportion of times the agent chose to take no action (hold position).
+    - W&B: `wandb.log({'action_hold_pct': value})` (Per episode or evaluation)
+- **Action Buy Percentage / action_buy_pct**
+    - Explanation: Proportion of times the agent chose to execute a buy order.
+    - W&B: `wandb.log({'action_buy_pct': value})` (Per episode or evaluation)
+- **Action Sell Percentage / action_sell_pct**
+    - Explanation: Proportion of times the agent chose to execute a sell order.
+    - W&B: `wandb.log({'action_sell_pct': value})` (Per episode or evaluation)
+- **Magnitude and Frequency (of penalty/reward - Action Metrics)**
+    - Explanation: Average size and occurrence of specific, custom reward/penalty components.
+    - W&B: `wandb.log({'avg_custom_penalty_X': value, 'freq_custom_penalty_X': value})` (Per episode/batch)
+- **Correlation with Behavior (rewards and agent behavior - Action Metrics)**
+    - Explanation: How specific reward components relate to agent's trading behavior (e.g., P&L, duration).
+    - W&B: Custom plots, or `wandb.log({'correlation_rewardX_pnl': value})` (Periodically)
+- **Impact on Learning (penalty dominance, incentive effectiveness - Action Metrics)**
+    - Explanation: Assessing how well reward/penalty components guide desired learning.
+    - W&B: `wandb.Table` for notes/observations, or derived metrics `wandb.log({'incentive_X_effectiveness_score': value})` (Periodically)
+- **Dynamic reward components**
+    - Explanation: Values of individual sub-components that make up the total reward signal.
+    - W&B: `wandb.log({'reward_component_price_change': value, 'reward_component_risk_penalty': value})` (Per step or episode for each component)
+- **Action efficiency metrics**
+    - Explanation: Custom metrics evaluating how efficiently actions achieve goals or avoid penalties.
+    - W&B: `wandb.log({'my_action_efficiency_metric': value})` (Per episode or evaluation)
+
+## Reward  Component Metrics 🏆
+
+- **Individual Reward Component Values (Episode)**
+    - Explanation: Tracks the value of each distinct element of your shaped reward function (e.g., P&L gain, risk penalty, transaction cost penalty, holding incentive).
+    - W&B: `wandb.log({'reward_comp_pnl': pnl_comp, 'reward_comp_risk': risk_comp, 'reward_comp_txn_cost': txn_cost_comp})`
+- **Reward Component Contribution to Total Reward (Per Episode, %)**
+    - Explanation: The percentage that each component contributes to the total episode reward, showing dominant factors.
+    - W&B: `wandb.log({'reward_contrib_pct_pnl': pnl_contrib_pct, 'reward_contrib_pct_risk': risk_contrib_pct})` (Per episode for each component)
+- **Cumulative Value of Each Reward Component (Per Episode/Evaluation)**
+    - Explanation: The sum of each reward component over an entire episode or evaluation period.
+    - W&B: `wandb.log({'cumulative_reward_comp_pnl': cum_pnl_comp, 'cumulative_reward_comp_risk': cum_risk_comp})` (Per episode/evaluation for each component)
+- **Reward Sparsity**
+    - Explanation: Measures how frequently the agent receives non-zero rewards; high sparsity can make learning difficult.
+    - W&B: `wandb.log({'reward_sparsity_pct_non_zero': (num_non_zero_rewards / total_steps) * 100})` (Per episode or evaluation period)
+- **Distribution of Total Rewards and Individual Components**
+    - Explanation: Histograms showing the spread of total reward values and each component's values over time.
+    - W&B: `wandb.Histogram({'total_reward_distribution': all_episode_rewards_array})`, `wandb.Histogram({'reward_comp_pnl_distribution': all_pnl_comp_values_array})` (Periodically, aggregating values)
+- **Magnitude of Positive vs. Negative Reward Components**
+    - Explanation: Compares the average size of positive reward elements versus negative penalty elements.
+    - W&B: `wandb.log({'avg_positive_reward_component_magnitude': avg_pos_val, 'avg_negative_reward_component_magnitude': avg_neg_val})` (Per episode or evaluation)
+- **Frequency of Activation for Each Reward Component**
+    - Explanation: How often each specific reward component is triggered (i.e., has a non-zero value).
+    - W&B: `wandb.log({'freq_reward_comp_pnl_active': pnl_active_count / total_steps})` (Per episode/evaluation for each component)
+- **Correlation: Reward Component vs. Key Trading Outcome**
+    - Explanation: Measures if a specific reward component aligns with desired outcomes (e.g., does profit-based reward component correlate with higher realized P&L?).
+    - W&B: `wandb.log({'correlation_profit_comp_vs_realized_pnl': correlation_value})` (Calculated periodically over a set of episodes)
+- **Correlation: Reward Component vs. Agent Action Metric**
+    - Explanation: Examines if a penalty component effectively discourages certain actions (e.g., transaction cost penalty vs. number of trades).
+    - W&B: `wandb.log({'correlation_txn_cost_penalty_vs_num_trades': correlation_value})` (Calculated periodically)
+- **Reward Component Volatility/Stability**
+    - Explanation: Standard deviation or variance of individual reward components over time, indicating their consistency.
+    - W&B: `wandb.log({'volatility_reward_comp_pnl': std_dev_pnl_comp})` (Calculated periodically for each component)
+- **Impact of Reward Shaping on Learning (Qualitative/Derived)**
+    - Explanation: Assessment of whether the designed reward components are effectively guiding the agent towards the desired trading strategy and behavior (e.g. are penalties too high/low).
+    - W&B: Use `wandb.Table` for notes and observations, or create derived metrics like `wandb.log({'learning_impact_score_risk_penalty': score})` based on behavior changes.
+- **Reward Clipping/Scaling Effects (if applicable)**
+    - Explanation: If rewards are clipped or scaled, track the frequency of clipping or the average scaling factor.
+    - W&B: `wandb.log({'reward_clipping_frequency': clip_freq, 'avg_reward_scale_factor': avg_scale})` (Per batch/episode)
+
+# Performance Metrics 📊
+- **steps_per_second**
+  - Explanation: Processing speed of environment interactions during training.
+  - W&B: `wandb.log({'steps_per_second': value})` (Periodically, e.g., per N steps)
+- **episode_per_hour**
+  - Explanation: Number of full training episodes completed per hour.
+  - W&B: `wandb.log({'episode_per_hour': value})` (Periodically)
+- **update_per_hour**
+  - Explanation: Number of model learning updates performed per hour.
+  - W&B: `wandb.log({'update_per_hour': value})` (Periodically)

@@ -790,18 +790,21 @@ class LiveTradingDashboard:
                 fig.update_xaxes(
                     rangeslider_visible=False,
                     range=[timestamps[0], timestamps[-1]],  # Show full range
-                    fixedrange=True,  # Allow zoom but default to full range
+                    fixedrange=True,  # Disable zoom/pan
+                    autorange=False,  # Disable auto-ranging
                     row=1, col=1
                 )
                 # Also apply to reward chart x-axis if we have reward data
                 if 'display_steps' in locals() and display_steps:
                     fig.update_xaxes(
                         range=[0, len(display_steps) - 1],
+                        autorange=False,
                         row=2, col=1
                     )
             else:
                 fig.update_xaxes(
                     rangeslider_visible=False,
+                    autorange=False,
                     row=1, col=1
                 )
             
