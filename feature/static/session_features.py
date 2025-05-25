@@ -2,8 +2,8 @@
 import pytz
 from datetime import datetime, timezone, time
 from typing import Dict, Any
-from ..base.feature_base import BaseFeature, FeatureConfig
-from ..base.feature_registry import feature_registry
+from feature.feature_base import BaseFeature, FeatureConfig
+from feature.feature_registry import feature_registry
 
 
 @feature_registry.register("market_session_type", category="static")

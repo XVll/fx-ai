@@ -1,8 +1,8 @@
 """Candle pattern features"""
 import numpy as np
 from typing import Dict, Any, List
-from ..base.feature_base import BaseFeature, FeatureConfig
-from ..base.feature_registry import feature_registry
+from feature.feature_base import BaseFeature, FeatureConfig
+from feature.feature_registry import feature_registry
 
 
 @feature_registry.register("1m_position_in_current_candle", category="mf")

@@ -1,1 +1,0 @@
-# Feature system v2 - modular and extensible

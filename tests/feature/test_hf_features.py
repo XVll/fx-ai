@@ -5,10 +5,10 @@ import pandas as pd
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
 
-from feature.v2.hf.price_features import PriceVelocityFeature, PriceAccelerationFeature
+from feature.hf.price_features import PriceVelocityFeature, PriceAccelerationFeature
 # These imports will fail initially (TDD)
-from feature.v2.hf.quote_features import SpreadCompressionFeature, QuoteVelocityFeature
-from feature.v2.hf.tape_features import TapeImbalanceFeature, TapeAggressionRatioFeature
+from feature.hf.quote_features import SpreadCompressionFeature, QuoteVelocityFeature
+from feature.hf.tape_features import TapeImbalanceFeature, TapeAggressionRatioFeature
 
 
 class TestPriceFeatures:

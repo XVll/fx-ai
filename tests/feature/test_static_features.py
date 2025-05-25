@@ -5,8 +5,8 @@ from datetime import datetime, timezone, time
 from typing import Dict, Any, Optional
 
 # These imports will fail initially (TDD)
-from feature.v2.static.time_features import TimeOfDaySinFeature, TimeOfDayCosFeature
-from feature.v2.static.session_features import MarketSessionTypeFeature
+from feature.static.time_features import TimeOfDaySinFeature, TimeOfDayCosFeature
+from feature.static.session_features import MarketSessionTypeFeature
 
 
 class TestTimeFeatures:
