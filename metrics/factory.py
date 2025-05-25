@@ -249,11 +249,20 @@ class MetricsIntegrator:
         self.metrics_manager.update_state(is_evaluating=False, is_training=True)
 
     # Portfolio integration methods
-    def update_portfolio(self, equity: float, cash: float, unrealized_pnl: float, realized_pnl: float):
+    def update_portfolio(self, equity: float, cash: float, unrealized_pnl: float, realized_pnl: float,
+                        total_commission: float = 0.0, total_slippage: float = 0.0, total_fees: float = 0.0):
         """Update portfolio state"""
         collector = self.get_collector('PortfolioMetricsCollector')
         if collector:
             collector.update_portfolio_state(equity, cash, unrealized_pnl, realized_pnl)
+        
+        # Pass costs to dashboard if available
+        if hasattr(self, 'dashboard_collector') and self.dashboard_collector:
+            self.dashboard_collector.on_step({
+                'total_commission': total_commission,
+                'total_slippage': total_slippage,
+                'total_fees': total_fees
+            })
 
     def update_position(self, quantity: float, side: str, avg_entry_price: float,
                         market_value: float, unrealized_pnl: float, current_price: float):

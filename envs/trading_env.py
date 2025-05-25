@@ -904,7 +904,10 @@ class TradingEnvironment(gym.Env):
                 equity=portfolio_state['total_equity'],
                 cash=portfolio_state['cash'],
                 unrealized_pnl=portfolio_state['unrealized_pnl'],
-                realized_pnl=portfolio_state['realized_pnl_session']
+                realized_pnl=portfolio_state['realized_pnl_session'],
+                total_commission=portfolio_state.get('total_commissions_session', 0.0),
+                total_slippage=portfolio_state.get('total_slippage_cost_session', 0.0),
+                total_fees=portfolio_state.get('total_fees_session', 0.0)
             )
 
     def _update_position_metrics(self, portfolio_state: PortfolioState, current_price: float):
@@ -966,13 +969,15 @@ class TradingEnvironment(gym.Env):
             
             # Convert trade data to dashboard format
             dashboard_trade = {
-                'action': 'BUY' if trade['entry_quantity_total'] > 0 else 'SELL',
+                'action': 'LONG' if trade['side'] == PositionSideEnum.LONG else 'SHORT',
                 'quantity': abs(trade['entry_quantity_total']),
                 'symbol': trade.get('asset_id', self.primary_asset),
                 'entry_price': trade['avg_entry_price'],
                 'exit_price': trade.get('avg_exit_price'),
                 'pnl': pnl,
-                'fees': trade.get('commission_total', 0.0) + trade.get('fees_total', 0.0)
+                'fees': trade.get('commission_total', 0.0) + trade.get('fees_total', 0.0),
+                'commission': trade.get('commission_total', 0.0),
+                'slippage': trade.get('slippage_total_trade_usd', 0.0)
             }
             
             # Send to dashboard if available
