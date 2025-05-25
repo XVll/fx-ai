@@ -3,9 +3,8 @@ self.static_feature_names: List[str] = [
 "S_Time_Of_Day_Seconds_Encoded_Cos",
 "S_Market_Cap_Million",
 "PreMarket_Gap_Pct",
+"Previous_Day_Postmarket_Gap_Pct",
 ]
-# "S_Initial_PreMarket_Gap_Pct", # Todo: Removed for now, requires to fetch previous day's data.
-# "S_Regular_Open_Gap_Pct",
 self.hf_feature_names: List[str] = [
 "HF_1s_Price_Velocity", # Rate of price change over the last 1 second
 "HF_1s_Price_Acceleration", # Second derivative of price (change in velocity)
@@ -58,12 +57,9 @@ HF_Micro_Pullback_Detector - Identifies small retracements during strong trends
 HF_Breakout_Strength - Measures strength of breakouts from consolidation areas
 HF_Relative_Position_To_VWAP - Current price relative to intraday VWAP
 HF_Dollar_Breakout_Proximity - Proximity to next whole or half-dollar price level
-HF_Dollar_Breakout_Detector - Binary feature detecting break of dollar/half-dollar levels
-HF_Recent_High_Test - Detection of tests of recent high prices
 HF_Price_Momentum_3s - Short-term price momentum over 3 seconds
 HF_Price_Momentum_5s - Short-term price momentum over 5 seconds
 HF_Price_Momentum_10s - Short-term price momentum over 10 seconds
-HF_Candle_Pattern_Recognition - Identification of momentum-related 1s candle patterns
 
 Volume Features
 
@@ -195,6 +191,3 @@ Identification of micro pullbacks for entry points
 Analysis of tape speed and imbalance for signal confirmation
 Detection of big buyers/sellers through order book analysis
 Recognition of volume surges that precede price moves
-
-These features can be used to train your AI model to identify high-probability trading opportunities in the fast-paced, volatile low-float stock environment
-you're targeting.
