@@ -9,6 +9,7 @@ from collections import deque, defaultdict
 from datetime import datetime
 import time
 import pytz
+import pandas as pd
 
 
 @dataclass
@@ -253,6 +254,11 @@ class DashboardState:
         self.ohlc_data: Deque[Dict[str, Any]] = deque(maxlen=500)  # Keep last 500 bars for better visibility
         self.last_bar_timestamp = None  # Track last bar to avoid duplicates
         
+        # Full day 1m bars data (loaded once per day)
+        self.full_day_1m_bars: List[Dict[str, Any]] = []  # Complete day's 1m bars
+        self.full_day_date = None  # Date of loaded full day data
+        self.full_day_symbol = None  # Symbol of loaded full day data
+        
     def start_new_episode(self, episode_num: int):
         """Start a new episode"""
         # Save current episode if exists
@@ -391,8 +397,17 @@ class DashboardState:
     
     def add_execution(self, execution_data: Dict[str, Any]):
         """Add an execution (fill)"""
+        # Use provided timestamp or current time
+        timestamp = execution_data.get('timestamp', datetime.now())
+        if timestamp and not isinstance(timestamp, datetime):
+            # Convert if needed
+            try:
+                timestamp = pd.to_datetime(timestamp)
+            except:
+                timestamp = datetime.now()
+                
         execution = Execution(
-            timestamp=datetime.now(),
+            timestamp=timestamp,
             side=execution_data.get('side', 'UNKNOWN'),
             quantity=execution_data.get('quantity', 0),
             symbol=execution_data.get('symbol', self.market_data.symbol),
