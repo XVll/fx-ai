@@ -2,7 +2,7 @@
 
 # General parameters
 training_mode: "backtesting"
-max_episode_loss_percent: 0.9
+max_episode_loss_percent: 0.5
 bankruptcy_threshold_factor: 0.5
 max_invalid_actions_per_episode: 50000
 
