@@ -24,6 +24,10 @@ import argparse
 import subprocess
 import logging
 from datetime import datetime
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Configure basic logging
 logging.basicConfig(
@@ -102,67 +106,41 @@ def main():
 
 def run_training(args, script_path):
     """Run training with the specified arguments."""
-    cmd = [sys.executable, script_path, "--config-path=config", "--config-name=config"]
+    cmd = [sys.executable, script_path]
 
-    # Add hydra initialization flag to ensure Hydra is properly set up
-    # Basic configs
+    # Add config override if specified
     if args.quick_test:
-        cmd.append("quick_test=true")
+        cmd.extend(["--config", "quick_test"])
 
-    # Continuous training
-    if args.continue_training:
-        cmd.append("training=continuous")
-        # Use ++ prefix to override fields that already exist in the config
-        # Note: training.enabled is already defined in continuous.yaml and doesn't need to be set
-        cmd.append("++training.load_best_model=true")
-        cmd.append(f"++training.best_models_dir={args.models_dir}")
-
-    # Symbol and dates
+    # Symbol override
     if args.symbol:
-        cmd.append(f"data.symbol={args.symbol}")
+        cmd.extend(["--symbol", args.symbol])
 
-    if args.start_date:
-        cmd.append(f"data.start_date={args.start_date}")
+    # Continue training flag
+    if args.continue_training:
+        cmd.append("--continue")
 
-    if args.end_date:
-        cmd.append(f"data.end_date={args.end_date}")
-
-    # Set environment variables for Hydra
-    env = os.environ.copy()
-    env["HYDRA_FULL_ERROR"] = "1"
-    env["HYDRA_STRICT_CFG"] = "0"  # Allow adding new fields
-
+    # Date overrides (if needed, we'll need to add these to main.py argparse)
+    # For now, we'll use environment variables or config files
+    
     # Run the command
     logger.info(f"Running command: {' '.join(cmd)}")
-    subprocess.run(cmd, env=env)
+    subprocess.run(cmd)
 
 
 def run_backtest(args, script_path):
     """Run backtest with the specified arguments."""
-    cmd = [sys.executable, script_path]
-
-    # Add standard Hydra overrides
-    cmd.append("env.training_mode=backtesting")
-    cmd.append(f"data.symbol={args.symbol}")
-    cmd.append(f"data.start_date={args.start_date}")
-    cmd.append(f"data.end_date={args.end_date}")
-
-    if args.model_path:
-        cmd.append(f"+eval.model_path={args.model_path}")
-
-    # Set environment variables for Hydra
-    env = os.environ.copy()
-    env["HYDRA_FULL_ERROR"] = "1"
-    env["HYDRA_STRICT_CFG"] = "0"
-
-    # Run the command
-    logger.info(f"Running command: {' '.join(cmd)}")
-    subprocess.run(cmd, env=env)
+    # For backtesting, we'll need a separate backtest script or mode
+    # For now, let's create a simple error message
+    logger.error("Backtest functionality needs to be implemented separately from main.py")
+    logger.info("Please create a backtest.py script that uses the Pydantic config system")
+    return
 
 
 def run_sweep(args):
     """Run hyperparameter sweep with the specified arguments."""
-    cmd = ["python", "sweep.py", f"--project={args.project}", f"--count={args.count}"]
+    sweep_script = Path(__file__).parent / "sweep.py"
+    cmd = [sys.executable, str(sweep_script), f"--project={args.project}", f"--count={args.count}"]
 
     # Run the command
     logger.info(f"Running command: {' '.join(cmd)}")
