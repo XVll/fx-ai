@@ -1,10 +1,15 @@
 import argparse
 import subprocess
 import sys
+import json
+from pathlib import Path
 
 import wandb
 import yaml
 import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def main():
     parser = argparse.ArgumentParser()
@@ -29,32 +34,23 @@ def main():
         print(f"ERROR: Could not parse {config_path}: {e}")
         return
 
-    # Modify parameter keys to include '++' for Hydra override
-    # This ensures that when wandb agent substitutes them with ${args_no_hyphens},
-    # they will be in the format ++param=value.
-    if 'parameters' in sweep_config and sweep_config['parameters'] is not None:
-        new_parameters = {}
-        for key, value in sweep_config['parameters'].items():
-            if not key.startswith("++"): # Avoid double-prefixing if already done
-                new_parameters[f"++{key}"] = value
-            else:
-                new_parameters[key] = value
-        sweep_config['parameters'] = new_parameters
-    else:
-        print("WARNING: No 'parameters' section found in default.yaml or it is empty.")
-        # Allow proceeding if the sweep has no tunable parameters (unlikely for a sweep)
-
-    # Ensure the command structure uses args_no_hyphens
-    # This tells wandb to format arguments as key=value.
-    # Since our keys are now "++param", it will become "++param=value".
+    # Update sweep config to use our wrapper script
+    sweep_config['program'] = str(Path(__file__).parent / "sweep_wrapper.py")
+    
+    # Ensure the command structure uses args_no_hyphens for clean parameter passing
     sweep_config['command'] = [
-        "${env}",        # Passes environment variables (e.g., CUDA_VISIBLE_DEVICES)
-        "python",        # The Python interpreter
-        "${program}",    # Uses 'program' from sweep_config (e.g., main.py)
-        "${args_no_hyphens}"  # Wandb will substitute parameters here
+        "${env}",             # Passes environment variables (e.g., CUDA_VISIBLE_DEVICES)
+        "${interpreter}",     # The Python interpreter
+        "${program}",         # Our sweep_wrapper.py script
+        "${args_no_hyphens}"  # W&B will substitute parameters here as key=value
     ]
-    # If your main.py needs other fixed Hydra args, you can add them to the list:
-    # e.g., "hydra.run.dir=." , "hydra.output_subdir=null"
+    
+    # Parameters should be in dot notation (e.g., "training.learning_rate")
+    if 'parameters' in sweep_config and sweep_config['parameters'] is not None:
+        # Parameters are already in the correct format
+        print(f"Found {len(sweep_config['parameters'])} parameters to sweep")
+    else:
+        print("WARNING: No 'parameters' section found in sweep config or it is empty.")
 
     # Determine entity for the sweep URL and agent command
     try:
