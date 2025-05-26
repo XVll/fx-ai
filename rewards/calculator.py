@@ -402,10 +402,51 @@ class RewardSystemV2:
     
     def save_config(self, path: str):
         """Save current reward configuration"""
+        # Convert Pydantic config to dict for saving
         config_data = {
             'reward_system': 'v2',
-            'components': self.reward_config.get('components', {}),
-            'aggregator': self.reward_config.get('aggregator', {}),
+            'components': {
+                'pnl': {
+                    'enabled': self.reward_config.pnl.enabled,
+                    'coefficient': self.reward_config.pnl.coefficient
+                },
+                'holding_penalty': {
+                    'enabled': self.reward_config.holding_penalty.enabled,
+                    'coefficient': self.reward_config.holding_penalty.coefficient
+                },
+                'action_penalty': {
+                    'enabled': self.reward_config.action_penalty.enabled,
+                    'coefficient': self.reward_config.action_penalty.coefficient
+                },
+                'spread_penalty': {
+                    'enabled': self.reward_config.spread_penalty.enabled,
+                    'coefficient': self.reward_config.spread_penalty.coefficient
+                },
+                'drawdown_penalty': {
+                    'enabled': self.reward_config.drawdown_penalty.enabled,
+                    'coefficient': self.reward_config.drawdown_penalty.coefficient
+                },
+                'bankruptcy_penalty': {
+                    'enabled': self.reward_config.bankruptcy_penalty.enabled,
+                    'coefficient': self.reward_config.bankruptcy_penalty.coefficient
+                },
+                'profitable_exit': {
+                    'enabled': self.reward_config.profitable_exit.enabled,
+                    'coefficient': self.reward_config.profitable_exit.coefficient
+                },
+                'quick_profit': {
+                    'enabled': self.reward_config.quick_profit.enabled,
+                    'coefficient': self.reward_config.quick_profit.coefficient
+                },
+                'invalid_action_penalty': {
+                    'enabled': self.reward_config.invalid_action_penalty.enabled,
+                    'coefficient': self.reward_config.invalid_action_penalty.coefficient
+                }
+            },
+            'global_settings': {
+                'scale_factor': self.reward_config.scale_factor,
+                'clip_range': self.reward_config.clip_range
+            },
             'metrics': {
                 'total_episodes': self.metrics_tracker.total_episodes,
                 'total_steps': self.metrics_tracker.total_steps

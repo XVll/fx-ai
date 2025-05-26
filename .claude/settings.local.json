@@ -11,7 +11,10 @@
       "Bash(python:*)",
       "Bash(git add:*)",
       "Bash(mkdir:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(awk:*)",
+      "Bash(sed:*)",
+      "Bash(timeout:*)"
     ],
     "deny": []
   }
