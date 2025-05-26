@@ -26,34 +26,36 @@ class ModelConfig(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     
     # Architecture
-    d_model: int = 512
+    d_model: int = 64
+    d_fused: int = 256
     n_heads: int = 8
     n_layers: int = 4
     d_ff: int = 2048
     dropout: float = 0.1
     
     # Branch-specific heads and layers
-    hf_heads: int = 8
-    hf_layers: int = 4
-    mf_heads: int = 8
-    mf_layers: int = 4
-    lf_heads: int = 8
-    lf_layers: int = 4
-    portfolio_heads: int = 8
+    hf_layers: int = 2
+    mf_layers: int = 2
+    lf_layers: int = 2
     portfolio_layers: int = 2
-    static_heads: int = 8
     static_layers: int = 2
-    
+
+    hf_heads: int = 4
+    lf_heads: int = 4
+    mf_heads: int = 4
+    portfolio_heads: int = 4
+    static_heads: int = 4
+
     # Feature dimensions
     hf_seq_len: int = 60
     hf_feat_dim: int = 20
     mf_seq_len: int = 30
-    mf_feat_dim: int = 24
-    lf_seq_len: int = 10
-    lf_feat_dim: int = 12
-    static_feat_dim: int = 10
-    portfolio_seq_len: int = 10
-    portfolio_feat_dim: int = 10
+    mf_feat_dim: int = 20  # Changed from 24 to match saved model
+    lf_seq_len: int = 30   # Changed from 10 to match saved model
+    lf_feat_dim: int = 20  # Changed from 12 to match saved model
+    static_feat_dim: int = 5  # Changed from 10 to match saved model
+    portfolio_seq_len: int = 5  # Changed from 10 to match saved model
+    portfolio_feat_dim: int = 5  # Changed from 10 to match saved model
     
     # Action space - Single source of truth
     action_dim: List[int] = Field(default=[3, 4], description="[action_types, position_sizes]")

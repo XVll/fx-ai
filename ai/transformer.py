@@ -26,7 +26,6 @@ class MultiBranchTransformer(nn.Module):
     def __init__(
             self,
             model_config:ModelConfig,
-            dropout: float = 0.1,
             device: Union[str, torch.device] = None,
 
             logger: Optional[object] = None  # Logger for debugging
@@ -76,27 +75,27 @@ class MultiBranchTransformer(nn.Module):
 
         # HF Branch (High Frequency)
         self.hf_proj = nn.Linear(model_config.hf_feat_dim, model_config.d_model)
-        self.hf_pos_enc = PositionalEncoding(model_config.d_model, dropout, max_len=model_config.hf_seq_len)
-        encoder_layer_hf = TransformerEncoderLayer(model_config.d_model, model_config.hf_heads, dim_feedforward=2 * model_config.d_model, dropout=dropout)
+        self.hf_pos_enc = PositionalEncoding(model_config.d_model, model_config.dropout, max_len=model_config.hf_seq_len)
+        encoder_layer_hf = TransformerEncoderLayer(model_config.d_model, model_config.hf_heads, dim_feedforward=2 * model_config.d_model, dropout=model_config.dropout)
         self.hf_encoder = TransformerEncoder(encoder_layer_hf, model_config.hf_layers)
 
         # MF Branch (Medium Frequency)
         self.mf_proj = nn.Linear(model_config.mf_feat_dim, model_config.d_model)
-        self.mf_pos_enc = PositionalEncoding(model_config.d_model, dropout, max_len=model_config.mf_seq_len)
-        encoder_layer_mf = TransformerEncoderLayer(model_config.d_model, model_config.mf_heads, dim_feedforward=2 * model_config.d_model, dropout=dropout)
+        self.mf_pos_enc = PositionalEncoding(model_config.d_model, model_config.dropout, max_len=model_config.mf_seq_len)
+        encoder_layer_mf = TransformerEncoderLayer(model_config.d_model, model_config.mf_heads, dim_feedforward=2 * model_config.d_model, dropout=model_config.dropout)
         self.mf_encoder = TransformerEncoder(encoder_layer_mf, model_config.mf_layers)
 
         # LF Branch (Low Frequency)
         self.lf_proj = nn.Linear(model_config.lf_feat_dim, model_config.d_model)
         self.lf_pos_enc = PositionalEncoding(model_config.d_model, model_config.dropout, max_len=model_config.lf_seq_len)
-        encoder_layer_lf = TransformerEncoderLayer(model_config.d_model, model_config.lf_heads, dim_feedforward=2 * model_config.d_model, dropout=dropout)
+        encoder_layer_lf = TransformerEncoderLayer(model_config.d_model, model_config.lf_heads, dim_feedforward=2 * model_config.d_model, dropout=model_config.dropout)
         self.lf_encoder = TransformerEncoder(encoder_layer_lf, model_config.lf_layers)
 
         # Portfolio Branch (Static features)
         self.portfolio_proj = nn.Linear(model_config.portfolio_feat_dim, model_config.d_model)
-        self.portfolio_pos_enc = PositionalEncoding(model_config.d_model, dropout, max_len=model_config.portfolio_seq_len)
+        self.portfolio_pos_enc = PositionalEncoding(model_config.d_model, model_config.dropout, max_len=model_config.portfolio_seq_len)
         encoder_layer_portfolio = TransformerEncoderLayer(model_config.d_model, model_config.portfolio_heads, dim_feedforward=2 * model_config.d_model,
-                                                          dropout=dropout)
+                                                          dropout=model_config.dropout)
         self.portfolio_encoder = TransformerEncoder(encoder_layer_portfolio, model_config.portfolio_layers)
 
         # Static Branch (Position, S/R, etc.)

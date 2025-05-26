@@ -135,9 +135,6 @@ class DatabentoFileProvider(HistoricalDataProvider):
                                         'end_time': end_utc,
                                         'job_id': metadata.get("job_id", os.path.basename(job_dir))
                                     })
-                                    self._log(
-                                        f"Indexed DBN: '{filename}' for symbols {symbols}, schema '{schema}'",
-                                        logging.DEBUG)
                                 else:
                                     self._log(f"DBN file '{file_path}' listed in manifest but not found on disk.",
                                               logging.WARNING)

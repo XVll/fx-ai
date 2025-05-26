@@ -98,7 +98,8 @@ class PortfolioSimulator:
         self.portfolio_feat_dim: int = config.model.portfolio_feat_dim
         self.max_position_value_ratio: float = config.simulation.max_position_value_ratio
         self.allow_shorting: bool = config.simulation.allow_shorting
-        self.max_position_holding_seconds = config.simulation.portfolio_config.max_position_holding_seconds
+        # Default max holding time (8 hours = 28800 seconds)
+        self.max_position_holding_seconds = 28800  # TODO: Add to config if needed
 
         # State variables
         self.cash: float = 0.0
