@@ -39,7 +39,16 @@ class PPOTrainer:
     ):
         self.env = env
         self.model = model
-        self.model_config = model_config if model_config else {}
+        # Store model config - convert to dict if it's a Pydantic object
+        if model_config is not None:
+            if hasattr(model_config, 'model_dump'):
+                # It's a Pydantic model, convert to dict for storage
+                self.model_config = model_config.model_dump()
+            else:
+                # Already a dict or other type
+                self.model_config = model_config
+        else:
+            self.model_config = {}
         self.metrics = metrics_integrator
 
         self.logger = logging.getLogger(__name__)

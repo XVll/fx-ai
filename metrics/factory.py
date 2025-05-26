@@ -107,9 +107,10 @@ class MetricsFactory:
             buffer_size=1000
         )
 
-        # Add W&B transmitter
-        wandb_transmitter = MetricsFactory.create_wandb_transmitter(wandb_config)
-        manager.add_transmitter(wandb_transmitter)
+        # Add W&B transmitter only if project name is not "local"
+        if wandb_config.project_name != "local":
+            wandb_transmitter = MetricsFactory.create_wandb_transmitter(wandb_config)
+            manager.add_transmitter(wandb_transmitter)
 
         # Add all collectors
         collectors = []

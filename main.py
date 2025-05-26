@@ -219,23 +219,28 @@ def create_env_components(config: Config, data_manager, portfolio_simulator,
 
 def create_metrics_components(config: Config, logger: logging.Logger):
     """Create metrics and dashboard components with proper config passing"""
-    if not config.wandb.enabled:
-        logging.warning("W&B disabled - no metrics will be tracked")
+    # Dashboard can work without W&B - only return None if both are disabled
+    if not config.wandb.enabled and not config.dashboard.enabled:
+        logging.warning("Both W&B and dashboard disabled - no metrics will be tracked")
         return None, None
     
-    logging.info("📊 Initializing metrics system with W&B integration")
+    # Only log about W&B if it's enabled
+    if config.wandb.enabled:
+        logging.info("📊 Initializing metrics system with W&B integration")
+    else:
+        logging.info("📊 Initializing metrics system (W&B disabled)")
     
     # Create run name
     run_name = config.wandb.name
     if not run_name and config.training.continue_training:
         run_name = f"continuous_{config.env.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
-    # Create metrics system with WandbConfig
+    # Create metrics system with WandbConfig (will handle W&B being disabled internally)
     metrics_manager, metrics_integrator = create_trading_metrics_system(
-        project_name=config.wandb.project,
+        project_name=config.wandb.project if config.wandb.enabled else "local",
         symbol=config.env.symbol,
         initial_capital=config.env.initial_capital,
-        entity=config.wandb.entity,
+        entity=config.wandb.entity if config.wandb.enabled else None,
         run_name=run_name
     )
     
@@ -249,17 +254,22 @@ def create_metrics_components(config: Config, logger: logging.Logger):
     
     # Enable dashboard if configured
     if config.dashboard.enabled:
+        logging.info(f"Dashboard is enabled, initializing on port {config.dashboard.port}")
         from dashboard.live_dashboard_v2 import LiveTradingDashboard
         from dashboard.dashboard_integration import DashboardMetricsCollector
         
         dashboard = LiveTradingDashboard(
             port=config.dashboard.port,
-            update_interval=config.dashboard.update_interval
+            update_interval=int(config.dashboard.update_interval * 1000)  # Convert to milliseconds
         )
         
         dashboard_collector = DashboardMetricsCollector(dashboard)
-        metrics_manager.dashboard_collector = dashboard_collector
-        metrics_manager._dashboard_enabled = True
+        if metrics_manager:
+            metrics_manager.dashboard_collector = dashboard_collector
+            metrics_manager._dashboard_enabled = True
+            logging.info("Dashboard collector attached to metrics manager")
+        else:
+            logging.warning("No metrics manager available for dashboard")
         
         dashboard_collector.start(open_browser=True)
         logging.info(f"🚀 Live dashboard enabled at http://localhost:{config.dashboard.port}")

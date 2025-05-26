@@ -18,6 +18,14 @@ class ConfigLoader:
         self.logger = logging.getLogger(__name__)
         self._used_paths: Set[str] = set()
         self._config: Optional[Config] = None
+    
+    def _deep_update(self, base_dict: dict, update_dict: dict):
+        """Deep update dictionary preserving structure"""
+        for key, value in update_dict.items():
+            if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
+                self._deep_update(base_dict[key], value)
+            else:
+                base_dict[key] = value
         
     def load(self, override_file: Optional[str] = None) -> Config:
         """Load configuration with optional overrides"""
@@ -43,7 +51,10 @@ class ConfigLoader:
                 
                 # Validate and apply overrides
                 try:
-                    config = config.model_copy(update=overrides, deep=True)
+                    # Apply overrides manually to preserve Pydantic structure
+                    config_dict = config.model_dump()
+                    self._deep_update(config_dict, overrides)
+                    config = Config(**config_dict)
                     self.logger.info("Config overrides applied successfully")
                 except Exception as e:
                     self.logger.error(f"Failed to apply config overrides: {e}")
