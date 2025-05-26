@@ -309,10 +309,10 @@ class RewardSystemV2:
                         f'reward_component/{comp_name}/triggered': comp_diagnostics.get('enabled', True) and comp_diagnostics.get('final_value', 0) != 0
                     })
                     
-        # Log significant events
-        if abs(total_reward) > 0.01 or fill_details_list or terminated:
-            components_str = ', '.join([f"{k}:{v:.3f}" for k, v in all_diagnostics.get('summary', {}).get('component_rewards', {}).items() if v != 0])
-            self.logger.info(f"Step {self.step_count}: {action_name}, Reward: {total_reward:.4f} [{components_str}]")
+        # Log significant events (disabled to reduce spam)
+        # if abs(total_reward) > 0.01 or fill_details_list or terminated:
+        #     components_str = ', '.join([f"{k}:{v:.3f}" for k, v in all_diagnostics.get('summary', {}).get('component_rewards', {}).items() if v != 0])
+        #     self.logger.info(f"Step {self.step_count}: {action_name}, Reward: {total_reward:.4f} [{components_str}]")
             
         self.step_count += 1
         

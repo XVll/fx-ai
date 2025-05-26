@@ -43,9 +43,12 @@ class ReplayBuffer:
                 try:
                     array_val = np.stack(array_val.tolist())  # For safety if it's a list of arrays
                 except Exception as e:
-                    logger.error(f"Could not stack object array for key {key}: {e}. Array: {array_val}")
-                    # Fallback: try to convert as is, or handle error more gracefully
-                    pass
+                    logger.error(f"Could not stack object array for key {key}: {e}. Array shape: {array_val.shape}")
+                    # Create a zero array as fallback to prevent corruption
+                    if hasattr(array_val, 'shape') and array_val.shape:
+                        array_val = np.zeros_like(array_val, dtype=np.float32)
+                    else:
+                        raise ValueError(f"Cannot process object array for key {key}")
 
             # Convert to float32 tensor, preserving the original dimensions
             try:
@@ -84,12 +87,12 @@ class ReplayBuffer:
 
         experience = {
             'state': self._process_state_dict(state_np),
-            'action': action.detach().to(self.device),  # Ensure on a correct device and detached
+            'action': action.detach().clone() if action.device == self.device else action.detach().to(self.device),
             'reward': torch.tensor([reward], dtype=torch.float32, device=self.device),
             'next_state': self._process_state_dict(next_state_np),
             'done': torch.tensor([done], dtype=torch.bool, device=self.device),
-            'value': action_info['value'].detach().to(self.device),
-            'log_prob': action_info['log_prob'].detach().to(self.device)
+            'value': action_info['value'].detach().clone() if action_info['value'].device == self.device else action_info['value'].detach().to(self.device),
+            'log_prob': action_info['log_prob'].detach().clone() if action_info['log_prob'].device == self.device else action_info['log_prob'].detach().to(self.device)
         }
 
         self.buffer[self.position] = experience
@@ -205,6 +208,16 @@ class ReplayBuffer:
 
     def clear(self) -> None:
         """Clear the buffer and reset related tensors."""
+        # Properly clean up tensor references to avoid memory leaks
+        for exp in self.buffer:
+            for key in list(exp.keys()):
+                if isinstance(exp[key], torch.Tensor):
+                    del exp[key]
+                elif isinstance(exp[key], dict):
+                    for sub_key in list(exp[key].keys()):
+                        if isinstance(exp[key][sub_key], torch.Tensor):
+                            del exp[key][sub_key]
+        
         self.buffer.clear()
         self.position = 0
         self.states = None
@@ -249,7 +262,11 @@ def convert_state_dict_to_tensors(
             try:  # Attempt to stack if it's a list of arrays, common for 'portfolio' if not pre-stacked
                 np_array = np.stack(np_array.tolist())
             except Exception as e:
-                logger.warning(f"Could not stack object array for key {key} during tensor conversion: {e}. Using as is.")
+                logger.error(f"Could not stack object array for key {key} during tensor conversion: {e}")
+                if hasattr(np_array, 'shape') and np_array.shape:
+                    np_array = np.zeros_like(np_array, dtype=np.float32)
+                else:
+                    raise ValueError(f"Cannot process object array for key {key}")
 
         try:
             state_dict_torch[key] = torch.from_numpy(np_array).float().to(device)
