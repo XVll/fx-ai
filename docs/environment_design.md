@@ -24,32 +24,29 @@ episodes start with sufficient historical data for feature calculation.
 
 - Determine when episodes should terminate
 - Balance exploration (random selection) with coverage (sequential selection)
-- Implement curriculum learning through progressive difficulty
 - Select appropriate episode starting points based on training progress
 - Scan date ranges for viable starting points
-- Ensure minimum warmup data availability (5 minutes for indicators)
-- Ensure minimum forward data for meaningful episodes (30+ minutes)
+- Ensure minimum warmup data availability (Enough to calculate features for lookback periods)
+- Ensure minimum forward data for meaningful episodes (At least about max episode step size)
 - Assign quality scores based on time of day and market conditions
-
-
-**Training Progression:**
-
-- Early training (0-30%): High quality points only, regular market hours
-- Mid training (30-70%): Mix of qualities, include some extended hours
-- Late training (70-100%): All points including challenging pre-market scenarios
 
 **Episode Termination Conditions:**
 
-- Time limit reached (configurable, default 1 hour)
-- Capital depletion (bankruptcy)
-- Risk limit exceeded (20% drawdown)
-- Data exhaustion
+- Time limit reached (MAX_EPISODE_LENGTH)
+- Risk limit exceeded (MAX_LOSS)
+- Market closure (MARKET_CLOSE)
+- Max carries reached (MAX_CARRIES)
 
-**Quality Assessment:**
+**Reset/Starting Point Selection**
+- Use a mix of random and sequential selection to cover diverse market conditions
+- Ensure starting points have enough forward data for meaningful episodes
+- Ensure starting points have enough historical data for feature calculation
+- Ensure starting points are not too close to each other to avoid redundant training
+- Ensure starting points are not too far apart to avoid missing important market transitions
+- 
+- Assign quality scores to starting points based on time of day, configured market conditions, and historical volatility
 
-- High quality (1.0): Peak trading hours (9:45-11:30 AM, 2:00-3:30 PM)
-- Medium quality (0.7): Regular market hours
-- Low quality (0.3): Extended hours (pre-market, after-hours)
+
 
 
 ### 3. OpenTradeHandler - Managing Positions Across Episodes
@@ -62,13 +59,12 @@ episode boundaries.
 - Handle open positions based on termination reason
 - Maintain position continuity across episodes
 - Track carry-forward statistics
-- Simulate realistic liquidation scenarios
 
 **Position Handling Strategy:**
 
-- **Bankruptcy/Max Loss**: Force liquidation with realistic slippage (2%)
+- **Max Loss**: Force liquidation at the bid
 - **Time Limit**: Carry position forward to next episode
-- **Data End**: Mark-to-market for final valuation
+- **Market Close**: Force liquidation at the bid
 - **Max Carries**: Force close after 3 episode carries to prevent stale positions
 
 ### 4. EpisodeManager - Clean Orchestrator
