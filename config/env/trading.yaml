@@ -25,7 +25,7 @@ reward:
   penalty_transaction_fill: 0.005
   penalty_holding_inaction: 0.0001
   penalty_drawdown_step: 0.2
-  penalty_invalid_action: 0.05
+  penalty_invalid_action: 0.5
   terminal_penalty_bankruptcy: 20.0
   terminal_penalty_max_loss: 10.0
   reward_scaling_factor: 0.01
@@ -58,9 +58,9 @@ reward_v2:
     # Shaping rewards
     holding_time_penalty:
       enabled: true
-      weight: 1.0
-      max_holding_time: 60
-      penalty_per_step: 0.001
+      weight: 0.5
+      max_holding_time: 120
+      penalty_per_step: 0.0005
       progressive_penalty: true
       
     overtrading_penalty:
@@ -79,10 +79,10 @@ reward_v2:
       
     drawdown_penalty:
       enabled: true
-      weight: 1.0
-      warning_threshold: 0.02
-      severe_threshold: 0.05
-      base_penalty: 0.01
+      weight: 0.7
+      warning_threshold: 0.03
+      severe_threshold: 0.08
+      base_penalty: 0.005
       
     # Trade-specific penalties
     mae_penalty:
@@ -109,6 +109,6 @@ reward_v2:
       
   # Global aggregator settings
   aggregator:
-    global_scale: 0.01
+    global_scale: 0.1
     use_smoothing: true
     smoothing_window: 10

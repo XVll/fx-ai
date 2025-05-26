@@ -55,6 +55,7 @@ class WandBTransmitter(MetricTransmitter):
         self._last_transmitted: Dict[str, int] = defaultdict(int)
         self._total_metrics_sent = 0
         self._transmission_errors = 0
+        self._last_logged_step = -1  # Track the last step logged to wandb
 
         # Initialize W&B run with enhanced error handling
         try:
@@ -75,7 +76,6 @@ class WandBTransmitter(MetricTransmitter):
                     group=group,
                     job_type=job_type,
                     save_code=save_code,
-                    reinit=False,  # Don't reinit if already exists
                     resume="allow"  # Allow resume if accidentally restarted
                 )
 
@@ -85,7 +85,7 @@ class WandBTransmitter(MetricTransmitter):
 
             self.logger.info(f"✅ W&B transmitter initialized successfully")
             self.logger.info(f"   🏷️  Run: {self.run.name} ({self.run.id})")
-            self.logger.info(f"   🔗 URL: {self.run.get_url()}")
+            self.logger.info(f"   🔗 URL: {self.run.url}")
 
             # Send a test metric to verify connection
             self._send_test_metric()
@@ -156,13 +156,19 @@ class WandBTransmitter(MetricTransmitter):
 
                 # Log to W&B with error handling
                 # Don't log step if it's 0 to avoid W&B warnings during initialization
-                if step is not None and step > 0:
+                # Also avoid logging the same step multiple times
+                if step is not None and step > 0 and step > self._last_logged_step:
                     wandb.log(wandb_metrics, step=step)
+                    self._last_logged_step = step
                     # Debug logging for step tracking
                     if step % 100 == 0:
                         self.logger.debug(f"W&B transmitted metrics at step {step}")
-                else:
+                elif step is None or step == 0:
                     wandb.log(wandb_metrics)
+                else:
+                    # Skip logging if we've already logged this step
+                    self.logger.debug(f"Skipping W&B log for step {step} (already logged)")
+                    return
 
                 self._total_metrics_sent += total_metrics_this_batch
 

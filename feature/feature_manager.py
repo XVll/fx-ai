@@ -70,8 +70,8 @@ class FeatureManager:
                 'market_session_type', 'time_of_day_sin', 'time_of_day_cos'
             ],
             'portfolio': [
-                'position_size', 'average_price', 'unrealized_pnl',
-                'time_in_position', 'max_adverse_excursion'
+                'portfolio_position_size', 'portfolio_average_price', 'portfolio_unrealized_pnl',
+                'portfolio_time_in_position', 'portfolio_max_adverse_excursion'
             ]
         }
         
@@ -414,22 +414,31 @@ class FeatureManager:
     def _extract_portfolio_features(self, context: MarketContext) -> Optional[np.ndarray]:
         """Extract portfolio features"""
         try:
-            # Portfolio features are a sequence but typically just current state repeated
-            features = np.zeros((self.portfolio_seq_len, self.portfolio_feat_dim), dtype=np.float32)
-            
             # If no portfolio state, return zeros
             if not context.portfolio_state:
-                return features
-                
-            # Fill all timesteps with current portfolio state
-            for i in range(self.portfolio_seq_len):
-                # Basic portfolio features
-                features[i, 0] = float(context.portfolio_state.get('position', 0.0))
-                features[i, 1] = float(context.portfolio_state.get('unrealized_pnl', 0.0))
-                features[i, 2] = float(context.portfolio_state.get('realized_pnl', 0.0))
-                features[i, 3] = float(context.portfolio_state.get('cash_balance', 0.0))
-                
-            return features
+                return np.zeros((self.portfolio_seq_len, self.portfolio_feat_dim), dtype=np.float32)
+            
+            # Prepare market data for portfolio features
+            market_data = {
+                'timestamp': context.timestamp,
+                'current_price': context.current_price,
+                'portfolio_state': context.portfolio_state
+            }
+            
+            # Calculate all portfolio features
+            features = self.calculate_features(market_data, 'portfolio')
+            vector = self.vectorize_features(features, 'portfolio')
+            
+            # Pad to required dimension if needed
+            if len(vector) < self.portfolio_feat_dim:
+                padded = np.zeros(self.portfolio_feat_dim, dtype=np.float32)
+                padded[:len(vector)] = vector
+                vector = padded
+            
+            # Repeat the same features for all timesteps in the sequence
+            feature_matrix = np.tile(vector[:self.portfolio_feat_dim], (self.portfolio_seq_len, 1))
+            
+            return feature_matrix.astype(np.float32)
             
         except Exception as e:
             self.logger.error(f"Portfolio feature extraction failed: {e}")
