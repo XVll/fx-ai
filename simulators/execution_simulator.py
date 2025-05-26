@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 import numpy as np
 
-from config.config import ExecutionConfig
+from config.schemas import SimulationConfig
 from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import OrderTypeEnum, OrderSideEnum, FillDetails
 
@@ -15,28 +15,28 @@ class ExecutionSimulator:
 
     def __init__(self,
                  logger: logging.Logger,
-                 config_exec: ExecutionConfig,
+                 simulation_config: SimulationConfig,
                  np_random: np.random.Generator,
                  market_simulator: MarketSimulator,
                  metrics_integrator=None):
         self.logger = logger
-        self.config = config_exec
+        self.simulation_config:SimulationConfig = simulation_config
         self.np_random = np_random
         self.market_simulator = market_simulator
         self.metrics_integrator = metrics_integrator
 
         # Execution parameters
-        self.mean_latency_ms = self.config.mean_latency_ms
-        self.latency_std_dev_ms = self.config.latency_std_dev_ms
-        self.base_slippage_bps = self.config.base_slippage_bps
-        self.size_impact_slippage_bps_per_unit = self.config.size_impact_slippage_bps_per_unit
-        self.max_total_slippage_bps = self.config.max_total_slippage_bps
+        self.mean_latency_ms = self.simulation_config.mean_latency_ms
+        self.latency_std_dev_ms = self.simulation_config.latency_std_dev_ms
+        self.base_slippage_bps = self.simulation_config.base_slippage_bps
+        self.size_impact_slippage_bps_per_unit = self.simulation_config.size_impact_slippage_bps_per_unit
+        self.max_total_slippage_bps = self.simulation_config.max_total_slippage_bps
 
         # Cost parameters
-        self.commission_per_share = self.config.commission_per_share
-        self.fee_per_share = self.config.fee_per_share
-        self.min_commission_per_order = self.config.min_commission_per_order
-        self.max_commission_pct_of_value = self.config.max_commission_pct_of_value
+        self.commission_per_share = self.simulation_config.commission_per_share
+        self.fee_per_share = self.simulation_config.fee_per_share
+        self.min_commission_per_order = self.simulation_config.min_commission_per_order
+        self.max_commission_pct_of_value = self.simulation_config.max_commission_pct_of_value
 
         # Session tracking
         self.session_fills = 0

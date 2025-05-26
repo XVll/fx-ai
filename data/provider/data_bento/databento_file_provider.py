@@ -1,4 +1,3 @@
-# data/provider/data_bento/databento_file_provider.py
 import databento as db
 from typing import Dict, List, Optional, Union, Tuple, Any
 from datetime import datetime
@@ -14,7 +13,7 @@ from data.utils.helpers import ensure_timezone_aware
 from data.utils.cleaning import clean_ohlc_data, clean_trades_data, clean_quotes_data
 
 
-class DabentoFileProvider(HistoricalDataProvider):
+class DatabentoFileProvider(HistoricalDataProvider):
     """Implementation of HistoricalDataProvider using local Databento file storage."""
 
     _TIMEFRAME_TO_SCHEMA_MAP = {

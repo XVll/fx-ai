@@ -1,0 +1,9 @@
+# Quick test configuration - minimal overrides only
+training:
+  rollout_steps: 512
+  total_updates: 10
+  checkpoint_interval: 5
+
+model:
+  d_model: 256
+  n_layers: 2
