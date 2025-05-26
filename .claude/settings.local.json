@@ -7,7 +7,9 @@
       "Bash(rg:*)",
       "Bash(poetry run:*)",
       "Bash(poetry install:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(python:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }
