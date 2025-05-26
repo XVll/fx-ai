@@ -494,6 +494,10 @@ class DashboardState:
             self.training_progress.stage_progress = data['stage_progress']
         if 'stage_status' in data:
             self.training_progress.stage_status = data['stage_status']
+        if 'time_per_update' in data:
+            self.training_progress.time_per_update = data['time_per_update']
+        if 'time_per_episode' in data:
+            self.training_progress.time_per_episode = data['time_per_episode']
             
         # Update enhanced stage-specific information
         if 'rollout_steps' in data:

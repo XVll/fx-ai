@@ -2,6 +2,7 @@ import logging
 
 import torch
 import torch.nn as nn
+import numpy as np
 from typing import Dict, Tuple, Optional, Union, List
 
 from config.config import ModelConfig
@@ -164,7 +165,8 @@ class MultiBranchTransformer(nn.Module):
 
     def forward(
             self,
-            state_dict: Dict[str, torch.Tensor]
+            state_dict: Dict[str, torch.Tensor],
+            return_internals: bool = False
     ) -> Tuple[Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, ...]], torch.Tensor]:
         """
         Forward pass through the model.
@@ -333,7 +335,18 @@ class MultiBranchTransformer(nn.Module):
 
         # Get value estimate
         value = self.critic(fused)
-
+        
+        # Get attention weights if available
+        if hasattr(self.fusion, 'get_branch_importance'):
+            self._last_branch_importance = self.fusion.get_branch_importance()
+        
+        # Store action probabilities for analysis
+        if not self.continuous_action and len(action_params) == 2:
+            # Convert logits to probabilities
+            type_probs = torch.softmax(action_params[0], dim=-1)
+            size_probs = torch.softmax(action_params[1], dim=-1)
+            self._last_action_probs = (type_probs.detach(), size_probs.detach())
+        
         return action_params, value
 
     # In ai/transformer.py - MultiBranchTransformer class
@@ -417,3 +430,15 @@ class MultiBranchTransformer(nn.Module):
                     }
 
             return action, action_info
+    
+    def get_last_attention_weights(self) -> Optional[np.ndarray]:
+        """Get the last computed attention weights from fusion layer"""
+        if hasattr(self, '_last_branch_importance'):
+            return self._last_branch_importance
+        return None
+    
+    def get_last_action_probabilities(self) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+        """Get the last computed action probabilities"""
+        if hasattr(self, '_last_action_probs'):
+            return self._last_action_probs
+        return None

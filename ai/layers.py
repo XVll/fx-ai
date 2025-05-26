@@ -112,17 +112,26 @@ class AttentionFusion(nn.Module):
             nn.GELU(),
             nn.Dropout(dropout)
         )
+        
+        # Store last attention weights for analysis
+        self.last_attention_weights = None
 
-    def forward(self, x):
+    def forward(self, x, return_attention=False):
         """
         Args:
             x: Tensor of shape [batch_size, num_branches, in_dim]
+            return_attention: Whether to return attention weights
 
         Returns:
-            Tensor of shape [batch_size, out_dim]
+            output: Tensor of shape [batch_size, out_dim]
+            attention_weights: Optional tensor of shape [batch_size, num_branches, num_branches] if return_attention=True
         """
         # Apply self-attention across branches
-        attn_output, _ = self.self_attention(x, x, x)
+        attn_output, attention_weights = self.self_attention(x, x, x)
+        
+        # Store attention weights for analysis
+        if attention_weights is not None:
+            self.last_attention_weights = attention_weights.detach()
 
         # Flatten the branches dimension
         batch_size = x.size(0)
@@ -130,5 +139,17 @@ class AttentionFusion(nn.Module):
 
         # Project to output dimension
         output = self.proj(flattened)
-
+        
+        if return_attention:
+            return output, attention_weights
         return output
+    
+    def get_branch_importance(self):
+        """Get the average attention each branch receives"""
+        if self.last_attention_weights is None:
+            return None
+        
+        # Average over batch and heads, then sum attention received by each branch
+        # Shape: [batch, num_heads, seq_len, seq_len] -> [seq_len]
+        avg_attention = self.last_attention_weights.mean(dim=0).mean(dim=0).sum(dim=0)
+        return avg_attention.cpu().numpy()
