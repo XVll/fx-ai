@@ -65,14 +65,16 @@ class ConfigLoader:
     def _validate_config(self, config: Config):
         """Perform additional validation beyond Pydantic"""
         # Check action space consistency
-        action_types, position_sizes = config.model.action_dim
+        action_dim = config.model.action_dim if hasattr(config.model, 'action_dim') else [3, 4]
+        action_types, position_sizes = action_dim
         expected_actions = action_types * position_sizes
         
         self.logger.info(f"Action space: {action_types} types × {position_sizes} sizes = {expected_actions} total actions")
         
         # Validate reward components
+        reward_v2_data = config.env.reward_v2.model_dump() if hasattr(config.env.reward_v2, 'model_dump') else config.env.reward_v2
         enabled_components = [
-            name for name, comp in config.env.reward_v2.model_dump().items()
+            name for name, comp in reward_v2_data.items()
             if isinstance(comp, dict) and comp.get('enabled', True)
         ]
         self.logger.info(f"Enabled reward components: {', '.join(enabled_components)}")

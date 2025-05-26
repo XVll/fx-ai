@@ -45,7 +45,8 @@ class RewardSystemV2:
     
     def __init__(self, config: Config, metrics_integrator=None, logger: Optional[logging.Logger] = None):
         self.config = config
-        self.reward_config = config.env.reward_v2 if hasattr(config.env, 'reward_v2') else self._get_default_config()
+        # Use the Pydantic RewardV2Config directly
+        self.reward_config = config.env.reward_v2
         self.metrics_integrator = metrics_integrator
         self.logger = logger or logging.getLogger(__name__)
         
@@ -53,7 +54,7 @@ class RewardSystemV2:
         self.components = self._initialize_components()
         
         # Initialize aggregator
-        aggregator_config = self.reward_config.get('aggregator', {})
+        aggregator_config = {'type': 'weighted_sum'}  # Default aggregator config
         self.aggregator = RewardAggregator(self.components, aggregator_config, self.logger)
         
         # Initialize metrics tracker
@@ -153,30 +154,38 @@ class RewardSystemV2:
         }
 
     def _initialize_components(self) -> List:
-        """Initialize all reward components"""
+        """Initialize all reward components based on enabled flags in RewardV2Config"""
         components = []
-        component_configs = self.reward_config.get('components', {})
         
-        # Map component names to classes
-        component_map = {
-            'realized_pnl': RealizedPnLReward,
-            'mark_to_market': MarkToMarketReward,
-            'differential_sharpe': DifferentialSharpeReward,
-            'holding_time_penalty': HoldingTimePenalty,
-            'overtrading_penalty': OvertradingPenalty,
-            'quick_profit_incentive': QuickProfitIncentive,
-            'drawdown_penalty': DrawdownPenalty,
-            'mae_penalty': MAEPenalty,
-            'mfe_penalty': MFEPenalty,
-            'terminal_penalty': TerminalPenalty
-        }
+        # Initialize components based on RewardV2Config attributes
+        # For now, use simple PnL-based reward components
         
-        for name, component_class in component_map.items():
-            if name in component_configs:
-                config = component_configs[name]
-                if config.get('enabled', True):
-                    components.append(component_class(config, self.logger))
-                    self.logger.info(f"Initialized reward component: {name}")
+        # Basic PnL reward
+        if hasattr(self.reward_config, 'pnl') and self.reward_config.pnl.enabled:
+            pnl_config = {
+                'coefficient': self.reward_config.pnl.coefficient,
+                'enabled': self.reward_config.pnl.enabled
+            }
+            components.append(RealizedPnLReward(pnl_config, self.logger))
+            self.logger.info(f"Initialized PnL reward component")
+            
+        # Holding penalty
+        if hasattr(self.reward_config, 'holding_penalty') and self.reward_config.holding_penalty.enabled:
+            holding_config = {
+                'coefficient': self.reward_config.holding_penalty.coefficient,
+                'enabled': self.reward_config.holding_penalty.enabled
+            }
+            components.append(HoldingTimePenalty(holding_config, self.logger))
+            self.logger.info(f"Initialized holding penalty component")
+            
+        # Drawdown penalty
+        if hasattr(self.reward_config, 'drawdown_penalty') and self.reward_config.drawdown_penalty.enabled:
+            drawdown_config = {
+                'coefficient': self.reward_config.drawdown_penalty.coefficient,
+                'enabled': self.reward_config.drawdown_penalty.enabled
+            }
+            components.append(DrawdownPenalty(drawdown_config, self.logger))
+            self.logger.info(f"Initialized drawdown penalty component")
                     
         return components
     

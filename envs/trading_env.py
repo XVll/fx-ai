@@ -75,14 +75,14 @@ class TradingEnvironment(gym.Env):
         # Metrics integration
         self.metrics_integrator = metrics_integrator
 
-        self.max_steps_per_episode: int = env_cfg.max_steps
-        self.random_reset_within_session: bool = env_cfg.random_reset
-        self.max_session_loss_percentage: float = env_cfg.max_episode_loss_percent
-        self.bankruptcy_threshold_factor: float = env_cfg.bankruptcy_threshold_factor
-        self.max_invalid_actions_per_episode: int = env_cfg.max_invalid_actions_per_episode
+        self.max_steps_per_episode: int = env_cfg.max_episode_steps or 57600  # Default: 16 hours
+        self.random_reset_within_session: bool = config.simulation.random_start_prob > 0
+        self.max_session_loss_percentage: float = 1.0 - env_cfg.early_stop_loss_threshold
+        self.bankruptcy_threshold_factor: float = 0.1  # Stop if equity < 10% of initial
+        self.max_invalid_actions_per_episode: int = env_cfg.invalid_action_limit or 1000
 
         # Position sizing configuration
-        self.default_position_value = getattr(config.simulation.portfolio_config, 'default_position_value', 10000.0)
+        self.default_position_value = 10000.0  # Default position value
 
         self.data_manager = data_manager
         self.market_simulator: Optional[MarketSimulator] = None
@@ -90,7 +90,7 @@ class TradingEnvironment(gym.Env):
         self.portfolio_manager: Optional[PortfolioSimulator] = None
         self.feature_extractor: Optional[FeatureExtractor] = None
         self.reward_calculator: Optional[Union[RewardCalculator, RewardSystemV2]] = None
-        self.use_reward_v2 = getattr(env_cfg, 'use_reward_v2', False)
+        self.use_reward_v2 = True  # Always use RewardSystemV2
 
         # Action Space
         self.action_types = list(ActionTypeEnum)
@@ -145,7 +145,7 @@ class TradingEnvironment(gym.Env):
         self.is_terminated: bool = False
         self.is_truncated: bool = False
 
-        self.render_mode = env_cfg.render_mode
+        self.render_mode = None  # No rendering by default
 
     def setup_session(self, symbol: str, start_time: Union[str, datetime], end_time: Union[str, datetime]):
         """Configures the environment for a specific trading session."""
@@ -173,9 +173,9 @@ class TradingEnvironment(gym.Env):
         self.market_simulator = MarketSimulator(
             symbol=self.primary_asset,
             data_manager=self.data_manager,
-            simulation_config=self.config.simulation.market_config,
+            simulation_config=self.config.simulation,
             model_config=self.config.model,
-            mode=self.config.env.training_mode,
+            mode="backtesting",  # Use backtesting mode for training
             np_random=self.np_random,
             start_time=self.current_session_start_time_utc,
             end_time=self.current_session_end_time_utc,
@@ -221,7 +221,7 @@ class TradingEnvironment(gym.Env):
 
         self.execution_manager = ExecutionSimulator(
             logger=logging.getLogger(f"{__name__}.ExecSim"),
-            simulation_config=self.config.simulation.execution_config,
+            simulation_config=self.config.simulation,  # Pass the whole simulation config
             np_random=self.np_random,
             market_simulator=self.market_simulator
         )

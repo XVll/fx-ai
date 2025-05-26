@@ -18,7 +18,7 @@ from config.schemas import (
     DataConfig, SimulationConfig, WandbConfig, DashboardConfig
 )
 from simulators.portfolio_simulator import PortfolioSimulator
-from utils.logger import console, setup_rich_logging
+from utils.logger import console, setup_rich_logging, get_logger
 
 # Import utilities
 from utils.model_manager import ModelManager
@@ -26,9 +26,9 @@ from utils.model_manager import ModelManager
 # Import components
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DatabentoFileProvider
-from simulators.market_simulator import MarketSimulator
+# MarketSimulator is created inside TradingEnvironment during setup_session
 from simulators.execution_simulator import ExecutionSimulator
-from feature.feature_extractor import FeatureExtractor
+# FeatureExtractor is created inside TradingEnvironment
 from envs.trading_env import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from ai.transformer import MultiBranchTransformer
@@ -179,59 +179,42 @@ def create_data_components(config: Config, logger: logging.Logger):
         logger=logger
     )
     
-    # Market Simulator with SimulationConfig and symbol
-    market_simulator = MarketSimulator(
-        data_manager=data_manager,
-        symbol=config.env.symbol,
-        simulation_config=config.simulation,
-        logger=logger
-    )
-    
-    return data_manager, market_simulator
+    # In training mode, MarketSimulator is created by TradingEnvironment during setup_session
+    return data_manager
 
 
-def create_simulation_components(env_config: EnvConfig, 
-                               simulation_config: SimulationConfig,
+def create_simulation_components(config: Config,
                                logger: logging.Logger):
     """Create simulation components with proper config passing"""
-    # Portfolio Simulator with EnvConfig
+    # Portfolio Simulator with full Config and tradable assets
     portfolio_simulator = PortfolioSimulator(
-        env_config=env_config,
-        logger=logger
+        logger=logger,
+        config=config,
+        tradable_assets=[config.env.symbol],
+        trade_callback=None  # Will be set by TradingEnvironment
     )
     
-    # Execution Simulator with SimulationConfig
-    execution_simulator = ExecutionSimulator(
-        symbol=env_config.symbol,
-        simulation_config=simulation_config,
-        logger=logger
-    )
+    # Execution Simulator is created inside TradingEnvironment during setup_session
+    # since it needs the market_simulator and np_random
     
-    return portfolio_simulator, execution_simulator
+    return portfolio_simulator
 
 
-def create_env_components(config: Config, market_simulator, portfolio_simulator,
-                         execution_simulator, logger: logging.Logger):
+def create_env_components(config: Config, data_manager, portfolio_simulator,
+                         logger: logging.Logger):
     """Create environment and related components with proper config passing"""
-    # Feature Extractor with ModelConfig
-    feature_extractor = FeatureExtractor(
-        symbol=config.env.symbol,
-        market_simulator=market_simulator,
-        config=config.model,
-        logger=logger
-    )
-    
-    # Reward calculator is created inside TradingEnvironment
+    # Note: FeatureExtractor is created inside TradingEnvironment after market_simulator is initialized
     
     # Trading Environment with full config (for now, will be refactored later)
     env = TradingEnvironment(
         config=config,  # TODO: Refactor to take specific configs
-        data_manager=market_simulator.data_manager,
+        data_manager=data_manager,
         logger=logger,
         metrics_integrator=None  # Will be set later
     )
     
-    return env, feature_extractor
+    # Return None for feature_extractor and reward_calculator as they're created inside env
+    return env, None, None
 
 
 def create_metrics_components(config: Config, logger: logging.Logger):
@@ -253,8 +236,7 @@ def create_metrics_components(config: Config, logger: logging.Logger):
         symbol=config.env.symbol,
         initial_capital=config.env.initial_capital,
         entity=config.wandb.entity,
-        run_name=run_name,
-        config=config.model_dump()  # Pass entire config for tracking
+        run_name=run_name
     )
     
     # Start auto-transmission
@@ -267,8 +249,8 @@ def create_metrics_components(config: Config, logger: logging.Logger):
     
     # Enable dashboard if configured
     if config.dashboard.enabled:
-        from dashboard import LiveTradingDashboard
-        from dashboard import DashboardMetricsCollector
+        from dashboard.live_dashboard_v2 import LiveTradingDashboard
+        from dashboard.dashboard_integration import DashboardMetricsCollector
         
         dashboard = LiveTradingDashboard(
             port=config.dashboard.port,
@@ -375,19 +357,27 @@ def train(config: Config):
     global current_components
     
     # Setup logging
-    logger = setup_rich_logging(
-        name="fx-ai",
-        level=config.logging.level,
-        log_dir=config.logging.log_dir,
-        console_format=config.logging.console_format
+    setup_rich_logging(
+        level=getattr(logging, config.logging.level.upper()),
+        show_time=True,
+        show_path=False,
+        compact_errors=True
     )
+    logger = get_logger("fx-ai")
     
     logger.info("="*80)
     logger.info(f"🚀 Starting FX-AI Training System")
     logger.info(f"📊 Experiment: {config.experiment_name}")
     logger.info(f"📈 Symbol: {config.env.symbol}")
-    logger.info(f"🧠 Model: d_model={config.model.d_model}, layers={config.model.n_layers}")
-    logger.info(f"🎯 Action space: {config.model.action_dim[0]}×{config.model.action_dim[1]}")
+    
+    # Handle both dict and object access patterns
+    model_cfg = config.model
+    d_model = model_cfg.d_model if hasattr(model_cfg, 'd_model') else model_cfg.get('d_model', 64)
+    n_layers = model_cfg.n_layers if hasattr(model_cfg, 'n_layers') else model_cfg.get('n_layers', 4)
+    action_dim = model_cfg.action_dim if hasattr(model_cfg, 'action_dim') else model_cfg.get('action_dim', [3, 4])
+    
+    logger.info(f"🧠 Model: d_model={d_model}, layers={n_layers}")
+    logger.info(f"🎯 Action space: {action_dim[0]}×{action_dim[1]}")
     logger.info("="*80)
     
     # Create output directory
@@ -404,25 +394,34 @@ def train(config: Config):
     # Create components with proper config passing
     try:
         # Data components
-        data_manager, market_simulator = create_data_components(config, logger)
+        data_manager = create_data_components(config, logger)
         current_components['data_manager'] = data_manager
         
         # Simulation components
-        portfolio_simulator, execution_simulator = create_simulation_components(
-            config.env, config.simulation, logger
-        )
+        portfolio_simulator = create_simulation_components(config, logger)
         
         # Environment components
         env, feature_extractor, reward_calculator = create_env_components(
-            config, market_simulator, portfolio_simulator, execution_simulator, logger
+            config, data_manager, portfolio_simulator, logger
         )
         current_components['env'] = env
         
         # Setup environment session
+        # Use default date range if not specified (last 3 months)
+        if config.data.start_date is None:
+            start_date = "2025-02-01"  # Default start date
+        else:
+            start_date = config.data.start_date
+            
+        if config.data.end_date is None:
+            end_date = "2025-04-29"  # Default end date
+        else:
+            end_date = config.data.end_date
+            
         env.setup_session(
             symbol=config.env.symbol,
-            start_time=config.data.start_date,
-            end_time=config.data.end_date
+            start_time=start_date,
+            end_time=end_date
         )
         
         # Metrics components

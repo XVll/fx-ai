@@ -9,7 +9,9 @@
       "Bash(poetry install:*)",
       "Bash(find:*)",
       "Bash(python:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(mkdir:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }
