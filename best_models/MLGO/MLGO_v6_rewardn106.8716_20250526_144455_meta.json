@@ -1,0 +1,17 @@
+{
+  "version": 6,
+  "timestamp": "20250526_144455",
+  "reward": -106.87163233921872,
+  "metrics": {
+    "total_steps_trained": 8192,
+    "total_updates": 2,
+    "total_episodes": 13,
+    "training_time_hours": 0.3070022898250156,
+    "session_duration": 1105.2108759880066,
+    "best_reward": -106.87163233921872,
+    "is_final": true,
+    "timestamp": 1748259894.9845886
+  },
+  "source": "/mnt/c/Users/Fx/PycharmProjects/fx-ai/outputs/2025-05-26/14-22-47/models/final_model.pt",
+  "symbol": "MLGO"
+}
