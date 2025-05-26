@@ -8,7 +8,7 @@ import pandas as pd
 import bisect
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from config.config import MarketConfig, ModelConfig
+from config.schemas import SimulationConfig, ModelConfig
 from data.data_manager import DataManager
 
 # MARKET HOURS CONFIGURATION (Eastern Time)
@@ -37,7 +37,7 @@ class MarketSimulator:
             self,
             symbol: str,
             data_manager: DataManager,
-            market_config: MarketConfig,
+            simulation_config: SimulationConfig,
             model_config: ModelConfig,
             mode: str = "backtesting",
             np_random: Optional[np.random.Generator] = None,
@@ -48,7 +48,7 @@ class MarketSimulator:
         self.logger = logger or logging.getLogger(__name__)
         self.symbol = symbol
         self.data_manager = data_manager
-        self.market_config = market_config
+        self.simulation_config = simulation_config
         self.model_config = model_config
         self.mode = mode
         self.np_random = np_random or np.random.default_rng()

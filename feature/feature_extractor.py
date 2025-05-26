@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
-from config.config import ModelConfig
+from config.schemas import ModelConfig
 from simulators.market_simulator import MarketSimulator
 from feature.feature_manager import FeatureManager
 from feature.contexts import MarketContext

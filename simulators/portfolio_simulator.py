@@ -9,7 +9,7 @@ from typing import TypedDict, Optional, List, Dict, Any, Tuple
 import numpy as np
 import pandas as pd
 
-from config.config import Config
+from config.schemas import Config
 
 
 class OrderTypeEnum(Enum):
@@ -83,12 +83,12 @@ class PortfolioState(TypedDict):
     total_turnover_session: float
 
 
-class PortfolioManager:
+class PortfolioSimulator:
     """Clean portfolio management with essential logging only"""
 
     def __init__(self, logger: logging.Logger, config: Config, tradable_assets: List[str], trade_callback=None):
         self.logger = logger
-        self.config = config
+        self.config:Config = config
         self.trade_callback = trade_callback  # Callback for completed trades
 
         # Core configuration

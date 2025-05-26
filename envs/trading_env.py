@@ -10,7 +10,7 @@ import pandas as pd
 import gymnasium as gym
 from gymnasium import spaces
 
-from config.config import Config
+from config.schemas import Config
 from data.data_manager import DataManager
 from envs.reward import RewardCalculator
 from rewards.calculator import RewardSystemV2
@@ -18,7 +18,7 @@ from feature.feature_extractor import FeatureExtractor
 from simulators.execution_simulator import ExecutionSimulator
 from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import (
-    PortfolioManager, PortfolioState, OrderTypeEnum, OrderSideEnum,
+    PortfolioSimulator, PortfolioState, OrderTypeEnum, OrderSideEnum,
     PositionSideEnum, FillDetails
 )
 
@@ -87,7 +87,7 @@ class TradingEnvironment(gym.Env):
         self.data_manager = data_manager
         self.market_simulator: Optional[MarketSimulator] = None
         self.execution_manager: Optional[ExecutionSimulator] = None
-        self.portfolio_manager: Optional[PortfolioManager] = None
+        self.portfolio_manager: Optional[PortfolioSimulator] = None
         self.feature_extractor: Optional[FeatureExtractor] = None
         self.reward_calculator: Optional[Union[RewardCalculator, RewardSystemV2]] = None
         self.use_reward_v2 = getattr(env_cfg, 'use_reward_v2', False)
@@ -173,7 +173,7 @@ class TradingEnvironment(gym.Env):
         self.market_simulator = MarketSimulator(
             symbol=self.primary_asset,
             data_manager=self.data_manager,
-            market_config=self.config.simulation.market_config,
+            simulation_config=self.config.simulation.market_config,
             model_config=self.config.model,
             mode=self.config.env.training_mode,
             np_random=self.np_random,
@@ -182,7 +182,7 @@ class TradingEnvironment(gym.Env):
             logger=logging.getLogger(f"{__name__}.MarketSim")
         )
 
-        self.portfolio_manager = PortfolioManager(
+        self.portfolio_manager = PortfolioSimulator(
             logger=logging.getLogger(f"{__name__}.PortfolioMgr"),
             config=self.config,
             tradable_assets=[self.primary_asset],
@@ -221,7 +221,7 @@ class TradingEnvironment(gym.Env):
 
         self.execution_manager = ExecutionSimulator(
             logger=logging.getLogger(f"{__name__}.ExecSim"),
-            config_exec=self.config.simulation.execution_config,
+            simulation_config=self.config.simulation.execution_config,
             np_random=self.np_random,
             market_simulator=self.market_simulator
         )

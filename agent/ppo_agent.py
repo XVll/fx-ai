@@ -1,5 +1,3 @@
-# agent/ppo_agent.py - IMPROVED: Better stage-based logging for episodes, updates, rollouts
-
 import os
 import logging
 import numpy as np
@@ -10,13 +8,12 @@ from typing import Dict, List, Union, Any, Optional
 import torch.nn.functional as nnf
 import time
 
-from config.config import ModelConfig
+from config.schemas import ModelConfig
 from envs.trading_env import TradingEnvironment
 from ai.transformer import MultiBranchTransformer
 from agent.utils import ReplayBuffer, convert_state_dict_to_tensors
 from agent.base_callbacks import TrainingCallback
 from metrics.factory import MetricsIntegrator
-from metrics.manager import MetricsManager
 
 
 class PPOTrainer:
