@@ -92,12 +92,12 @@ class PortfolioSimulator:
         self.trade_callback = trade_callback  # Callback for completed trades
 
         # Core configuration
-        self.initial_capital: float = config.simulation.portfolio_config.initial_cash
+        self.initial_capital: float = config.simulation.initial_cash
         self.tradable_assets: List[str] = tradable_assets
         self.portfolio_seq_len: int = config.model.portfolio_seq_len
         self.portfolio_feat_dim: int = config.model.portfolio_feat_dim
-        self.max_position_value_ratio: float = config.simulation.portfolio_config.max_position_value_ratio
-        self.allow_shorting: bool = config.simulation.execution_config.allow_shorting
+        self.max_position_value_ratio: float = config.simulation.max_position_value_ratio
+        self.allow_shorting: bool = config.simulation.allow_shorting
         self.max_position_holding_seconds = config.simulation.portfolio_config.max_position_holding_seconds
 
         # State variables

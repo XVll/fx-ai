@@ -17,7 +17,6 @@ from config.schemas import (
     Config, ModelConfig, EnvConfig, TrainingConfig, 
     DataConfig, SimulationConfig, WandbConfig, DashboardConfig
 )
-from envs.reward import RewardCalculator
 from simulators.portfolio_simulator import PortfolioSimulator
 from utils.logger import console, setup_rich_logging
 
@@ -217,15 +216,12 @@ def create_env_components(config: Config, market_simulator, portfolio_simulator,
     # Feature Extractor with ModelConfig
     feature_extractor = FeatureExtractor(
         symbol=config.env.symbol,
-        model_config=config.model,
+        market_simulator=market_simulator,
+        config=config.model,
         logger=logger
     )
     
-    # Reward Calculator with RewardV2Config
-    reward_calculator = RewardCalculator(
-        reward_config=config.env.reward_v2,
-        logger=logger
-    )
+    # Reward calculator is created inside TradingEnvironment
     
     # Trading Environment with full config (for now, will be refactored later)
     env = TradingEnvironment(
@@ -235,7 +231,7 @@ def create_env_components(config: Config, market_simulator, portfolio_simulator,
         metrics_integrator=None  # Will be set later
     )
     
-    return env, feature_extractor, reward_calculator
+    return env, feature_extractor
 
 
 def create_metrics_components(config: Config, logger: logging.Logger):
@@ -310,7 +306,7 @@ def create_model_components(config: Config, env, device: torch.device,
     
     # Create model with ModelConfig
     model = MultiBranchTransformer(
-        **config.model.model_dump(),  # Convert to dict for now
+        model_config=config.model,
         device=device,
         logger=logger
     )
@@ -490,7 +486,7 @@ def train(config: Config):
             env=env,
             model=model,
             metrics_integrator=metrics_integrator,
-            model_config=config.model.model_dump(),  # TODO: Refactor to use ModelConfig
+            model_config=config.model,
             device=device,
             output_dir=str(output_dir),
             callbacks=callbacks,

@@ -32,6 +32,18 @@ class ModelConfig(BaseModel):
     d_ff: int = 2048
     dropout: float = 0.1
     
+    # Branch-specific heads and layers
+    hf_heads: int = 8
+    hf_layers: int = 4
+    mf_heads: int = 8
+    mf_layers: int = 4
+    lf_heads: int = 8
+    lf_layers: int = 4
+    portfolio_heads: int = 8
+    portfolio_layers: int = 2
+    static_heads: int = 8
+    static_layers: int = 2
+    
     # Feature dimensions
     hf_seq_len: int = 60
     hf_feat_dim: int = 20
@@ -222,6 +234,22 @@ class SimulationConfig(BaseModel):
     # Execution simulation
     execution_delay_ms: int = Field(default=50, description="Order execution delay")
     partial_fill_probability: float = Field(default=0.0, description="Probability of partial fills")
+    allow_shorting: bool = Field(default=False, description="Allow short selling")
+    
+    # Latency simulation
+    mean_latency_ms: float = Field(default=50.0, description="Mean execution latency")
+    latency_std_dev_ms: float = Field(default=10.0, description="Latency standard deviation")
+    
+    # Slippage parameters
+    base_slippage_bps: float = Field(default=5.0, description="Base slippage in basis points")
+    size_impact_slippage_bps_per_unit: float = Field(default=0.1, description="Size impact slippage")
+    max_total_slippage_bps: float = Field(default=50.0, description="Max total slippage")
+    
+    # Cost parameters
+    commission_per_share: float = Field(default=0.005, description="Commission per share")
+    fee_per_share: float = Field(default=0.001, description="Fee per share")
+    min_commission_per_order: float = Field(default=1.0, description="Minimum commission per order")
+    max_commission_pct_of_value: float = Field(default=0.5, description="Max commission as % of trade value")
     
     # Market impact
     market_impact_model: Literal["linear", "square_root", "none"] = "linear"
@@ -234,6 +262,10 @@ class SimulationConfig(BaseModel):
     # Random start for training
     random_start_prob: float = Field(default=0.8, description="Probability of random episode start")
     warmup_steps: int = Field(default=60, description="Steps to warmup features before trading")
+    
+    # Portfolio configuration
+    initial_cash: float = Field(default=25000.0, description="Initial portfolio cash")
+    max_position_value_ratio: float = Field(default=1.0, description="Max position value as ratio of portfolio")
 
 
 class LoggingConfig(BaseModel):

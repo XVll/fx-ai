@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from collections import defaultdict, deque
 import time
 
-from config.config import Config
+from config.schemas import Config
 from simulators.portfolio_simulator import PortfolioState, FillDetails, PositionSideEnum
 
 try:
@@ -31,7 +31,7 @@ class RewardCalculator:
 
     def __init__(self, config: Config, metrics_integrator=None, logger: Optional[logging.Logger] = None):
         self.config = config
-        self.reward_config = config.env.reward
+        self.reward_config = config.env.reward_v2
         self.metrics_integrator = metrics_integrator
         self.logger = logger or logging.getLogger(__name__)
 
