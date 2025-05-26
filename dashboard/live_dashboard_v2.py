@@ -306,6 +306,12 @@ class LiveTradingDashboard:
                         html.H3("🧠 PPO Core Metrics", className='panel-title'),
                         html.Div(id='ppo-metrics')
                     ], className='panel'),
+                    
+                    # Model Internals Panel - NEW
+                    html.Div([
+                        html.H3("🔍 Model Internals", className='panel-title'),
+                        html.Div(id='model-internals')
+                    ], className='panel'),
                 ]),
                 ], className='main-container'),
                 
@@ -461,6 +467,19 @@ class LiveTradingDashboard:
                     html.Span("Trades:", className='metric-label'),
                     html.Span(f"{p.num_trades}", className='metric-value')
                 ], className='metric-row'),
+                html.Div([
+                    html.Span("Sharpe:", className='metric-label'),
+                    html.Span(f"{p.sharpe_ratio:.2f}", className='metric-value', style={'fontSize': '11px'})
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Sortino:", className='metric-label'),
+                    html.Span(f"{getattr(p, 'sortino_ratio', 0.0):.2f}", className='metric-value', style={'fontSize': '11px'})
+                ], className='metric-row'),
+                html.Div([
+                    html.Span("Avg Hold:", className='metric-label'),
+                    html.Span(f"{getattr(p, 'avg_holding_time_formatted', '--')}", className='metric-value', style={'fontSize': '11px'})
+                ], className='metric-row'),
+                html.Hr(style={'margin': '3px 0', 'borderColor': '#3d4158'}),
                 html.Div([
                     html.Span("Total Costs:", className='metric-label'),
                     html.Span(f"${p.total_commission + p.total_fees + p.total_slippage:.2f}", 
@@ -1338,6 +1357,112 @@ class LiveTradingDashboard:
             return fig
         
         @self.app.callback(
+            Output('model-internals', 'children'),
+            [Input('interval-component', 'n_intervals')]
+        )
+        def update_model_internals(n):
+            """Display model internals metrics including attention weights and feature stats"""
+            internals = self.state.model_internals
+            
+            content = []
+            
+            # Attention Metrics
+            if internals.attention_weights:
+                content.append(html.H4("Attention Analysis", style={'fontSize': '12px', 'margin': '0 0 5px 0', 'color': '#ffd32a'}))
+                
+                # Attention entropy and focus
+                content.append(html.Div([
+                    html.Span("Attention Entropy:", className='metric-label'),
+                    html.Span(f"{internals.attention_entropy:.4f}", className='metric-value')
+                ], className='metric-row'))
+                
+                content.append(html.Div([
+                    html.Span("Max Weight:", className='metric-label'),
+                    html.Span(f"{internals.attention_max_weight:.3f}", className='metric-value')
+                ], className='metric-row'))
+                
+                # Branch focus
+                branch_names = ['HF', 'MF', 'LF', 'Portfolio', 'Static']
+                focus_branch = branch_names[internals.attention_focus_branch] if 0 <= internals.attention_focus_branch < 5 else 'Unknown'
+                content.append(html.Div([
+                    html.Span("Focus Branch:", className='metric-label'),
+                    html.Span(focus_branch, className='metric-value', style={'color': '#00d084'})
+                ], className='metric-row'))
+                
+                # Attention weights distribution
+                if len(internals.attention_weights) == 5:
+                    content.append(html.Div([
+                        html.Span("Weights:", className='metric-label', style={'fontSize': '10px'}),
+                    ], className='metric-row'))
+                    for i, (branch, weight) in enumerate(zip(branch_names, internals.attention_weights)):
+                        bar_width = f"{weight * 100:.1f}%"
+                        content.append(html.Div([
+                            html.Span(f"{branch}:", style={'width': '60px', 'fontSize': '10px', 'color': '#999'}),
+                            html.Div([
+                                html.Div(style={'width': bar_width, 'backgroundColor': '#00d084', 'height': '8px'}),
+                            ], style={'flex': 1, 'backgroundColor': '#3d4158', 'height': '8px', 'marginLeft': '5px', 'position': 'relative'}),
+                            html.Span(f"{weight:.3f}", style={'width': '50px', 'fontSize': '10px', 'textAlign': 'right', 'marginLeft': '5px'})
+                        ], style={'display': 'flex', 'alignItems': 'center', 'marginBottom': '2px'}))
+                
+                content.append(html.Hr(style={'margin': '5px 0', 'borderColor': '#3d4158'}))
+            
+            # Action Probabilities
+            content.append(html.H4("Action Analysis", style={'fontSize': '12px', 'margin': '0 0 5px 0', 'color': '#00d084'}))
+            
+            content.append(html.Div([
+                html.Span("Action Entropy:", className='metric-label'),
+                html.Span(f"{internals.action_entropy:.4f}", className='metric-value')
+            ], className='metric-row'))
+            
+            content.append(html.Div([
+                html.Span("Action Confidence:", className='metric-label'),
+                html.Span(f"{internals.action_confidence:.3f}", className='metric-value')
+            ], className='metric-row'))
+            
+            content.append(html.Div([
+                html.Span("Type Entropy:", className='metric-label'),
+                html.Span(f"{internals.action_type_entropy:.4f}", className='metric-value', style={'fontSize': '10px'})
+            ], className='metric-row'))
+            
+            content.append(html.Div([
+                html.Span("Size Entropy:", className='metric-label'),
+                html.Span(f"{internals.action_size_entropy:.4f}", className='metric-value', style={'fontSize': '10px'})
+            ], className='metric-row'))
+            
+            # Feature Statistics
+            if internals.feature_stats:
+                content.append(html.Hr(style={'margin': '5px 0', 'borderColor': '#3d4158'}))
+                content.append(html.H4("Feature Stats", style={'fontSize': '12px', 'margin': '0 0 5px 0', 'color': '#999'}))
+                
+                # Create mini table for feature stats
+                stats_rows = []
+                for branch, stats in internals.feature_stats.items():
+                    if stats:
+                        sparsity_color = '#ff4757' if stats.get('sparsity', 0) > 0.5 else '#00d084'
+                        stats_rows.append(html.Div([
+                            html.Span(branch, style={'width': '60px', 'fontSize': '10px'}),
+                            html.Span(f"{stats.get('mean', 0):.3f}", style={'width': '50px', 'fontSize': '10px', 'textAlign': 'right'}),
+                            html.Span(f"±{stats.get('std', 0):.3f}", style={'width': '50px', 'fontSize': '10px', 'textAlign': 'right', 'color': '#666'}),
+                            html.Span(f"{stats.get('sparsity', 0)*100:.0f}%", style={'width': '40px', 'fontSize': '10px', 'textAlign': 'right', 'color': sparsity_color})
+                        ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '1px'}))
+                
+                if stats_rows:
+                    # Header
+                    content.append(html.Div([
+                        html.Span("Branch", style={'width': '60px', 'fontSize': '9px', 'color': '#666'}),
+                        html.Span("Mean", style={'width': '50px', 'fontSize': '9px', 'color': '#666', 'textAlign': 'right'}),
+                        html.Span("Std", style={'width': '50px', 'fontSize': '9px', 'color': '#666', 'textAlign': 'right'}),
+                        html.Span("Sparse", style={'width': '40px', 'fontSize': '9px', 'color': '#666', 'textAlign': 'right'})
+                    ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '2px', 'borderBottom': '1px solid #3d4158'}))
+                    
+                    content.extend(stats_rows)
+            
+            if not content:
+                return html.Div("Waiting for model data...", style={'color': '#999', 'fontSize': '11px', 'textAlign': 'center'})
+            
+            return html.Div(content)
+        
+        @self.app.callback(
             Output('footer-stats', 'children'),
             [Input('interval-component', 'n_intervals')]
         )
@@ -1406,6 +1531,8 @@ class LiveTradingDashboard:
             self.state.model_name = data.get('name', 'N/A')
         elif update_type == 'reward_components':
             self.state.update_reward_components(data)
+        elif update_type == 'model_internals':
+            self.state.update_model_internals(data)
     
     # Public API methods (same as original)
     def update_market(self, data: Dict[str, Any]):
@@ -1442,6 +1569,9 @@ class LiveTradingDashboard:
     
     def set_model_info(self, name: str):
         self.update_queue.put({'type': 'model_info', 'data': {'name': name}})
+    
+    def update_model_internals(self, data: Dict[str, Any]):
+        self.update_queue.put({'type': 'model_internals', 'data': data})
     
     def start(self, open_browser: bool = True):
         """Start the dashboard server"""
