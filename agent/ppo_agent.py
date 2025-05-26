@@ -210,6 +210,21 @@ class PPOTrainer:
                                                                    deterministic=False)
 
             env_action = self._convert_action_for_env(action_tensor)
+            
+            # Track model internals
+            if hasattr(self.model, 'get_last_attention_weights'):
+                attention_weights = self.model.get_last_attention_weights()
+                if attention_weights is not None:
+                    self.metrics.update_attention_weights(attention_weights)
+            
+            if hasattr(self.model, 'get_last_action_probabilities'):
+                action_probs = self.model.get_last_action_probabilities()
+                if action_probs is not None:
+                    self.metrics.update_action_probabilities(action_probs)
+            
+            # Track feature statistics periodically
+            if collected_steps % 100 == 0:
+                self.metrics.update_feature_statistics(current_env_state_np)
 
             try:
                 next_env_state_np, reward, terminated, truncated, info = self.env.step(env_action)
