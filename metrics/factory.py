@@ -13,6 +13,7 @@ from .collectors.trading_metrics import PortfolioMetricsCollector, PositionMetri
 from .collectors.execution_metrics import ExecutionMetricsCollector, EnvironmentMetricsCollector, SystemMetricsCollector
 from .collectors.visualization_metrics import VisualizationMetrics
 from .collectors.reward_metrics import RewardMetricsCollector
+from .collectors.model_internals_metrics import ModelInternalsCollector
 from .core import MetricCategory, MetricFilter, MetricValue
 
 
@@ -127,6 +128,9 @@ class MetricsFactory:
         
         # Reward collectors
         collectors.extend(MetricsFactory.create_reward_collectors())
+        
+        # Model internals collectors
+        collectors.append(ModelInternalsCollector())
 
         # System collectors (optional)
         if include_system:
@@ -247,6 +251,25 @@ class MetricsIntegrator:
             collector.end_evaluation(rewards, lengths)
 
         self.metrics_manager.update_state(is_evaluating=False, is_training=True)
+    
+    # Model internals integration methods
+    def update_attention_weights(self, weights: Any):
+        """Update attention weights from model"""
+        collector = self.get_collector('ModelInternalsCollector')
+        if collector:
+            collector.update_attention_weights(weights)
+    
+    def update_action_probabilities(self, action_probs: Any):
+        """Update action probability distributions"""
+        collector = self.get_collector('ModelInternalsCollector')
+        if collector:
+            collector.update_action_probabilities(action_probs)
+    
+    def update_feature_statistics(self, features: Dict[str, Any]):
+        """Update feature distribution statistics"""
+        collector = self.get_collector('ModelInternalsCollector')
+        if collector:
+            collector.update_feature_statistics(features)
 
     # Portfolio integration methods
     def update_portfolio(self, equity: float, cash: float, unrealized_pnl: float, realized_pnl: float,
@@ -256,9 +279,10 @@ class MetricsIntegrator:
         if collector:
             collector.update_portfolio_state(equity, cash, unrealized_pnl, realized_pnl)
         
-        # Pass costs to dashboard if available
-        if hasattr(self, 'dashboard_collector') and self.dashboard_collector:
-            self.dashboard_collector.on_step({
+        # Pass costs to dashboard if available through metrics manager
+        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
+            # Update dashboard with portfolio costs
+            self.metrics_manager.update_dashboard_step({
                 'total_commission': total_commission,
                 'total_slippage': total_slippage,
                 'total_fees': total_fees

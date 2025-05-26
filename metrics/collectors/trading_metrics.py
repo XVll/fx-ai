@@ -96,6 +96,14 @@ class PortfolioMetricsCollector(MetricCollector):
             unit="ratio",
             frequency="step"
         ))
+        
+        self.register_metric("sortino_ratio", MetricMetadata(
+            category=MetricCategory.TRADING,
+            metric_type=MetricType.GAUGE,
+            description="Sortino ratio (downside risk adjusted)",
+            unit="ratio",
+            frequency="step"
+        ))
 
         self.register_metric("volatility_pct", MetricMetadata(
             category=MetricCategory.TRADING,
@@ -130,10 +138,11 @@ class PortfolioMetricsCollector(MetricCollector):
                 max_dd = self._calculate_max_drawdown()
                 metrics[f"{self.category.value}.{self.name}.max_drawdown_pct"] = MetricValue(max_dd)
 
-                # Calculate Sharpe ratio and volatility
+                # Calculate Sharpe ratio, Sortino ratio, and volatility
                 if len(self.equity_history) > 10:
-                    sharpe, volatility = self._calculate_risk_metrics()
+                    sharpe, sortino, volatility = self._calculate_risk_metrics()
                     metrics[f"{self.category.value}.{self.name}.sharpe_ratio"] = MetricValue(sharpe)
+                    metrics[f"{self.category.value}.{self.name}.sortino_ratio"] = MetricValue(sortino)
                     metrics[f"{self.category.value}.{self.name}.volatility_pct"] = MetricValue(volatility)
 
         except Exception as e:
@@ -170,17 +179,17 @@ class PortfolioMetricsCollector(MetricCollector):
 
         return max_dd
 
-    def _calculate_risk_metrics(self) -> tuple[float, float]:
-        """Calculate Sharpe ratio and volatility"""
+    def _calculate_risk_metrics(self) -> tuple[float, float, float]:
+        """Calculate Sharpe ratio, Sortino ratio, and volatility"""
         if len(self.equity_history) < 10:
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
 
         # Calculate returns
         equity_array = np.array(self.equity_history)
         returns = np.diff(equity_array) / equity_array[:-1]
 
         if len(returns) < 2:
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
 
         # Calculate volatility (annualized)
         volatility = np.std(returns) * np.sqrt(252) * 100  # Assuming daily steps
@@ -191,8 +200,20 @@ class PortfolioMetricsCollector(MetricCollector):
             sharpe = (mean_return * 252) / (volatility / 100)  # Annualized
         else:
             sharpe = 0.0
+        
+        # Calculate Sortino ratio (downside deviation)
+        negative_returns = returns[returns < 0]
+        if len(negative_returns) > 0:
+            downside_deviation = np.std(negative_returns) * np.sqrt(252)
+            if downside_deviation > 0:
+                sortino = (mean_return * 252) / downside_deviation
+            else:
+                sortino = 0.0
+        else:
+            # If no negative returns, Sortino is very high (good)
+            sortino = float('inf') if mean_return > 0 else 0.0
 
-        return sharpe, volatility
+        return sharpe, sortino, volatility
 
     def _get_metadata(self, metric_name: str) -> MetricMetadata:
         """Get metadata for a metric by name"""
@@ -405,6 +426,22 @@ class TradeMetricsCollector(MetricCollector):
             unit="USD",
             frequency="episode"
         ))
+        
+        self.register_metric("avg_holding_time_seconds", MetricMetadata(
+            category=MetricCategory.TRADING,
+            metric_type=MetricType.TIME,
+            description="Average holding time per trade",
+            unit="seconds",
+            frequency="episode"
+        ))
+        
+        self.register_metric("avg_holding_time_minutes", MetricMetadata(
+            category=MetricCategory.TRADING,
+            metric_type=MetricType.TIME,
+            description="Average holding time per trade",
+            unit="minutes",
+            frequency="episode"
+        ))
 
     def collect(self) -> Dict[str, MetricValue]:
         """Collect trade metrics"""
@@ -448,6 +485,16 @@ class TradeMetricsCollector(MetricCollector):
                 gross_loss = abs(sum(losing_pnls)) if losing_pnls else 0
                 profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf') if gross_profit > 0 else 0
                 metrics[f"{self.category.value}.{self.name}.profit_factor"] = MetricValue(profit_factor)
+                
+            # Calculate average holding time
+            holding_times = [trade.get('holding_period_seconds', 0) for trade in self.completed_trades 
+                           if trade.get('holding_period_seconds') is not None]
+            
+            if holding_times:
+                avg_holding_seconds = np.mean(holding_times)
+                avg_holding_minutes = avg_holding_seconds / 60.0
+                metrics[f"{self.category.value}.{self.name}.avg_holding_time_seconds"] = MetricValue(avg_holding_seconds)
+                metrics[f"{self.category.value}.{self.name}.avg_holding_time_minutes"] = MetricValue(avg_holding_minutes)
 
         except Exception as e:
             self.logger.debug(f"Error collecting trade metrics: {e}")
