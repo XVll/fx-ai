@@ -71,12 +71,15 @@ class Portfolio:
     realized_pnl: float = 0.0
     unrealized_pnl: float = 0.0
     sharpe_ratio: float = 0.0
+    sortino_ratio: float = 0.0  # NEW
     max_drawdown: float = 0.0
     num_trades: int = 0
     initial_equity: float = 25000.0
     total_commission: float = 0.0
     total_slippage: float = 0.0
     total_fees: float = 0.0
+    avg_holding_time_seconds: float = 0.0  # NEW
+    avg_holding_time_formatted: str = "--"  # NEW
     
     @property
     def session_pnl_percent(self) -> float:
@@ -242,6 +245,8 @@ class RewardComponent:
     percent_of_total: float = 0.0
     avg_magnitude: float = 0.0
     times_triggered: int = 0
+    volatility: float = 0.0  # Standard deviation of component values
+    values_history: List[float] = field(default_factory=list)  # Track recent values for volatility calc
 
 
 @dataclass
@@ -255,6 +260,26 @@ class ActionAnalysis:
     # }
 
 
+@dataclass
+class ModelInternals:
+    """Model internals metrics for deep analysis"""
+    # Attention metrics
+    attention_weights: List[float] = field(default_factory=list)  # [HF, MF, LF, Portfolio, Static]
+    attention_entropy: float = 0.0
+    attention_max_weight: float = 0.0
+    attention_focus_branch: int = 0  # 0=HF, 1=MF, 2=LF, 3=Portfolio, 4=Static
+    
+    # Action probabilities
+    action_entropy: float = 0.0
+    action_confidence: float = 0.0
+    action_type_entropy: float = 0.0
+    action_size_entropy: float = 0.0
+    
+    # Feature statistics per branch
+    feature_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    # Format: {'HF': {'mean': 0.1, 'std': 0.2, 'sparsity': 0.3}, ...}
+
+
 class DashboardState:
     """Central dashboard state management"""
     
@@ -265,6 +290,7 @@ class DashboardState:
         self.portfolio = Portfolio()
         self.training_progress = TrainingProgress()
         self.ppo_metrics = PPOMetrics()
+        self.model_internals = ModelInternals()  # NEW
         
         # Episode management
         self.current_episode: Optional[EpisodeData] = None
@@ -387,8 +413,26 @@ class DashboardState:
         # Update metrics
         if 'sharpe_ratio' in data:
             self.portfolio.sharpe_ratio = data['sharpe_ratio']
+        if 'sortino_ratio' in data:
+            self.portfolio.sortino_ratio = data['sortino_ratio']
         if 'max_drawdown' in data:
             self.portfolio.max_drawdown = data['max_drawdown']
+        
+        # Update holding time metrics
+        if 'avg_holding_time_seconds' in data:
+            self.portfolio.avg_holding_time_seconds = data['avg_holding_time_seconds']
+            # Format the holding time
+            seconds = data['avg_holding_time_seconds']
+            if seconds < 60:
+                self.portfolio.avg_holding_time_formatted = f"{int(seconds)}s"
+            elif seconds < 3600:
+                minutes = int(seconds / 60)
+                secs = int(seconds % 60)
+                self.portfolio.avg_holding_time_formatted = f"{minutes}m{secs}s" if secs > 0 else f"{minutes}m"
+            else:
+                hours = int(seconds / 3600)
+                minutes = int((seconds % 3600) / 60)
+                self.portfolio.avg_holding_time_formatted = f"{hours}h{minutes}m" if minutes > 0 else f"{hours}h"
     
     def add_action(self, step: int, action_type: str, size: float, reward: float):
         """Add an action"""
@@ -549,6 +593,8 @@ class DashboardState:
     
     def update_reward_components(self, components_data: Dict[str, float]):
         """Update reward components from raw data"""
+        import numpy as np
+        
         # Calculate total impact for this step
         step_total_impact = sum(abs(v) for v in components_data.values() if v != 0)
         
@@ -566,6 +612,12 @@ class DashboardState:
             
             component = self.reward_components[name]
             
+            # Track value history for volatility calculation
+            component.values_history.append(value)
+            # Keep only last 100 values for volatility calculation
+            if len(component.values_history) > 100:
+                component.values_history = component.values_history[-100:]
+            
             # Only increment trigger count if value is non-zero
             if value != 0:
                 component.times_triggered += 1
@@ -580,6 +632,15 @@ class DashboardState:
                 
                 # Update total impact (cumulative)
                 component.total_impact += value
+            
+            # Calculate volatility (standard deviation) if we have enough data
+            if len(component.values_history) >= 5:
+                # Only calculate volatility on non-zero values
+                non_zero_values = [v for v in component.values_history if v != 0]
+                if non_zero_values:
+                    component.volatility = np.std(non_zero_values)
+                else:
+                    component.volatility = 0.0
         
         # Calculate overall percentages based on total cumulative impact
         total_cumulative_impact = sum(abs(comp.total_impact) for comp in self.reward_components.values())
@@ -638,6 +699,32 @@ class DashboardState:
             trade_data = trade_data.copy()
             trade_data['side'] = trade_data['action']
         self.add_trade(trade_data)
+    
+    def update_model_internals(self, data: Dict[str, Any]):
+        """Update model internals metrics"""
+        # Update attention metrics
+        if 'attention_weights' in data:
+            self.model_internals.attention_weights = data['attention_weights']
+        if 'attention_entropy' in data:
+            self.model_internals.attention_entropy = data['attention_entropy']
+        if 'attention_max_weight' in data:
+            self.model_internals.attention_max_weight = data['attention_max_weight']
+        if 'attention_focus_branch' in data:
+            self.model_internals.attention_focus_branch = data['attention_focus_branch']
+        
+        # Update action probabilities
+        if 'action_entropy' in data:
+            self.model_internals.action_entropy = data['action_entropy']
+        if 'action_confidence' in data:
+            self.model_internals.action_confidence = data['action_confidence']
+        if 'action_type_entropy' in data:
+            self.model_internals.action_type_entropy = data['action_type_entropy']
+        if 'action_size_entropy' in data:
+            self.model_internals.action_size_entropy = data['action_size_entropy']
+        
+        # Update feature statistics
+        if 'feature_stats' in data:
+            self.model_internals.feature_stats = data['feature_stats']
     
     @property
     def session_elapsed_time(self) -> str:
