@@ -132,6 +132,9 @@ class DashboardMetricsCollector:
             'cash': step_data.get('cash', 25000),
             'realized_pnl': step_data.get('realized_pnl', 0),
             'unrealized_pnl': step_data.get('unrealized_pnl', 0),
+            'total_commission': step_data.get('total_commission', 0),
+            'total_slippage': step_data.get('total_slippage', 0),
+            'total_fees': step_data.get('total_fees', 0),
         }
         self.dashboard.update_portfolio(portfolio_update)
         

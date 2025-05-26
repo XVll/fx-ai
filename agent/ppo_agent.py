@@ -96,6 +96,11 @@ class PPOTrainer:
 
         # Stage timing
         self.stage_timers = {}
+        
+        # Timing metrics tracking
+        self.last_update_time = None
+        self.update_times = []
+        self.episode_times = []
 
         self.logger.info(f"🤖 PPOTrainer initialized with metrics integration. Device: {self.device}")
 
@@ -138,7 +143,9 @@ class PPOTrainer:
                     'updates': self.global_update_counter,
                     'global_steps': self.global_step_counter,
                     'total_episodes': self.global_episode_counter,
-                    'stage_status': f"Collecting {self.rollout_steps} steps..."
+                    'stage_status': f"Collecting {self.rollout_steps} steps...",
+                    'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+                    'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
                 }
                 self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
 
@@ -169,7 +176,9 @@ class PPOTrainer:
                         'total_episodes': self.global_episode_counter,
                         'rollout_steps': collected_steps,
                         'rollout_total': self.rollout_steps,
-                        'stage_status': f"Collecting: {collected_steps}/{self.rollout_steps} steps"
+                        'stage_status': f"Collecting: {collected_steps}/{self.rollout_steps} steps",
+                        'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+                        'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
                     }
                     self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
             single_step_tensors = {
@@ -260,6 +269,11 @@ class PPOTrainer:
                 self.recent_episode_rewards.append(current_episode_reward)
                 if len(self.recent_episode_rewards) > 10:  # Keep only last 10 episodes
                     self.recent_episode_rewards.pop(0)
+                    
+                # Track episode timing
+                self.episode_times.append(episode_duration)
+                if len(self.episode_times) > 20:  # Keep last 20 episodes
+                    self.episode_times.pop(0)
 
                 for callback in self.callbacks:
                     callback.on_episode_end(self, current_episode_reward, current_episode_length, info)
@@ -579,6 +593,11 @@ class PPOTrainer:
         # End update timing
         self.metrics.end_update()
         update_duration = self._end_timer("update")
+        
+        # Track update timing
+        self.update_times.append(update_duration)
+        if len(self.update_times) > 20:  # Keep last 20 updates
+            self.update_times.pop(0)
 
         update_metrics = {
             "actor_loss": avg_actor_loss,
@@ -614,7 +633,9 @@ class PPOTrainer:
                     'global_steps': self.global_step_counter,
                     'total_episodes': self.global_episode_counter,
                     'stage_progress': 0.0,  # Reset stage progress
-                    'stage_status': 'Update completed, preparing next rollout...'
+                    'stage_status': 'Update completed, preparing next rollout...',
+                    'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+                    'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
                 }
                 self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
 

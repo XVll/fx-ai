@@ -785,6 +785,9 @@ class TradingEnvironment(gym.Env):
                     'cash': portfolio_state_next_t['cash'],
                     'realized_pnl': portfolio_state_next_t['realized_pnl_session'],
                     'unrealized_pnl': portfolio_state_next_t['unrealized_pnl'],
+                    'total_commission': portfolio_state_next_t.get('total_commissions_session', 0.0),
+                    'total_slippage': portfolio_state_next_t.get('total_slippage_cost_session', 0.0),
+                    'total_fees': portfolio_state_next_t.get('total_fees_session', 0.0),
                     'action': action_name,
                     'size': self._last_decoded_action.get('size_float', 1.0) if self._last_decoded_action else 1.0,
                     'invalid_action': is_invalid,  # Track invalid actions

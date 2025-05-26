@@ -43,7 +43,7 @@ class FeatureManager:
             'hf': [
                 'price_velocity', 'price_acceleration', 'spread_compression',
                 'quote_velocity', 'tape_imbalance', 'tape_aggression_ratio',
-                'volume_velocity', 'volume_acceleration', 'quote_imbalance'
+                'hf_volume_velocity', 'hf_volume_acceleration', 'quote_imbalance'
             ],
             'mf': [
                 '1m_position_in_current_candle', '5m_position_in_current_candle',
@@ -160,7 +160,7 @@ class FeatureManager:
             if feature_name in features:
                 ordered_features.append(features[feature_name])
             else:
-                self.logger.warning(f"Feature {feature_name} not found in results, using 0.0")
+                self.logger.warning(f"Feature {feature_name} not found in results for category {category}, using 0.0. Available features: {list(features.keys())}")
                 ordered_features.append(0.0)
         
         return np.array(ordered_features, dtype=np.float32)
