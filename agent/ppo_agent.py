@@ -274,7 +274,10 @@ class PPOTrainer:
                     'duration': episode_duration,
                     'final_equity': info.get('portfolio_equity', 0),
                     'termination_reason': info.get('termination_reason', 'UNKNOWN'),
-                    'truncated': info.get('truncated', False)
+                    'truncated': info.get('truncated', False),
+                    'pnl': info.get('total_pnl', 0),
+                    'win_rate': info.get('win_rate', 0),
+                    'trades': info.get('total_trades', 0)
                 })
 
                 # Record episode metrics
@@ -290,6 +293,19 @@ class PPOTrainer:
                 if len(self.episode_times) > 20:  # Keep last 20 episodes
                     self.episode_times.pop(0)
 
+                # Log key episode metrics for interpretation
+                if self.global_episode_counter % 10 == 0:  # Log every 10th episode
+                    pnl = info.get('total_pnl', 0)
+                    win_rate = info.get('win_rate', 0)
+                    trades = info.get('total_trades', 0)
+                    hold_ratio = info.get('hold_ratio', 0)
+                    
+                    self.logger.info(f"📊 Episode {self.global_episode_counter} Summary:")
+                    self.logger.info(f"   💵 PnL: ${pnl:.2f} | Reward: {current_episode_reward:.3f}")
+                    self.logger.info(f"   📈 Win Rate: {win_rate:.1f}% | Trades: {trades}")
+                    self.logger.info(f"   ⏸️  Hold Ratio: {hold_ratio:.1f}% | Steps: {current_episode_length}")
+                    self.logger.info(f"   🏁 Reason: {info.get('termination_reason', 'UNKNOWN')}")
+                
                 for callback in self.callbacks:
                     callback.on_episode_end(self, current_episode_reward, current_episode_length, info)
 
@@ -346,12 +362,24 @@ class PPOTrainer:
             "invalid_actions": total_invalid_actions
         }
 
+        # Calculate aggregate metrics for interpretation
+        if episode_details:
+            avg_pnl = np.mean([ep['pnl'] for ep in episode_details])
+            avg_win_rate = np.mean([ep['win_rate'] for ep in episode_details]) 
+            avg_trades = np.mean([ep['trades'] for ep in episode_details])
+        else:
+            # No episodes completed in this rollout - use zeros
+            avg_pnl = 0.0
+            avg_win_rate = 0.0
+            avg_trades = 0.0
+        
         # Comprehensive rollout summary
         self.logger.info(f"🎯 ROLLOUT COMPLETE:")
         self.logger.info(f"   ⏱️  Duration: {rollout_duration:.1f}s ({steps_per_second:.1f} steps/s)")
         self.logger.info(f"   📊 Episodes: {len(episode_rewards_in_rollout)} | Steps: {collected_steps:,}")
         self.logger.info(f"   💰 Rewards: μ={mean_episode_reward:.3f} σ={std_episode_reward:.3f}")
-        self.logger.info(f"   📏 Avg Length: {mean_episode_length:.1f} steps")
+        self.logger.info(f"   💵 Avg PnL: ${avg_pnl:.2f} | Win Rate: {avg_win_rate:.1f}%")
+        self.logger.info(f"   📈 Avg Trades: {avg_trades:.1f} | Avg Length: {mean_episode_length:.1f} steps")
 
         if total_invalid_actions > 0:
             invalid_rate = (total_invalid_actions / collected_steps) * 100
@@ -627,13 +655,21 @@ class PPOTrainer:
             "global_update_counter": self.global_update_counter
         }
 
-        # Comprehensive update summary
+        # Comprehensive update summary with interpretation hints
         self.logger.info(f"🔄 UPDATE COMPLETE:")
         self.logger.info(f"   ⏱️  Duration: {update_duration:.1f}s | Batches: {total_batches}")
         self.logger.info(f"   🎭 Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
-        self.logger.info(f"   📊 Entropy: {avg_entropy:.4f} | Clip Rate: {avg_clipfrac * 100:.1f}%")
-        self.logger.info(f"   🧠 KL Div: {avg_approx_kl:.4f} | Explained Var: {avg_explained_variance * 100:.1f}%")
+        self.logger.info(f"   📊 Entropy: {avg_entropy:.4f} (↓=converging) | Clip Rate: {avg_clipfrac * 100:.1f}% (target<30%)")
+        self.logger.info(f"   🧠 KL Div: {avg_approx_kl:.4f} (<0.01 stable) | Explained Var: {avg_explained_variance * 100:.1f}% (>80% good)")
         self.logger.info(f"   📈 Grad Norm: {avg_gradient_norm:.4f}")
+        
+        # Add interpretation warnings
+        if avg_clipfrac > 0.3:
+            self.logger.warning("   ⚠️  High clip rate - consider reducing learning rate")
+        if avg_approx_kl > 0.02:
+            self.logger.warning("   ⚠️  High KL divergence - updates may be too aggressive")
+        if avg_explained_variance < 0.5:
+            self.logger.warning("   ⚠️  Low explained variance - value function may need tuning")
 
         for callback in self.callbacks:
             callback.on_update_end(self, update_metrics)
@@ -728,9 +764,19 @@ class PPOTrainer:
                     self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
 
             if self.global_update_counter % 5 == 0:  # Log every 5 updates
+                # Calculate recent performance trends
+                recent_rewards = self.recent_episode_rewards[-10:] if len(self.recent_episode_rewards) > 0 else []
+                recent_mean = np.mean(recent_rewards) if recent_rewards else 0
+                recent_std = np.std(recent_rewards) if len(recent_rewards) > 1 else 0
+                
                 self.logger.info(f"📈 PROGRESS: {progress:.1f}% | Steps: {self.global_step_counter:,}/{total_training_steps:,}")
                 self.logger.info(f"   ⏱️  Rate: {steps_per_hour:.0f} steps/hr | ETA: {eta_hours:.1f}h")
                 self.logger.info(f"   🏆 Episodes: {self.global_episode_counter} | Updates: {self.global_update_counter}")
+                self.logger.info(f"   📊 Recent Performance: μ={recent_mean:.3f} σ={recent_std:.3f}")
+                
+            # Periodic training analysis every 25 updates
+            if self.global_update_counter % 25 == 0 and self.global_update_counter > 0:
+                self._log_training_analysis(update_metrics)
 
             # Evaluation
             eval_freq_updates = max(1, eval_freq_steps // self.rollout_steps) if eval_freq_steps else 0
@@ -877,3 +923,83 @@ class PPOTrainer:
             self.logger.info(f"Model loaded from {path}. Resuming from step {self.global_step_counter}")
         except Exception as e:
             self.logger.error(f"Error loading model from {path}: {e}")
+    
+    def _log_training_analysis(self, update_metrics: Dict[str, float]) -> None:
+        """Log comprehensive training analysis for interpretation."""
+        self.logger.info("=" * 80)
+        self.logger.info("🔬 TRAINING ANALYSIS - Update {}".format(self.global_update_counter))
+        self.logger.info("=" * 80)
+        
+        # Performance trends
+        recent_rewards = self.recent_episode_rewards[-30:] if len(self.recent_episode_rewards) > 0 else []
+        if len(recent_rewards) >= 10:
+            first_10 = np.mean(recent_rewards[:10])
+            last_10 = np.mean(recent_rewards[-10:])
+            trend = last_10 - first_10
+            trend_pct = (trend / abs(first_10) * 100) if first_10 != 0 else 0
+            
+            self.logger.info(f"📈 PERFORMANCE TREND:")
+            self.logger.info(f"   First 10 episodes: {first_10:.3f}")
+            self.logger.info(f"   Last 10 episodes: {last_10:.3f}")
+            self.logger.info(f"   Trend: {trend:+.3f} ({trend_pct:+.1f}%)")
+            
+            # Diagnose performance issues
+            if trend < -0.1:
+                self.logger.warning("   ⚠️  Performance declining - check for:")
+                self.logger.warning("      - Overfitting to recent data")
+                self.logger.warning("      - Learning rate too high")
+                self.logger.warning("      - Reward component imbalance")
+            elif abs(trend) < 0.01:
+                self.logger.warning("   ⚠️  Performance plateaued - consider:")
+                self.logger.warning("      - Increasing exploration (entropy coefficient)")
+                self.logger.warning("      - Adjusting reward weights")
+                self.logger.warning("      - Checking for data diversity")
+        
+        # Learning stability
+        self.logger.info(f"\n🧠 LEARNING STABILITY:")
+        kl = update_metrics.get('approx_kl', 0)
+        clipfrac = update_metrics.get('clipfrac', 0)
+        entropy = update_metrics.get('entropy', 0)
+        
+        stability_score = "STABLE"
+        if kl > 0.02 or clipfrac > 0.3:
+            stability_score = "UNSTABLE"
+        elif kl > 0.01 or clipfrac > 0.2:
+            stability_score = "BORDERLINE"
+            
+        self.logger.info(f"   Status: {stability_score}")
+        self.logger.info(f"   KL Divergence: {kl:.4f}")
+        self.logger.info(f"   Clip Fraction: {clipfrac*100:.1f}%")
+        self.logger.info(f"   Entropy: {entropy:.4f}")
+        
+        # Value function quality
+        explained_var = update_metrics.get('value_function_explained_variance', 0)
+        critic_loss = update_metrics.get('critic_loss', 0)
+        
+        self.logger.info(f"\n📊 VALUE FUNCTION:")
+        self.logger.info(f"   Explained Variance: {explained_var*100:.1f}%")
+        self.logger.info(f"   Critic Loss: {critic_loss:.4f}")
+        
+        if explained_var < 0.7:
+            self.logger.warning("   ⚠️  Poor value estimation - actions:")
+            self.logger.warning("      - Increase critic coefficient")
+            self.logger.warning("      - Check feature quality")
+            self.logger.warning("      - Verify reward normalization")
+        
+        # Action recommendations
+        self.logger.info(f"\n💡 RECOMMENDATIONS:")
+        
+        if stability_score == "UNSTABLE":
+            self.logger.info("   1. Reduce learning rate by 50%")
+            self.logger.info("   2. Decrease PPO clip range")
+            self.logger.info("   3. Increase batch size")
+        elif stability_score == "BORDERLINE":
+            self.logger.info("   1. Monitor next few updates closely")
+            self.logger.info("   2. Consider small learning rate reduction")
+        
+        if entropy < 0.01:
+            self.logger.info("   - Increase entropy coefficient to encourage exploration")
+        elif entropy > 0.1:
+            self.logger.info("   - Decrease entropy coefficient to focus learning")
+            
+        self.logger.info("=" * 80)
