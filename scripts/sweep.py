@@ -7,23 +7,26 @@ import yaml
 import os
 
 def main():
-    sys.argv.extend(["sweep_config_file=default.yaml"])
-    sys.argv.extend(["project=fx-ai"])
     parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default="default.yaml", help="Sweep config file name")
     parser.add_argument("--project", type=str, default="fx-ai", help="WandB project name")
     parser.add_argument("--count", type=int, default=10, help="Number of runs")
-    # We will always use '++' for Hydra overrides, so --use-plus is removed.
     args = parser.parse_args()
 
+    # Construct the path to the sweep config file
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "..", "config", "sweep", args.config)
+    
     # Load the sweep config from YAML
     try:
-        with open('default.yaml', 'r') as f:
+        with open(config_path, 'r') as f:
             sweep_config = yaml.safe_load(f)
     except FileNotFoundError:
-        print("ERROR: default.yaml not found. Please ensure it's in the same directory.")
+        print(f"ERROR: {config_path} not found.")
+        print("Available sweep configs should be in config/sweep/ directory.")
         return
     except yaml.YAMLError as e:
-        print(f"ERROR: Could not parse default.yaml: {e}")
+        print(f"ERROR: Could not parse {config_path}: {e}")
         return
 
     # Modify parameter keys to include '++' for Hydra override
