@@ -5,8 +5,3 @@
   yet)
 
 - Sweep has errors when starting, fix them.
-
-Right now our configuration system bothering me, feeling like scattered and cannot find where is where also, I dont even know if there is configs not used or used anymore.
-Also I am not sure if any of the configs used but not in config files. Also in the project some uses yaml some uses typed configs so it become a mess.
-previously I tried to add typed configurations but now. I have to write both yaml and typed configs, do you have suggestion how should I design better config system for the
-project givme suggestions so I can choose one. I like to have warnings if config is exists when used or, do I using configs defined in yaml files.   
