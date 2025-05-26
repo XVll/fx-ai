@@ -25,6 +25,25 @@ This document analyzes the metrics from `metrics_system.md` and provides an impl
    - Added average holding time tracking (in seconds and minutes)
    - Enhanced risk metrics calculation to return both Sharpe and Sortino ratios
 
+### ✅ Phase 2: Model Insights (COMPLETED)
+1. **Attention Weight Visualization** - DONE
+   - Modified `AttentionFusion` layer to expose attention weights
+   - Added `get_branch_importance()` method to calculate attention distribution across branches
+   - Integrated attention tracking into model forward pass
+   - Created metrics for attention entropy, max weight, and focus branch
+
+2. **Action Probability Tracking** - DONE
+   - Added action probability storage in transformer model
+   - Created metrics for action entropy (exploration measure)
+   - Added action confidence tracking (max probability)
+   - Separate tracking for action type and size distributions
+
+3. **Feature Distribution Monitoring** - DONE
+   - Created `ModelInternalsCollector` for comprehensive tracking
+   - Added feature statistics (mean, std, sparsity) per branch
+   - Integrated periodic feature monitoring into training loop
+   - Tracks distributions for HF, MF, LF, Portfolio, and Static branches
+
 ## Current Metrics Inventory
 
 ### Training Metrics (training.*)
@@ -57,6 +76,18 @@ This document analyzes the metrics from `metrics_system.md` and provides an impl
 - ✅ `approx_kl` - KL divergence
 - ✅ `explained_variance` - Value function quality
 - ✅ `learning_rate` - Current LR
+
+### Model Internals Metrics (model.internals.*) - NEW
+- ✅ `attention_entropy` - Entropy of attention weights (focus measure)
+- ✅ `attention_max_weight` - Maximum attention weight value
+- ✅ `attention_focus_branch` - Most attended branch (0=HF, 1=MF, 2=LF, 3=Portfolio, 4=Static)
+- ✅ `action_entropy` - Action distribution entropy (exploration measure)
+- ✅ `action_confidence` - Confidence in selected action (max probability)
+- ✅ `action_type_entropy` - Buy/Sell/Hold distribution entropy
+- ✅ `action_size_entropy` - Position size distribution entropy
+- ✅ `feature_{branch}_mean` - Mean feature value per branch
+- ✅ `feature_{branch}_std` - Feature standard deviation per branch
+- ✅ `feature_{branch}_sparsity` - % of zero features per branch
 
 ### Trading Metrics (trading.*)
 - ✅ `portfolio.total_equity` - Account value
@@ -270,17 +301,30 @@ All critical metrics have been implemented:
 - Comprehensive reward component analytics added
 - Sortino ratio and holding time metrics implemented
 
-### Current Coverage: ~85%
-With Phase 1 complete, the metrics system now covers:
+### Phase 2 Status: ✅ COMPLETE (100%)
+Model insight metrics fully implemented:
+- Attention weight tracking and visualization
+- Action probability distribution monitoring
+- Feature statistics per branch
+- Exploration/exploitation balance metrics
+
+### Current Coverage: ~95%
+With Phase 1 & 2 complete, the metrics system now covers:
 - ✅ All essential training stability metrics (PPO)
 - ✅ Comprehensive reward system analytics
 - ✅ Advanced risk metrics (Sortino ratio)
 - ✅ Momentum strategy validation (holding times)
-- ⏳ Model internals visualization (Phase 2)
+- ✅ Model internals visualization (attention, actions, features)
 - ⏳ Advanced correlation analysis (Phase 3)
 
-### Next Steps
-1. **Phase 2**: Model Insights (attention visualization, action probabilities)
-2. **Phase 3**: Advanced Analytics (correlations, efficiency metrics)
+### Metrics Summary
+- **Total Metrics**: ~100+ individual metrics
+- **Categories**: 6 major categories (Training, Model, Trading, Reward, Environment, Execution)
+- **Coverage**: All critical metrics for training, validation, and strategy analysis
 
-The metrics system is now production-ready for training and strategy validation.
+### Next Steps
+1. **Phase 3**: Advanced Analytics (correlations, efficiency metrics)
+2. **Visualization**: Create W&B custom charts for attention heatmaps
+3. **Dashboards**: Configure metric groupings for different analysis views
+
+The metrics system is now comprehensive and production-ready for advanced model analysis and strategy optimization.
