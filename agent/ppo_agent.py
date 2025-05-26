@@ -514,13 +514,21 @@ class PPOTrainer:
                             'stage_status': f"Epoch {epoch + 1}/{self.ppo_epochs}, Batch {current_batch}/{total_batches}"
                         }
                         self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
-                batch_indices = indices[start_idx: start_idx + self.batch_size]
+                # Ensure batch indices don't exceed available samples
+                end_idx = min(start_idx + self.batch_size, num_samples)
+                batch_indices = indices[start_idx:end_idx]
 
-                batch_states = {key: tensor_val[batch_indices] for key, tensor_val in states_dict.items()}
-                batch_actions = actions[batch_indices]
-                batch_old_log_probs = old_log_probs[batch_indices]
-                batch_advantages = advantages[batch_indices]
-                batch_returns = returns[batch_indices]
+                # Safely extract batch data with bounds checking
+                try:
+                    batch_states = {key: tensor_val[batch_indices] for key, tensor_val in states_dict.items()}
+                    batch_actions = actions[batch_indices]
+                    batch_old_log_probs = old_log_probs[batch_indices]
+                    batch_advantages = advantages[batch_indices]
+                    batch_returns = returns[batch_indices]
+                except IndexError as e:
+                    self.logger.error(f"Index error in batch extraction: {e}")
+                    self.logger.error(f"Batch indices: {batch_indices}, num_samples: {num_samples}")
+                    continue
 
                 action_params, current_values = self.model(batch_states)
 
