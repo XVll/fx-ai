@@ -1,11 +1,9 @@
-# agent/continuous_training_callback.py - CLEAN: Minimal logging, focus on functionality
 
 import os
 import time
 import json
 import logging
 from typing import Dict, Any, Optional
-import numpy as np
 
 from agent.base_callbacks import TrainingCallback
 from utils.model_manager import ModelManager
@@ -41,7 +39,7 @@ class ContinuousTrainingCallback(TrainingCallback):
         self.last_sync_time = None
         self.last_sync_update = 0
 
-        # Load previous best reward if continuing
+        # Load the previous best reward if continuing
         if load_metadata and 'metrics' in load_metadata:
             prev_metrics = load_metadata.get('metrics', {})
             prev_reward = prev_metrics.get(self.reward_metric)
@@ -76,10 +74,10 @@ class ContinuousTrainingCallback(TrainingCallback):
         self.logger.info(f"LR annealing applied: {current_lr:.6f} → {new_lr:.6f}")
 
     def on_update_iteration_end(self, trainer, update_iter, update_metrics, rollout_stats):
-        """Check for new best model and periodic sync"""
+        """Check for the new best model and periodic sync"""
         current_reward = rollout_stats.get(self.reward_metric, -float('inf'))
 
-        # Check if this is a new best model
+        # Check if this is the new best model
         is_best = False
         if self.best_model_mode == "max":
             if current_reward > self.best_reward:
@@ -99,7 +97,7 @@ class ContinuousTrainingCallback(TrainingCallback):
             trainer.save_model(checkpoint_path)
             self.best_model_path = checkpoint_path
 
-            # Save to best_models directory
+            # Save to the best_models directory
             metrics = {
                 **update_metrics,
                 **rollout_stats,
@@ -156,7 +154,7 @@ class ContinuousTrainingCallback(TrainingCallback):
             "timestamp": time.time()
         }
 
-        # Save final model
+        # Save the final model
         final_checkpoint_path = os.path.join(trainer.model_dir, "final_model.pt")
         trainer.save_model(final_checkpoint_path)
 

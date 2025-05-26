@@ -1,5 +1,3 @@
-# main.py - FIXED: Properly activate metrics system for W&B transmission
-
 import os
 import sys
 import signal
@@ -7,50 +5,54 @@ import threading
 import logging
 import time
 from datetime import datetime
+import argparse
+from pathlib import Path
 
-import hydra
 import torch
-from hydra.core.hydra_config import HydraConfig
-from omegaconf import OmegaConf
+import numpy as np
+import wandb
 
-from metrics.manager import MetricsManager
-# Import Rich logging setup
-from utils.logger import setup_rich_logging, console
+from config.loader import load_config, check_unused_configs
+from config.schemas import (
+    Config, ModelConfig, EnvConfig, TrainingConfig, 
+    DataConfig, SimulationConfig, WandbConfig, DashboardConfig
+)
+from envs.reward import RewardCalculator
+from simulators.portfolio_simulator import PortfolioSimulator
+from utils.logger import console, setup_rich_logging
 
-from agent.continous_training_callbacks import ContinuousTrainingCallback
-from ai.transformer import MultiBranchTransformer
-from config.config import Config
-from data.data_manager import DataManager
-from data.provider.data_bento.databento_file_provider import DabentoFileProvider
-
-from envs.trading_env import TradingEnvironment
-
-from agent.ppo_agent import PPOTrainer
-from agent.base_callbacks import ModelCheckpointCallback, EarlyStoppingCallback, TrainingCallback
+# Import utilities
 from utils.model_manager import ModelManager
 
-# Import new metrics system
+# Import components
+from data.data_manager import DataManager
+from data.provider.data_bento.databento_file_provider import DatabentoFileProvider
+from simulators.market_simulator import MarketSimulator
+from simulators.execution_simulator import ExecutionSimulator
+from feature.feature_extractor import FeatureExtractor
+from envs.trading_env import TradingEnvironment
+from agent.ppo_agent import PPOTrainer
+from ai.transformer import MultiBranchTransformer
 from metrics.factory import create_trading_metrics_system
+from agent.base_callbacks import ModelCheckpointCallback, EarlyStoppingCallback, TrainingCallback
+from agent.continous_training_callbacks import ContinuousTrainingCallback
 
 # Global variables for signal handling
 training_interrupted = False
 cleanup_called = False
-current_trainer = None
-current_env = None
-current_data_manager = None
-metrics_manager: MetricsManager = None
+current_components = {}  # Store all components for cleanup
 
 logger = logging.getLogger(__name__)
 
 
 def signal_handler(signum, frame):
     """Handle Ctrl+C gracefully"""
-    global training_interrupted, cleanup_called, metrics_manager
-
+    global training_interrupted, cleanup_called
+    
     if cleanup_called:
         console.print("\n[bold red]Force exit...[/bold red]")
-        os._exit(1)  # Force immediate exit
-
+        os._exit(1)
+    
     training_interrupted = True
     console.print("\n" + "=" * 50)
     console.print("[bold red]INTERRUPT SIGNAL RECEIVED[/bold red]")
@@ -59,18 +61,20 @@ def signal_handler(signum, frame):
     console.print("=" * 50)
     
     # Stop dashboard immediately if running
-    if metrics_manager and hasattr(metrics_manager, 'dashboard_collector') and metrics_manager.dashboard_collector:
-        try:
-            metrics_manager.dashboard_collector.stop()
-        except:
-            pass
-
+    if 'metrics_manager' in current_components:
+        metrics_manager = current_components['metrics_manager']
+        if hasattr(metrics_manager, 'dashboard_collector') and metrics_manager.dashboard_collector:
+            try:
+                metrics_manager.dashboard_collector.stop()
+            except:
+                pass
+    
     def force_exit():
-        time.sleep(5)  # Reduced from 10 to 5 seconds
+        time.sleep(5)
         if training_interrupted and not cleanup_called:
             console.print("\n[bold red]Graceful shutdown timeout. Force exiting...[/bold red]")
             os._exit(1)
-
+    
     timer = threading.Timer(10, force_exit)
     timer.daemon = True
     timer.start()
@@ -78,446 +82,526 @@ def signal_handler(signum, frame):
 
 def cleanup_resources():
     """Clean up resources gracefully"""
-    global cleanup_called, current_trainer, current_env, current_data_manager, metrics_manager
-
+    global cleanup_called, current_components
+    
     if cleanup_called:
         return
     cleanup_called = True
-
+    
     try:
         logging.info("Starting resource cleanup...")
-
-        # Close metrics manager
-        if metrics_manager:
-            try:
-                metrics_manager.close()
-                logging.info("Metrics manager closed")
-            except Exception as e:
-                logging.error(f"Error closing metrics manager: {e}")
-
-        # Stop trainer
-        if current_trainer and hasattr(current_trainer, 'model'):
-            try:
-                interrupted_model_path = os.path.join(
-                    getattr(current_trainer, 'model_dir', './models'),
-                    "interrupted_model.pt"
-                )
-                current_trainer.save_model(interrupted_model_path)
-                logging.info(f"Saved interrupted model to: {interrupted_model_path}")
-            except Exception as e:
-                logging.error(f"Error saving interrupted model: {e}")
-
-        # Close environment
-        if current_env and hasattr(current_env, 'close'):
-            try:
-                current_env.close()
-                logging.info("Environment closed")
-            except Exception as e:
-                logging.error(f"Error closing environment: {e}")
-
-        # Close data manager
-        if current_data_manager and hasattr(current_data_manager, 'close'):
-            try:
-                current_data_manager.close()
-                logging.info("Data manager closed")
-            except Exception as e:
-                logging.error(f"Error closing data manager: {e}")
-
+        
+        # Clean up in reverse order of creation
+        cleanup_order = ['metrics_manager', 'trainer', 'env', 'data_manager']
+        
+        for component_name in cleanup_order:
+            if component_name in current_components:
+                component = current_components[component_name]
+                try:
+                    if hasattr(component, 'close'):
+                        component.close()
+                    logging.info(f"{component_name} closed")
+                except Exception as e:
+                    logging.error(f"Error closing {component_name}: {e}")
+        
+        # Save interrupted model if trainer exists
+        if 'trainer' in current_components and 'model_manager' in current_components:
+            trainer = current_components['trainer']
+            model_manager = current_components['model_manager']
+            if hasattr(trainer, 'model'):
+                try:
+                    interrupted_path = Path(model_manager.base_dir) / "interrupted_model.pt"
+                    model_manager.save_checkpoint(
+                        trainer.model,
+                        trainer.optimizer,
+                        trainer.global_step_counter,
+                        trainer.global_episode_counter,
+                        trainer.global_update_counter,
+                        {"interrupted": True}
+                    )
+                    logging.info(f"Saved interrupted model to: {interrupted_path}")
+                except Exception as e:
+                    logging.error(f"Error saving interrupted model: {e}")
+        
         logging.info("Resource cleanup completed")
-
+        
     except Exception as e:
         console.print(f"[bold red]Error during cleanup: {e}[/bold red]")
 
 
-def select_device(device_str):
-    """Select a device based on config or auto-detect."""
-    if device_str == "auto":
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-            logging.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            device = torch.device("mps")
-            logging.info("Using MPS (Apple Silicon) device")
-        else:
-            device = torch.device("cpu")
-            logging.info("Using CPU device")
+def setup_environment(training_config: TrainingConfig) -> torch.device:
+    """Set up training environment with config"""
+    # Set random seeds
+    np.random.seed(training_config.seed)
+    torch.manual_seed(training_config.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(training_config.seed)
+    
+    # Select device
+    device_str = training_config.device
+    if device_str == "cuda" and torch.cuda.is_available():
+        device = torch.device("cuda")
+        logging.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
+    elif device_str == "mps" and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device("mps")
+        logging.info("Using MPS (Apple Silicon) device")
     else:
-        device = torch.device(device_str)
-        logging.info(f"Using specified device: {device}")
-
+        device = torch.device("cpu")
+        logging.info("Using CPU device")
+    
     return device
 
 
-def create_data_provider(config: Config):
-    """Create appropriate data provider based on config."""
-    data_cfg = config.data
-    logging.info(f"Initializing data provider: {data_cfg.provider_type}")
-
-    if data_cfg.provider_type == "file":
-        return DabentoFileProvider(
-            data_dir=data_cfg.data_dir,
-            symbol_info_file=data_cfg.symbol_info_file,
-            verbose=data_cfg.verbose,
-            dbn_cache_size=data_cfg.dbn_cache_size
+def create_data_provider(data_config: DataConfig):
+    """Create data provider from config"""
+    logging.info(f"Initializing data provider: {data_config.provider}")
+    
+    if data_config.provider == "databento":
+        # Construct paths for databento
+        data_path = Path(data_config.data_dir) / data_config.symbols[0].lower()
+        symbol_info_file = data_path / "symbols.json"
+        
+        return DatabentoFileProvider(
+            data_dir=str(data_path),
+            symbol_info_file=str(symbol_info_file),
+            verbose=True,
+            dbn_cache_size=10  # Default cache size
         )
     else:
-        raise ValueError(f"Unknown provider type: {data_cfg.provider_type}")
+        raise ValueError(f"Unknown provider type: {data_config.provider}")
 
 
-@hydra.main(version_base="1.2", config_path="config", config_name="config")
-def run_training(cfg: Config):
-    """Main training function with metrics integration"""
-    global current_trainer, current_env, current_data_manager, metrics_manager
+def create_data_components(config: Config, logger: logging.Logger):
+    """Create data-related components with proper config passing"""
+    # Data Manager with DataConfig
+    data_provider = create_data_provider(config.data)
+    data_manager = DataManager(
+        provider=data_provider,
+        logger=logger
+    )
+    
+    # Market Simulator with SimulationConfig and symbol
+    market_simulator = MarketSimulator(
+        data_manager=data_manager,
+        symbol=config.env.symbol,
+        simulation_config=config.simulation,
+        logger=logger
+    )
+    
+    return data_manager, market_simulator
 
-    # Set up signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, signal_handler)
 
-    try:
-        # Setup logging
-        setup_rich_logging(level=logging.INFO, show_time=True, show_path=False)
+def create_simulation_components(env_config: EnvConfig, 
+                               simulation_config: SimulationConfig,
+                               logger: logging.Logger):
+    """Create simulation components with proper config passing"""
+    # Portfolio Simulator with EnvConfig
+    portfolio_simulator = PortfolioSimulator(
+        env_config=env_config,
+        logger=logger
+    )
+    
+    # Execution Simulator with SimulationConfig
+    execution_simulator = ExecutionSimulator(
+        symbol=env_config.symbol,
+        simulation_config=simulation_config,
+        logger=logger
+    )
+    
+    return portfolio_simulator, execution_simulator
 
-        # Get output directory
-        if HydraConfig.initialized():
-            output_dir = HydraConfig.get().runtime.output_dir
-        else:
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            output_dir = os.path.join("outputs", timestamp)
-            os.makedirs(output_dir, exist_ok=True)
 
-        model_dir = os.path.join(output_dir, "models")
-        os.makedirs(model_dir, exist_ok=True)
+def create_env_components(config: Config, market_simulator, portfolio_simulator,
+                         execution_simulator, logger: logging.Logger):
+    """Create environment and related components with proper config passing"""
+    # Feature Extractor with ModelConfig
+    feature_extractor = FeatureExtractor(
+        symbol=config.env.symbol,
+        model_config=config.model,
+        logger=logger
+    )
+    
+    # Reward Calculator with RewardV2Config
+    reward_calculator = RewardCalculator(
+        reward_config=config.env.reward_v2,
+        logger=logger
+    )
+    
+    # Trading Environment with full config (for now, will be refactored later)
+    env = TradingEnvironment(
+        config=config,  # TODO: Refactor to take specific configs
+        data_manager=market_simulator.data_manager,
+        logger=logger,
+        metrics_integrator=None  # Will be set later
+    )
+    
+    return env, feature_extractor, reward_calculator
 
-        # Log startup info
-        logging.info("🚀 Starting FX-AI Training System with Metrics Integration")
-        logging.info(f"📁 Output directory: {output_dir}")
 
-        # Save config for reference
-        config_path = os.path.join(output_dir, "config_used.yaml")
-        with open(config_path, 'w') as f:
-            f.write(OmegaConf.to_yaml(cfg))
+def create_metrics_components(config: Config, logger: logging.Logger):
+    """Create metrics and dashboard components with proper config passing"""
+    if not config.wandb.enabled:
+        logging.warning("W&B disabled - no metrics will be tracked")
+        return None, None
+    
+    logging.info("📊 Initializing metrics system with W&B integration")
+    
+    # Create run name
+    run_name = config.wandb.name
+    if not run_name and config.training.continue_training:
+        run_name = f"continuous_{config.env.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    # Create metrics system with WandbConfig
+    metrics_manager, metrics_integrator = create_trading_metrics_system(
+        project_name=config.wandb.project,
+        symbol=config.env.symbol,
+        initial_capital=config.env.initial_capital,
+        entity=config.wandb.entity,
+        run_name=run_name,
+        config=config.model_dump()  # Pass entire config for tracking
+    )
+    
+    # Start auto-transmission
+    metrics_manager.start_auto_transmit()
+    
+    # Start system tracking
+    metrics_integrator.start_system_tracking()
+    
+    logging.info("✅ Metrics system initialized, auto-transmission started")
+    
+    # Enable dashboard if configured
+    if config.dashboard.enabled:
+        from dashboard import LiveTradingDashboard
+        from dashboard import DashboardMetricsCollector
+        
+        dashboard = LiveTradingDashboard(
+            port=config.dashboard.port,
+            update_interval=config.dashboard.update_interval
+        )
+        
+        dashboard_collector = DashboardMetricsCollector(dashboard)
+        metrics_manager.dashboard_collector = dashboard_collector
+        metrics_manager._dashboard_enabled = True
+        
+        dashboard_collector.start(open_browser=True)
+        logging.info(f"🚀 Live dashboard enabled at http://localhost:{config.dashboard.port}")
+        
+        # Set initial model info
+        model_name = f"PPO_Transformer_{config.env.symbol}"
+        dashboard_collector.set_model_info(model_name)
+    
+    return metrics_manager, metrics_integrator
 
-        # Check continuous training mode
-        continuous_mode = getattr(cfg.training, 'enabled', False)
-        load_best_model = getattr(cfg.training, 'load_best_model', False) if continuous_mode else False
-        best_models_dir = getattr(cfg.training, 'best_models_dir', "./best_models")
-        os.makedirs(best_models_dir, exist_ok=True)
 
-        if continuous_mode:
-            logging.info(f"🔄 Continuous training mode enabled. Best models dir: {best_models_dir}")
+def create_model_components(config: Config, env, device: torch.device, 
+                           output_dir: str, logger: logging.Logger):
+    """Create model and training components with proper config passing"""
+    # Model Manager with TrainingConfig
+    model_manager = ModelManager(
+        base_dir=str(Path(output_dir) / "models"),
+        best_models_dir="best_models",
+        model_prefix=config.env.symbol,
+        max_best_models=config.training.keep_best_n_models,
+        symbol=config.env.symbol
+    )
+    
+    # Get observation to initialize model
+    obs, info = env.reset()
+    
+    # Create model with ModelConfig
+    model = MultiBranchTransformer(
+        **config.model.model_dump(),  # Convert to dict for now
+        device=device,
+        logger=logger
+    )
+    logging.info("✅ Model created successfully")
+    
+    # Create optimizer
+    optimizer = torch.optim.Adam(
+        model.parameters(), 
+        lr=config.training.learning_rate
+    )
+    
+    return model, optimizer, model_manager
 
-        # Get symbol and date range
-        symbol = cfg.data.symbol
-        start_date = cfg.data.start_date
-        end_date = cfg.data.end_date
 
-        logging.info(f"📈 Trading symbol: {symbol}")
-        logging.info(f"📅 Date range: {start_date} to {end_date}")
-
-        # Initialize metrics system
-        if cfg.wandb.enabled:
-            logging.info("📊 Initializing metrics system with W&B integration")
-
-            # Create run name
-            run_name = None
-            if continuous_mode:
-                run_name = f"continuous_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-            metrics_manager, metrics_integrator = create_trading_metrics_system(
-                project_name=cfg.wandb.project_name,
-                symbol=symbol,
-                initial_capital=cfg.simulation.portfolio_config.initial_cash,
-                entity=cfg.wandb.entity,
-                run_name=run_name
+def create_training_callbacks(config: Config, model_manager, output_dir: str,
+                            loaded_metadata: dict = None) -> list:
+    """Create training callbacks with proper config passing"""
+    callbacks: list[TrainingCallback] = []
+    
+    # Model checkpoint callback
+    callbacks.append(
+        ModelCheckpointCallback(
+            save_dir=str(Path(output_dir) / "models"),
+            save_freq=config.training.checkpoint_interval,
+            prefix=config.env.symbol,
+            save_best_only=True
+        )
+    )
+    
+    # Early stopping if configured
+    if config.training.early_stop_patience > 0:
+        callbacks.append(
+            EarlyStoppingCallback(
+                patience=config.training.early_stop_patience,
+                min_delta=config.training.early_stop_min_delta
             )
-
-            # FIXED: Start auto-transmission of metrics
-            metrics_manager.start_auto_transmit()
-
-            # Start system tracking
-            metrics_integrator.start_system_tracking()
-
-            logging.info("✅ Metrics system initialized, auto-transmission started")
-
-            # Don't send any metrics during initialization to avoid zeros in charts
-            # W&B connection is already tested in the transmitter's _send_test_metric()
-            logging.info("📊 W&B connection established - metrics will start flowing during training")
-            
-            # Enable dashboard if configured
-            if cfg.dashboard.enabled:
-                # Pass update interval to dashboard
-                from dashboard import LiveTradingDashboard
-                dashboard = LiveTradingDashboard(
-                    port=cfg.dashboard.port, 
-                    update_interval=cfg.dashboard.update_interval
-                )
-                from dashboard import DashboardMetricsCollector
-                dashboard_collector = DashboardMetricsCollector(dashboard)
-                metrics_manager.dashboard_collector = dashboard_collector
-                metrics_manager._dashboard_enabled = True
-                
-                dashboard_collector.start(open_browser=cfg.dashboard.open_browser)
-                logging.info(f"🚀 Live dashboard enabled at http://localhost:{cfg.dashboard.port} (update interval: {cfg.dashboard.update_interval}ms)")
-                
-                # Set initial model info
-                model_name = f"PPO_Transformer_{symbol}"
-                dashboard_collector.set_model_info(model_name)
-
-        else:
-            logging.warning("W&B disabled - no metrics will be tracked")
-            metrics_manager = None
-            metrics_integrator = None
-
-        # Create a data provider and manager
-        logging.info("📂 Initializing data provider and manager")
-        data_provider = create_data_provider(cfg)
-        current_data_manager = DataManager(provider=data_provider, logger=logging.getLogger("DataManager"))
-
-        # Initialize model manager
-        model_manager = ModelManager(
-            base_dir=model_dir,
-            best_models_dir=best_models_dir,
-            model_prefix=symbol,
-            max_best_models=getattr(cfg.training, 'max_best_models', 5),
-            symbol=symbol
         )
-
-        # Create environment
-        logging.info(f"🏗️ Creating trading environment for {symbol}")
-        current_env = TradingEnvironment(
-            config=cfg,
-            data_manager=current_data_manager,
-            logger=logging.getLogger("TradingEnv"),
-            metrics_integrator=metrics_integrator  # Pass metrics instead of dashboard
-        )
-
-        # Setup environment session
-        current_env.setup_session(
-            symbol=symbol,
-            start_time=start_date,
-            end_time=end_date
-        )
-
-        # Check for interruption
-        if training_interrupted:
-            logging.warning("Training interrupted during setup")
-            return {}
-
-        # Select device
-        device = select_device(cfg.training.device)
-
-        # Create model
-        logging.info("🧠 Creating multi-branch transformer model")
-        model_config = OmegaConf.to_container(cfg.model, resolve=True)
-
-        obs, info = current_env.reset()
-
+        logging.info(f"⏹️ Early stopping enabled (patience: {config.training.early_stop_patience})")
+    
+    # Continuous training callback
+    if config.training.continue_training:
         try:
-            model = MultiBranchTransformer(
-                **model_config,
-                device=device,
-                logger=logging.getLogger("Transformer")
+            continuous_callback = ContinuousTrainingCallback(
+                model_manager=model_manager,
+                reward_metric=config.training.best_model_metric,
+                checkpoint_sync_frequency=config.training.checkpoint_interval,
+                lr_annealing={
+                    'enabled': config.training.use_lr_annealing,
+                    'factor': config.training.lr_annealing_factor,
+                    'patience': config.training.lr_annealing_patience,
+                    'min_lr': config.training.min_learning_rate
+                },
+                load_metadata=loaded_metadata or {}
             )
-            logging.info("✅ Model created successfully")
+            callbacks.append(continuous_callback)
+            logging.info("🔄 Continuous training callback added")
         except Exception as e:
-            logging.error(f"Error creating model: {e}")
-            raise
+            logging.error(f"Failed to initialize continuous training callback: {e}")
+            logging.warning("Continuing without continuous training callback...")
+    
+    return callbacks
 
-        # Update metrics system with the model
-        optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.lr)
+
+def train(config: Config):
+    """Main training function with proper config passing"""
+    global current_components
+    
+    # Setup logging
+    logger = setup_rich_logging(
+        name="fx-ai",
+        level=config.logging.level,
+        log_dir=config.logging.log_dir,
+        console_format=config.logging.console_format
+    )
+    
+    logger.info("="*80)
+    logger.info(f"🚀 Starting FX-AI Training System")
+    logger.info(f"📊 Experiment: {config.experiment_name}")
+    logger.info(f"📈 Symbol: {config.env.symbol}")
+    logger.info(f"🧠 Model: d_model={config.model.d_model}, layers={config.model.n_layers}")
+    logger.info(f"🎯 Action space: {config.model.action_dim[0]}×{config.model.action_dim[1]}")
+    logger.info("="*80)
+    
+    # Create output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = Path("outputs") / f"{config.experiment_name}_{timestamp}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save used config
+    config.save_used_config(str(output_dir / "config_used.yaml"))
+    
+    # Setup environment
+    device = setup_environment(config.training)
+    
+    # Create components with proper config passing
+    try:
+        # Data components
+        data_manager, market_simulator = create_data_components(config, logger)
+        current_components['data_manager'] = data_manager
+        
+        # Simulation components
+        portfolio_simulator, execution_simulator = create_simulation_components(
+            config.env, config.simulation, logger
+        )
+        
+        # Environment components
+        env, feature_extractor, reward_calculator = create_env_components(
+            config, market_simulator, portfolio_simulator, execution_simulator, logger
+        )
+        current_components['env'] = env
+        
+        # Setup environment session
+        env.setup_session(
+            symbol=config.env.symbol,
+            start_time=config.data.start_date,
+            end_time=config.data.end_date
+        )
+        
+        # Metrics components
+        metrics_manager, metrics_integrator = create_metrics_components(config, logger)
+        current_components['metrics_manager'] = metrics_manager
+        
+        # Update environment with metrics
         if metrics_integrator:
-            # Add model and optimizer to metrics system
+            env.metrics_integrator = metrics_integrator
+        
+        # Model components
+        model, optimizer, model_manager = create_model_components(
+            config, env, device, str(output_dir), logger
+        )
+        current_components['model_manager'] = model_manager
+        
+        # Register model metrics
+        if metrics_manager and metrics_integrator:
             from metrics.collectors.model_metrics import ModelMetricsCollector, OptimizerMetricsCollector
             model_collector = ModelMetricsCollector(model)
             optimizer_collector = OptimizerMetricsCollector(optimizer)
             metrics_manager.register_collector(model_collector)
             metrics_manager.register_collector(optimizer_collector)
-            logging.info("📊 Model and optimizer collectors registered with metrics system")
-
-        # Load best model for continuous training
+            logger.info("📊 Model and optimizer collectors registered")
+        
+        # Load best model if continuing
         loaded_metadata = {}
-        if continuous_mode and load_best_model:
+        if config.training.continue_training:
             best_model_info = model_manager.find_best_model()
             if best_model_info:
-                logging.info(f"📂 Loading best model: {best_model_info['path']}")
-
-                model, training_state = model_manager.load_model(model, optimizer, best_model_info['path'])
+                logger.info(f"📂 Loading best model: {best_model_info['path']}")
+                model, training_state = model_manager.load_model(
+                    model, optimizer, best_model_info['path']
+                )
                 loaded_metadata = training_state.get('metadata', {})
-
-                logging.info("✅ Model loaded successfully")
-                logging.info(f"📊 Training state: step={training_state.get('global_step', 0)}, "
-                             f"episode={training_state.get('global_episode', 0)}, "
-                             f"update={training_state.get('global_update', 0)}")
+                logger.info(f"✅ Model loaded: step={training_state.get('global_step', 0)}")
             else:
-                logging.info("🆕 No previous model found. Starting fresh.")
-
-        # Set up training callbacks
-        logging.info("⚙️ Setting up training callbacks")
-        callbacks: list[TrainingCallback] = [
-            ModelCheckpointCallback(
-                save_dir=model_dir,
-                save_freq=cfg.callbacks.save_freq,
-                prefix=symbol,
-                save_best_only=cfg.callbacks.save_best_only,
-            ),
-        ]
-
-        # Add early stopping if enabled
-        if cfg.callbacks.early_stopping.enabled:
-            callbacks.append(
-                EarlyStoppingCallback(
-                    patience=cfg.callbacks.early_stopping.patience,
-                    min_delta=cfg.callbacks.early_stopping.min_delta
-                )
-            )
-            logging.info(f"⏹️ Early stopping enabled (patience: {cfg.callbacks.early_stopping.patience})")
-
-        # Add continuous training callback if in continuous mode
-        if continuous_mode:
-            try:
-                checkpoint_sync_frequency = getattr(cfg.training, 'checkpoint_sync_frequency', 5)
-                lr_annealing = getattr(cfg.training, 'lr_annealing', {})
-
-                continuous_callback = ContinuousTrainingCallback(
-                    model_manager=model_manager,
-                    reward_metric="mean_reward",
-                    checkpoint_sync_frequency=checkpoint_sync_frequency,
-                    lr_annealing=lr_annealing,
-                    load_metadata=loaded_metadata
-                )
-                callbacks.append(continuous_callback)
-                logging.info("🔄 Continuous training callback added")
-            except Exception as e:
-                logging.error(f"Failed to initialize continuous training callback: {e}")
-                logging.warning("Continuing without continuous training callback...")
-
-        # Extract training parameters
+                logger.info("🆕 No previous model found. Starting fresh.")
+        
+        # Create callbacks
+        callbacks = create_training_callbacks(
+            config, model_manager, str(output_dir), loaded_metadata
+        )
+        
+        # Extract training parameters for PPO
         training_params = {
-            "lr": cfg.training.lr,
-            "gamma": cfg.training.gamma,
-            "gae_lambda": cfg.training.gae_lambda,
-            "clip_eps": cfg.training.clip_eps,
-            "critic_coef": cfg.training.critic_coef,
-            "entropy_coef": cfg.training.entropy_coef,
-            "max_grad_norm": cfg.training.max_grad_norm,
-            "ppo_epochs": cfg.training.n_epochs,
-            "batch_size": cfg.training.batch_size,
-            "rollout_steps": cfg.training.buffer_size
+            "lr": config.training.learning_rate,
+            "gamma": config.training.gamma,
+            "gae_lambda": config.training.gae_lambda,
+            "clip_eps": config.training.clip_epsilon,
+            "critic_coef": config.training.value_coef,
+            "entropy_coef": config.training.entropy_coef,
+            "max_grad_norm": config.training.max_grad_norm,
+            "ppo_epochs": config.training.n_epochs,
+            "batch_size": config.training.batch_size,
+            "rollout_steps": config.training.rollout_steps
         }
-
+        
         # Create trainer
-        current_trainer = PPOTrainer(
-            env=current_env,
+        trainer = PPOTrainer(
+            env=env,
             model=model,
-            metrics_integrator=metrics_integrator,  # Pass metrics integrator
-            model_config=model_config,
+            metrics_integrator=metrics_integrator,
+            model_config=config.model.model_dump(),  # TODO: Refactor to use ModelConfig
             device=device,
-            output_dir=output_dir,
+            output_dir=str(output_dir),
             callbacks=callbacks,
             **training_params
         )
-
-        # Check for interruption before training
+        current_components['trainer'] = trainer
+        
+        # Check for interruption
         if training_interrupted:
-            logging.warning("Training interrupted before starting")
-            return {}
-
-        # Train the model
-        total_updates = cfg.training.total_updates
-        total_steps = total_updates * cfg.training.buffer_size
-
-        logging.info(f"🚀 Starting training for approximately {total_steps} steps ({total_updates} updates)")
-
+            logger.warning("Training interrupted before starting")
+            return {"interrupted": True}
+        
         # Start training metrics
         if metrics_integrator:
             metrics_integrator.start_training()
-
-        # Evaluate before training if in continuous mode
-        if continuous_mode and getattr(cfg.training, 'startup_evaluation', False) and load_best_model:
-            if training_interrupted:
-                logging.warning("Training interrupted before startup evaluation")
-                return {}
-
-            logging.info("🔍 Performing initial evaluation...")
-            try:
-                eval_stats = current_trainer.evaluate(n_episodes=5)
-                logging.info(f"📊 Initial evaluation results: Mean reward: {eval_stats.get('mean_reward', 'N/A')}")
-            except Exception as e:
-                if training_interrupted:
-                    logging.warning("Evaluation interrupted by user")
-                else:
-                    logging.error(f"Error during initial evaluation: {e}")
-
-        if training_interrupted:
-            logging.warning("Training interrupted")
-            return {}
-
+        
+        # Main training loop
+        logger.info(f"🚀 Starting training for {config.training.total_updates} updates")
+        logger.info(f"   ({config.training.total_updates * config.training.rollout_steps:,} steps)")
+        
         try:
-            # Main training loop
-            training_stats = current_trainer.train(
-                total_training_steps=total_steps,
-                eval_freq_steps=total_steps // 10  # Evaluate 10 times during training
+            training_stats = trainer.train(
+                total_training_steps=config.training.total_updates * config.training.rollout_steps,
+                eval_freq_steps=config.training.eval_frequency * config.training.rollout_steps
             )
-
-            # Handle training completion
+            
             if training_interrupted:
-                logging.warning("⚠️ Training was interrupted by user")
-                training_stats = {
-                    "interrupted": True,
-                    "completed_updates": getattr(current_trainer, 'global_update_counter', 0),
-                    "total_planned_updates": total_updates
-                }
+                logger.warning("⚠️ Training was interrupted by user")
+                training_stats["interrupted"] = True
             else:
-                logging.info("🎉 Training completed successfully!")
-                training_stats = {
-                    "total_episodes": getattr(current_trainer, 'global_episode_counter', 0),
-                    "total_steps": getattr(current_trainer, 'global_step_counter', 0),
-                    "completed_updates": getattr(current_trainer, 'global_update_counter', 0),
-                    "interrupted": False
-                }
-
+                logger.info("🎉 Training completed successfully!")
+            
             return training_stats
-
+            
         except KeyboardInterrupt:
-            logging.warning("⚠️ Training interrupted by user")
+            logger.warning("⚠️ Training interrupted by user")
             return {"interrupted": True}
-
+        
     except Exception as e:
-        logging.error(f"Critical error: {e}")
-        return {"error": str(e)}
-
+        logger.error(f"Critical error during training: {e}", exc_info=True)
+        raise
+    
     finally:
+        # Check for unused configs
+        check_unused_configs()
+        
+        # Cleanup
         cleanup_resources()
+        
+        if config.wandb.enabled:
+            wandb.finish()
 
 
 def main():
-    """Main entry point with error handling"""
-    os.environ["HYDRA_FULL_ERROR"] = "1"
-    os.environ["HYDRA_STRICT_CFG"] = "0"
-
-    # Set UTF-8 encoding for Windows
-    if os.name == 'nt':
-        os.environ['PYTHONIOENCODING'] = 'utf-8'
-
+    """Main entry point"""
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    if hasattr(signal, 'SIGTERM'):
+        signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Parse arguments
+    parser = argparse.ArgumentParser(description="FX-AI Trading System")
+    parser.add_argument('--config', type=str, default=None,
+                        help='Config override file (e.g., quick_test, production)')
+    parser.add_argument('--experiment', type=str, default=None,
+                        help='Experiment name')
+    parser.add_argument('--symbol', type=str, default=None,
+                        help='Trading symbol (overrides config)')
+    parser.add_argument('--continue', dest='continue_training', action='store_true',
+                        help='Continue from latest checkpoint')
+    parser.add_argument('--device', type=str, choices=['cuda', 'cpu', 'mps'], default=None,
+                        help='Device to use for training')
+    
+    args = parser.parse_args()
+    
     try:
-        run_training()
-    except KeyboardInterrupt:
-        console.print("\n[bold red]Training interrupted by user[/bold red]")
-        cleanup_resources()
-        sys.exit(0)
+        # Load configuration
+        config = load_config(args.config)
+        
+        # Apply command line overrides
+        if args.experiment:
+            config.experiment_name = args.experiment
+        if args.symbol:
+            config.env.symbol = args.symbol
+            config.data.symbols = [args.symbol]
+        if args.continue_training:
+            config.training.continue_training = True
+        if args.device:
+            config.training.device = args.device
+        
+        # Log configuration
+        console.print(f"[bold green]Loaded configuration:[/bold green] {args.config or 'defaults'}")
+        if args.symbol:
+            console.print(f"[bold blue]Symbol override:[/bold blue] {args.symbol}")
+        if args.continue_training:
+            console.print(f"[bold yellow]Continuing from checkpoint[/bold yellow]")
+        
+        # Run training
+        train(config)
+        
+    except FileNotFoundError as e:
+        console.print(f"[bold red]Config file not found:[/bold red] {e}")
+        console.print("Available configs in config/overrides/:")
+        overrides_dir = Path("config/overrides")
+        if overrides_dir.exists():
+            for f in overrides_dir.glob("*.yaml"):
+                console.print(f"  - {f.stem}")
+        sys.exit(1)
     except Exception as e:
-        console.print(f"[bold red]Error running training: {e}[/bold red]")
-        console.print("Trying to continue with default configuration...")
-        try:
-            from config.config import Config
-            config = Config()
-            config.data.data_dir = "./dnb/mlgo"
-            config.data.symbol_info_file = "./dnb/mlgo/symbols.json"
-            run_training(config)
-        except Exception as e2:
-            console.print(f"[bold red]Failed to run with default config: {e2}[/bold red]")
-            sys.exit(1)
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise
     finally:
         cleanup_resources()
 

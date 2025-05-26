@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import yaml
 import numpy as np
 
+from config.schemas import Config
 from rewards.core import RewardAggregator, RewardState
 from rewards.components import (
     RealizedPnLReward,
@@ -21,7 +22,6 @@ from rewards.components import (
 )
 from rewards.metrics import RewardMetricsTracker
 from simulators.portfolio_simulator import PortfolioState, FillDetails, PositionSideEnum
-from config.config import Config
 
 
 @dataclass

@@ -1,0 +1,15 @@
+# Low risk experiment configuration
+env:
+  max_position_size: 0.5  # Only use 50% of capital
+  stop_loss_pct: 0.05     # Tight 5% stop loss
+  daily_loss_limit: 0.1   # 10% daily loss limit
+  
+  reward_v2:
+    drawdown_penalty:
+      coefficient: 2.0    # Higher penalty for drawdowns
+    risk_penalty:
+      enabled: true
+      coefficient: 1.0
+
+training:
+  entropy_coef: 0.02      # More exploration
