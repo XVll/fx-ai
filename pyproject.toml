@@ -7,11 +7,33 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-backtest = "poetry run python scripts/run.py backtest --symbol MLGO --start-date 2025-03-27 --end-date 2025-03-27"
-train = "poetry run python scripts/run.py train --continue-training --symbol MLGO"
-test = "poetry run python -m pytest tests/ -xvs"
+# Training Tasks
 init = "poetry run python scripts/run.py train --symbol MLGO"
+train = "poetry run python scripts/run.py train --continue-training --symbol MLGO"
 quick = "poetry run python scripts/run.py train --quick-test --symbol MLGO"
+
+# Training with custom dates
+train-date = "poetry run python scripts/run.py train --continue-training --symbol MLGO --start-date 2025-01-01 --end-date 2025-01-31"
+train-days = "poetry run python scripts/run.py train --continue-training --symbol MLGO --days 5"
+
+# Backtesting Tasks  
+backtest = "poetry run python scripts/run.py backtest --symbol MLGO --start-date 2025-01-15 --end-date 2025-01-15"
+backtest-week = "poetry run python scripts/run.py backtest --symbol MLGO --start-date 2025-01-13 --end-date 2025-01-17"
+backtest-month = "poetry run python scripts/run.py backtest --symbol MLGO --start-date 2025-01-01 --end-date 2025-01-31"
+
+# Hyperparameter Optimization
+sweep = "poetry run python scripts/sweep.py --count 20"
+sweep-quick = "poetry run python scripts/sweep.py --count 5"
+sweep-long = "poetry run python scripts/sweep.py --count 50"
+
+# Testing
+test = "poetry run python -m pytest tests/ -xvs"
+test-fast = "poetry run python -m pytest tests/ -x --tb=short"
+
+# Utility Tasks
+clean = "rm -rf outputs/* wandb/* __pycache__"
+setup = "wandb login"
+dashboard = "echo 'Dashboard will auto-launch during training at http://localhost:8050'"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
@@ -31,6 +53,7 @@ dash = "^2.14.0"
 plotly = "^5.18.0"
 
 [tool.poetry.group.dev.dependencies]
+poethepoet = "^0.24.0"
 # pytest = "^7.0"
 
 [build-system]

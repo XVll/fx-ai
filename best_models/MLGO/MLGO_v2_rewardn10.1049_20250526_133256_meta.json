@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "timestamp": "20250526_133256",
+  "reward": -10.10493240080467,
+  "metrics": {
+    "actor_loss": -0.01971807291265577,
+    "critic_loss": 0.016863141646899747,
+    "entropy": 2.399286833405495,
+    "clipfrac": 0.32900390625,
+    "approx_kl": 0.010444131432450376,
+    "value_function_explained_variance": 0.2989533848129213,
+    "gradient_norm": 0.7150424809660763,
+    "global_step_counter": 8192,
+    "global_episode_counter": 18,
+    "global_update_counter": 2,
+    "collected_steps": 4096,
+    "mean_reward": -10.10493240080467,
+    "std_reward": 4.608729525105757,
+    "mean_episode_length": 350.90909090909093,
+    "num_episodes_in_rollout": 11,
+    "rollout_time": 130.3312885761261,
+    "steps_per_second": 31.42760303185017,
+    "invalid_actions": 626,
+    "update_iter": 2,
+    "timestamp": 1748255576.6619253
+  },
+  "source": "/mnt/c/Users/Fx/PycharmProjects/fx-ai/outputs/2025-05-26/13-15-26/models/checkpoint_iter2_mean_reward-10.1049.pt",
+  "symbol": "MLGO"
+}
