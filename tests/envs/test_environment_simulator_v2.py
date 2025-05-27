@@ -67,9 +67,6 @@ class TestEnvironmentSimulator:
                 'market_impact_model': 'linear',
                 'slippage_model': 'proportional'
             },
-            'execution': {
-                'max_position_size': 100000
-            },
             'reward': {
                 'system_version': 'v2',
                 'components': [
@@ -192,22 +189,19 @@ class TestEnvironmentSimulator:
         """Mock MarketSimulatorV2."""
         simulator = Mock(spec=MarketSimulatorV2)
         
-        # Default market state - configure as a side_effect to handle any timestamp
-        def get_market_state_mock(timestamp):
-            return MarketState(
-                timestamp=timestamp,
-                bid_price=10.00,
-                ask_price=10.02,
-                bid_size=5000,
-                ask_size=5000,
-                last_price=10.01,
-                last_size=100,
-                volume=100000,
-                is_halted=False,
-                spread=0.02
-            )
-        
-        simulator.get_market_state.side_effect = get_market_state_mock
+        # Default market state
+        simulator.get_market_state.return_value = MarketState(
+            timestamp=pd.Timestamp.now(),
+            bid_price=10.00,
+            ask_price=10.02,
+            bid_size=5000,
+            ask_size=5000,
+            last_price=10.01,
+            last_size=100,
+            volume=100000,
+            is_halted=False,
+            spread=0.02
+        )
         
         simulator.current_timestamp = pd.Timestamp.now()
         simulator.is_market_open.return_value = True
@@ -243,18 +237,19 @@ class TestEnvironmentSimulator:
         simulator = Mock(spec=PortfolioSimulator)
         
         # Default portfolio state
-        simulator.get_portfolio_state.return_value = PortfolioState(
+        simulator.get_state.return_value = PortfolioState(
             timestamp=pd.Timestamp.now(),
             cash=100000,
-            total_equity=100000,
-            unrealized_pnl=0,
-            realized_pnl_session=0,
             positions={},
-            total_commissions_session=0,
-            total_fees_session=0,
-            total_slippage_cost_session=0,
-            total_volume_traded_session=0,
-            total_turnover_session=0
+            total_value=100000,
+            buying_power=100000,
+            margin_used=0,
+            realized_pnl=0,
+            unrealized_pnl=0,
+            total_pnl=0,
+            trade_count=0,
+            win_count=0,
+            loss_count=0
         )
         
         return simulator
@@ -266,8 +261,7 @@ class TestEnvironmentSimulator:
         
         # Return sample features
         extractor.extract_features.return_value = np.random.randn(150)  # 150 features
-        # Note: feature_dim is not an actual attribute of FeatureExtractor,
-        # but we set it here for test purposes as the environment may expect it
+        extractor.get_feature_names.return_value = [f'feature_{i}' for i in range(150)]
         extractor.feature_dim = 150
         
         return extractor
@@ -309,15 +303,6 @@ class TestEnvironmentSimulator:
         env.portfolio_simulator = mock_portfolio_simulator
         env.feature_extractor = mock_feature_extractor
         env.reward_system = mock_reward_system
-        
-        # Create execution handler with mocked components
-        from envs.environment_simulator import ExecutionHandler
-        env.execution_handler = ExecutionHandler(
-            config=config,
-            execution_simulator=mock_execution_simulator,
-            portfolio_simulator=mock_portfolio_simulator,
-            logger=Mock()
-        )
         
         return env
     
@@ -419,9 +404,6 @@ class TestEnvironmentSimulator:
     
     def test_step_action_decoding(self, environment, mock_execution_simulator):
         """Test action decoding and delegation to execution simulator."""
-        print(f"DEBUG test: mock_execution_simulator id = {id(mock_execution_simulator)}")
-        print(f"DEBUG test: env.execution_simulator id = {id(environment.execution_simulator)}")
-        print(f"DEBUG test: env.execution_handler.execution_simulator id = {id(environment.execution_handler.execution_simulator)}")
         environment.reset()
         
         # Test different action combinations
@@ -437,7 +419,7 @@ class TestEnvironmentSimulator:
         
         for action, expected_type, expected_size in test_cases:
             # Clear previous calls
-            # mock_execution_simulator.reset_mock()  # TEMPORARY: Commenting out to debug
+            mock_execution_simulator.reset_mock()
             
             # Take step
             obs, reward, terminated, truncated, info = environment.step(action)
@@ -450,28 +432,28 @@ class TestEnvironmentSimulator:
                 mock_execution_simulator.simulate_execution.assert_called_once()
                 call_args = mock_execution_simulator.simulate_execution.call_args
                 
-                # Check the call arguments
-                assert call_args.kwargs['order_side'] == expected_type
-                assert 'requested_quantity' in call_args.kwargs
-                # Note: requested_quantity will be the actual share count, not fraction
+                assert call_args.kwargs['side'] == expected_type
+                assert 'size_fraction' in call_args.kwargs
+                assert abs(call_args.kwargs['size_fraction'] - expected_size) < 0.01
     
     def test_episode_termination_conditions(self, environment, mock_portfolio_simulator):
         """Test various episode termination conditions."""
         environment.reset()
         
         # Test 1: Max loss termination
-        mock_portfolio_simulator.get_portfolio_state.return_value = PortfolioState(
+        mock_portfolio_simulator.get_state.return_value = PortfolioState(
             timestamp=pd.Timestamp.now(),
             cash=95000,
-            total_equity=94000,  # 6% loss
-            unrealized_pnl=0,
-            realized_pnl_session=-6000,
             positions={},
-            total_commissions_session=5,
-            total_fees_session=0,
-            total_slippage_cost_session=0,
-            total_volume_traded_session=10000,
-            total_turnover_session=0.1
+            total_value=94000,  # 6% loss
+            buying_power=94000,
+            margin_used=0,
+            realized_pnl=-6000,
+            unrealized_pnl=0,
+            total_pnl=-6000,
+            trade_count=1,
+            win_count=0,
+            loss_count=1
         )
         
         obs, reward, terminated, truncated, info = environment.step((0, 0))
@@ -480,18 +462,19 @@ class TestEnvironmentSimulator:
         
         # Test 2: Bankruptcy termination
         environment.reset()
-        mock_portfolio_simulator.get_portfolio_state.return_value = PortfolioState(
+        mock_portfolio_simulator.get_state.return_value = PortfolioState(
             timestamp=pd.Timestamp.now(),
             cash=50,
-            total_equity=50,  # Almost bankrupt
-            unrealized_pnl=0,
-            realized_pnl_session=-99950,
             positions={},
-            total_commissions_session=50,
-            total_fees_session=0,
-            total_slippage_cost_session=0,
-            total_volume_traded_session=200000,
-            total_turnover_session=2.0
+            total_value=50,  # Almost bankrupt
+            buying_power=50,
+            margin_used=0,
+            realized_pnl=-99950,
+            unrealized_pnl=0,
+            total_pnl=-99950,
+            trade_count=10,
+            win_count=0,
+            loss_count=10
         )
         
         obs, reward, terminated, truncated, info = environment.step((0, 0))
@@ -616,17 +599,18 @@ class TestEnvironmentSimulator:
         mock_state = PortfolioState(
             timestamp=pd.Timestamp.now(),
             cash=50000,
-            total_equity=100000,
-            unrealized_pnl=0,
-            realized_pnl_session=0,
             positions={'MLGO': {'quantity': 5000, 'side': 'long'}},
-            total_commissions_session=5,
-            total_fees_session=0,
-            total_slippage_cost_session=0,
-            total_volume_traded_session=50000,
-            total_turnover_session=0.5
+            total_value=100000,
+            buying_power=50000,
+            margin_used=0,
+            realized_pnl=0,
+            unrealized_pnl=0,
+            total_pnl=0,
+            trade_count=1,
+            win_count=0,
+            loss_count=0
         )
-        environment.portfolio_simulator.get_portfolio_state.return_value = mock_state
+        environment.portfolio_simulator.get_state.return_value = mock_state
         
         # Try to buy more when already have position (invalid)
         obs, reward, terminated, truncated, info = environment.step((1, 3))  # Buy 100%
@@ -651,9 +635,6 @@ class TestEnvironmentSimulator:
         mock_state = PortfolioState(
             timestamp=pd.Timestamp.now(),
             cash=50000,
-            total_equity=102500,
-            unrealized_pnl=2500,
-            realized_pnl_session=0,
             positions={'MLGO': {
                 'quantity': 5000,
                 'side': 'long',
@@ -661,13 +642,17 @@ class TestEnvironmentSimulator:
                 'current_price': 10.5,
                 'unrealized_pnl': 2500
             }},
-            total_commissions_session=5,
-            total_fees_session=0,
-            total_slippage_cost_session=0,
-            total_volume_traded_session=50000,
-            total_turnover_session=0.5
+            total_value=102500,
+            buying_power=50000,
+            margin_used=0,
+            realized_pnl=0,
+            unrealized_pnl=2500,
+            total_pnl=2500,
+            trade_count=1,
+            win_count=0,
+            loss_count=0
         )
-        environment.portfolio_simulator.get_portfolio_state.return_value = mock_state
+        environment.portfolio_simulator.get_state.return_value = mock_state
         
         # Force episode end
         environment.episode_state.start_time = pd.Timestamp.now() - pd.Timedelta(hours=5)
@@ -820,12 +805,12 @@ class TestActionDecoder:
         with pytest.raises(ValueError):
             decoder.decode((0, 4))  # Invalid position size
         
-        # Wrong format - commented out as decoder may accept various formats
-        # with pytest.raises(ValueError):
-        #     decoder.decode([1, 2, 3])  # Too many dimensions
+        # Wrong format
+        with pytest.raises(ValueError):
+            decoder.decode([1, 2, 3])  # Too many dimensions
         
-        # with pytest.raises(ValueError):
-        #     decoder.decode(5)  # Single value instead of tuple
+        with pytest.raises(ValueError):
+            decoder.decode(5)  # Single value instead of tuple
 
 
 class TestEpisodeState:
