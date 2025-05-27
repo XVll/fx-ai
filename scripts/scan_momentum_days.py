@@ -1,7 +1,7 @@
 """Script to scan databento files and create momentum indices.
 
 Usage:
-    python scripts/scan_momentum_days.py --data-dir dnb/Mlgo --output-dir outputs/indices
+    python scripts/scan_momentum_days.py --data-dir dnb/mlgo --output-dir outputs/indices
 """
 
 import argparse
@@ -18,7 +18,7 @@ from utils.logger import setup_logger
 
 def main():
     parser = argparse.ArgumentParser(description="Scan for momentum days and create indices")
-    parser.add_argument('--data-dir', type=str, default='dnb/Mlgo',
+    parser.add_argument('--data-dir', type=str, default='dnb/mlgo',
                        help='Directory containing Databento files')
     parser.add_argument('--output-dir', type=str, default='outputs/indices',
                        help='Directory to save index files')
