@@ -1,3 +1,5 @@
+# Todo :
+* Add a halt state feature and LULD levels.
 # Feature System Documentation
 
 ## Overview

@@ -1,5 +1,7 @@
 # Todo :
 * We need to teach about "HALT" status to model and include this in our environment.
+* We also need a feature to handle "HALT" status in the environment.
+* How do we teach the model about "HALT" status? We do not have LULD data, so we need to create a synthetic feature that simulates the "HALT" status.
 # Trading Environment Redesign - Final Implementation Plan
 
 ## Overview
