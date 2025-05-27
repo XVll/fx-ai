@@ -1005,6 +1005,348 @@ class MarketSimulatorV2:
             return 0, 0
             
         return bars['high'].max(), bars['low'].min()
+        
+    def get_current_market_state(self, window_config: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
+        """Get current market state with uniform windows for feature system.
+        
+        This method provides the expected data format for the feature extraction system,
+        converting sparse data into uniform timelines with appropriate forward filling.
+        
+        Args:
+            window_config: Optional window sizes {
+                'hf_window_seconds': 60,  # High-frequency window in seconds
+                'mf_1m_window_bars': 60,  # Number of 1-minute bars
+                'mf_5m_window_bars': 60   # Number of 5-minute bars
+            }
+            
+        Returns:
+            Dictionary with market state matching feature system expectations
+        """
+        if self.current_timestamp is None:
+            raise ValueError("No current timestamp set. Call get_market_state() first.")
+            
+        # Default window sizes
+        if window_config is None:
+            window_config = {
+                'hf_window_seconds': 60,
+                'mf_1m_window_bars': 60,
+                'mf_5m_window_bars': 60
+            }
+            
+        # Get current market state
+        current_state = self.get_market_state(self.current_timestamp)
+        
+        # Get market session
+        market_session = self._get_market_session(self.current_timestamp)
+        
+        # Get previous day data
+        previous_day_data = self._get_previous_day_data()
+        
+        # Get intraday high/low
+        intraday_high, intraday_low = self._get_intraday_highs_lows(self.current_timestamp)
+        
+        # Generate uniform windows
+        hf_window = self._generate_hf_window(
+            self.current_timestamp, 
+            window_config['hf_window_seconds']
+        )
+        
+        bars_1m_window = self._generate_bar_window(
+            self.current_timestamp,
+            window_config['mf_1m_window_bars'],
+            '1m'
+        )
+        
+        bars_5m_window = self._generate_bar_window(
+            self.current_timestamp,
+            window_config['mf_5m_window_bars'],
+            '5m'
+        )
+        
+        # Get current 1s bar
+        current_1s_bar = hf_window[-1]['1s_bar'] if hf_window else self._create_synthetic_bar(
+            self.current_timestamp, current_state.last_price
+        )
+        
+        return {
+            'timestamp_utc': self.current_timestamp,
+            'market_session': market_session,
+            'current_price': current_state.last_price,
+            'best_bid_price': current_state.bid_price,
+            'best_ask_price': current_state.ask_price,
+            'mid_price': (current_state.bid_price + current_state.ask_price) / 2,
+            'best_bid_size': current_state.bid_size,
+            'best_ask_size': current_state.ask_size,
+            'intraday_high': intraday_high,
+            'intraday_low': intraday_low,
+            'previous_day_close': previous_day_data.get('close', 0),
+            'previous_day_data': previous_day_data,
+            'current_1s_bar': current_1s_bar,
+            'hf_data_window': hf_window,
+            '1m_bars_window': bars_1m_window,
+            '5m_bars_window': bars_5m_window
+        }
+        
+    def _generate_hf_window(self, end_timestamp: pd.Timestamp, 
+                           window_seconds: int) -> List[Dict[str, Any]]:
+        """Generate uniform high-frequency window with 1s resolution.
+        
+        Creates a uniform timeline with trades, quotes, and 1s bars,
+        forward filling missing data as needed.
+        """
+        # Create uniform 1s timeline
+        start_timestamp = end_timestamp - pd.Timedelta(seconds=window_seconds - 1)
+        timeline = pd.date_range(start_timestamp, end_timestamp, freq='1s')
+        
+        # Get sparse data for the window (including some buffer for forward fill)
+        lookback_minutes = max(10, window_seconds // 60 + 5)  # Extra buffer for finding last known values
+        ohlcv_window = self.get_historical_bars(end_timestamp, lookback_minutes=lookback_minutes)
+        quotes_window = self.get_historical_quotes(end_timestamp, lookback_minutes=lookback_minutes)
+        trades_window = self.get_historical_trades(end_timestamp, lookback_minutes=lookback_minutes)
+        
+        # If no data in window, try to get ANY historical data for forward fill
+        if ohlcv_window.empty and self.ohlcv_1s is not None and not self.ohlcv_1s.empty:
+            # Get last known price from all available data
+            last_data = self.ohlcv_1s[self.ohlcv_1s.index <= end_timestamp]
+            if not last_data.empty:
+                ohlcv_window = last_data.tail(1)  # Just the last known bar
+        
+        # Process each second in the timeline
+        hf_window = []
+        last_known_price = None
+        last_known_quote = {'bid_price': None, 'ask_price': None, 'bid_size': 100, 'ask_size': 100}
+        
+        for ts in timeline:
+            # Get or create 1s bar
+            if ts in self.ohlcv_index and not ohlcv_window.empty:
+                bar_data = ohlcv_window.loc[ts].to_dict()
+                is_synthetic = False
+                last_known_price = bar_data['close']
+            else:
+                # Create synthetic bar
+                if last_known_price is None:
+                    # Try to find any previous price
+                    if not ohlcv_window.empty:
+                        prev_bars = ohlcv_window[ohlcv_window.index <= ts]
+                        if not prev_bars.empty:
+                            last_known_price = prev_bars.iloc[-1]['close']
+                        else:
+                            last_known_price = 0
+                    else:
+                        last_known_price = 0
+                        
+                bar_data = self._create_synthetic_bar(ts, last_known_price)
+                is_synthetic = True
+                
+            # Get trades for this second
+            second_trades = []
+            if not trades_window.empty:
+                # For the last timestamp, include trades at exactly that time
+                if ts == timeline[-1]:
+                    mask = (trades_window.index >= ts) & (trades_window.index <= ts)
+                else:
+                    mask = (trades_window.index >= ts) & (trades_window.index < ts + pd.Timedelta(seconds=1))
+                second_trades_df = trades_window[mask]
+                
+                # Get quote at beginning of second for trade classification
+                quote_at_ts = self._get_quote_at_timestamp(ts)
+                bid_price = quote_at_ts.get('bid_price', last_known_quote['bid_price'])
+                ask_price = quote_at_ts.get('ask_price', last_known_quote['ask_price'])
+                
+                for _, trade in second_trades_df.iterrows():
+                    # Classify trade as buy/sell based on price vs bid/ask
+                    conditions = []
+                    if bid_price and ask_price:
+                        if trade['price'] >= ask_price:
+                            conditions = ['BUY']
+                        elif trade['price'] <= bid_price:
+                            conditions = ['SELL']
+                            
+                    second_trades.append({
+                        'price': trade['price'],
+                        'size': int(trade.get('size', 100)),
+                        'conditions': conditions
+                    })
+                    
+            # Get quotes for this second
+            second_quotes = []
+            if not quotes_window.empty:
+                mask = (quotes_window.index >= ts) & (quotes_window.index < ts + pd.Timedelta(seconds=1))
+                second_quotes_df = quotes_window[mask]
+                
+                for _, quote in second_quotes_df.iterrows():
+                    quote_dict = {
+                        'bid_price': quote.get('bid_price', last_known_quote['bid_price']),
+                        'ask_price': quote.get('ask_price', last_known_quote['ask_price']),
+                        'bid_size': int(quote.get('bid_size', last_known_quote['bid_size'])),
+                        'ask_size': int(quote.get('ask_size', last_known_quote['ask_size']))
+                    }
+                    second_quotes.append(quote_dict)
+                    # Update last known quote
+                    for key in ['bid_price', 'ask_price', 'bid_size', 'ask_size']:
+                        if quote_dict[key] is not None:
+                            last_known_quote[key] = quote_dict[key]
+                            
+            # If no quotes in this second, use last known quote
+            if not second_quotes and any(v is not None for v in last_known_quote.values()):
+                second_quotes = [last_known_quote.copy()]
+                
+            # Construct HF data entry
+            hf_entry = {
+                'timestamp': ts,
+                'trades': second_trades,
+                'quotes': second_quotes,
+                '1s_bar': {
+                    'timestamp': ts,
+                    'open': bar_data.get('open', last_known_price),
+                    'high': bar_data.get('high', last_known_price),
+                    'low': bar_data.get('low', last_known_price),
+                    'close': bar_data.get('close', last_known_price),
+                    'volume': bar_data.get('volume', 0),
+                    'is_synthetic': is_synthetic
+                }
+            }
+            
+            hf_window.append(hf_entry)
+            
+        return hf_window
+        
+    def _generate_bar_window(self, end_timestamp: pd.Timestamp,
+                            num_bars: int, freq: str) -> List[Dict[str, Any]]:
+        """Generate uniform bar window at specified frequency.
+        
+        Args:
+            end_timestamp: End of window (inclusive)
+            num_bars: Number of bars to generate
+            freq: Frequency string ('1m' or '5m')
+            
+        Returns:
+            List of bar dictionaries
+        """
+        # Calculate start time
+        freq_minutes = 1 if freq == '1m' else 5
+        start_timestamp = end_timestamp - pd.Timedelta(minutes=freq_minutes * num_bars)
+        
+        # Create timeline aligned to frequency boundaries
+        # Align end timestamp to frequency boundary
+        aligned_end = end_timestamp.floor(f'{freq_minutes}min')
+        if aligned_end < end_timestamp:
+            aligned_end += pd.Timedelta(minutes=freq_minutes)
+            
+        timeline = pd.date_range(
+            end=aligned_end,
+            periods=num_bars,
+            freq=f'{freq_minutes}min'
+        )
+        
+        # Get 1s data for aggregation
+        ohlcv_1s = self.get_historical_bars(
+            end_timestamp,
+            lookback_minutes=num_bars * freq_minutes + 1
+        )
+        
+        bars = []
+        last_known_price = None
+        
+        for bar_time in timeline:
+            bar_start = bar_time
+            bar_end = bar_time + pd.Timedelta(minutes=freq_minutes)
+            
+            if not ohlcv_1s.empty:
+                # Get 1s bars within this time window
+                mask = (ohlcv_1s.index >= bar_start) & (ohlcv_1s.index < bar_end)
+                bar_data = ohlcv_1s[mask]
+                
+                if not bar_data.empty:
+                    # Aggregate to create bar
+                    bar = {
+                        'timestamp': bar_time,
+                        'open': bar_data.iloc[0]['open'],
+                        'high': bar_data['high'].max(),
+                        'low': bar_data['low'].min(),
+                        'close': bar_data.iloc[-1]['close'],
+                        'volume': bar_data['volume'].sum(),
+                        'is_synthetic': False
+                    }
+                    last_known_price = bar['close']
+                else:
+                    # Create synthetic bar
+                    if last_known_price is None:
+                        # Find last known price before this bar
+                        prev_data = ohlcv_1s[ohlcv_1s.index < bar_start]
+                        if not prev_data.empty:
+                            last_known_price = prev_data.iloc[-1]['close']
+                        else:
+                            last_known_price = 0
+                            
+                    bar = self._create_synthetic_bar(bar_time, last_known_price)
+            else:
+                # No data at all - create synthetic bar
+                if last_known_price is None:
+                    last_known_price = 0
+                bar = self._create_synthetic_bar(bar_time, last_known_price)
+                
+            bars.append(bar)
+            
+        return bars
+        
+    def _create_synthetic_bar(self, timestamp: pd.Timestamp, price: float) -> Dict[str, Any]:
+        """Create a synthetic bar when no real data exists."""
+        return {
+            'timestamp': timestamp,
+            'open': price,
+            'high': price,
+            'low': price,
+            'close': price,
+            'volume': 0,
+            'is_synthetic': True
+        }
+        
+    def _get_market_session(self, timestamp: pd.Timestamp) -> str:
+        """Determine market session based on timestamp."""
+        hour = timestamp.hour
+        minute = timestamp.minute
+        
+        # Convert to market time (assuming EST)
+        if hour < 4:
+            return 'CLOSED'
+        elif hour < 9 or (hour == 9 and minute < 30):
+            return 'PREMARKET'
+        elif hour < 16:
+            return 'REGULAR'
+        elif hour < 20:
+            return 'POSTMARKET'
+        else:
+            return 'CLOSED'
+            
+    def _get_previous_day_data(self) -> Dict[str, float]:
+        """Get previous day's data if available."""
+        # This would need access to previous day data through DataManager
+        # For now, return empty dict
+        return {
+            'open': 0,
+            'high': 0,
+            'low': 0,
+            'close': 0,
+            'volume': 0
+        }
+        
+    def _get_intraday_highs_lows(self, until_timestamp: pd.Timestamp) -> Tuple[float, float]:
+        """Get intraday high and low up to current timestamp."""
+        # Get all data from market open (9:30) to current time
+        market_open = until_timestamp.replace(hour=9, minute=30, second=0, microsecond=0)
+        
+        if until_timestamp < market_open:
+            # Pre-market - use all available data
+            bars = self.get_historical_bars(until_timestamp)
+        else:
+            bars = self.get_historical_bars(until_timestamp)
+            bars = bars[bars.index >= market_open]
+            
+        if bars.empty:
+            return 0, 0
+            
+        return bars['high'].max(), bars['low'].min()
     
     def is_market_open(self) -> bool:
         """Check if market is currently open."""
