@@ -12,7 +12,7 @@ from gymnasium import spaces
 
 from config.schemas import Config
 from data.data_manager import DataManager
-from envs.reward import RewardCalculator
+from envs.reward import RewardCalculator  # Deprecated - use RewardSystemV2
 from rewards.calculator import RewardSystemV2
 from feature.feature_extractor import FeatureExtractor
 from simulators.execution_simulator import ExecutionSimulator
@@ -75,14 +75,14 @@ class TradingEnvironment(gym.Env):
         # Metrics integration
         self.metrics_integrator = metrics_integrator
 
-        self.max_steps_per_episode: int = env_cfg.max_steps
+        self.max_steps_per_episode: int = env_cfg.max_episode_steps or 0
         self.random_reset_within_session: bool = env_cfg.random_reset
         self.max_session_loss_percentage: float = env_cfg.max_episode_loss_percent
         self.bankruptcy_threshold_factor: float = env_cfg.bankruptcy_threshold_factor
-        self.max_invalid_actions_per_episode: int = env_cfg.max_invalid_actions_per_episode
+        self.max_invalid_actions_per_episode: int = env_cfg.invalid_action_limit or 0
 
         # Position sizing configuration
-        self.default_position_value = getattr(config.simulation.portfolio_config, 'default_position_value', 10000.0)
+        self.default_position_value = config.simulation.default_position_value
 
         self.data_manager = data_manager
         self.market_simulator: Optional[MarketSimulator] = None
@@ -90,7 +90,7 @@ class TradingEnvironment(gym.Env):
         self.portfolio_manager: Optional[PortfolioSimulator] = None
         self.feature_extractor: Optional[FeatureExtractor] = None
         self.reward_calculator: Optional[Union[RewardCalculator, RewardSystemV2]] = None
-        self.use_reward_v2 = getattr(env_cfg, 'use_reward_v2', False)
+        self.use_reward_v2 = True  # Always use reward v2
 
         # Action Space
         self.action_types = list(ActionTypeEnum)
@@ -173,9 +173,9 @@ class TradingEnvironment(gym.Env):
         self.market_simulator = MarketSimulator(
             symbol=self.primary_asset,
             data_manager=self.data_manager,
-            simulation_config=self.config.simulation.market_config,
+            simulation_config=self.config.simulation,
             model_config=self.config.model,
-            mode=self.config.env.training_mode,
+            mode="training" if self.config.env.training_mode else "backtesting",
             np_random=self.np_random,
             start_time=self.current_session_start_time_utc,
             end_time=self.current_session_end_time_utc,
@@ -184,8 +184,10 @@ class TradingEnvironment(gym.Env):
 
         self.portfolio_manager = PortfolioSimulator(
             logger=logging.getLogger(f"{__name__}.PortfolioMgr"),
-            config=self.config,
+            env_config=self.config.env,
             tradable_assets=[self.primary_asset],
+            simulation_config=self.config.simulation,
+            model_config=self.config.model,
             trade_callback=self._on_trade_completed
         )
 
@@ -199,7 +201,7 @@ class TradingEnvironment(gym.Env):
         # Initialize reward system based on configuration
         if self.use_reward_v2:
             self.reward_calculator = RewardSystemV2(
-                config=self.config,
+                config=self.config.env.reward_v2,
                 metrics_integrator=self.metrics_integrator,
                 logger=logging.getLogger(f"{__name__}.RewardV2")
             )
@@ -220,10 +222,9 @@ class TradingEnvironment(gym.Env):
             )
 
         self.execution_manager = ExecutionSimulator(
-            logger=logging.getLogger(f"{__name__}.ExecSim"),
-            simulation_config=self.config.simulation.execution_config,
-            np_random=self.np_random,
-            market_simulator=self.market_simulator
+            symbol=self.primary_asset,
+            simulation_config=self.config.simulation,
+            logger=logging.getLogger(f"{__name__}.ExecSim")
         )
 
         self.logger.info("✅ All simulators and managers initialized")

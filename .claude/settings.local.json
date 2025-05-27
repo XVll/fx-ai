@@ -12,7 +12,8 @@
       "Bash(git add:*)",
       "Bash(mkdir:*)",
       "Bash(echo $HOME)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }
