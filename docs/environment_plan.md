@@ -195,152 +195,239 @@ class PositionHandler:
 
 ## Implementation Guide
 
-### Phase 1: Core Scanner Implementation
+### Phase 1: Scanner and Data Integration
+
+**Offline Momentum Scanning**
+
+The momentum scanner runs as an offline process to build an index of high-value trading days:
 
 ```python
-class EpisodeScanner:
-    def scan_single_day(self, symbol: str, date: datetime) -> Dict[str, List[ResetPoint]]:
-        """Scan one day and categorize all reset points"""
+class MomentumIndexBuilder:
+    """Offline scanner that builds momentum index"""
+    
+    def scan_symbol_history(self, symbol: str, start_date: datetime, end_date: datetime):
+        """Scan entire symbol history and build index"""
         
-        # Load full day data
-        day_data = self.data_manager.get_day_data(symbol, date)
+        momentum_days = []
         
-        # Categorized storage
-        reset_points = {
-            'prime_momentum': [],
-            'secondary_momentum': [],
-            'risk_scenarios': [],
-            'dead_zones': [],
-            'time_based': []
-        }
+        for date in pd.date_range(start_date, end_date, freq='D'):
+            # Load day using data manager
+            day_data = self.data_manager.load_day(symbol, date)
+            
+            if day_data is None:
+                continue
+                
+            # Calculate day-level metrics
+            day_metrics = {
+                'symbol': symbol,
+                'date': date,
+                'max_move': (day_data['high'].max() - day_data['low'].min()) / day_data['open'].iloc[0],
+                'volume_ratio': day_data['volume'].sum() / self.avg_volume[symbol],
+                'num_halts': self._count_halts(day_data)
+            }
+            
+            # Only process high-movement days
+            if day_metrics['max_move'] >= 0.1:  # 10%+ movement
+                # Find reset points within the day
+                reset_points = self._scan_for_reset_points(day_data)
+                
+                momentum_days.append({
+                    'day_metrics': day_metrics,
+                    'reset_points': reset_points,
+                    'quality_score': self._calculate_day_quality(day_metrics, reset_points)
+                })
+                
+        # Save to parquet index
+        self._save_momentum_index(momentum_days)
+```
+
+**Runtime Episode Scanner**
+
+```python
+class MomentumEpisodeScanner:
+    """Runtime scanner that uses pre-built index"""
+    
+    def __init__(self, index_path: str):
+        # Load pre-computed indices
+        self.day_index = pd.read_parquet(f"{index_path}/days.parquet")
+        self.reset_index = pd.read_parquet(f"{index_path}/resets.parquet")
         
-        # Scan every minute for patterns
-        for timestamp in pd.date_range(start=day_data.index[0], 
-                                     end=day_data.index[-1], 
-                                     freq='1min'):
-            
-            # Detect momentum phase
-            phase = self._detect_momentum_phase(day_data, timestamp)
-            
-            # Calculate quality metrics
-            metrics = self._calculate_quality_metrics(day_data, timestamp)
-            
-            # Create categorized reset point
-            reset_point = CategorizedResetPoint(
-                timestamp=timestamp,
-                momentum_phase=phase,
-                quality_score=metrics['quality'],
-                volume_ratio=metrics['volume_ratio'],
-                pattern_type=metrics['pattern']
-            )
-            
-            # Categorize
-            if reset_point.quality_score > 0.8:
-                reset_points['prime_momentum'].append(reset_point)
-            elif reset_point.quality_score > 0.6:
-                reset_points['secondary_momentum'].append(reset_point)
-            # ... etc
-            
-        return reset_points
+    def get_training_days(self, symbol: str, quality_threshold: float = 0.6):
+        """Get pre-scanned momentum days for training"""
+        return self.day_index[
+            (self.day_index.symbol == symbol) & 
+            (self.day_index.quality_score >= quality_threshold)
+        ].sort_values('quality_score', ascending=False)
+        
+    def get_reset_points(self, symbol: str, date: datetime):
+        """Get reset points for a specific day"""
+        return self.reset_index[
+            (self.reset_index.symbol == symbol) & 
+            (self.reset_index.date == date.date())
+        ].sort_values('timestamp')
 ```
 
 ### Phase 2: Environment Modifications
 
 ```python
-# Add to TradingEnvironment
-def reset_for_momentum_training(self, reset_point: CategorizedResetPoint):
-    """Reset environment at specific momentum point"""
+class TradingEnvironment:
+    """Updated environment for single-day episodes with multiple resets"""
     
-    # Setup session at reset point
-    self.setup_session(
-        symbol=reset_point.symbol,
-        start_time=reset_point.timestamp,
-        end_time=min(
-            reset_point.timestamp + timedelta(hours=4),
-            reset_point.timestamp.replace(hour=20)  # Market close
+    def setup_day(self, symbol: str, date: datetime):
+        """Load full day's data once for all reset points"""
+        
+        # Load current day and previous day for lookback
+        self.current_day_data = self.data_manager.load_day(
+            symbol=symbol,
+            date=date,
+            include_previous_day=True
         )
-    )
-    
-    # Apply momentum-specific initialization
-    self._apply_momentum_context(reset_point)
-    
-    return self.reset()
+        
+        # Initialize market simulator with day's data
+        self.market_simulator.initialize_day(
+            symbol=symbol,
+            day_data=self.current_day_data
+        )
+        
+        # Pre-compute day-level features
+        self.day_features = self.feature_extractor.compute_day_features(
+            self.current_day_data
+        )
+        
+        # Get all reset points for the day
+        self.day_reset_points = self.episode_scanner.get_reset_points(symbol, date)
+        self.current_reset_idx = 0
+        
+    def reset_at_point(self, reset_point: CategorizedResetPoint):
+        """Reset to specific point within loaded day"""
+        
+        # No new data loading - use pre-loaded day
+        self.current_time = reset_point.timestamp
+        self.market_simulator.set_time(reset_point.timestamp)
+        
+        # Set episode boundaries
+        self.episode_start = reset_point.timestamp
+        self.episode_end = min(
+            reset_point.timestamp + timedelta(hours=4),  # Max duration
+            datetime.combine(reset_point.timestamp.date(), time(20, 0))  # Market close
+        )
+        
+        # Apply momentum context
+        self._apply_momentum_context(reset_point)
+        
+        # Get initial observation
+        return self._get_observation()
 
-def get_episode_termination_info(self) -> Dict[str, Any]:
-    """Get termination info without forcing position closure"""
-    portfolio_state = self.portfolio_manager.get_portfolio_state(
-        self.market_simulator.current_time
-    )
-    
-    position_info = None
-    if self.primary_asset:
-        position = portfolio_state['positions'].get(self.primary_asset, {})
-        if position.get('quantity', 0) != 0:
-            position_info = {
-                'has_position': True,
-                'quantity': position['quantity'],
-                'side': position['current_side'],
-                'unrealized_pnl': position['unrealized_pnl'],
-                'duration': self.current_step  # steps held
-            }
-    
-    return {
-        'portfolio_state': portfolio_state,
-        'position_info': position_info,
-        'termination_reason': self.current_termination_reason,
-        'market_state': self.market_simulator.get_current_market_state()
-    }
+    def step(self, action):
+        """Execute action with awareness of reset boundaries"""
+        
+        # Normal step execution
+        obs, reward, done, truncated, info = super().step(action)
+        
+        # Check if we should transition to next reset point
+        if self._should_transition_reset():
+            info['reset_transition'] = True
+            done = True
+            
+        return obs, reward, done, truncated, info
+        
+    def _should_transition_reset(self):
+        """Check if we should move to next reset point"""
+        
+        # Skip if no more reset points
+        if self.current_reset_idx >= len(self.day_reset_points) - 1:
+            return False
+            
+        next_reset = self.day_reset_points[self.current_reset_idx + 1]
+        
+        # Transition if we're close to next reset
+        time_to_next = (next_reset.timestamp - self.current_time).total_seconds()
+        return time_to_next <= 60  # Within 1 minute
 ```
 
 ### Phase 3: Training Manager
 
 ```python
 class TrainingManager:
-    def __init__(self, config, data_manager, logger):
+    def __init__(self, config, logger):
+        self.config = config
+        self.logger = logger
+        self.data_manager = DataManager(config)
+        self.episode_scanner = MomentumEpisodeScanner(config.index_path)
         self.position_handler = PositionHandler(config, logger)
-        self.episode_scanner = MomentumEpisodeScanner(data_manager, config)
         self.curriculum_selector = CurriculumBasedSelector(config)
         
-    def run_training(self, agent, num_episodes: int):
-        """Main training loop with momentum focus"""
+    def run_training(self, agent, num_days: int):
+        """Main training loop processing full days"""
         
-        # Pre-scan all available days
-        all_reset_points = self._scan_all_training_days()
+        # Get available momentum days from index
+        available_days = self.episode_scanner.get_training_days(
+            self.config.symbol,
+            quality_threshold=0.6
+        )
         
-        for episode in range(num_episodes):
-            # Select reset point based on curriculum
-            reset_point = self._select_by_curriculum(
-                all_reset_points, 
-                episode, 
+        for day_idx in range(num_days):
+            # Select day based on curriculum
+            training_day = self._select_day_by_curriculum(
+                available_days,
+                day_idx,
                 self.performance_tracker
             )
             
-            # Run episode
-            obs = env.reset_for_momentum_training(reset_point)
+            # Load day once
+            self.env.setup_day(training_day.symbol, training_day.date)
+            
+            # Train on all reset points in the day
+            day_metrics = self._train_single_day(agent, training_day)
+            
+            # Update curriculum based on day performance
+            self.curriculum_selector.update(day_metrics)
+            
+            # Pre-load next day in background
+            if day_idx < num_days - 1:
+                next_day = self._select_day_by_curriculum(
+                    available_days, day_idx + 1, self.performance_tracker
+                )
+                self.data_manager.preload_day(next_day.symbol, next_day.date)
+                
+    def _train_single_day(self, agent, training_day):
+        """Train on all reset points within a single day"""
+        
+        day_metrics = {
+            'total_resets': len(self.env.day_reset_points),
+            'completed_resets': 0,
+            'total_pnl': 0,
+            'positions_taken': 0
+        }
+        
+        # Process each reset point
+        for reset_idx, reset_point in enumerate(self.env.day_reset_points):
+            # Reset at point
+            obs = self.env.reset_at_point(reset_point)
             
             done = False
+            episode_pnl = 0
+            
             while not done:
                 action = agent.predict(obs)
-                obs, reward, done, truncated, info = env.step(action)
+                obs, reward, done, truncated, info = self.env.step(action)
+                episode_pnl += info.get('realized_pnl', 0)
                 
-            # Handle open positions at episode end
-            termination_info = env.get_episode_termination_info()
-            position_result = self.position_handler.handle_episode_end(
-                termination_info['portfolio_state'],
-                termination_info['termination_reason'],
-                termination_info['market_state']
+                # Handle reset transitions
+                if info.get('reset_transition', False):
+                    self._handle_reset_transition(reset_idx)
+                    break
+                    
+            day_metrics['completed_resets'] += 1
+            day_metrics['total_pnl'] += episode_pnl
+            
+            # Log reset point completion
+            self.logger.info(
+                f"Reset {reset_idx}/{len(self.env.day_reset_points)} complete: "
+                f"PnL={episode_pnl:.4f}, Phase={reset_point.momentum_phase}"
             )
             
-            # Log position handling
-            if position_result['had_position']:
-                self.logger.info(
-                    f"Episode {episode} ended with position: "
-                    f"forced_exit={position_result.get('forced_exit', False)}, "
-                    f"pnl={position_result.get('realized_pnl', 0):.4f}"
-                )
-                
-            # Track performance by category
-            self._update_performance_tracking(reset_point, info, position_result)
+        return day_metrics
 ```
 
 ## Configuration

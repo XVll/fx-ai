@@ -14,7 +14,9 @@
       "Bash(echo $HOME)",
       "Bash(cp:*)",
       "Bash(sed:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(rm:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }
