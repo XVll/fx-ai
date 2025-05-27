@@ -18,7 +18,7 @@ from config.schemas import (
     DataConfig, SimulationConfig, WandbConfig, DashboardConfig
 )
 from simulators.portfolio_simulator import PortfolioSimulator
-from utils.logger import console, setup_rich_logging
+from utils.logger import console, setup_rich_logging, get_logger
 
 # Import utilities
 from utils.model_manager import ModelManager
@@ -26,9 +26,9 @@ from utils.model_manager import ModelManager
 # Import components
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DatabentoFileProvider
-from simulators.market_simulator import MarketSimulator
+# MarketSimulator is created inside TradingEnvironment during setup_session
 from simulators.execution_simulator import ExecutionSimulator
-from feature.feature_extractor import FeatureExtractor
+# FeatureExtractor is created inside TradingEnvironment
 from envs.trading_env import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from ai.transformer import MultiBranchTransformer
@@ -179,6 +179,7 @@ def create_data_components(config: Config, logger: logging.Logger):
         logger=logger
     )
     
+
     # Market Simulator with SimulationConfig, ModelConfig and symbol
     market_simulator = MarketSimulator(
         symbol=config.env.symbol,
@@ -208,39 +209,45 @@ def create_env_components(config: Config, market_simulator, logger: logging.Logg
     """Create environment and related components with proper config passing"""
     # NOTE: Feature extractor is created inside TradingEnvironment.setup_session()
     # so we don't need to create it here
+
     
     # Trading Environment with full config (for now, will be refactored later)
     env = TradingEnvironment(
         config=config,  # TODO: Refactor to take specific configs
-        data_manager=market_simulator.data_manager,
+        data_manager=data_manager,
         logger=logger,
         metrics_integrator=None  # Will be set later
     )
     
+
     return env
 
 
 def create_metrics_components(config: Config, logger: logging.Logger):
     """Create metrics and dashboard components with proper config passing"""
-    if not config.wandb.enabled:
-        logging.warning("W&B disabled - no metrics will be tracked")
+    # Dashboard can work without W&B - only return None if both are disabled
+    if not config.wandb.enabled and not config.dashboard.enabled:
+        logging.warning("Both W&B and dashboard disabled - no metrics will be tracked")
         return None, None
     
-    logging.info("📊 Initializing metrics system with W&B integration")
+    # Only log about W&B if it's enabled
+    if config.wandb.enabled:
+        logging.info("📊 Initializing metrics system with W&B integration")
+    else:
+        logging.info("📊 Initializing metrics system (W&B disabled)")
     
     # Create run name
     run_name = config.wandb.name
     if not run_name and config.training.continue_training:
         run_name = f"continuous_{config.env.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
-    # Create metrics system with WandbConfig
+    # Create metrics system with WandbConfig (will handle W&B being disabled internally)
     metrics_manager, metrics_integrator = create_trading_metrics_system(
-        project_name=config.wandb.project,
+        project_name=config.wandb.project if config.wandb.enabled else "local",
         symbol=config.env.symbol,
         initial_capital=config.env.initial_capital,
-        entity=config.wandb.entity,
-        run_name=run_name,
-        config=config.model_dump()  # Pass entire config for tracking
+        entity=config.wandb.entity if config.wandb.enabled else None,
+        run_name=run_name
     )
     
     # Start auto-transmission
@@ -253,17 +260,22 @@ def create_metrics_components(config: Config, logger: logging.Logger):
     
     # Enable dashboard if configured
     if config.dashboard.enabled:
-        from dashboard import LiveTradingDashboard
-        from dashboard import DashboardMetricsCollector
+        logging.info(f"Dashboard is enabled, initializing on port {config.dashboard.port}")
+        from dashboard.live_dashboard_v2 import LiveTradingDashboard
+        from dashboard.dashboard_integration import DashboardMetricsCollector
         
         dashboard = LiveTradingDashboard(
             port=config.dashboard.port,
-            update_interval=config.dashboard.update_interval
+            update_interval=int(config.dashboard.update_interval * 1000)  # Convert to milliseconds
         )
         
         dashboard_collector = DashboardMetricsCollector(dashboard)
-        metrics_manager.dashboard_collector = dashboard_collector
-        metrics_manager._dashboard_enabled = True
+        if metrics_manager:
+            metrics_manager.dashboard_collector = dashboard_collector
+            metrics_manager._dashboard_enabled = True
+            logging.info("Dashboard collector attached to metrics manager")
+        else:
+            logging.warning("No metrics manager available for dashboard")
         
         dashboard_collector.start(open_browser=True)
         logging.info(f"🚀 Live dashboard enabled at http://localhost:{config.dashboard.port}")
@@ -361,16 +373,26 @@ def train(config: Config):
     global current_components
     
     # Setup logging
+
     logger = setup_rich_logging(
         level=config.logging.level,
+
     )
+    logger = get_logger("fx-ai")
     
     logger.info("="*80)
     logger.info(f"🚀 Starting FX-AI Training System")
     logger.info(f"📊 Experiment: {config.experiment_name}")
     logger.info(f"📈 Symbol: {config.env.symbol}")
-    logger.info(f"🧠 Model: d_model={config.model.d_model}, layers={config.model.n_layers}")
-    logger.info(f"🎯 Action space: {config.model.action_dim[0]}×{config.model.action_dim[1]}")
+    
+    # Handle both dict and object access patterns
+    model_cfg = config.model
+    d_model = model_cfg.d_model if hasattr(model_cfg, 'd_model') else model_cfg.get('d_model', 64)
+    n_layers = model_cfg.n_layers if hasattr(model_cfg, 'n_layers') else model_cfg.get('n_layers', 4)
+    action_dim = model_cfg.action_dim if hasattr(model_cfg, 'action_dim') else model_cfg.get('action_dim', [3, 4])
+    
+    logger.info(f"🧠 Model: d_model={d_model}, layers={n_layers}")
+    logger.info(f"🎯 Action space: {action_dim[0]}×{action_dim[1]}")
     logger.info("="*80)
     
     # Create output directory
@@ -387,9 +409,10 @@ def train(config: Config):
     # Create components with proper config passing
     try:
         # Data components
-        data_manager, market_simulator = create_data_components(config, logger)
+        data_manager = create_data_components(config, logger)
         current_components['data_manager'] = data_manager
         
+
         # Simulation components (not used, but kept for compatibility)
         _, _ = create_simulation_components(
             config.env, config.simulation, config.model, logger
@@ -398,14 +421,26 @@ def train(config: Config):
         # Environment components
         env = create_env_components(
             config, market_simulator, logger
+
         )
         current_components['env'] = env
         
         # Setup environment session
+        # Use default date range if not specified (last 3 months)
+        if config.data.start_date is None:
+            start_date = "2025-02-01"  # Default start date
+        else:
+            start_date = config.data.start_date
+            
+        if config.data.end_date is None:
+            end_date = "2025-04-29"  # Default end date
+        else:
+            end_date = config.data.end_date
+            
         env.setup_session(
             symbol=config.env.symbol,
-            start_time=config.data.start_date,
-            end_time=config.data.end_date
+            start_time=start_date,
+            end_time=end_date
         )
         
         # Metrics components

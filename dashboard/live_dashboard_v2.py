@@ -1588,7 +1588,7 @@ class LiveTradingDashboard:
         
         # Start Dash server
         self.server_thread = threading.Thread(
-            target=self.app.run_server,
+            target=self.app.run,
             kwargs={'debug': False, 'port': self.port, 'host': '0.0.0.0'}
         )
         self.server_thread.daemon = True
