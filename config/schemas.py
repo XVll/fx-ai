@@ -31,6 +31,7 @@ class ModelConfig(BaseModel):
     n_layers: int = 4
     d_ff: int = 2048
     dropout: float = 0.1
+    d_fused: int = Field(default=512, description="Dimension after fusion")
     
     # Branch-specific heads and layers
     hf_heads: int = 8
@@ -149,6 +150,7 @@ class EnvConfig(BaseModel):
     
     # Invalid action handling
     invalid_action_limit: Optional[int] = Field(default=None, description="Max invalid actions before termination")
+    max_invalid_actions_per_episode: Optional[int] = Field(default=None, description="Alias for invalid_action_limit")
     
     # Reward configuration
     reward_v2: RewardV2Config = Field(default_factory=RewardV2Config)
@@ -158,7 +160,29 @@ class EnvConfig(BaseModel):
     
     # Episode settings
     max_episode_steps: Optional[int] = Field(default=None, description="Max steps per episode")
+    max_steps: Optional[int] = Field(default=None, description="Alias for max_episode_steps")
     early_stop_loss_threshold: float = Field(default=0.9, description="Stop if equity < threshold * initial")
+    random_reset: bool = Field(default=True, description="Random episode start within session")
+    max_episode_loss_percent: float = Field(default=0.2, description="Max loss percentage before termination")
+    bankruptcy_threshold_factor: float = Field(default=0.01, description="Bankruptcy threshold as fraction of initial capital")
+    
+    # Environment settings
+    render_mode: Literal["human", "logs", "none"] = Field(default="none", description="Rendering mode")
+    training_mode: bool = Field(default=True, description="Whether in training mode")
+    
+    @validator('max_invalid_actions_per_episode', always=True)
+    def sync_invalid_action_limit(cls, v, values):
+        """Keep max_invalid_actions_per_episode in sync with invalid_action_limit"""
+        if v is None and 'invalid_action_limit' in values:
+            return values['invalid_action_limit']
+        return v
+    
+    @validator('max_steps', always=True)
+    def sync_max_steps(cls, v, values):
+        """Keep max_steps in sync with max_episode_steps"""
+        if v is None and 'max_episode_steps' in values:
+            return values['max_episode_steps']
+        return v
 
 
 class DataConfig(BaseModel):
@@ -266,6 +290,8 @@ class SimulationConfig(BaseModel):
     # Portfolio configuration
     initial_cash: float = Field(default=25000.0, description="Initial portfolio cash")
     max_position_value_ratio: float = Field(default=1.0, description="Max position value as ratio of portfolio")
+    max_position_holding_seconds: Optional[int] = Field(default=None, description="Max seconds to hold a position")
+    default_position_value: float = Field(default=10000.0, description="Default position value for sizing")
 
 
 class LoggingConfig(BaseModel):

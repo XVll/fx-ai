@@ -179,11 +179,14 @@ def create_data_components(config: Config, logger: logging.Logger):
         logger=logger
     )
     
-    # Market Simulator with SimulationConfig and symbol
+    # Market Simulator with SimulationConfig, ModelConfig and symbol
     market_simulator = MarketSimulator(
-        data_manager=data_manager,
         symbol=config.env.symbol,
+        data_manager=data_manager,
         simulation_config=config.simulation,
+        model_config=config.model,
+        start_time=config.data.start_date,
+        end_time=config.data.end_date,
         logger=logger
     )
     
@@ -192,11 +195,15 @@ def create_data_components(config: Config, logger: logging.Logger):
 
 def create_simulation_components(env_config: EnvConfig, 
                                simulation_config: SimulationConfig,
+                               model_config: ModelConfig,
                                logger: logging.Logger):
     """Create simulation components with proper config passing"""
-    # Portfolio Simulator with EnvConfig
+    # Portfolio Simulator with EnvConfig, SimulationConfig, and ModelConfig
     portfolio_simulator = PortfolioSimulator(
         env_config=env_config,
+        tradable_assets=[env_config.symbol],
+        simulation_config=simulation_config,
+        model_config=model_config,
         logger=logger
     )
     
@@ -406,11 +413,11 @@ def train(config: Config):
         
         # Simulation components
         portfolio_simulator, execution_simulator = create_simulation_components(
-            config.env, config.simulation, logger
+            config.env, config.simulation, config.model, logger
         )
         
         # Environment components
-        env, feature_extractor, reward_calculator = create_env_components(
+        env, feature_extractor = create_env_components(
             config, market_simulator, portfolio_simulator, execution_simulator, logger
         )
         current_components['env'] = env
