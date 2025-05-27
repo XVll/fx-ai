@@ -157,12 +157,12 @@ def create_data_provider(data_config: DataConfig):
     
     if data_config.provider == "databento":
         # Construct paths for databento
-        data_path = Path(data_config.data_dir) / data_config.symbols[0].lower()
-        symbol_info_file = data_path / "symbols.json"
+        # Use the actual directory name which is "Mlgo" with capital M
+        data_path = Path(data_config.data_dir) / "Mlgo"
         
         return DatabentoFileProvider(
             data_dir=str(data_path),
-            symbol_info_file=str(symbol_info_file),
+            symbol_info_file=None,  # Optional CSV file, not needed
             verbose=True,
             dbn_cache_size=10  # Default cache size
         )
@@ -198,37 +198,16 @@ def create_simulation_components(env_config: EnvConfig,
                                model_config: ModelConfig,
                                logger: logging.Logger):
     """Create simulation components with proper config passing"""
-    # Portfolio Simulator with EnvConfig, SimulationConfig, and ModelConfig
-    portfolio_simulator = PortfolioSimulator(
-        env_config=env_config,
-        tradable_assets=[env_config.symbol],
-        simulation_config=simulation_config,
-        model_config=model_config,
-        logger=logger
-    )
-    
-    # Execution Simulator with SimulationConfig
-    execution_simulator = ExecutionSimulator(
-        symbol=env_config.symbol,
-        simulation_config=simulation_config,
-        logger=logger
-    )
-    
-    return portfolio_simulator, execution_simulator
+    # NOTE: These simulators are not actually used by TradingEnvironment
+    # The environment creates its own simulators in setup_session()
+    # This function is kept for backward compatibility but could be removed
+    return None, None
 
 
-def create_env_components(config: Config, market_simulator, portfolio_simulator,
-                         execution_simulator, logger: logging.Logger):
+def create_env_components(config: Config, market_simulator, logger: logging.Logger):
     """Create environment and related components with proper config passing"""
-    # Feature Extractor with ModelConfig
-    feature_extractor = FeatureExtractor(
-        symbol=config.env.symbol,
-        market_simulator=market_simulator,
-        config=config.model,
-        logger=logger
-    )
-    
-    # Reward calculator is created inside TradingEnvironment
+    # NOTE: Feature extractor is created inside TradingEnvironment.setup_session()
+    # so we don't need to create it here
     
     # Trading Environment with full config (for now, will be refactored later)
     env = TradingEnvironment(
@@ -238,7 +217,7 @@ def create_env_components(config: Config, market_simulator, portfolio_simulator,
         metrics_integrator=None  # Will be set later
     )
     
-    return env, feature_extractor
+    return env
 
 
 def create_metrics_components(config: Config, logger: logging.Logger):
@@ -411,14 +390,14 @@ def train(config: Config):
         data_manager, market_simulator = create_data_components(config, logger)
         current_components['data_manager'] = data_manager
         
-        # Simulation components
-        portfolio_simulator, execution_simulator = create_simulation_components(
+        # Simulation components (not used, but kept for compatibility)
+        _, _ = create_simulation_components(
             config.env, config.simulation, config.model, logger
         )
         
         # Environment components
-        env, feature_extractor = create_env_components(
-            config, market_simulator, portfolio_simulator, execution_simulator, logger
+        env = create_env_components(
+            config, market_simulator, logger
         )
         current_components['env'] = env
         
