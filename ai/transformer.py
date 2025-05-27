@@ -1,5 +1,4 @@
 import logging
-
 import torch
 import torch.nn as nn
 import numpy as np
@@ -27,7 +26,6 @@ class MultiBranchTransformer(nn.Module):
             self,
             model_config:ModelConfig,
             device: Union[str, torch.device] = None,
-
             logger: Optional[object] = None  # Logger for debugging
     ):
         super().__init__()

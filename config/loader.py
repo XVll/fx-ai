@@ -51,7 +51,11 @@ class ConfigLoader:
                 
                 # Validate and apply overrides
                 try:
+
+                    # Convert the config to dict, apply overrides, then recreate
+
                     # Apply overrides manually to preserve Pydantic structure
+
                     config_dict = config.model_dump()
                     self._deep_update(config_dict, overrides)
                     config = Config(**config_dict)
@@ -63,6 +67,8 @@ class ConfigLoader:
                 raise FileNotFoundError(f"Config override file not found: {override_file}")
         
         # Validate final config
+        self.logger.debug(f"Config type before validation: {type(config)}")
+        self.logger.debug(f"Config.model type: {type(config.model) if hasattr(config, 'model') else 'No model attr'}")
         self._validate_config(config)
         
         # Store for usage tracking
@@ -76,6 +82,28 @@ class ConfigLoader:
     def _validate_config(self, config: Config):
         """Perform additional validation beyond Pydantic"""
         # Check action space consistency
+
+        try:
+            if hasattr(config.model, 'action_dim'):
+                action_types, position_sizes = config.model.action_dim
+                expected_actions = action_types * position_sizes
+                self.logger.info(f"Action space: {action_types} types × {position_sizes} sizes = {expected_actions} total actions")
+        except Exception as e:
+            self.logger.warning(f"Could not validate action space: {e}")
+        
+        # Validate reward components
+        reward_v2_dict = config.env.reward_v2.model_dump()
+        enabled_components = []
+        for name, value in reward_v2_dict.items():
+            if isinstance(value, dict) and value.get('enabled', True):
+                enabled_components.append(name)
+            elif name not in ['scale_factor', 'clip_range']:  # Skip non-component fields
+                # For simple component configs like RewardComponentConfig
+                if hasattr(config.env.reward_v2, name):
+                    comp = getattr(config.env.reward_v2, name)
+                    if hasattr(comp, 'enabled') and comp.enabled:
+                        enabled_components.append(name)
+
         action_dim = config.model.action_dim if hasattr(config.model, 'action_dim') else [3, 4]
         action_types, position_sizes = action_dim
         expected_actions = action_types * position_sizes
@@ -88,6 +116,7 @@ class ConfigLoader:
             name for name, comp in reward_v2_data.items()
             if isinstance(comp, dict) and comp.get('enabled', True)
         ]
+
         self.logger.info(f"Enabled reward components: {', '.join(enabled_components)}")
         
         # Check for deprecated configs
@@ -139,6 +168,14 @@ class ConfigLoader:
                 paths.update(self._get_all_paths(value, current_path))
         
         return paths
+    
+    def _deep_update(self, base_dict: dict, update_dict: dict):
+        """Deep update base_dict with update_dict"""
+        for key, value in update_dict.items():
+            if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
+                self._deep_update(base_dict[key], value)
+            else:
+                base_dict[key] = value
 
 
 # Global config instance

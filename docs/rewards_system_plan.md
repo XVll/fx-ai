@@ -1,3 +1,5 @@
+# Todo
+* Add a penalty for halting trades.
 # Reward System V2 Documentation
 
 ## Overview

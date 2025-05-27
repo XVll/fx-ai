@@ -157,12 +157,12 @@ def create_data_provider(data_config: DataConfig):
     
     if data_config.provider == "databento":
         # Construct paths for databento
-        data_path = Path(data_config.data_dir) / data_config.symbols[0].lower()
-        symbol_info_file = data_path / "symbols.json"
+        # Use the actual directory name which is "mlgo" with capital M
+        data_path = Path(data_config.data_dir) / "mlgo"
         
         return DatabentoFileProvider(
             data_dir=str(data_path),
-            symbol_info_file=str(symbol_info_file),
+            symbol_info_file=None,  # Optional CSV file, not needed
             verbose=True,
             dbn_cache_size=10  # Default cache size
         )
@@ -179,31 +179,37 @@ def create_data_components(config: Config, logger: logging.Logger):
         logger=logger
     )
     
-    # In training mode, MarketSimulator is created by TradingEnvironment during setup_session
-    return data_manager
 
-
-def create_simulation_components(config: Config,
-                               logger: logging.Logger):
-    """Create simulation components with proper config passing"""
-    # Portfolio Simulator with full Config and tradable assets
-    portfolio_simulator = PortfolioSimulator(
-        logger=logger,
-        config=config,
-        tradable_assets=[config.env.symbol],
-        trade_callback=None  # Will be set by TradingEnvironment
+    # Market Simulator with SimulationConfig, ModelConfig and symbol
+    market_simulator = MarketSimulator(
+        symbol=config.env.symbol,
+        data_manager=data_manager,
+        simulation_config=config.simulation,
+        model_config=config.model,
+        start_time=config.data.start_date,
+        end_time=config.data.end_date,
+        logger=logger
     )
     
-    # Execution Simulator is created inside TradingEnvironment during setup_session
-    # since it needs the market_simulator and np_random
-    
-    return portfolio_simulator
+    return data_manager, market_simulator
 
 
-def create_env_components(config: Config, data_manager, portfolio_simulator,
-                         logger: logging.Logger):
+def create_simulation_components(env_config: EnvConfig, 
+                               simulation_config: SimulationConfig,
+                               model_config: ModelConfig,
+                               logger: logging.Logger):
+    """Create simulation components with proper config passing"""
+    # NOTE: These simulators are not actually used by TradingEnvironment
+    # The environment creates its own simulators in setup_session()
+    # This function is kept for backward compatibility but could be removed
+    return None, None
+
+
+def create_env_components(config: Config, market_simulator, logger: logging.Logger):
     """Create environment and related components with proper config passing"""
-    # Note: FeatureExtractor is created inside TradingEnvironment after market_simulator is initialized
+    # NOTE: Feature extractor is created inside TradingEnvironment.setup_session()
+    # so we don't need to create it here
+
     
     # Trading Environment with full config (for now, will be refactored later)
     env = TradingEnvironment(
@@ -213,8 +219,8 @@ def create_env_components(config: Config, data_manager, portfolio_simulator,
         metrics_integrator=None  # Will be set later
     )
     
-    # Return None for feature_extractor and reward_calculator as they're created inside env
-    return env, None, None
+
+    return env
 
 
 def create_metrics_components(config: Config, logger: logging.Logger):
@@ -367,11 +373,10 @@ def train(config: Config):
     global current_components
     
     # Setup logging
-    setup_rich_logging(
-        level=getattr(logging, config.logging.level.upper()),
-        show_time=True,
-        show_path=False,
-        compact_errors=True
+
+    logger = setup_rich_logging(
+        level=config.logging.level,
+
     )
     logger = get_logger("fx-ai")
     
@@ -407,12 +412,16 @@ def train(config: Config):
         data_manager = create_data_components(config, logger)
         current_components['data_manager'] = data_manager
         
-        # Simulation components
-        portfolio_simulator = create_simulation_components(config, logger)
+
+        # Simulation components (not used, but kept for compatibility)
+        _, _ = create_simulation_components(
+            config.env, config.simulation, config.model, logger
+        )
         
         # Environment components
-        env, feature_extractor, reward_calculator = create_env_components(
-            config, data_manager, portfolio_simulator, logger
+        env = create_env_components(
+            config, market_simulator, logger
+
         )
         current_components['env'] = env
         

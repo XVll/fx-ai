@@ -441,3 +441,167 @@ class TerminalPenalty(RewardComponent):
         }
         
         return penalty, diagnostics
+
+# Aliases for test compatibility
+PnLComponent = RealizedPnLReward
+
+
+class MomentumAlignmentComponent(RewardComponent):
+    """Reward for trading aligned with momentum patterns."""
+    
+    def _get_metadata(self) -> RewardMetadata:
+        return RewardMetadata(
+            name="momentum_alignment",
+            type=RewardType.SHAPING,
+            description="Reward for actions aligned with momentum patterns"
+        )
+    
+    def calculate(self, state: RewardState) -> Tuple[float, Dict[str, Any]]:
+        """Calculate momentum alignment reward."""
+        reward = 0.0
+        
+        # Check if we have momentum context
+        momentum_context = state.metadata.get('momentum_context', {})
+        if not momentum_context:
+            return 0.0, {'no_context': True}
+        
+        # Get current phase and pattern
+        current_phase = momentum_context.get('phase', 'neutral')
+        current_pattern = momentum_context.get('pattern', 'unknown')
+        
+        # Get action taken
+        action_type = state.action.get('type', 'hold')
+        
+        # Reward alignment
+        if current_phase == 'front_side' and action_type == 'buy':
+            reward = 1.0
+        elif current_phase == 'back_side' and action_type == 'sell':
+            reward = 1.0
+        elif current_phase == 'exhaustion' and action_type == 'hold':
+            reward = 0.5
+        elif current_phase == 'front_side' and action_type == 'sell':
+            reward = -1.0  # Penalty for counter-trend
+        
+        diagnostics = {
+            'phase': current_phase,
+            'pattern': current_pattern,
+            'action': action_type,
+            'alignment_reward': reward
+        }
+        
+        return reward, diagnostics
+
+
+class TimeEfficiencyComponent(RewardComponent):
+    """Reward for efficient use of time in trades."""
+    
+    def _get_metadata(self) -> RewardMetadata:
+        return RewardMetadata(
+            name="time_efficiency",
+            type=RewardType.SHAPING,
+            description="Reward for time-efficient trading"
+        )
+    
+    def calculate(self, state: RewardState) -> Tuple[float, Dict[str, Any]]:
+        """Calculate time efficiency reward."""
+        reward = 0.0
+        
+        # Check holding time for closed positions
+        for fill in state.fill_details:
+            if fill.get('closes_position', False):
+                holding_time = fill.get('holding_time_minutes', 0)
+                
+                # Reward quick profitable trades
+                if fill.get('realized_pnl', 0) > 0:
+                    if holding_time < 30:  # Less than 30 minutes
+                        reward += 0.5
+                    elif holding_time < 60:  # Less than 1 hour
+                        reward += 0.25
+                else:
+                    # Penalty for holding losing positions too long
+                    if holding_time > 60:
+                        reward -= 0.5
+        
+        diagnostics = {
+            'trades_closed': len([f for f in state.fill_details if f.get('closes_position', False)]),
+            'efficiency_reward': reward
+        }
+        
+        return reward, diagnostics
+
+
+class RiskManagementComponent(RewardComponent):
+    """Reward for good risk management."""
+    
+    def _get_metadata(self) -> RewardMetadata:
+        return RewardMetadata(
+            name="risk_management",
+            type=RewardType.SHAPING,
+            description="Reward for proper risk management"
+        )
+    
+    def calculate(self, state: RewardState) -> Tuple[float, Dict[str, Any]]:
+        """Calculate risk management reward."""
+        reward = 0.0
+        
+        # Get position metrics
+        position_value = state.portfolio_after_fills.get('position_value', 0)
+        account_value = state.portfolio_after_fills.get('total_value', 100000)
+        
+        # Check position sizing
+        position_pct = abs(position_value) / account_value if account_value > 0 else 0
+        
+        # Reward appropriate position sizing
+        if 0.1 <= position_pct <= 0.3:  # 10-30% of account
+            reward += 0.5
+        elif position_pct > 0.5:  # Over 50% is too risky
+            reward -= 1.0
+        
+        # Check drawdown
+        current_drawdown = state.portfolio_after_fills.get('current_drawdown_pct', 0)
+        if current_drawdown > 0.1:  # More than 10% drawdown
+            reward -= 0.5
+        
+        diagnostics = {
+            'position_pct': position_pct,
+            'drawdown_pct': current_drawdown,
+            'risk_reward': reward
+        }
+        
+        return reward, diagnostics
+
+
+class ActionCostComponent(RewardComponent):
+    """Penalty for excessive actions."""
+    
+    def _get_metadata(self) -> RewardMetadata:
+        return RewardMetadata(
+            name="action_cost",
+            type=RewardType.PENALTY,
+            description="Penalty for taking actions"
+        )
+    
+    def calculate(self, state: RewardState) -> Tuple[float, Dict[str, Any]]:
+        """Calculate action cost penalty."""
+        penalty = 0.0
+        
+        # Fixed cost per action (except hold)
+        action_type = state.action.get('type', 'hold')
+        if action_type != 'hold':
+            penalty = -self.config.get('action_cost', 0.01)
+        
+        # Additional cost for reversals
+        portfolio_before = state.portfolio_before
+        current_position = portfolio_before.get('position_side', 'FLAT')
+        
+        if current_position == 'LONG' and action_type == 'sell':
+            penalty -= self.config.get('reversal_cost', 0.02)
+        elif current_position == 'SHORT' and action_type == 'buy':
+            penalty -= self.config.get('reversal_cost', 0.02)
+        
+        diagnostics = {
+            'action': action_type,
+            'action_penalty': penalty
+        }
+        
+        return penalty, diagnostics

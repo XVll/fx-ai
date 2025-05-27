@@ -1,7 +1,7 @@
 """
 Pydantic configuration schemas - Single source of truth for all configs
 """
-from pydantic import BaseModel, Field, validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Dict, Any, Optional, Literal
 from enum import Enum
 
@@ -32,6 +32,7 @@ class ModelConfig(BaseModel):
     n_layers: int = 4
     d_ff: int = 2048
     dropout: float = 0.1
+    d_fused: int = Field(default=512, description="Dimension after fusion")
     
     # Branch-specific heads and layers
     hf_layers: int = 2
@@ -61,7 +62,8 @@ class ModelConfig(BaseModel):
     action_dim: List[int] = Field(default=[3, 4], description="[action_types, position_sizes]")
     continuous_action: bool = False
     
-    @validator('action_dim')
+    @field_validator('action_dim')
+    @classmethod
     def validate_action_dim(cls, v):
         if len(v) != 2:
             raise ValueError("action_dim must have exactly 2 elements [action_types, position_sizes]")
@@ -151,6 +153,7 @@ class EnvConfig(BaseModel):
     
     # Invalid action handling
     invalid_action_limit: Optional[int] = Field(default=None, description="Max invalid actions before termination")
+    max_invalid_actions_per_episode: Optional[int] = Field(default=None, description="Alias for invalid_action_limit")
     
     # Reward configuration
     reward_v2: RewardV2Config = Field(default_factory=RewardV2Config)
@@ -160,7 +163,31 @@ class EnvConfig(BaseModel):
     
     # Episode settings
     max_episode_steps: Optional[int] = Field(default=None, description="Max steps per episode")
+    max_steps: Optional[int] = Field(default=None, description="Alias for max_episode_steps")
     early_stop_loss_threshold: float = Field(default=0.9, description="Stop if equity < threshold * initial")
+    random_reset: bool = Field(default=True, description="Random episode start within session")
+    max_episode_loss_percent: float = Field(default=0.2, description="Max loss percentage before termination")
+    bankruptcy_threshold_factor: float = Field(default=0.01, description="Bankruptcy threshold as fraction of initial capital")
+    
+    # Environment settings
+    render_mode: Literal["human", "logs", "none"] = Field(default="none", description="Rendering mode")
+    training_mode: bool = Field(default=True, description="Whether in training mode")
+    
+    @field_validator('max_invalid_actions_per_episode', mode='before')
+    @classmethod
+    def sync_invalid_action_limit(cls, v, info):
+        """Keep max_invalid_actions_per_episode in sync with invalid_action_limit"""
+        if v is None and info.data.get('invalid_action_limit') is not None:
+            return info.data['invalid_action_limit']
+        return v
+    
+    @field_validator('max_steps', mode='before')
+    @classmethod
+    def sync_max_steps(cls, v, info):
+        """Keep max_steps in sync with max_episode_steps"""
+        if v is None and info.data.get('max_episode_steps') is not None:
+            return info.data['max_episode_steps']
+        return v
 
 
 class DataConfig(BaseModel):
@@ -178,8 +205,8 @@ class DataConfig(BaseModel):
     load_ohlcv: bool = True
     
     # Date range
-    start_date: Optional[str] = Field(default=None, description="Start date YYYY-MM-DD")
-    end_date: Optional[str] = Field(default=None, description="End date YYYY-MM-DD")
+    start_date: Optional[str] = Field(default="03.27.2025", description="Start date YYYY-MM-DD")
+    end_date: Optional[str] = Field(default="03.27.2025", description="End date YYYY-MM-DD")
     
     # Performance
     cache_enabled: bool = True
@@ -268,6 +295,8 @@ class SimulationConfig(BaseModel):
     # Portfolio configuration
     initial_cash: float = Field(default=25000.0, description="Initial portfolio cash")
     max_position_value_ratio: float = Field(default=1.0, description="Max position value as ratio of portfolio")
+    max_position_holding_seconds: Optional[int] = Field(default=None, description="Max seconds to hold a position")
+    default_position_value: float = Field(default=10000.0, description="Default position value for sizing")
 
 
 class LoggingConfig(BaseModel):
