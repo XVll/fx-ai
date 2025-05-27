@@ -1,13 +1,25 @@
-# data/provider/data_provider.py
+# data/provider/data_provider.py - Enhanced with unified interface
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Union, Tuple
+from typing import Dict, List, Optional, Union, Tuple, Any
 from datetime import datetime
 import pandas as pd
 import numpy as np
+from enum import Enum
+
+
+class DataMode(Enum):
+    """Enumeration for data provider modes."""
+    HISTORICAL = "historical"
+    LIVE = "live"
+    HYBRID = "hybrid"  # Historical with live transition
 
 
 class DataProvider(ABC):
     """Base abstract class for all data providers."""
+    
+    def __init__(self):
+        self._mode = DataMode.HISTORICAL
+        self._current_timestamp = None
 
     @abstractmethod
     def get_symbol_info(self, symbol: str) -> Dict:
@@ -18,6 +30,16 @@ class DataProvider(ABC):
     def get_available_symbols(self) -> List[str]:
         """Get all available symbols."""
         pass
+        
+    @property
+    def mode(self) -> DataMode:
+        """Get current data mode."""
+        return self._mode
+        
+    @property
+    def current_timestamp(self) -> Optional[datetime]:
+        """Get current timestamp for data queries."""
+        return self._current_timestamp
 
 
 class HistoricalDataProvider(DataProvider):
@@ -205,3 +227,172 @@ class LiveDataProvider(DataProvider):
         Should be called when the provider is no longer needed.
         """
         pass
+
+
+class UnifiedDataProvider(DataProvider):
+    """Unified interface for seamless historical/live data access.
+    
+    This provider abstracts the difference between historical and live data,
+    providing a consistent interface for both training and production.
+    """
+    
+    def __init__(self, historical_provider: Optional[HistoricalDataProvider] = None,
+                 live_provider: Optional[LiveDataProvider] = None):
+        """Initialize unified provider.
+        
+        Args:
+            historical_provider: Provider for historical data
+            live_provider: Provider for live data
+        """
+        super().__init__()
+        self.historical_provider = historical_provider
+        self.live_provider = live_provider
+        
+        # Determine mode based on available providers
+        if historical_provider and live_provider:
+            self._mode = DataMode.HYBRID
+        elif live_provider:
+            self._mode = DataMode.LIVE
+        else:
+            self._mode = DataMode.HISTORICAL
+            
+        # State for hybrid mode
+        self._transition_timestamp = None
+        self._historical_buffer = {}  # Cache for lookback data
+        
+    def get_data_at_timestamp(self, symbol: str, timestamp: datetime,
+                             lookback_seconds: int = 0,
+                             lookahead_seconds: int = 0) -> Dict[str, pd.DataFrame]:
+        """Get all data types at a specific timestamp with optional lookback/lookahead.
+        
+        This is the primary interface for market simulator integration.
+        
+        Args:
+            symbol: Symbol to get data for
+            timestamp: Point-in-time to query
+            lookback_seconds: Seconds of historical data to include
+            lookahead_seconds: Seconds of future data (for execution simulation)
+            
+        Returns:
+            Dict mapping data types to DataFrames with requested time range
+        """
+        self._current_timestamp = timestamp
+        
+        if self._mode == DataMode.HISTORICAL:
+            return self._get_historical_data(symbol, timestamp, lookback_seconds, lookahead_seconds)
+        elif self._mode == DataMode.LIVE:
+            return self._get_live_data(symbol, timestamp, lookback_seconds)
+        else:  # HYBRID
+            return self._get_hybrid_data(symbol, timestamp, lookback_seconds, lookahead_seconds)
+            
+    def _get_historical_data(self, symbol: str, timestamp: datetime,
+                           lookback_seconds: int, lookahead_seconds: int) -> Dict[str, pd.DataFrame]:
+        """Get historical data around a timestamp."""
+        if not self.historical_provider:
+            return {}
+            
+        start_time = timestamp - pd.Timedelta(seconds=lookback_seconds)
+        end_time = timestamp + pd.Timedelta(seconds=lookahead_seconds)
+        
+        result = {}
+        
+        # Get all data types
+        for timeframe in ['1s', '1m', '5m']:
+            bars = self.historical_provider.get_bars(symbol, timeframe, start_time, end_time)
+            if not bars.empty:
+                result[f'bars_{timeframe}'] = bars
+                
+        trades = self.historical_provider.get_trades(symbol, start_time, end_time)
+        if not trades.empty:
+            result['trades'] = trades
+            
+        quotes = self.historical_provider.get_quotes(symbol, start_time, end_time)  
+        if not quotes.empty:
+            result['quotes'] = quotes
+            
+        status = self.historical_provider.get_status(symbol, start_time, end_time)
+        if not status.empty:
+            result['status'] = status
+            
+        return result
+        
+    def _get_live_data(self, symbol: str, timestamp: datetime,
+                      lookback_seconds: int) -> Dict[str, pd.DataFrame]:
+        """Get live data with historical lookback."""
+        if not self.live_provider:
+            return {}
+            
+        # For live mode, we need to maintain a rolling buffer of recent data
+        # This would be implemented based on the specific live provider
+        # For now, return empty as this requires live data infrastructure
+        return {}
+        
+    def _get_hybrid_data(self, symbol: str, timestamp: datetime,
+                        lookback_seconds: int, lookahead_seconds: int) -> Dict[str, pd.DataFrame]:
+        """Get data in hybrid mode, transitioning from historical to live."""
+        # Determine if we're in historical or live territory
+        if self._transition_timestamp and timestamp >= self._transition_timestamp:
+            # We're in live mode now
+            return self._get_live_data(symbol, timestamp, lookback_seconds)
+        else:
+            # Still in historical mode
+            return self._get_historical_data(symbol, timestamp, lookback_seconds, lookahead_seconds)
+            
+    def set_transition_point(self, timestamp: datetime):
+        """Set the timestamp where historical transitions to live data."""
+        self._transition_timestamp = timestamp
+        
+        # Pre-load historical data for smooth transition
+        if self.historical_provider and self.live_provider:
+            # Load last N days of historical data for context
+            # This would be used by live provider for indicator calculations
+            pass
+            
+    def get_latest_data(self, symbol: str, data_type: str) -> Optional[pd.DataFrame]:
+        """Get the most recent data available."""
+        if self._mode == DataMode.LIVE and self.live_provider:
+            if data_type == 'trades':
+                return pd.DataFrame([self.live_provider.get_latest_trade(symbol)])
+            elif data_type == 'quotes':
+                return pd.DataFrame([self.live_provider.get_latest_quote(symbol)])
+            elif data_type.startswith('bars_'):
+                timeframe = data_type.split('_')[1]
+                return pd.DataFrame([self.live_provider.get_latest_bar(symbol, timeframe)])
+        return None
+        
+    def subscribe(self, symbols: List[str], data_types: List[str]):
+        """Subscribe to live data updates."""
+        if self.live_provider:
+            self.live_provider.subscribe(symbols, data_types)
+            
+    def unsubscribe(self, symbols: List[str], data_types: List[str]):
+        """Unsubscribe from live data updates."""
+        if self.live_provider:
+            self.live_provider.unsubscribe(symbols, data_types)
+            
+    def get_symbol_info(self, symbol: str) -> Dict:
+        """Get symbol metadata from appropriate provider."""
+        if self.historical_provider:
+            return self.historical_provider.get_symbol_info(symbol)
+        elif self.live_provider:
+            return self.live_provider.get_symbol_info(symbol)
+        return {}
+        
+    def get_available_symbols(self) -> List[str]:
+        """Get available symbols from appropriate provider."""
+        symbols = set()
+        
+        if self.historical_provider:
+            symbols.update(self.historical_provider.get_available_symbols())
+        if self.live_provider:
+            symbols.update(self.live_provider.get_available_symbols())
+            
+        return sorted(list(symbols))
+        
+    def close(self):
+        """Close all providers."""
+        if self.historical_provider:
+            # HistoricalDataProvider doesn't have close method, but we could add it
+            pass
+        if self.live_provider:
+            self.live_provider.close()

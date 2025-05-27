@@ -16,7 +16,10 @@
       "Bash(sed:*)",
       "Bash(timeout:*)",
       "Bash(rm:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(PYTHONPATH=/home/fx/Repositories/fx-ai poetry run pytest tests/simulators/test_market_simulator_v2.py::TestMarketSimulatorV2::test_initialization -v)",
+      "Bash(PYTHONPATH=/home/fx/Repositories/fx-ai poetry run python -m pytest tests/simulators/test_market_simulator_v2.py::TestMarketSimulatorV2::test_initialization -v)",
+      "Bash(poetry add:*)"
     ],
     "deny": []
   }
