@@ -222,9 +222,11 @@ class TradingEnvironment(gym.Env):
             )
 
         self.execution_manager = ExecutionSimulator(
-            symbol=self.primary_asset,
+            logger=logging.getLogger(f"{__name__}.ExecSim"),
             simulation_config=self.config.simulation,
-            logger=logging.getLogger(f"{__name__}.ExecSim")
+            np_random=self.np_random,
+            market_simulator=self.market_simulator,
+            metrics_integrator=self.metrics_integrator
         )
 
         self.logger.info("✅ All simulators and managers initialized")

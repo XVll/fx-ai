@@ -13,7 +13,8 @@
       "Bash(mkdir:*)",
       "Bash(echo $HOME)",
       "Bash(cp:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(timeout:*)"
     ],
     "deny": []
   }
