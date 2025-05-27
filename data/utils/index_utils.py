@@ -2,16 +2,36 @@
 
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Tuple, Any, NamedTuple
 from datetime import datetime, timedelta
 import logging
+
+
+class ResetPoint(NamedTuple):
+    """Represents a reset point within a trading day."""
+    timestamp: datetime
+    pattern: str  # 'breakout', 'flush', 'bounce', etc.
+    phase: str  # Trading phase
+    quality_score: float
+    metadata: Dict[str, Any] = {}
+
+
+class MomentumDay(NamedTuple):
+    """Represents a momentum day with high trading activity."""
+    symbol: str
+    date: datetime
+    quality_score: float
+    max_intraday_move: float
+    volume_multiplier: float
+    reset_points: List[ResetPoint]
+    metadata: Dict[str, Any] = {}
 
 
 class IndexManager:
     """Manages momentum index queries and curriculum-based selection."""
     
-    def __init__(self, momentum_days_df: pd.DataFrame, 
-                 reset_points_df: pd.DataFrame,
+    def __init__(self, momentum_days_df: Optional[pd.DataFrame] = None, 
+                 reset_points_df: Optional[pd.DataFrame] = None,
                  logger: Optional[logging.Logger] = None):
         """Initialize index manager.
         
@@ -20,8 +40,8 @@ class IndexManager:
             reset_points_df: DataFrame with reset point index
             logger: Optional logger
         """
-        self.momentum_days = momentum_days_df
-        self.reset_points = reset_points_df
+        self.momentum_days = momentum_days_df if momentum_days_df is not None else pd.DataFrame()
+        self.reset_points = reset_points_df if reset_points_df is not None else pd.DataFrame()
         self.logger = logger or logging.getLogger(__name__)
         
         # Track usage for anti-overfitting
@@ -29,6 +49,9 @@ class IndexManager:
         
         # Curriculum stage tracking
         self.total_episodes = 0
+        
+        # In-memory index storage
+        self._momentum_index: Dict[str, List[MomentumDay]] = {}
         
     def select_training_day(self, symbol: str, 
                            curriculum_stage: Optional[str] = None,
@@ -291,3 +314,115 @@ class IndexManager:
         """Reset usage counts for fresh diversity."""
         self.usage_counts.clear()
         self.logger.info("Reset usage counts for all days")
+    
+    def load_index(self, symbol: str) -> Dict[str, List[MomentumDay]]:
+        """Load momentum index for a symbol.
+        
+        This is a compatibility method for the new interface.
+        Returns a dictionary mapping symbol to list of MomentumDay objects.
+        """
+        # Convert DataFrame data to MomentumDay objects
+        symbol_days = self.momentum_days[self.momentum_days['symbol'] == symbol.upper()]
+        
+        momentum_days = []
+        for _, row in symbol_days.iterrows():
+            # Get reset points for this day
+            day_reset_points = self.get_day_reset_points(symbol, row['date'])
+            reset_point_list = []
+            
+            # Convert reset points to list
+            for _, rp in day_reset_points.iterrows():
+                from envs.environment_simulator import ResetPoint
+                reset_point = ResetPoint(
+                    timestamp=rp.get('timestamp', row['date']),
+                    pattern=rp.get('pattern_type', 'unknown'),
+                    phase=rp.get('phase', 'neutral'),
+                    quality_score=rp.get('combined_score', 0.5)
+                )
+                reset_point_list.append(reset_point)
+            
+            momentum_day = MomentumDay(
+                symbol=row['symbol'],
+                date=row['date'],
+                quality_score=row.get('quality_score', 0.5),
+                max_intraday_move=row.get('max_intraday_move', 0.1),
+                volume_multiplier=row.get('volume_multiplier', 1.0),
+                reset_points=reset_point_list
+            )
+            momentum_days.append(momentum_day)
+        
+        self._momentum_index[symbol] = momentum_days
+        return {symbol: momentum_days}
+    
+    def get_momentum_days(self, symbol: str, min_quality: float = 0.0) -> List[MomentumDay]:
+        """Get momentum days for a symbol with optional quality filter."""
+        # Load from index if not already loaded
+        if symbol not in self._momentum_index:
+            self.load_index(symbol)
+        
+        days = self._momentum_index.get(symbol, [])
+        
+        # Filter by quality
+        if min_quality > 0:
+            days = [d for d in days if d.quality_score >= min_quality]
+        
+        return days
+    
+    def get_next_day(self, current_date: Optional[datetime], min_quality: float = 0.0) -> Optional[MomentumDay]:
+        """Get next momentum day after current date."""
+        all_days = []
+        for symbol_days in self._momentum_index.values():
+            all_days.extend(symbol_days)
+        
+        # Filter by quality
+        if min_quality > 0:
+            all_days = [d for d in all_days if d.quality_score >= min_quality]
+        
+        # Sort by date
+        all_days.sort(key=lambda d: d.date)
+        
+        if not current_date:
+            return all_days[0] if all_days else None
+        
+        # Find next day after current
+        for day in all_days:
+            if day.date > current_date:
+                return day
+        
+        return None
+    
+    def get_day_by_date(self, symbol: str, date: datetime) -> Optional[MomentumDay]:
+        """Get momentum day by specific date."""
+        if symbol not in self._momentum_index:
+            self.load_index(symbol)
+        
+        days = self._momentum_index.get(symbol, [])
+        
+        for day in days:
+            if day.date.date() == date.date():
+                return day
+        
+        return None
+    
+    def get_days_by_pattern(self, symbol: str, patterns: List[str]) -> List[MomentumDay]:
+        """Get momentum days that contain specific patterns."""
+        if symbol not in self._momentum_index:
+            self.load_index(symbol)
+        
+        days = self._momentum_index.get(symbol, [])
+        filtered = []
+        
+        for day in days:
+            day_patterns = {rp.pattern for rp in day.reset_points}
+            if any(p in day_patterns for p in patterns):
+                filtered.append(day)
+        
+        return filtered
+    
+    def get_days_by_quality(self, symbol: str, min_quality: float) -> List[MomentumDay]:
+        """Get momentum days with quality score above threshold."""
+        if symbol not in self._momentum_index:
+            self.load_index(symbol)
+        
+        days = self._momentum_index.get(symbol, [])
+        return [d for d in days if d.quality_score >= min_quality]
