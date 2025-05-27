@@ -749,6 +749,55 @@ class DataManager:
             'symbols_loaded': list(self.session_stats['symbols_loaded'])
         }
 
+    def get_day_data(self, symbol: str, date: datetime) -> Dict[str, pd.DataFrame]:
+        """Get all data for a specific day.
+        
+        Returns:
+            Dict with keys: 'ohlcv_1s', 'quotes', 'trades', 'status', 'mbp'
+        """
+        # Check if this is the active day
+        if (self.l1_cache['symbol'] == symbol and 
+            self.l1_cache['date'] and 
+            self.l1_cache['date'].date() == date.date()):
+            return self.l1_cache['data'].copy()
+        
+        # Check L2 cache
+        for day_data in self.l2_cache:
+            if (day_data['symbol'] == symbol and 
+                day_data['date'] and 
+                day_data['date'].date() == date.date()):
+                return day_data['data'].copy()
+        
+        # Not in cache - need to load
+        if self.load_day(symbol, date):
+            return self.l1_cache['data'].copy()
+        
+        return {}
+    
+    def get_provider(self, symbol: str) -> DataProvider:
+        """Get the data provider for a symbol."""
+        return self.provider
+    
+    def preload_day_async(self, symbol: str, date: datetime, with_lookback: bool = False):
+        """Asynchronously preload a day's data."""
+        from concurrent.futures import Future
+        future = Future()
+        
+        def _load():
+            try:
+                result = self.load_day(symbol, date, with_lookback)
+                future.set_result(result)
+            except Exception as e:
+                future.set_exception(e)
+        
+        if self.preload_executor:
+            self.preload_executor.submit(_load)
+        else:
+            # Synchronous fallback
+            _load()
+        
+        return future
+
     def close(self):
         """Close the data manager and release resources."""
         # Shutdown preload executor

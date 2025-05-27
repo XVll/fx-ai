@@ -10,6 +10,30 @@ import numpy as np
 import pandas as pd
 
 from config.schemas import EnvConfig, SimulationConfig, ModelConfig
+from dataclasses import dataclass
+
+
+@dataclass
+class Position:
+    """Represents a position in the portfolio."""
+    side: str  # 'long' or 'short'
+    quantity: float
+    avg_price: float = 0.0
+    
+    def __init__(self, side: str, quantity: float, avg_price: float = 0.0):
+        self.side = side
+        self.quantity = quantity
+        self.avg_price = avg_price
+
+
+@dataclass
+class Trade:
+    """Represents a completed trade."""
+    symbol: str
+    side: str  # 'buy' or 'sell'
+    quantity: float
+    price: float
+    timestamp: pd.Timestamp
 
 
 class OrderTypeEnum(Enum):

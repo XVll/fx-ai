@@ -2,12 +2,70 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, NamedTuple
 import numpy as np
+import pandas as pd
 
 from config.schemas import SimulationConfig
 from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import OrderTypeEnum, OrderSideEnum, FillDetails
+from enum import Enum
+from dataclasses import dataclass
+
+
+class OrderType(Enum):
+    """Order type enumeration."""
+    MARKET = "market"
+    LIMIT = "limit"
+    STOP = "stop"
+
+
+class OrderSide(Enum):
+    """Order side enumeration."""
+    BUY = "buy"
+    SELL = "sell"
+
+
+@dataclass
+class OrderRequest:
+    """Request to execute an order."""
+    side: str
+    quantity: float
+    order_type: OrderType
+    symbol: Optional[str] = None
+    price: Optional[float] = None
+    timestamp: Optional[datetime] = None
+    
+    def __init__(self, side: str, quantity: float, order_type: OrderType, 
+                 symbol: Optional[str] = None, price: Optional[float] = None, 
+                 timestamp: Optional[datetime] = None):
+        self.side = side
+        self.quantity = quantity
+        self.order_type = order_type
+        self.symbol = symbol
+        self.price = price
+        self.timestamp = timestamp
+
+
+class ExecutionResult(NamedTuple):
+    """Result of order execution."""
+    order_id: str
+    timestamp: datetime
+    symbol: str
+    side: str
+    requested_price: float
+    executed_price: float
+    requested_size: float
+    executed_size: float
+    slippage: float
+    commission: float
+    latency_ms: float
+    rejection_reason: Optional[str] = None
+    
+    @property
+    def executed(self) -> bool:
+        """Check if order was executed."""
+        return self.executed_size > 0 and self.rejection_reason is None
 
 
 class ExecutionSimulator:
@@ -149,3 +207,49 @@ class ExecutionSimulator:
         self.session_fills = 0
         self.session_volume = 0.0
         self.session_turnover = 0.0
+    
+    def simulate_execution(self, order_type: str, order_side: str, 
+                          requested_quantity: float, symbol: str,
+                          **kwargs) -> ExecutionResult:
+        """Simulate order execution and return ExecutionResult."""
+        # Get current timestamp
+        timestamp = kwargs.get('decision_timestamp', pd.Timestamp.now())
+        
+        # Simulate latency
+        latency = self._simulate_latency()
+        latency_ms = latency.total_seconds() * 1000
+        
+        # Get prices
+        ask_price = kwargs.get('ideal_decision_price_ask', 10.0)
+        bid_price = kwargs.get('ideal_decision_price_bid', 10.0)
+        
+        # Determine execution price based on side
+        if order_side.lower() == 'buy':
+            requested_price = ask_price
+            executed_price = ask_price * (1 + self.base_slippage_bps / 10000.0)
+        else:
+            requested_price = bid_price
+            executed_price = bid_price * (1 - self.base_slippage_bps / 10000.0)
+        
+        # Calculate commission
+        commission = requested_quantity * self.commission_per_share
+        commission = max(commission, self.min_commission_per_order or 0)
+        
+        # Calculate slippage
+        slippage = abs(executed_price - requested_price) / requested_price
+        
+        # Create execution result
+        return ExecutionResult(
+            order_id=f"ORD_{timestamp.strftime('%Y%m%d_%H%M%S')}",
+            timestamp=timestamp + latency,
+            symbol=symbol,
+            side=order_side.lower(),
+            requested_price=requested_price,
+            executed_price=executed_price,
+            requested_size=requested_quantity,
+            executed_size=requested_quantity,  # Assume full fill
+            slippage=slippage,
+            commission=commission,
+            latency_ms=latency_ms,
+            rejection_reason=None
+        )
