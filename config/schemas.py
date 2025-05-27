@@ -1,7 +1,7 @@
 """
 Pydantic configuration schemas - Single source of truth for all configs
 """
-from pydantic import BaseModel, Field, validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Dict, Any, Optional, Literal
 from enum import Enum
 
@@ -60,7 +60,8 @@ class ModelConfig(BaseModel):
     action_dim: List[int] = Field(default=[3, 4], description="[action_types, position_sizes]")
     continuous_action: bool = False
     
-    @validator('action_dim')
+    @field_validator('action_dim')
+    @classmethod
     def validate_action_dim(cls, v):
         if len(v) != 2:
             raise ValueError("action_dim must have exactly 2 elements [action_types, position_sizes]")
@@ -170,18 +171,20 @@ class EnvConfig(BaseModel):
     render_mode: Literal["human", "logs", "none"] = Field(default="none", description="Rendering mode")
     training_mode: bool = Field(default=True, description="Whether in training mode")
     
-    @validator('max_invalid_actions_per_episode', always=True)
-    def sync_invalid_action_limit(cls, v, values):
+    @field_validator('max_invalid_actions_per_episode', mode='before')
+    @classmethod
+    def sync_invalid_action_limit(cls, v, info):
         """Keep max_invalid_actions_per_episode in sync with invalid_action_limit"""
-        if v is None and 'invalid_action_limit' in values:
-            return values['invalid_action_limit']
+        if v is None and info.data.get('invalid_action_limit') is not None:
+            return info.data['invalid_action_limit']
         return v
     
-    @validator('max_steps', always=True)
-    def sync_max_steps(cls, v, values):
+    @field_validator('max_steps', mode='before')
+    @classmethod
+    def sync_max_steps(cls, v, info):
         """Keep max_steps in sync with max_episode_steps"""
-        if v is None and 'max_episode_steps' in values:
-            return values['max_episode_steps']
+        if v is None and info.data.get('max_episode_steps') is not None:
+            return info.data['max_episode_steps']
         return v
 
 
