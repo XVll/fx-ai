@@ -31,6 +31,15 @@ class DashboardMetricsCollector:
         if not self.is_started:
             return
         
+        # Log first few updates for debugging
+        if hasattr(self, '_update_count'):
+            self._update_count += 1
+        else:
+            self._update_count = 1
+        
+        if self._update_count <= 5:
+            logger.info(f"Dashboard received step update #{self._update_count}: symbol={step_data.get('symbol')}, price={step_data.get('price')}")
+        
         # Update market data
         market_update = {
             'symbol': step_data.get('symbol', 'N/A'),
