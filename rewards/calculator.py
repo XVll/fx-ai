@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import yaml
 import numpy as np
 
-from config.schemas import Config
+from config.schemas import RewardV2Config
 from rewards.core import RewardAggregator, RewardState
 from rewards.components import (
     RealizedPnLReward,
@@ -43,18 +43,26 @@ class RewardSystemV2:
     Advanced reward system with comprehensive metrics and anti-hacking measures
     """
     
-    def __init__(self, config: Config, metrics_integrator=None, logger: Optional[logging.Logger] = None):
-        self.config = config
-        # Use the Pydantic RewardV2Config directly
-        self.reward_config = config.env.reward_v2
+
+    def __init__(self, config: RewardV2Config, metrics_integrator=None, logger: Optional[logging.Logger] = None):
+        self.reward_config = config
+
         self.metrics_integrator = metrics_integrator
         self.logger = logger or logging.getLogger(__name__)
         
         # Initialize components
         self.components = self._initialize_components()
         
-        # Initialize aggregator
-        aggregator_config = {'type': 'weighted_sum'}  # Default aggregator config
+
+        # Initialize aggregator with default config
+        aggregator_config = {
+            'global_scale': self.reward_config.scale_factor,
+            'clip_min': self.reward_config.clip_range[0],
+            'clip_max': self.reward_config.clip_range[1],
+            'use_smoothing': True,
+            'smoothing_window': 10
+        }
+
         self.aggregator = RewardAggregator(self.components, aggregator_config, self.logger)
         
         # Initialize metrics tracker
@@ -72,88 +80,79 @@ class RewardSystemV2:
         # Episode tracking
         self.episode_started = False
 
-    def _get_default_config(self) -> Dict[str, Any]:
-        """Get default configuration if not provided"""
-        return {
-            'components': {
-                'realized_pnl': {
-                    'enabled': True,
-                    'weight': 1.0,
-                    'clip_min': -10.0,
-                    'clip_max': 10.0
-                },
-                'mark_to_market': {
-                    'enabled': True,
-                    'weight': 0.5,
-                    'max_leverage': 2.0,
-                    'clip_min': -5.0,
-                    'clip_max': 5.0
-                },
-                'differential_sharpe': {
-                    'enabled': True,
-                    'weight': 0.3,
-                    'window_size': 20,
-                    'min_periods': 5,
-                    'sharpe_scale': 0.1
-                },
-                'holding_time_penalty': {
-                    'enabled': True,
-                    'weight': 1.0,
-                    'max_holding_time': 60,
-                    'penalty_per_step': 0.001,
-                    'progressive_penalty': True
-                },
-                'overtrading_penalty': {
-                    'enabled': True,
-                    'weight': 1.0,
-                    'frequency_window': 100,
-                    'max_trades_per_window': 5,
-                    'penalty_per_excess_trade': 0.01,
-                    'exponential_penalty': True
-                },
-                'quick_profit_incentive': {
-                    'enabled': True,
-                    'weight': 1.0,
-                    'quick_profit_time': 30,
-                    'bonus_rate': 0.5
-                },
-                'drawdown_penalty': {
-                    'enabled': True,
-                    'weight': 1.0,
-                    'warning_threshold': 0.02,
-                    'severe_threshold': 0.05,
-                    'base_penalty': 0.01
-                },
-                'mae_penalty': {
-                    'enabled': True,
-                    'weight': 1.0,
-                    'mae_threshold': 0.02,
-                    'base_penalty': 0.1,
-                    'loss_multiplier': 1.5
-                },
-                'mfe_penalty': {
-                    'enabled': True,
-                    'weight': 1.0,
-                    'give_back_threshold': 0.5,
-                    'base_penalty': 0.05,
-                    'reversal_multiplier': 2.0
-                },
-                'terminal_penalty': {
-                    'enabled': True,
-                    'weight': 1.0,
-                    'bankruptcy_penalty': 100.0,
-                    'max_loss_penalty': 50.0,
-                    'default_penalty': 10.0
-                }
-            },
-            'aggregator': {
-                'global_scale': 0.01,
-                'use_smoothing': True,
-                'smoothing_window': 10
-            }
-        }
-
     def _initialize_components(self) -> List:
+
+        """Initialize reward components based on Pydantic config"""
+        components = []
+        
+        # Initialize PnL component
+        if self.reward_config.pnl.enabled:
+            pnl_config = {
+                'enabled': True,
+                'weight': self.reward_config.pnl.coefficient,
+                'clip_min': self.reward_config.clip_range[0],
+                'clip_max': self.reward_config.clip_range[1]
+            }
+            components.append(RealizedPnLReward(pnl_config, self.logger))
+            self.logger.info("Initialized PnL reward component")
+            
+        # Initialize holding penalty
+        if self.reward_config.holding_penalty.enabled:
+            holding_config = {
+                'enabled': True,
+                'weight': self.reward_config.holding_penalty.coefficient,
+                'penalty_per_step': 0.001,
+                'max_holding_steps': 300
+            }
+            components.append(HoldingTimePenalty(holding_config, self.logger))
+            self.logger.info("Initialized holding penalty component")
+            
+        # Initialize action penalty (overtrading)
+        if self.reward_config.action_penalty.enabled:
+            overtrading_config = {
+                'enabled': True,
+                'weight': self.reward_config.action_penalty.coefficient,
+                'penalty_per_action': 0.0001,
+                'window_size': 20
+            }
+            components.append(OvertradingPenalty(overtrading_config, self.logger))
+            self.logger.info("Initialized overtrading penalty component")
+            
+        # Initialize drawdown penalty
+        if self.reward_config.drawdown_penalty.enabled:
+            drawdown_config = {
+                'enabled': True,
+                'weight': self.reward_config.drawdown_penalty.coefficient,
+                'drawdown_threshold': 0.05,
+                'penalty_scale': 1.0
+            }
+            components.append(DrawdownPenalty(drawdown_config, self.logger))
+            self.logger.info("Initialized drawdown penalty component")
+            
+        # Initialize bankruptcy penalty (terminal penalty)
+        if self.reward_config.bankruptcy_penalty.enabled:
+            terminal_config = {
+                'enabled': True,
+                'weight': self.reward_config.bankruptcy_penalty.coefficient,
+                'bankruptcy_penalty': 100.0,
+                'max_loss_penalty': 50.0,
+                'default_penalty': 10.0
+            }
+            components.append(TerminalPenalty(terminal_config, self.logger))
+            self.logger.info("Initialized terminal penalty component")
+            
+        # Initialize profitable exit bonus
+        if self.reward_config.profitable_exit.enabled:
+            profit_config = {
+                'enabled': True,
+                'weight': self.reward_config.profitable_exit.coefficient,
+                'min_profit_threshold': 0.001,
+                'max_incentive': 1.0
+            }
+            components.append(QuickProfitIncentive(profit_config, self.logger))
+            self.logger.info("Initialized quick profit incentive component")
+            
+
         """Initialize all reward components based on enabled flags in RewardV2Config"""
         components = []
         
@@ -187,6 +186,7 @@ class RewardSystemV2:
             components.append(DrawdownPenalty(drawdown_config, self.logger))
             self.logger.info(f"Initialized drawdown penalty component")
                     
+
         return components
     
     def reset(self):

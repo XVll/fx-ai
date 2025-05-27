@@ -9,7 +9,31 @@ from typing import TypedDict, Optional, List, Dict, Any, Tuple
 import numpy as np
 import pandas as pd
 
-from config.schemas import Config
+from config.schemas import EnvConfig, SimulationConfig, ModelConfig
+from dataclasses import dataclass
+
+
+@dataclass
+class Position:
+    """Represents a position in the portfolio."""
+    side: str  # 'long' or 'short'
+    quantity: float
+    avg_price: float = 0.0
+    
+    def __init__(self, side: str, quantity: float, avg_price: float = 0.0):
+        self.side = side
+        self.quantity = quantity
+        self.avg_price = avg_price
+
+
+@dataclass
+class Trade:
+    """Represents a completed trade."""
+    symbol: str
+    side: str  # 'buy' or 'sell'
+    quantity: float
+    price: float
+    timestamp: pd.Timestamp
 
 
 class OrderTypeEnum(Enum):
@@ -86,20 +110,38 @@ class PortfolioState(TypedDict):
 class PortfolioSimulator:
     """Clean portfolio management with essential logging only"""
 
-    def __init__(self, logger: logging.Logger, config: Config, tradable_assets: List[str], trade_callback=None):
+    def __init__(self, logger: logging.Logger, env_config: EnvConfig, tradable_assets: List[str], 
+                 simulation_config: Optional[SimulationConfig] = None, 
+                 model_config: Optional[ModelConfig] = None, trade_callback=None):
         self.logger = logger
-        self.config:Config = config
+        self.env_config: EnvConfig = env_config
+        self.simulation_config = simulation_config
+        self.model_config = model_config
         self.trade_callback = trade_callback  # Callback for completed trades
 
         # Core configuration
-        self.initial_capital: float = config.simulation.initial_cash
+        self.initial_capital: float = env_config.initial_capital
         self.tradable_assets: List[str] = tradable_assets
-        self.portfolio_seq_len: int = config.model.portfolio_seq_len
-        self.portfolio_feat_dim: int = config.model.portfolio_feat_dim
-        self.max_position_value_ratio: float = config.simulation.max_position_value_ratio
-        self.allow_shorting: bool = config.simulation.allow_shorting
-        # Default max holding time (8 hours = 28800 seconds)
-        self.max_position_holding_seconds = 28800  # TODO: Add to config if needed
+
+        
+        # Model configuration (with defaults)
+        if model_config:
+            self.portfolio_seq_len: int = model_config.portfolio_seq_len
+            self.portfolio_feat_dim: int = model_config.portfolio_feat_dim
+        else:
+            self.portfolio_seq_len: int = 10
+            self.portfolio_feat_dim: int = 10
+        
+        # Simulation configuration (with defaults)
+        if simulation_config:
+            self.max_position_value_ratio: float = simulation_config.max_position_value_ratio
+            self.allow_shorting: bool = simulation_config.allow_shorting
+            self.max_position_holding_seconds = simulation_config.max_position_holding_seconds
+        else:
+            self.max_position_value_ratio: float = 1.0
+            self.allow_shorting: bool = False
+            self.max_position_holding_seconds = None
+
 
         # State variables
         self.cash: float = 0.0
