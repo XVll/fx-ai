@@ -376,10 +376,7 @@ def train(config: Config):
     
     # Setup logging
     logger = setup_rich_logging(
-        name="fx-ai",
         level=config.logging.level,
-        log_dir=config.logging.log_dir,
-        console_format=config.logging.console_format
     )
     
     logger.info("="*80)
