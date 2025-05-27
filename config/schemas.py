@@ -200,8 +200,8 @@ class DataConfig(BaseModel):
     load_ohlcv: bool = True
     
     # Date range
-    start_date: Optional[str] = Field(default=None, description="Start date YYYY-MM-DD")
-    end_date: Optional[str] = Field(default=None, description="End date YYYY-MM-DD")
+    start_date: Optional[str] = Field(default="03.27.2025", description="Start date YYYY-MM-DD")
+    end_date: Optional[str] = Field(default="03.27.2025", description="End date YYYY-MM-DD")
     
     # Performance
     cache_enabled: bool = True
