@@ -122,6 +122,7 @@ class PortfolioSimulator:
         # Core configuration
         self.initial_capital: float = env_config.initial_capital
         self.tradable_assets: List[str] = tradable_assets
+
         
         # Model configuration (with defaults)
         if model_config:
@@ -140,6 +141,7 @@ class PortfolioSimulator:
             self.max_position_value_ratio: float = 1.0
             self.allow_shorting: bool = False
             self.max_position_holding_seconds = None
+
 
         # State variables
         self.cash: float = 0.0

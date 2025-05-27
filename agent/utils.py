@@ -38,29 +38,50 @@ class ReplayBuffer:
         """
         processed_tensors = {}
         for key, array_val in state_dict_np.items():
+            # Debug logging for object arrays
+            if array_val.dtype == np.object_:
+                logger.warning(f"Found object array for key '{key}', shape: {array_val.shape}, will attempt conversion")
+            
             # Ensure the numpy array is not an object array if it contains numerical data
             if array_val.dtype == np.object_:
                 try:
-                    array_val = np.stack(array_val.tolist())  # For safety if it's a list of arrays
+                    # First attempt to convert to a proper numpy array
+                    if isinstance(array_val, np.ndarray) and array_val.size > 0:
+                        # Try to extract the first element to determine proper dtype
+                        first_elem = array_val.flat[0]
+                        if isinstance(first_elem, (int, float, np.number)):
+                            array_val = np.array(array_val.tolist(), dtype=np.float32)
+                        else:
+                            array_val = np.stack(array_val.tolist())
+                    else:
+                        array_val = np.array(array_val.tolist(), dtype=np.float32)
                 except Exception as e:
-                    logger.error(f"Could not stack object array for key {key}: {e}. Array shape: {array_val.shape}")
+                    logger.error(f"Could not convert object array for key {key}: {e}. Array shape: {array_val.shape}")
                     # Create a zero array as fallback to prevent corruption
                     if hasattr(array_val, 'shape') and array_val.shape:
-                        array_val = np.zeros_like(array_val, dtype=np.float32)
+                        # Create proper shape with float32 dtype
+                        shape = array_val.shape
+                        array_val = np.zeros(shape, dtype=np.float32)
                     else:
                         raise ValueError(f"Cannot process object array for key {key}")
+
+            # Ensure array is contiguous and has proper dtype before conversion
+            if not array_val.flags['C_CONTIGUOUS']:
+                array_val = np.ascontiguousarray(array_val, dtype=np.float32)
+            elif array_val.dtype != np.float32:
+                array_val = array_val.astype(np.float32)
 
             # Convert to float32 tensor, preserving the original dimensions
             try:
                 # Convert to PyTorch tensor, preserving the original shape
-                tensor_val = torch.from_numpy(array_val).float().to(self.device)
+                tensor_val = torch.from_numpy(array_val).to(self.device)
                 processed_tensors[key] = tensor_val
 
                 # Log the shape for debugging
                 logger.debug(f"Processed tensor '{key}' with shape: {tensor_val.shape}")
-            except TypeError as e:
+            except (TypeError, RuntimeError) as e:
                 logger.error(
-                    f"TypeError converting key '{key}' to tensor: {e}. Value: {array_val}, Dtype: {array_val.dtype}")
+                    f"Error converting key '{key}' to tensor: {e}. Value shape: {array_val.shape}, Dtype: {array_val.dtype}")
                 # Handle or re-raise depending on how critical this is
                 raise
 
@@ -87,12 +108,12 @@ class ReplayBuffer:
 
         experience = {
             'state': self._process_state_dict(state_np),
-            'action': action.detach().clone() if action.device == self.device else action.detach().to(self.device),
+            'action': action.detach().to(self.device),
             'reward': torch.tensor([reward], dtype=torch.float32, device=self.device),
             'next_state': self._process_state_dict(next_state_np),
             'done': torch.tensor([done], dtype=torch.bool, device=self.device),
-            'value': action_info['value'].detach().clone() if action_info['value'].device == self.device else action_info['value'].detach().to(self.device),
-            'log_prob': action_info['log_prob'].detach().clone() if action_info['log_prob'].device == self.device else action_info['log_prob'].detach().to(self.device)
+            'value': action_info['value'].detach().to(self.device),
+            'log_prob': action_info['log_prob'].detach().to(self.device)
         }
 
         self.buffer[self.position] = experience
@@ -212,14 +233,31 @@ class ReplayBuffer:
         for exp in self.buffer:
             for key in list(exp.keys()):
                 if isinstance(exp[key], torch.Tensor):
+                    # Explicitly detach and delete tensor references
+                    exp[key] = exp[key].detach().cpu()
                     del exp[key]
                 elif isinstance(exp[key], dict):
                     for sub_key in list(exp[key].keys()):
                         if isinstance(exp[key][sub_key], torch.Tensor):
+                            exp[key][sub_key] = exp[key][sub_key].detach().cpu()
                             del exp[key][sub_key]
         
         self.buffer.clear()
         self.position = 0
+        
+        # Clear tensors and free memory
+        if self.states is not None:
+            for key in self.states:
+                if isinstance(self.states[key], torch.Tensor):
+                    self.states[key] = self.states[key].detach().cpu()
+        
+        # Detach and clear all tensors
+        for attr in ['actions', 'log_probs', 'values', 'rewards', 'dones', 'advantages', 'returns']:
+            if hasattr(self, attr) and getattr(self, attr) is not None:
+                tensor = getattr(self, attr)
+                if isinstance(tensor, torch.Tensor):
+                    setattr(self, attr, tensor.detach().cpu())
+        
         self.states = None
         self.actions = None
         self.log_probs = None
@@ -228,6 +266,13 @@ class ReplayBuffer:
         self.dones = None
         self.advantages = None
         self.returns = None
+        
+        # Force garbage collection to free memory
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
         logger.info("ReplayBuffer cleared.")
 
     def is_ready_for_training(self) -> bool:
@@ -259,18 +304,34 @@ def convert_state_dict_to_tensors(
     for key, np_array in state_dict_np.items():
         # Ensure the numpy array is not an object array if it contains numerical data
         if np_array.dtype == np.object_:
-            try:  # Attempt to stack if it's a list of arrays, common for 'portfolio' if not pre-stacked
-                np_array = np.stack(np_array.tolist())
+            try:
+                # First attempt to convert to a proper numpy array
+                if isinstance(np_array, np.ndarray) and np_array.size > 0:
+                    # Try to extract the first element to determine proper dtype
+                    first_elem = np_array.flat[0]
+                    if isinstance(first_elem, (int, float, np.number)):
+                        np_array = np.array(np_array.tolist(), dtype=np.float32)
+                    else:
+                        np_array = np.stack(np_array.tolist())
+                else:
+                    np_array = np.array(np_array.tolist(), dtype=np.float32)
             except Exception as e:
-                logger.error(f"Could not stack object array for key {key} during tensor conversion: {e}")
+                logger.error(f"Could not convert object array for key {key} during tensor conversion: {e}")
                 if hasattr(np_array, 'shape') and np_array.shape:
-                    np_array = np.zeros_like(np_array, dtype=np.float32)
+                    shape = np_array.shape
+                    np_array = np.zeros(shape, dtype=np.float32)
                 else:
                     raise ValueError(f"Cannot process object array for key {key}")
 
+        # Ensure array is contiguous and has proper dtype before conversion
+        if not np_array.flags['C_CONTIGUOUS']:
+            np_array = np.ascontiguousarray(np_array, dtype=np.float32)
+        elif np_array.dtype != np.float32:
+            np_array = np.array(np_array, dtype=np.float32)
+
         try:
-            state_dict_torch[key] = torch.from_numpy(np_array).float().to(device)
-        except TypeError as e:
-            logger.error(f"TypeError converting key '{key}' to tensor: {e}. Value: {np_array}, Dtype: {np_array.dtype}")
+            state_dict_torch[key] = torch.from_numpy(np_array).to(device)
+        except (TypeError, RuntimeError) as e:
+            logger.error(f"Error converting key '{key}' to tensor: {e}. Shape: {np_array.shape}, Dtype: {np_array.dtype}")
             raise
     return state_dict_torch
