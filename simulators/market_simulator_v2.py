@@ -1005,3 +1005,74 @@ class MarketSimulatorV2:
             return 0, 0
             
         return bars['high'].max(), bars['low'].min()
+    
+    def is_market_open(self) -> bool:
+        """Check if market is currently open."""
+        if self.current_timestamp is None:
+            return False
+        
+        current_time = self.current_timestamp.time()
+        market_open = pd.Timestamp('09:30').time()
+        market_close = pd.Timestamp('16:00').time()
+        
+        return market_open <= current_time <= market_close
+    
+    def get_time_until_close(self) -> float:
+        """Get seconds until market close."""
+        if self.current_timestamp is None:
+            return 0
+        
+        market_close = self.current_timestamp.replace(hour=16, minute=0, second=0)
+        if self.current_timestamp >= market_close:
+            return 0
+        
+        return (market_close - self.current_timestamp).total_seconds()
+    
+    def set_time(self, timestamp: datetime):
+        """Set current simulation time."""
+        self.current_timestamp = pd.Timestamp(timestamp)
+    
+    def set_data(self, ohlcv_1s: pd.DataFrame, trades: pd.DataFrame, 
+                 quotes: pd.DataFrame, order_book: Optional[pd.DataFrame] = None):
+        """Set market data for simulation."""
+        self.ohlcv_data = ohlcv_1s
+        self.trade_data = trades
+        self.quote_data = quotes
+        self.order_book_data = order_book
+        
+        # Rebuild indices
+        self._build_indices()
+    
+    def step(self) -> bool:
+        """Advance simulation by one timestep."""
+        if self.current_timestamp is None or self.ohlcv_data is None:
+            return False
+        
+        # Find next timestamp
+        try:
+            current_idx = self.ohlcv_data.index.get_loc(self.current_timestamp)
+            if current_idx >= len(self.ohlcv_data) - 1:
+                return False
+            
+            self.current_timestamp = self.ohlcv_data.index[current_idx + 1]
+            return True
+        except KeyError:
+            # Current timestamp not in index, find next
+            # Use searchsorted to find the index of the next timestamp
+            next_idx = self.ohlcv_data.index.searchsorted(self.current_timestamp, side='right')
+            if next_idx >= len(self.ohlcv_data):
+                return False
+            
+            self.current_timestamp = self.ohlcv_data.index[next_idx]
+            return True
+    
+    def reset(self):
+        """Reset simulator state."""
+        self.current_timestamp = None
+        self.execution_stats = {
+            'orders_executed': 0,
+            'total_volume': 0,
+            'total_slippage_bps': 0.0,
+            'total_latency_ms': 0.0,
+            'interpolations_used': 0
+        }
