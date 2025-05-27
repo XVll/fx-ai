@@ -1,3 +1,5 @@
+# Todo :
+* We need to teach about "HALT" status to model and include this in our environment.
 # Trading Environment Redesign - Final Implementation Plan
 
 ## Overview
@@ -14,15 +16,21 @@ This document consolidates the complete redesign plan for the trading environmen
 
 ## Architecture Components
 
-### 1. MomentumEpisodeScanner
+### 1. MomentumEpisodeScanner (Runtime)
 
-**Purpose**: Scan daily market data to identify and categorize potential reset points for training episodes.
+**Purpose**: Uses pre-built offline indices to efficiently select high-value training episodes.
 
 **Key Features**:
-- Detects momentum/squeeze setups using volume, price velocity, and ATR expansion
+- Loads pre-computed momentum indices from Parquet files
+- No live scanning overhead - O(1) lookups from indexed data
 - Categorizes market conditions (front side, back side, dead zones)
-- Assigns quality scores based on multiple factors
-- Creates metadata for intelligent episode selection
+- Provides quality-based episode selection for curriculum training
+
+**Offline Index Creation**:
+- `MomentumScanner` runs as a separate offline process
+- Scans entire symbol history to identify 10-30% movement days
+- Creates indices with quality scores, reset points, and metadata
+- Stores results in efficient Parquet format
 
 **Reset Point Categories**:
 
@@ -197,105 +205,114 @@ class PositionHandler:
 
 ### Phase 1: Scanner and Data Integration
 
-**Offline Momentum Scanning**
+**Offline Momentum Scanning (Implemented)**
 
-The momentum scanner runs as an offline process to build an index of high-value trading days:
+The momentum scanner (`data/scanner/momentum_scanner.py`) runs as a separate offline process to build indices:
 
 ```python
-class MomentumIndexBuilder:
-    """Offline scanner that builds momentum index"""
+class MomentumScanner:
+    """Implemented offline scanner that builds momentum indices"""
     
-    def scan_symbol_history(self, symbol: str, start_date: datetime, end_date: datetime):
-        """Scan entire symbol history and build index"""
+    def scan_symbol(self, symbol: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+        """Scan symbol history and identify momentum days"""
         
         momentum_days = []
         
-        for date in pd.date_range(start_date, end_date, freq='D'):
-            # Load day using data manager
-            day_data = self.data_manager.load_day(symbol, date)
+        # Process databento files directly
+        for file_path in self._get_symbol_files(symbol, start_date, end_date):
+            day_data = self._process_file(file_path)
             
             if day_data is None:
                 continue
                 
-            # Calculate day-level metrics
-            day_metrics = {
-                'symbol': symbol,
-                'date': date,
-                'max_move': (day_data['high'].max() - day_data['low'].min()) / day_data['open'].iloc[0],
-                'volume_ratio': day_data['volume'].sum() / self.avg_volume[symbol],
-                'num_halts': self._count_halts(day_data)
-            }
+            # Calculate intraday metrics
+            day_metrics = self._calculate_day_metrics(day_data)
             
-            # Only process high-movement days
-            if day_metrics['max_move'] >= 0.1:  # 10%+ movement
-                # Find reset points within the day
-                reset_points = self._scan_for_reset_points(day_data)
-                
+            # Only index high-movement days (10-30% moves)
+            if 0.1 <= day_metrics['max_move'] <= 0.3:
                 momentum_days.append({
-                    'day_metrics': day_metrics,
-                    'reset_points': reset_points,
-                    'quality_score': self._calculate_day_quality(day_metrics, reset_points)
+                    'symbol': symbol,
+                    'date': day_metrics['date'],
+                    'quality_score': day_metrics['quality_score'],
+                    'max_move': day_metrics['max_move'],
+                    'volume_ratio': day_metrics['volume_ratio'],
+                    'num_squeezes': day_metrics['num_squeezes'],
+                    'best_period': day_metrics['best_period']
                 })
                 
-        # Save to parquet index
-        self._save_momentum_index(momentum_days)
+        # Save to parquet indices
+        return self._save_indices(pd.DataFrame(momentum_days))
 ```
 
-**Runtime Episode Scanner**
+**Runtime Episode Scanner (To Be Implemented)**
 
 ```python
 class MomentumEpisodeScanner:
-    """Runtime scanner that uses pre-built index"""
+    """Runtime scanner that uses pre-built indices for O(1) lookups"""
     
     def __init__(self, index_path: str):
-        # Load pre-computed indices
-        self.day_index = pd.read_parquet(f"{index_path}/days.parquet")
-        self.reset_index = pd.read_parquet(f"{index_path}/resets.parquet")
+        # Load pre-computed indices from momentum scanner
+        self.index_utils = MomentumIndexUtils(index_path)
+        self.day_index = self.index_utils.load_index('MLGO')
         
-    def get_training_days(self, symbol: str, quality_threshold: float = 0.6):
-        """Get pre-scanned momentum days for training"""
-        return self.day_index[
-            (self.day_index.symbol == symbol) & 
-            (self.day_index.quality_score >= quality_threshold)
-        ].sort_values('quality_score', ascending=False)
+    def get_training_days(self, symbol: str, stage: str = 'stage_1') -> List[Dict]:
+        """Get curriculum-appropriate momentum days"""
         
-    def get_reset_points(self, symbol: str, date: datetime):
-        """Get reset points for a specific day"""
-        return self.reset_index[
-            (self.reset_index.symbol == symbol) & 
-            (self.reset_index.date == date.date())
-        ].sort_values('timestamp')
+        # Use curriculum selector for stage-based filtering
+        selector = CurriculumBasedSelector(self.config)
+        return selector.select_days(
+            self.day_index,
+            stage=stage,
+            performance_metrics=self.performance_tracker.get_metrics()
+        )
+        
+    def get_next_episode(self, symbol: str, current_episode: int) -> Dict:
+        """Get next episode based on curriculum progression"""
+        
+        stage = self._get_curriculum_stage(current_episode)
+        available_days = self.get_training_days(symbol, stage)
+        
+        # Select day based on quality and curriculum requirements
+        return self._select_optimal_day(available_days, stage)
 ```
 
 ### Phase 2: Environment Modifications
 
 ```python
 class TradingEnvironment:
-    """Updated environment for single-day episodes with multiple resets"""
+    """Updated environment using new data layer and market simulator v2"""
     
     def setup_day(self, symbol: str, date: datetime):
-        """Load full day's data once for all reset points"""
+        """Load full day's data using enhanced DataManager"""
         
-        # Load current day and previous day for lookback
-        self.current_day_data = self.data_manager.load_day(
+        # Use new DataManager with 2-tier caching
+        success = self.data_manager.load_day(
             symbol=symbol,
             date=date,
-            include_previous_day=True
+            with_lookback=True  # Includes previous day for features
         )
         
-        # Initialize market simulator with day's data
-        self.market_simulator.initialize_day(
+        if not success:
+            raise ValueError(f"Failed to load data for {symbol} on {date}")
+        
+        # Initialize MarketSimulatorV2 with O(1) lookups
+        self.market_simulator = MarketSimulatorV2(
             symbol=symbol,
-            day_data=self.current_day_data
+            data_provider=self.data_manager.get_provider(symbol),
+            config=self.config.simulation
         )
         
-        # Pre-compute day-level features
-        self.day_features = self.feature_extractor.compute_day_features(
-            self.current_day_data
+        # Set the day's data in simulator
+        day_data = self.data_manager.get_day_data(symbol, date)
+        self.market_simulator.set_data(
+            ohlcv_1s=day_data.get('ohlcv_1s'),
+            trades=day_data.get('trades'),
+            quotes=day_data.get('quotes'),
+            order_book=day_data.get('mbp')
         )
         
-        # Get all reset points for the day
-        self.day_reset_points = self.episode_scanner.get_reset_points(symbol, date)
+        # Load reset points from pre-computed index
+        self.reset_points = self.episode_scanner.get_reset_points(symbol, date)
         self.current_reset_idx = 0
         
     def reset_at_point(self, reset_point: CategorizedResetPoint):
@@ -503,12 +520,20 @@ momentum_trading:
    - Quick profit-taking aligned with momentum trading
    - Proper risk management during adverse moves
 
-## Implementation Timeline
+## Implementation Status
 
-**Week 1**: Scanner and pattern detection
-**Week 2**: Environment modifications and reward system
-**Week 3**: Training orchestration and curriculum
-**Week 4**: Testing, validation, and optimization
+**Completed**:
+- ✅ Offline momentum scanner (`data/scanner/momentum_scanner.py`)
+- ✅ Enhanced DataManager with 2-tier caching (`data/data_manager.py`)
+- ✅ MarketSimulatorV2 with O(1) lookups (`simulators/market_simulator_v2.py`)
+- ✅ Unified data provider interface (`data/provider/data_provider.py`)
+- ✅ Index utilities for momentum day queries (`data/utils/index_utils.py`)
+
+**Next Steps**:
+- 🔄 Runtime MomentumEpisodeScanner integration
+- 🔄 Environment modifications for reset points
+- 🔄 Training manager with curriculum support
+- 🔄 Position handler for episode boundaries
 
 ## Monitoring Metrics
 
