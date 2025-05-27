@@ -34,13 +34,13 @@ def main():
     
     # 1. Create data provider
     provider = DatabentoFileProvider(
-        data_dir='dnb/Mlgo',
+        data_dir='dnb/mlgo',
         verbose=False
     )
     
     # 2. Create momentum scanner
     scanner = MomentumScanner(
-        data_dir='dnb/Mlgo',
+        data_dir='dnb/mlgo',
         output_dir='outputs/indices',
         logger=logger
     )

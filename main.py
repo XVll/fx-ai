@@ -157,8 +157,8 @@ def create_data_provider(data_config: DataConfig):
     
     if data_config.provider == "databento":
         # Construct paths for databento
-        # Use the actual directory name which is "Mlgo" with capital M
-        data_path = Path(data_config.data_dir) / "Mlgo"
+        # Use the actual directory name which is "mlgo" with capital M
+        data_path = Path(data_config.data_dir) / "mlgo"
         
         return DatabentoFileProvider(
             data_dir=str(data_path),
