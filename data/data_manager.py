@@ -65,6 +65,10 @@ class DataManager:
         self.reset_points_cache = None
         self._load_momentum_indices()
 
+        # Cache for legacy compatibility
+        self.data_cache = {}
+        self.loaded_ranges = {}
+        
         # Current state tracking
         self.current_symbol = None
         self.current_date = None
@@ -360,6 +364,12 @@ class DataManager:
 
         cache_key = self._create_cache_key(start_time, end_time)
         self.data_cache[symbol][data_type][cache_key] = df
+
+    def _create_cache_key(self, start_time: datetime, end_time: datetime) -> str:
+        """Create a cache key from start and end times."""
+        start_str = start_time.strftime('%Y%m%d_%H%M%S') if start_time else 'None'
+        end_str = end_time.strftime('%Y%m%d_%H%M%S') if end_time else 'None'
+        return f"{start_str}_{end_str}"
 
     def _update_loaded_ranges(self, symbol: str, data_type: str,
                               start_time: datetime, end_time: datetime) -> None:
