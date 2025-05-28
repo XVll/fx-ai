@@ -282,40 +282,71 @@ class MomentumEpisodeScanner:
 
 ```python
 class TradingEnvironment:
-    """Updated environment using new data layer and market simulator v2"""
+    """Updated environment using MarketSimulator with pre-calculated features"""
     
-    def setup_day(self, symbol: str, date: datetime):
-        """Load full day's data using enhanced DataManager"""
+    def __init__(self, config):
+        self.config = config
         
-        # Use new DataManager with 2-tier caching
-        success = self.data_manager.load_day(
-            symbol=symbol,
-            date=date,
-            with_lookback=True  # Includes previous day for features
+        # Initialize DataManager with momentum index support
+        self.data_manager = DataManager(
+            provider=self._create_provider(),
+            momentum_scanner=MomentumScanner(),
+            preload_days=2
         )
+        
+        # MarketSimulator will be created per session
+        self.current_market_sim = None
+        self.next_market_sim = None
+        
+        # Episode management
+        self.episode_scanner = MomentumEpisodeScanner(config.index_path)
+        
+    def setup_session(self, symbol: str, date: datetime):
+        """Setup a new trading session with pre-calculated features"""
+        
+        # Create new MarketSimulator for this session
+        self.current_market_sim = MarketSimulator(
+            symbol=symbol,
+            data_manager=self.data_manager,
+            model_config=self.config.model,
+            simulation_config=self.config.simulation
+        )
+        
+        # Initialize day - this pre-calculates ALL features for entire day
+        success = self.current_market_sim.initialize_day(date)
         
         if not success:
-            raise ValueError(f"Failed to load data for {symbol} on {date}")
+            raise ValueError(f"Failed to initialize {symbol} on {date}")
         
-        # Initialize MarketSimulatorV2 with O(1) lookups
-        self.market_simulator = MarketSimulatorV2(
-            symbol=symbol,
-            data_provider=self.data_manager.get_provider(symbol),
-            config=self.config.simulation
-        )
-        
-        # Set the day's data in simulator
-        day_data = self.data_manager.get_day_data(symbol, date)
-        self.market_simulator.set_data(
-            ohlcv_1s=day_data.get('ohlcv_1s'),
-            trades=day_data.get('trades'),
-            quotes=day_data.get('quotes'),
-            order_book=day_data.get('mbp')
-        )
-        
-        # Load reset points from pre-computed index
-        self.reset_points = self.episode_scanner.get_reset_points(symbol, date)
+        # Load reset points from momentum index
+        self.reset_points = self.data_manager.get_reset_points(symbol, date)
         self.current_reset_idx = 0
+        
+        # Log session info
+        stats = self.current_market_sim.get_stats()
+        self.logger.info(f"Session ready: {stats['total_seconds']} seconds, warmup: {stats['warmup_info']['has_warmup']}")
+        
+    def prepare_next_session(self, symbol: str, date: datetime):
+        """Prepare next session in background for fast switching"""
+        
+        # Create MarketSimulator for next session
+        self.next_market_sim = MarketSimulator(
+            symbol=symbol,
+            data_manager=self.data_manager,  # Shared data manager
+            model_config=self.config.model,
+            simulation_config=self.config.simulation
+        )
+        
+        # Initialize in background thread for efficiency
+        def background_init():
+            success = self.next_market_sim.initialize_day(date)
+            if success:
+                self.logger.info(f"Next session ready: {symbol} {date}")
+            else:
+                self.logger.error(f"Failed to prepare next session: {symbol} {date}")
+                
+        # Could run in thread for true background processing
+        background_init()
         
     def reset_at_point(self, reset_point: CategorizedResetPoint):
         """Reset to specific point within loaded day"""
@@ -526,16 +557,26 @@ momentum_trading:
 
 **Completed**:
 - ✅ Offline momentum scanner (`data/scanner/momentum_scanner.py`)
-- ✅ Enhanced DataManager with 2-tier caching (`data/data_manager.py`)
-- ✅ MarketSimulatorV2 with O(1) lookups (`simulators/market_simulator_v2.py`)
+- ✅ Enhanced DataManager with 2-tier caching and momentum index (`data/data_manager.py`)
+- ✅ **MarketSimulator with pre-calculated features** (`simulators/market_simulator.py`)
+- ✅ **FeatureExtractor for pre-calculated features** (`feature/feature_extractor.py`)
 - ✅ Unified data provider interface (`data/provider/data_provider.py`)
 - ✅ Index utilities for momentum day queries (`data/utils/index_utils.py`)
+- ✅ **Warmup data handling for early morning features**
+- ✅ **Uniform timeline with forward-filling for missing data**
+
+**Key Architecture Changes**:
+- ✅ **Pre-calculated Features**: All features (HF/MF/LF/Static) calculated once during `initialize_day()`
+- ✅ **O(1) Feature Access**: No feature calculation during training - just array lookups
+- ✅ **Warmup Data Support**: Previous day data loaded automatically for early morning training
+- ✅ **Uniform Timeline**: Every second has valid market state and features, even with sparse data
+- ✅ **Smart Data Management**: Environment uses DataManager for momentum index, MarketSim for execution
 
 **Next Steps**:
-- 🔄 Runtime MomentumEpisodeScanner integration
-- 🔄 Environment modifications for reset points
-- 🔄 Training manager with curriculum support
+- 🔄 Environment integration with MarketSimulator
+- 🔄 Training manager with momentum index-based day selection
 - 🔄 Position handler for episode boundaries
+- 🔄 Curriculum integration with quality scores
 
 ## Monitoring Metrics
 
