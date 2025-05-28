@@ -1,35 +1,39 @@
-# feature/feature_extractor.py - Feature extraction using the new modular system
+"""Feature Extractor - Works with pre-calculated features from MarketSimulatorV3
+
+This feature extractor is designed to work with MarketSimulatorV3 which pre-calculates
+all features. It simply retrieves the pre-calculated features and adds portfolio features.
+"""
 
 import logging
-from typing import Dict, Optional, Any
+from typing import Dict, Optional
 import numpy as np
-import pandas as pd
-from datetime import datetime
 
 from config.schemas import ModelConfig
 from simulators.market_simulator import MarketSimulator
-from feature.feature_manager import FeatureManager
-from feature.contexts import MarketContext
 
 
 class FeatureExtractor:
-    """Feature extractor using the new modular feature system"""
+    """Feature extractor that retrieves pre-calculated features from MarketSimulatorV3"""
 
-    def __init__(self, symbol: str, market_simulator: MarketSimulator,
-                 config: ModelConfig, logger: Optional[logging.Logger] = None):
+    def __init__(self,
+                 symbol: str,
+                 market_simulator: MarketSimulator,
+                 config: ModelConfig,
+                 logger: Optional[logging.Logger] = None):
+        """Initialize the feature extractor
+        
+        Args:
+            symbol: Trading symbol
+            market_simulator: MarketSimulatorV3 instance with pre-calculated features
+            config: Model configuration
+            logger: Optional logger
+        """
         self.symbol = symbol
         self.market_simulator = market_simulator
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
 
-        # Initialize feature manager
-        self.feature_manager = FeatureManager(
-            symbol=symbol,
-            config=config,
-            logger=self.logger
-        )
-        
-        # Feature dimensions
+        # Feature dimensions from config
         self.hf_seq_len = config.hf_seq_len
         self.hf_feat_dim = config.hf_feat_dim
         self.mf_seq_len = config.mf_seq_len
@@ -40,131 +44,222 @@ class FeatureExtractor:
         self.portfolio_seq_len = config.portfolio_seq_len
         self.portfolio_feat_dim = config.portfolio_feat_dim
         
-        # Cache for efficiency
-        self._last_features = None
-        self._last_timestamp = None
-
-    def reset(self):
-        """Reset feature extractor state"""
-        self._last_features = None
-        self._last_timestamp = None
-        self.feature_manager.reset()
+        # Portfolio state for feature extraction
+        self.portfolio_state = {
+            'position': 0.0,
+            'unrealized_pnl': 0.0,
+            'realized_pnl': 0.0,
+            'cash_balance': 100000.0,  # Default starting cash
+            'total_equity': 100000.0,
+            'buying_power': 100000.0,
+            'avg_entry_price': 0.0,
+            'position_value': 0.0,
+            'total_trades': 0,
+            'winning_trades': 0,
+            'losing_trades': 0
+        }
+        
+        # Track portfolio history for sequence features
+        self.portfolio_history = []
+        self.max_history_length = 100  # Keep last 100 states
 
     def extract_features(self) -> Optional[Dict[str, np.ndarray]]:
-        """Extract features for current market state"""
+        """Extract features for current market state
+        
+        Since MarketSimulatorV3 pre-calculates features, this method simply
+        retrieves them and adds portfolio features.
+        
+        Returns:
+            Dictionary with feature arrays or None if unavailable
+        """
         try:
-            current_market_state = self.market_simulator.get_current_market_state()
-            if not current_market_state:
-                return None
-
-            current_timestamp = current_market_state.get('timestamp_utc')
-
-            # Use cache if same timestamp
-            if (self._last_features is not None and
-                    current_timestamp == self._last_timestamp):
-                return self._last_features
-
-            # Create MarketContext from current state
-            context = self._create_market_context(current_market_state)
-            if context is None:
-                return None
-
-            # Extract features using the modular system
-            features = self.feature_manager.extract_features(context)
+            # Get pre-calculated features from market simulator
+            features = self.market_simulator.get_current_features()
             
             if features is None:
+                self.logger.warning("No pre-calculated features available")
                 return None
                 
-            # Add portfolio features if not included
-            if 'portfolio' not in features:
-                features['portfolio'] = self._extract_portfolio_features(current_market_state)
-
-            # Cache results
-            self._last_features = features
-            self._last_timestamp = current_timestamp
-
+            # Add portfolio features
+            features['portfolio'] = self._extract_portfolio_features()
+            
+            # Validate feature dimensions
+            if not self._validate_features(features):
+                self.logger.error("Feature validation failed")
+                return None
+            
             return features
 
         except Exception as e:
             self.logger.error(f"Feature extraction failed: {e}")
             return None
 
-    def _create_market_context(self, market_state: Dict[str, Any]) -> Optional[MarketContext]:
-        """Convert market simulator state to MarketContext"""
-        try:
-            # Get basic market data
-            timestamp = market_state.get('timestamp_utc')
-            if not timestamp:
-                return None
-                
-            current_price = market_state.get('current_price', 0.0)
-            
-            # Get windows
-            hf_window = market_state.get('hf_data_window', [])
-            bars_1m = market_state.get('1m_bars_window', [])
-            bars_5m = market_state.get('5m_bars_window', [])
-            
-            # Get previous day data
-            prev_day_data = market_state.get('previous_day_data', {})
-            prev_day_close = market_state.get('previous_day_close', 0.0)
-            
-            # Get session information
-            session = market_state.get('market_session', 'UNKNOWN')
-            
-            # Get intraday stats
-            intraday_high = market_state.get('intraday_high', current_price)
-            intraday_low = market_state.get('intraday_low', current_price)
-            
-            # Create context
-            context = MarketContext(
-                timestamp=timestamp,
-                current_price=current_price,
-                hf_window=hf_window,
-                mf_1m_window=bars_1m,
-                lf_5m_window=bars_5m,
-                prev_day_close=prev_day_close,
-                prev_day_high=prev_day_data.get('high', 0.0),
-                prev_day_low=prev_day_data.get('low', 0.0),
-                session_high=intraday_high,
-                session_low=intraday_low,
-                session=session,
-                market_cap=market_state.get('market_cap', 1e9),  # Default 1B if not provided
-                session_volume=market_state.get('session_volume', 0.0),
-                session_trades=market_state.get('session_trades', 0),
-                session_vwap=market_state.get('session_vwap', current_price)
-            )
-            
-            return context
-            
-        except Exception as e:
-            self.logger.error(f"Failed to create market context: {e}")
-            return None
+    def update_portfolio_state(self, new_state: Dict[str, float]):
+        """Update portfolio state for feature extraction
+        
+        Args:
+            new_state: Dictionary with portfolio state values
+        """
+        # Update current state
+        self.portfolio_state.update(new_state)
+        
+        # Add to history
+        self.portfolio_history.append(self.portfolio_state.copy())
+        
+        # Maintain history size
+        if len(self.portfolio_history) > self.max_history_length:
+            self.portfolio_history.pop(0)
 
-    def _extract_portfolio_features(self, market_state: Dict[str, Any]) -> np.ndarray:
-        """Extract portfolio features from market state"""
+    def _extract_portfolio_features(self) -> np.ndarray:
+        """Extract portfolio features as a sequence
+        
+        Returns:
+            Array of shape (portfolio_seq_len, portfolio_feat_dim)
+        """
         try:
-            # Portfolio features are a sequence but typically just current state repeated
             features = np.zeros((self.portfolio_seq_len, self.portfolio_feat_dim), dtype=np.float32)
             
-            # Get portfolio state from market simulator if available
-            portfolio_state = market_state.get('portfolio_state', {})
+            # Get market data for normalization
+            market_data = self.market_simulator.get_current_market_data()
+            current_price = market_data['current_price'] if market_data else 1.0
             
-            # Fill all timesteps with current portfolio state
+            # Use portfolio history to fill sequence
+            history_len = len(self.portfolio_history)
+            
             for i in range(self.portfolio_seq_len):
+                # Get state from history (most recent last)
+                if i < history_len:
+                    state = self.portfolio_history[-(history_len - i)]
+                else:
+                    state = self.portfolio_state
+                    
                 # Basic portfolio features
-                features[i, 0] = float(portfolio_state.get('position', 0.0))
-                features[i, 1] = float(portfolio_state.get('unrealized_pnl', 0.0))
-                features[i, 2] = float(portfolio_state.get('realized_pnl', 0.0))
-                features[i, 3] = float(portfolio_state.get('cash_balance', 0.0))
+                features[i, 0] = float(state.get('position', 0.0)) / 1000.0  # Normalize by 1000 shares
+                features[i, 1] = float(state.get('unrealized_pnl', 0.0)) / 10000.0  # Normalize by $10k
+                features[i, 2] = float(state.get('realized_pnl', 0.0)) / 10000.0
+                features[i, 3] = float(state.get('cash_balance', 0.0)) / 100000.0  # Normalize by $100k
                 
                 # Additional features if dimension allows
                 if self.portfolio_feat_dim > 4:
-                    features[i, 4] = float(portfolio_state.get('total_equity', 0.0))
+                    features[i, 4] = float(state.get('total_equity', 0.0)) / 100000.0
+                    
                 if self.portfolio_feat_dim > 5:
-                    features[i, 5] = float(portfolio_state.get('buying_power', 0.0))
+                    features[i, 5] = float(state.get('buying_power', 0.0)) / 100000.0
+                    
+                if self.portfolio_feat_dim > 6:
+                    # Position as percentage of equity
+                    equity = state.get('total_equity', 100000.0)
+                    position_value = state.get('position', 0.0) * current_price
+                    features[i, 6] = position_value / max(1000, equity)
+                    
+                if self.portfolio_feat_dim > 7:
+                    # Win rate
+                    total_trades = state.get('total_trades', 0)
+                    winning_trades = state.get('winning_trades', 0)
+                    features[i, 7] = winning_trades / max(1, total_trades)
+                    
+                if self.portfolio_feat_dim > 8:
+                    # Average entry vs current price (if in position)
+                    avg_entry = state.get('avg_entry_price', 0.0)
+                    if avg_entry > 0 and current_price > 0:
+                        features[i, 8] = (current_price - avg_entry) / avg_entry
+                    else:
+                        features[i, 8] = 0.0
+                        
+                if self.portfolio_feat_dim > 9:
+                    # Drawdown from peak equity
+                    peak_equity = max(s.get('total_equity', 100000.0) for s in self.portfolio_history[-20:]) if self.portfolio_history else 100000.0
+                    current_equity = state.get('total_equity', 100000.0)
+                    features[i, 9] = (peak_equity - current_equity) / max(1000, peak_equity)
                     
             return features
             
         except Exception as e:
             self.logger.error(f"Portfolio feature extraction failed: {e}")
             return np.zeros((self.portfolio_seq_len, self.portfolio_feat_dim), dtype=np.float32)
+
+    def _validate_features(self, features: Dict[str, np.ndarray]) -> bool:
+        """Validate feature dimensions
+        
+        Args:
+            features: Dictionary of feature arrays
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        expected_shapes = {
+            'hf': (self.hf_seq_len, self.hf_feat_dim),
+            'mf': (self.mf_seq_len, self.mf_feat_dim),
+            'lf': (self.lf_seq_len, self.lf_feat_dim),
+            'static': (self.static_feat_dim,),
+            'portfolio': (self.portfolio_seq_len, self.portfolio_feat_dim)
+        }
+        
+        for key, expected_shape in expected_shapes.items():
+            if key not in features:
+                self.logger.error(f"Missing feature key: {key}")
+                return False
+                
+            actual_shape = features[key].shape
+            if actual_shape != expected_shape:
+                self.logger.error(f"Shape mismatch for {key}: expected {expected_shape}, got {actual_shape}")
+                return False
+                
+        return True
+
+    def reset(self):
+        """Reset feature extractor state"""
+        # Reset portfolio state
+        self.portfolio_state = {
+            'position': 0.0,
+            'unrealized_pnl': 0.0,
+            'realized_pnl': 0.0,
+            'cash_balance': 100000.0,
+            'total_equity': 100000.0,
+            'buying_power': 100000.0,
+            'avg_entry_price': 0.0,
+            'position_value': 0.0,
+            'total_trades': 0,
+            'winning_trades': 0,
+            'losing_trades': 0
+        }
+        
+        # Clear history
+        self.portfolio_history.clear()
+        
+    def get_feature_info(self) -> Dict[str, Any]:
+        """Get information about feature dimensions and structure
+        
+        Returns:
+            Dictionary with feature information
+        """
+        return {
+            'hf': {
+                'shape': (self.hf_seq_len, self.hf_feat_dim),
+                'description': 'High-frequency features (1-second resolution)'
+            },
+            'mf': {
+                'shape': (self.mf_seq_len, self.mf_feat_dim),
+                'description': 'Medium-frequency features (1-minute bars)'
+            },
+            'lf': {
+                'shape': (self.lf_seq_len, self.lf_feat_dim),
+                'description': 'Low-frequency features (5-minute bars)'
+            },
+            'static': {
+                'shape': (self.static_feat_dim,),
+                'description': 'Static features (time encodings, market context)'
+            },
+            'portfolio': {
+                'shape': (self.portfolio_seq_len, self.portfolio_feat_dim),
+                'description': 'Portfolio state features'
+            }
+        }
+        
+    def get_portfolio_state(self) -> Dict[str, float]:
+        """Get current portfolio state
+        
+        Returns:
+            Copy of current portfolio state
+        """
+        return self.portfolio_state.copy()
