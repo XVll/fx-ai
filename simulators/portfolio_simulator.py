@@ -277,8 +277,36 @@ class PortfolioSimulator:
         # Determine if this opens/adds or closes/reduces position
         is_buy = (order_side == OrderSideEnum.BUY)
         position_side = position.side
+        
+        # Store state before processing
+        was_flat = position.is_flat()
+        old_quantity = position.quantity
+        old_avg_price = position.avg_price
+        
+        # Calculate holding time BEFORE processing (as open_trades might change)
+        holding_time_minutes = None
+        for trade_id, trade in self.open_trades.items():
+            if trade['asset_id'] == asset_id:
+                if trade.get('entry_timestamp'):
+                    entry_time = trade['entry_timestamp']
+                    fill_time = fill['fill_timestamp']
+                    holding_time_minutes = (fill_time - entry_time).total_seconds() / 60.0
+                break
+        
+        # Calculate potential realized PnL before processing
+        realized_pnl = None
+        if not was_flat and ((position_side == PositionSideEnum.LONG and not is_buy) or
+                            (position_side == PositionSideEnum.SHORT and is_buy)):
+            # This will close/reduce position
+            if position_side == PositionSideEnum.LONG:
+                pnl_per_share = fill_price - old_avg_price
+            else:  # SHORT
+                pnl_per_share = old_avg_price - fill_price
+            
+            close_qty = min(fill_qty, old_quantity)
+            realized_pnl = pnl_per_share * close_qty
 
-        if position.is_flat():
+        if was_flat:
             # Opening new position
             self._open_new_position(position, fill, is_buy)
         elif (position_side == PositionSideEnum.LONG and is_buy) or \
@@ -294,34 +322,17 @@ class PortfolioSimulator:
 
         # Determine if this fill closes the position
         closes_position = position.is_flat()
-        
-        # Calculate realized PnL for this fill if position was reduced/closed
-        realized_pnl = None
-        holding_time_minutes = None
-        
-        if asset_id in self.open_trades:
-            open_trade = list(self.open_trades.values())[0]  # Get first open trade
-            if closes_position and open_trade.get('entry_timestamp'):
-                # Calculate holding time
-                entry_time = open_trade['entry_timestamp']
-                fill_time = fill['fill_timestamp']
-                holding_time_minutes = (fill_time - entry_time).total_seconds() / 60.0
-                
-            # Get realized PnL from the most recent completed trade if position closed
-            if closes_position and self.completed_trades:
-                latest_trade = self.completed_trades[-1]
-                realized_pnl = latest_trade.get('realized_pnl', 0.0)
 
         # Create enriched fill details with additional fields for reward system
-        enriched_fill = FillDetails(
-            **fill,  # Copy all original fields
-            closes_position=closes_position,
-            realized_pnl=realized_pnl,
-            holding_time_minutes=holding_time_minutes,
-            price=fill['executed_price'],  # Alias
-            quantity=fill['executed_quantity'],  # Alias
-            slippage_cost=fill['slippage_cost_total']  # Alias
-        )
+        enriched_fill = dict(fill)  # Create a copy of the original fill
+        enriched_fill.update({
+            'closes_position': closes_position,
+            'realized_pnl': realized_pnl,
+            'holding_time_minutes': holding_time_minutes,
+            'price': fill['executed_price'],  # Alias
+            'quantity': fill['executed_quantity'],  # Alias
+            'slippage_cost': fill['slippage_cost_total']  # Alias
+        })
 
         self.logger.debug(f"📈 Fill processed: {asset_id} {order_side.value} {fill_qty:.2f}@${fill_price:.4f}")
         
@@ -370,8 +381,8 @@ class PortfolioSimulator:
             exit_fills=[]
         )
 
-        # Link position to trade
-        position.trade_id = trade_id
+        # Store trade_id as a custom attribute
+        setattr(position, 'trade_id', trade_id)
 
     def _add_to_position(self, position: Position, fill: FillDetails, is_buy: bool) -> None:
         """Add to existing position (average in)."""

@@ -578,13 +578,23 @@ class PPOTrainer:
         # Update dashboard that we're in update phase
         if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
             if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
+                # Calculate current performance metrics
+                current_time = time.time()
+                elapsed_time = current_time - self.training_start_time
+                steps_per_second = self.global_step_counter / elapsed_time if elapsed_time > 0 else 0
+                episodes_per_hour = (self.global_episode_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
+                
                 training_data = {
                     'mode': 'Training',
                     'stage': 'Updating Policy',
                     'updates': self.global_update_counter,
                     'global_steps': self.global_step_counter,
                     'total_episodes': self.global_episode_counter,
-                    'stage_status': f"PPO Update {self.global_update_counter + 1}..."
+                    'stage_status': f"PPO Update {self.global_update_counter + 1}...",
+                    'steps_per_second': steps_per_second,
+                    'episodes_per_hour': episodes_per_hour,
+                    'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+                    'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
                 }
                 self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
 
