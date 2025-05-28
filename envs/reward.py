@@ -9,8 +9,8 @@ from config.schemas import Config
 from simulators.portfolio_simulator import PortfolioState, FillDetails, PositionSideEnum
 
 try:
-    from envs.trading_env import ActionTypeEnum
-    from envs.trading_env import TerminationReasonEnum as TerminationReasonEnumForEnv
+    from envs.trading_environment import ActionTypeEnum
+    from envs.trading_environment import TerminationReasonEnum as TerminationReasonEnumForEnv
 except ImportError:
     from enum import Enum
 

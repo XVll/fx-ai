@@ -9,7 +9,7 @@ import torch.nn.functional as nnf
 import time
 
 from config.schemas import ModelConfig
-from envs.trading_env import TradingEnvironment
+from envs.trading_environment import TradingEnvironment
 from ai.transformer import MultiBranchTransformer
 from agent.utils import ReplayBuffer, convert_state_dict_to_tensors
 from agent.base_callbacks import TrainingCallback

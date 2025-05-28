@@ -1,7 +1,5 @@
 """Environment package for the trading system."""
 
-from .environment_simulator import EnvironmentSimulator
-from .day_manager import DayManager
-from .momentum_episode_manager import MomentumEpisodeManager
+from .trading_environment import TradingEnvironment
 
-__all__ = ['EnvironmentSimulator', 'DayManager', 'MomentumEpisodeManager']
+__all__ = ['TradingEnvironment']

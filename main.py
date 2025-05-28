@@ -29,7 +29,7 @@ from data.provider.data_bento.databento_file_provider import DatabentoFileProvid
 # MarketSimulator is created inside TradingEnvironment during setup_session
 from simulators.execution_simulator import ExecutionSimulator
 # FeatureExtractor is created inside TradingEnvironment
-from envs.trading_env import TradingEnvironment
+from envs.trading_environment import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from ai.transformer import MultiBranchTransformer
 from metrics.factory import create_trading_metrics_system
