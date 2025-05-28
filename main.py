@@ -159,7 +159,7 @@ def create_data_provider(data_config: DataConfig):
         return DatabentoFileProvider(
             data_dir=str(data_path),
             symbol_info_file=None,  # Optional CSV file, not needed
-            verbose=True,
+            verbose=False,
             dbn_cache_size=10  # Default cache size
         )
     else:
@@ -393,11 +393,27 @@ def train(config: Config):
         current_components['env'] = env
         
         # Setup environment session
-        # The new environment uses momentum-based episode selection
-        # It will load available momentum days from the data manager
+        # Get available momentum days from data manager
+        try:
+            momentum_days = data_manager.get_momentum_days(
+                symbol=config.env.symbol,
+                min_quality=0.5  # Use configurable threshold in future
+            )
+            if momentum_days:
+                # Use the first available momentum day
+                session_date = momentum_days[0]['date']
+                logger.info(f"🎯 Selected momentum day: {session_date} (quality: {momentum_days[0]['quality']:.3f})")
+            else:
+                # Fallback to latest available date in the data
+                logger.warning("No momentum days found, using latest available date")
+                session_date = datetime(2025, 4, 29)  # Last available data date
+        except Exception as e:
+            logger.warning(f"Failed to get momentum days: {e}, using fallback date")
+            session_date = datetime(2025, 4, 29)  # Last available data date
+            
         env.setup_session(
             symbol=config.env.symbol,
-            date=datetime.now()  # Will select appropriate momentum day
+            date=session_date
         )
         
         # Metrics components

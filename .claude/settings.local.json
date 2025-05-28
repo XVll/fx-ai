@@ -10,7 +10,9 @@
       "Bash(poetry run python:*)",
       "Bash(ls:*)",
       "Bash(find:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(poetry run poe:*)",
+      "Bash(timeout 30s poetry run poe quick)"
     ],
     "deny": []
   }
