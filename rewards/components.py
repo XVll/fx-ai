@@ -253,6 +253,9 @@ class QuickProfitIncentive(RewardComponent):
         for fill in state.fill_details:
             if fill.get('closes_position', False):
                 realized_pnl = fill.get('realized_pnl', 0.0)
+                # Ensure realized_pnl is not None
+                if realized_pnl is None:
+                    realized_pnl = 0.0
                 
                 if realized_pnl > 0:
                     # Get quick profit threshold
@@ -266,7 +269,7 @@ class QuickProfitIncentive(RewardComponent):
                         
         diagnostics = {
             'trades_closed': len([f for f in state.fill_details if f.get('closes_position', False)]),
-            'profitable_closes': len([f for f in state.fill_details if f.get('closes_position', False) and f.get('realized_pnl', 0) > 0]),
+            'profitable_closes': len([f for f in state.fill_details if f.get('closes_position', False) and (f.get('realized_pnl') or 0) > 0]),
             'incentive': incentive
         }
         
@@ -341,7 +344,8 @@ class MAEPenalty(RewardComponent):
                 
                 if entry_price > 0:
                     # Calculate MAE as percentage of entry
-                    mae_pct = mae / (entry_price * fill.get('quantity', 0))
+                    quantity = fill.get('quantity') or 0
+                    mae_pct = mae / (entry_price * quantity) if quantity > 0 else 0
                     
                     # Penalty based on excessive risk
                     risk_threshold = self.config.get('mae_threshold', 0.02)  # 2%
@@ -351,7 +355,8 @@ class MAEPenalty(RewardComponent):
                         penalty = -base_penalty * (mae_pct / risk_threshold) ** 2
                         
                         # Extra penalty if trade was ultimately losing
-                        if fill.get('realized_pnl', 0) < 0:
+                        realized_pnl = fill.get('realized_pnl') or 0
+                        if realized_pnl < 0:
                             penalty *= self.config.get('loss_multiplier', 1.5)
                             
         diagnostics = {
@@ -512,7 +517,8 @@ class TimeEfficiencyComponent(RewardComponent):
                 holding_time = fill.get('holding_time_minutes', 0)
                 
                 # Reward quick profitable trades
-                if fill.get('realized_pnl', 0) > 0:
+                realized_pnl = fill.get('realized_pnl') or 0
+                if realized_pnl > 0:
                     if holding_time < 30:  # Less than 30 minutes
                         reward += 0.5
                     elif holding_time < 60:  # Less than 1 hour

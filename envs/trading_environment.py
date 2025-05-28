@@ -92,7 +92,14 @@ class TradingEnvironment(gym.Env):
         # Environment configuration
         env_cfg = self.config.env
         self.primary_asset: Optional[str] = None
-        self.max_invalid_actions_per_episode: int = env_cfg.invalid_action_limit or 1000
+        # Set invalid action limit with explicit None check
+        if hasattr(env_cfg, 'invalid_action_limit') and env_cfg.invalid_action_limit is not None:
+            self.max_invalid_actions_per_episode: int = env_cfg.invalid_action_limit
+        else:
+            self.max_invalid_actions_per_episode: int = 1000
+        
+        # Debug log to ensure it's set correctly
+        self.logger.debug(f"max_invalid_actions_per_episode set to: {self.max_invalid_actions_per_episode}")
         self.bankruptcy_threshold_factor: float = 0.1
         self.max_session_loss_percentage: float = 1.0 - env_cfg.early_stop_loss_threshold
         self.default_position_value = config.simulation.default_position_value
@@ -126,7 +133,7 @@ class TradingEnvironment(gym.Env):
         self.current_step: int = 0
         self.invalid_action_count_episode: int = 0
         self.episode_total_reward: float = 0.0
-        self.initial_capital_for_session: float = 0.0
+        self.initial_capital_for_session: float = self.config.env.initial_capital  # Initialize with config value
         self.episode_number: int = 0
         self.episode_start_time: float = 0.0
 
@@ -541,6 +548,9 @@ class TradingEnvironment(gym.Env):
         self.execution_manager.reset(np_random_seed_source=self.np_random)
         self.portfolio_manager.reset(session_start=current_sim_time)
         self.initial_capital_for_session = self.portfolio_manager.initial_capital
+        # Ensure initial_capital_for_session is not None
+        if self.initial_capital_for_session is None:
+            self.initial_capital_for_session = self.config.env.initial_capital
         self.episode_peak_equity = self.initial_capital_for_session
 
         if hasattr(self.reward_calculator, 'reset'):
@@ -757,11 +767,13 @@ class TradingEnvironment(gym.Env):
         )
 
         # Track episode performance
-        current_equity = portfolio_state_next_t['total_equity']
-        if current_equity > self.episode_peak_equity:
+        current_equity = portfolio_state_next_t.get('total_equity', 0.0)
+        if current_equity is not None and current_equity > self.episode_peak_equity:
             self.episode_peak_equity = current_equity
 
-        current_drawdown = (self.episode_peak_equity - current_equity) / self.episode_peak_equity if self.episode_peak_equity > 0 else 0
+        current_drawdown = 0.0
+        if self.episode_peak_equity > 0 and current_equity is not None:
+            current_drawdown = (self.episode_peak_equity - current_equity) / self.episode_peak_equity
         if current_drawdown > self.episode_max_drawdown:
             self.episode_max_drawdown = current_drawdown
 
@@ -789,12 +801,14 @@ class TradingEnvironment(gym.Env):
         termination_reason: Optional[TerminationReasonEnum] = None
 
         # Bankruptcy check
-        if current_equity <= self.initial_capital_for_session * self.bankruptcy_threshold_factor:
+        if (self.initial_capital_for_session is not None and 
+            current_equity <= self.initial_capital_for_session * self.bankruptcy_threshold_factor):
             terminated = True
             termination_reason = TerminationReasonEnum.BANKRUPTCY
 
         # Max loss check
-        elif current_equity <= self.initial_capital_for_session * (1 - self.max_session_loss_percentage):
+        elif (self.initial_capital_for_session is not None and 
+              current_equity <= self.initial_capital_for_session * (1 - self.max_session_loss_percentage)):
             terminated = True
             termination_reason = TerminationReasonEnum.MAX_LOSS_REACHED
 
@@ -808,8 +822,10 @@ class TradingEnvironment(gym.Env):
             terminated = True
             termination_reason = TerminationReasonEnum.END_OF_SESSION_DATA
 
-        # Invalid action limit
-        elif self.invalid_action_count_episode >= self.max_invalid_actions_per_episode:
+        # Invalid action limit (skip check if no limit is set)
+        elif (hasattr(self, 'max_invalid_actions_per_episode') and 
+              self.max_invalid_actions_per_episode is not None and 
+              self.invalid_action_count_episode >= self.max_invalid_actions_per_episode):
             terminated = True
             termination_reason = TerminationReasonEnum.INVALID_ACTION_LIMIT_REACHED
 

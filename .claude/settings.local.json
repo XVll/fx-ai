@@ -14,7 +14,8 @@
       "Bash(poetry run poe:*)",
       "Bash(timeout 30s poetry run poe quick)",
       "Bash(pkill:*)",
-      "Bash(timeout 60s poetry run poe quick)"
+      "Bash(timeout 60s poetry run poe quick)",
+      "Bash(true)"
     ],
     "deny": []
   },

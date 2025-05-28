@@ -359,7 +359,9 @@ class PPOTrainer:
                     total_invalid_actions += 1
 
             except Exception as e:
+                import traceback
                 self.logger.error(f"Error during environment step: {e}")
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
                 break
 
             self.buffer.add(

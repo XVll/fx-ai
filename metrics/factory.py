@@ -182,6 +182,15 @@ class MetricsIntegrator:
         if collector:
             metrics = collector.record_ppo_metrics(clip_fraction, approx_kl, explained_variance)
             self._transmit_metrics(metrics)
+            
+        # Forward PPO metrics to dashboard if available
+        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
+            ppo_data = {
+                'clip_fraction': clip_fraction,
+                'approx_kl': approx_kl,
+                'explained_variance': explained_variance
+            }
+            self.metrics_manager.dashboard_collector.on_ppo_metrics(ppo_data)
 
     def record_learning_rate(self, learning_rate: float):
         """Record learning rate"""
@@ -302,6 +311,10 @@ class MetricsIntegrator:
         collector = self.get_collector('TradeMetricsCollector')
         if collector:
             collector.record_trade(trade_data)
+            
+        # Forward trade to dashboard if available
+        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
+            self.metrics_manager.update_dashboard_trade(trade_data)
 
     # Execution integration methods
     def record_fill(self, fill_data: Dict[str, Any]):
@@ -309,6 +322,18 @@ class MetricsIntegrator:
         collector = self.get_collector('ExecutionMetricsCollector')
         if collector:
             collector.record_fill(fill_data)
+            
+        # Forward fill as trade to dashboard if available
+        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
+            # Convert fill to trade data format for dashboard
+            trade_data = {
+                'quantity': fill_data.get('executed_quantity', 0),
+                'price': fill_data.get('executed_price', 0),
+                'commission': fill_data.get('commission', 0),
+                'slippage': fill_data.get('slippage_cost_total', 0),
+                'fees': fill_data.get('fees', 0)
+            }
+            self.metrics_manager.update_dashboard_trade(trade_data)
 
     # Environment integration methods
     def record_environment_step(self, reward: float, action: str, is_invalid: bool = False,
@@ -324,6 +349,22 @@ class MetricsIntegrator:
             reward_collector = self.get_collector('RewardMetricsCollector')
             if reward_collector:
                 reward_collector.update_reward(reward, reward_components)
+                
+        # Forward step data to dashboard if available
+        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
+            step_data = {
+                'reward': reward,
+                'action': action,
+                'is_invalid': is_invalid,
+                'episode_reward': episode_reward
+            }
+            if reward_components:
+                step_data['reward_components'] = reward_components
+            self.metrics_manager.update_dashboard_step(step_data)
+            
+            # Also update reward components specifically
+            if reward_components:
+                self.metrics_manager.dashboard_collector.on_reward_components(reward_components)
 
     def record_episode_end(self, episode_reward: float):
         """Record episode end in environment"""
@@ -335,6 +376,14 @@ class MetricsIntegrator:
         reward_collector = self.get_collector('RewardMetricsCollector')
         if reward_collector:
             reward_collector.reset_episode()
+            
+        # Forward episode end to dashboard if available
+        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
+            episode_data = {
+                'episode_reward': episode_reward,
+                'episode_num': self.metrics_manager.current_episode
+            }
+            self.metrics_manager.update_dashboard_episode(episode_data)
             
     # Reward integration methods
     def register_reward_component(self, component_name: str, component_type: str):

@@ -50,7 +50,7 @@ class ModelConfig(BaseModel):
     hf_seq_len: int = 60
     hf_feat_dim: int = 20
     mf_seq_len: int = 30
-    mf_feat_dim: int = 22  # Medium-frequency features (1m/5m timeframe)
+    mf_feat_dim: int = 26  # Medium-frequency features (1m/5m timeframe) - 26 features defined
     lf_seq_len: int = 30   # Low-frequency sequence length (daily/session timeframe)
     lf_feat_dim: int = 20  # Low-frequency features (daily timeframe)
     static_feat_dim: int = 5  # Static features (market cap, time encodings)
