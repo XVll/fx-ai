@@ -77,8 +77,8 @@ class RewardComponentConfig(BaseModel):
     coefficient: float = 1.0
     
     
-class RewardV2Config(BaseModel):
-    """Reward system V2 configuration"""
+class RewardConfig(BaseModel):
+    """Reward system configuration"""
     # Core components
     pnl: RewardComponentConfig = Field(
         default=RewardComponentConfig(coefficient=1.0),
@@ -155,7 +155,7 @@ class EnvConfig(BaseModel):
     max_invalid_actions_per_episode: Optional[int] = Field(default=None, description="Alias for invalid_action_limit")
     
     # Reward configuration
-    reward_v2: RewardV2Config = Field(default_factory=RewardV2Config)
+    reward: RewardConfig = Field(default_factory=RewardConfig)
     
     # Features (for feature manager)
     feature_update_interval: int = Field(default=1, description="Steps between feature updates")
