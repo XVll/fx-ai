@@ -34,6 +34,19 @@ class DashboardMetricsCollector:
             self.is_started = False
             logger.info("🛑 Dashboard metrics collector stopped")
     
+    def set_model_info(self, model_name: str):
+        """Set model information for the dashboard"""
+        if self.is_started:
+            try:
+                # Update the dashboard with model information
+                self.dashboard.update_training_state({
+                    'model_name': model_name,
+                    'model_type': 'PPO_Transformer'
+                })
+                logger.info(f"Dashboard model info set to: {model_name}")
+            except Exception as e:
+                logger.error(f"Error setting model info in dashboard: {e}")
+    
     def on_training_update(self, training_data: Dict[str, Any]):
         """Handle training update from PPO agent"""
         try:
@@ -108,6 +121,24 @@ class DashboardMetricsCollector:
         except Exception as e:
             logger.error(f"Error updating dashboard with reset point performance: {e}")
     
+    def on_step(self, step_data: Dict[str, Any]):
+        """Handle step update from environment"""
+        try:
+            if self.is_started:
+                # Update dashboard with step-level information
+                self.dashboard.state.update_step_data(step_data)
+        except Exception as e:
+            logger.error(f"Error updating dashboard with step data: {e}")
+    
+    def on_trade(self, trade_data: Dict[str, Any]):
+        """Handle trade execution update"""
+        try:
+            if self.is_started:
+                # Update dashboard with trade information
+                self.dashboard.state.update_trade_data(trade_data)
+        except Exception as e:
+            logger.error(f"Error updating dashboard with trade data: {e}")
+    
     def get_dashboard_url(self) -> str:
         """Get the dashboard URL"""
         return f"http://127.0.0.1:{self.dashboard.port}"
@@ -158,6 +189,14 @@ class MockDashboardCollector:
     
     def on_reset_point_performance(self, reset_point_idx: int, performance_data: Dict[str, float]):
         """Mock reset point performance"""
+        pass
+    
+    def on_step(self, step_data: Dict[str, Any]):
+        """Mock step update"""
+        pass
+    
+    def on_trade(self, trade_data: Dict[str, Any]):
+        """Mock trade update"""
         pass
     
     def get_dashboard_url(self) -> str:

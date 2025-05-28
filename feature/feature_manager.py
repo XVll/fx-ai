@@ -90,7 +90,7 @@ class FeatureManager:
                         params={}
                     )
                     self._features[category][feature_name] = feature_class(config)
-                    self.logger.info(f"Loaded feature: {feature_name} in category {category}")
+                    self.logger.debug(f"Loaded feature: {feature_name} in category {category}")
                 else:
                     self.logger.warning(f"Feature not found in registry: {feature_name}")
     
@@ -139,7 +139,12 @@ class FeatureManager:
             
             try:
                 value = feature.calculate(market_data)
-                results[name] = value
+                # Ensure value is not None, NaN, or infinite
+                if value is None or np.isnan(value) or np.isinf(value):
+                    self.logger.warning(f"Feature {name} returned invalid value ({value}), using 0.0")
+                    results[name] = 0.0
+                else:
+                    results[name] = float(value)  # Ensure it's a float
             except Exception as e:
                 self.logger.error(f"Error calculating feature {name}: {e}")
                 # Use feature's default value if calculation fails
@@ -158,12 +163,24 @@ class FeatureManager:
         ordered_features = []
         for feature_name in self._feature_order[category]:
             if feature_name in features:
-                ordered_features.append(features[feature_name])
+                value = features[feature_name]
+                # Double-check for invalid values during vectorization
+                if value is None or np.isnan(value) or np.isinf(value):
+                    self.logger.warning(f"Feature {feature_name} has invalid value ({value}) during vectorization, using 0.0")
+                    ordered_features.append(0.0)
+                else:
+                    ordered_features.append(float(value))
             else:
                 self.logger.warning(f"Feature {feature_name} not found in results for category {category}, using 0.0. Available features: {list(features.keys())}")
                 ordered_features.append(0.0)
         
-        return np.array(ordered_features, dtype=np.float32)
+        # Ensure we have a valid numpy array with no NaN/inf values
+        vector = np.array(ordered_features, dtype=np.float32)
+        
+        # Final safety check - replace any remaining NaN/inf with 0
+        vector = np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        return vector
     
     def get_data_requirements(self) -> Dict[str, Any]:
         """Get aggregated data requirements from all features"""
@@ -271,10 +288,19 @@ class FeatureManager:
             # Extract features for each timestamp
             feature_matrix = []
             for i, entry in enumerate(hf_window):
+                # Handle None entries
+                if entry is None:
+                    entry = {
+                        'timestamp': None,
+                        'trades': [],
+                        'quotes': [],
+                        '1s_bar': None
+                    }
+                
                 # Prepare market data for this timestamp
                 market_data = {
                     'timestamp': entry.get('timestamp'),
-                    'current_price': entry.get('1s_bar', {}).get('close', 100.0),
+                    'current_price': entry.get('1s_bar', {}).get('close', 100.0) if entry.get('1s_bar') else 100.0,
                     'hf_data_window': hf_window[max(0, i-10):i+1],  # Include history for velocity calculations
                     'quotes': entry.get('quotes', []),
                     'trades': entry.get('trades', []),
@@ -285,13 +311,20 @@ class FeatureManager:
                 features = self.calculate_features(market_data, 'hf')
                 vector = self.vectorize_features(features, 'hf')
                 
-                # Pad to required dimension if needed
+                # Ensure vector has correct dimensions and no invalid values
                 if len(vector) < self.hf_feat_dim:
+                    # Pad with zeros if too few features
                     padded = np.zeros(self.hf_feat_dim, dtype=np.float32)
                     padded[:len(vector)] = vector
                     vector = padded
+                elif len(vector) > self.hf_feat_dim:
+                    # Truncate if too many features
+                    vector = vector[:self.hf_feat_dim]
+                    self.logger.warning(f"HF vector too long ({len(vector)}), truncating to {self.hf_feat_dim}")
                 
-                feature_matrix.append(vector[:self.hf_feat_dim])  # Ensure correct size
+                # Final safety check for this timestamp
+                vector = np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0)
+                feature_matrix.append(vector)
             
             return np.array(feature_matrix, dtype=np.float32)
             
@@ -329,13 +362,21 @@ class FeatureManager:
                 features = self.calculate_features(market_data, 'mf')
                 vector = self.vectorize_features(features, 'mf')
                 
-                # Pad to required dimension if needed
+                # Ensure vector has correct dimensions and no invalid values
                 if len(vector) < self.mf_feat_dim:
+                    # Pad with zeros if too few features
                     padded = np.zeros(self.mf_feat_dim, dtype=np.float32)
                     padded[:len(vector)] = vector
                     vector = padded
+                elif len(vector) > self.mf_feat_dim:
+                    # Truncate if too many features
+                    original_len = len(vector)
+                    vector = vector[:self.mf_feat_dim]
+                    self.logger.warning(f"MF vector too long ({original_len}), truncating to {self.mf_feat_dim}")
                 
-                feature_matrix.append(vector[:self.mf_feat_dim])  # Ensure correct size
+                # Final safety check for this timestamp
+                vector = np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0)
+                feature_matrix.append(vector)
             
             return np.array(feature_matrix, dtype=np.float32)
             
@@ -367,15 +408,23 @@ class FeatureManager:
             features = self.calculate_features(market_data, 'lf')
             vector = self.vectorize_features(features, 'lf')
             
-            # Pad to required dimension if needed
+            # Ensure vector has correct dimensions and no invalid values
             if len(vector) < self.lf_feat_dim:
+                # Pad with zeros if too few features
                 padded = np.zeros(self.lf_feat_dim, dtype=np.float32)
                 padded[:len(vector)] = vector
                 vector = padded
+            elif len(vector) > self.lf_feat_dim:
+                # Truncate if too many features
+                vector = vector[:self.lf_feat_dim]
+                self.logger.warning(f"LF vector too long ({len(vector)}), truncating to {self.lf_feat_dim}")
+            
+            # Final safety check
+            vector = np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0)
             
             # Repeat the same features for all timesteps in the sequence
             # This is appropriate for LF features which change slowly
-            feature_matrix = np.tile(vector[:self.lf_feat_dim], (self.lf_seq_len, 1))
+            feature_matrix = np.tile(vector, (self.lf_seq_len, 1))
             
             return feature_matrix.astype(np.float32)
             
@@ -398,14 +447,22 @@ class FeatureManager:
             features = self.calculate_features(market_data, 'static')
             vector = self.vectorize_features(features, 'static')
             
-            # Pad to required dimension if needed
+            # Ensure vector has correct dimensions and no invalid values
             if len(vector) < self.static_feat_dim:
+                # Pad with zeros if too few features
                 padded = np.zeros(self.static_feat_dim, dtype=np.float32)
                 padded[:len(vector)] = vector
                 vector = padded
+            elif len(vector) > self.static_feat_dim:
+                # Truncate if too many features
+                vector = vector[:self.static_feat_dim]
+                self.logger.warning(f"Static vector too long ({len(vector)}), truncating to {self.static_feat_dim}")
+            
+            # Final safety check
+            vector = np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0)
             
             # Return as 2D array with shape (1, static_feat_dim)
-            return vector[:self.static_feat_dim].reshape(1, -1).astype(np.float32)
+            return vector.reshape(1, -1).astype(np.float32)
             
         except Exception as e:
             self.logger.error(f"Static feature extraction failed: {e}")
@@ -429,14 +486,22 @@ class FeatureManager:
             features = self.calculate_features(market_data, 'portfolio')
             vector = self.vectorize_features(features, 'portfolio')
             
-            # Pad to required dimension if needed
+            # Ensure vector has correct dimensions and no invalid values
             if len(vector) < self.portfolio_feat_dim:
+                # Pad with zeros if too few features
                 padded = np.zeros(self.portfolio_feat_dim, dtype=np.float32)
                 padded[:len(vector)] = vector
                 vector = padded
+            elif len(vector) > self.portfolio_feat_dim:
+                # Truncate if too many features
+                vector = vector[:self.portfolio_feat_dim]
+                self.logger.warning(f"Portfolio vector too long ({len(vector)}), truncating to {self.portfolio_feat_dim}")
+            
+            # Final safety check
+            vector = np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0)
             
             # Repeat the same features for all timesteps in the sequence
-            feature_matrix = np.tile(vector[:self.portfolio_feat_dim], (self.portfolio_seq_len, 1))
+            feature_matrix = np.tile(vector, (self.portfolio_seq_len, 1))
             
             return feature_matrix.astype(np.float32)
             

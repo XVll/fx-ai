@@ -415,3 +415,15 @@ class DashboardState:
             
         except Exception as e:
             print(f"Error clearing history: {e}")
+    
+    def update_step_data(self, step_data: Dict[str, Any]):
+        """Update step-level data (placeholder for dashboard integration)"""
+        # This method is called by dashboard integration but doesn't need to store step data
+        # Step data is typically too granular for dashboard display
+        pass
+    
+    def update_trade_data(self, trade_data: Dict[str, Any]):
+        """Update trade execution data (placeholder for dashboard integration)"""
+        # This method is called by dashboard integration but doesn't need to store trade data  
+        # Trade data is typically handled through episode summaries
+        pass

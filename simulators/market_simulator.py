@@ -626,110 +626,37 @@ class MarketSimulator:
             df_states['intraday_high'] = df_states['current_price']
             df_states['intraday_low'] = df_states['current_price']
         
-        # Add feature extraction - using parallel processing for speed
-        self.logger.info("Extracting features for all timestamps using parallel processing...")
+        # FAST APPROACH: Skip feature extraction during initialization
+        # Features will be calculated on-demand during training for better performance
+        self.logger.info("Skipping feature pre-computation for faster initialization...")
+        self.logger.info("Features will be calculated on-demand during training")
         
-        # Pre-allocate feature arrays
+        # Pre-allocate empty feature arrays (will be populated on-demand)
         num_states = len(df_states)
-        hf_features = np.zeros((num_states, self.model_config.hf_seq_len, self.model_config.hf_feat_dim))
-        mf_features = np.zeros((num_states, self.model_config.mf_seq_len, self.model_config.mf_feat_dim))
-        lf_features = np.zeros((num_states, self.model_config.lf_seq_len, self.model_config.lf_feat_dim))
-        static_features = np.zeros((num_states, self.model_config.static_feat_dim))
+        empty_hf = np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim), dtype=np.float32)
+        empty_mf = np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim), dtype=np.float32)
+        empty_lf = np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim), dtype=np.float32)
+        empty_static = np.zeros(self.model_config.static_feat_dim, dtype=np.float32)
         
-        # Prepare shared data for parallel processing
-        shared_data = {
-            'symbol': self.symbol,
-            'model_config': self.model_config,
-            'hf_seq_len': self.model_config.hf_seq_len,
-            'hf_feat_dim': self.model_config.hf_feat_dim,
-            'mf_seq_len': self.model_config.mf_seq_len,
-            'mf_feat_dim': self.model_config.mf_feat_dim,
-            'lf_seq_len': self.model_config.lf_seq_len,
-            'lf_feat_dim': self.model_config.lf_feat_dim,
-            'static_feat_dim': self.model_config.static_feat_dim,
-            'prev_day_data': self.prev_day_data,
-            'combined_trades': self.combined_trades,
-            'combined_quotes': self.combined_quotes,
-            'combined_bars_1s': self.combined_bars_1s,
-            'combined_bars_1m': self.combined_bars_1m,
-            'combined_bars_5m': self.combined_bars_5m
-        }
+        # Fill with placeholder arrays - features computed on-demand
+        df_states['hf_features'] = [empty_hf.copy() for _ in range(num_states)]
+        df_states['mf_features'] = [empty_mf.copy() for _ in range(num_states)]
+        df_states['lf_features'] = [empty_lf.copy() for _ in range(num_states)]
+        df_states['static_features'] = [empty_static.copy() for _ in range(num_states)]
         
-        # Determine optimal batch size and number of workers
-        num_workers = min(mp.cpu_count(), 8)  # Cap at 8 workers
-        batch_size = max(100, num_states // (num_workers * 10))  # At least 100 items per batch
+        # Mark that features need computation
+        df_states['features_computed'] = False
         
-        # Create batches of work
-        batches = []
-        batch_data = []
-        for i, (timestamp, row) in enumerate(df_states.iterrows()):
-            batch_data.append((i, timestamp, row))
-            if len(batch_data) >= batch_size:
-                batches.append(batch_data)
-                batch_data = []
-        if batch_data:  # Add remaining items
-            batches.append(batch_data)
-            
-        self.logger.info(f"Processing {num_states} states in {len(batches)} batches with {num_workers} workers")
+        # Calculate memory usage (for placeholder arrays)
+        placeholder_memory_mb = (num_states * 100 * 4) / (1024 * 1024)  # Small placeholder overhead
         
-        # Process batches in parallel
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            # Submit all batches
-            future_to_batch = {
-                executor.submit(self._extract_features_batch, batch, shared_data): batch_idx 
-                for batch_idx, batch in enumerate(batches)
-            }
-            
-            # Collect results with progress reporting
-            completed = 0
-            for future in as_completed(future_to_batch):
-                batch_idx = future_to_batch[future]
-                try:
-                    results = future.result()
-                    # Place results in the correct positions
-                    for idx, hf, mf, lf, static in results:
-                        hf_features[idx] = hf
-                        mf_features[idx] = mf
-                        lf_features[idx] = lf
-                        static_features[idx] = static
-                    
-                    completed += len(results)
-                    if completed % 3600 == 0 or completed == num_states:
-                        self.logger.info(f"Feature extraction progress: {completed}/{num_states} ({completed/num_states*100:.1f}%)")
-                        
-                except Exception as e:
-                    self.logger.error(f"Batch {batch_idx} failed: {e}")
-                    # Fill with zeros for failed batch
-                    batch = batches[batch_idx]
-                    for idx, _, _ in batch:
-                        hf_features[idx] = np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim))
-                        mf_features[idx] = np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim))
-                        lf_features[idx] = np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim))
-                        static_features[idx] = np.zeros(self.model_config.static_feat_dim)
-        
-        # Add feature arrays to DataFrame
-        df_states['hf_features'] = list(hf_features)
-        df_states['mf_features'] = list(mf_features)
-        df_states['lf_features'] = list(lf_features)
-        df_states['static_features'] = list(static_features)
-        
-        # Calculate memory usage
-        total_feature_values = num_states * (
-            self.model_config.hf_seq_len * self.model_config.hf_feat_dim +
-            self.model_config.mf_seq_len * self.model_config.mf_feat_dim +
-            self.model_config.lf_seq_len * self.model_config.lf_feat_dim +
-            self.model_config.static_feat_dim
-        )
-        memory_mb = (total_feature_values * 4) / (1024 * 1024)  # 4 bytes per float32
-        
-        self.logger.info(f"Feature dimensions per timestamp:")
+        self.logger.info(f"Feature dimensions per timestamp (computed on-demand):")
         self.logger.info(f"  - HF: {self.model_config.hf_seq_len}x{self.model_config.hf_feat_dim} = {self.model_config.hf_seq_len * self.model_config.hf_feat_dim} values")
         self.logger.info(f"  - MF: {self.model_config.mf_seq_len}x{self.model_config.mf_feat_dim} = {self.model_config.mf_seq_len * self.model_config.mf_feat_dim} values")
         self.logger.info(f"  - LF: {self.model_config.lf_seq_len}x{self.model_config.lf_feat_dim} = {self.model_config.lf_seq_len * self.model_config.lf_feat_dim} values")
         self.logger.info(f"  - Static: {self.model_config.static_feat_dim} values")
-        self.logger.info(f"  - Total per timestamp: {self.model_config.hf_seq_len * self.model_config.hf_feat_dim + self.model_config.mf_seq_len * self.model_config.mf_feat_dim + self.model_config.lf_seq_len * self.model_config.lf_feat_dim + self.model_config.static_feat_dim} values")
-        self.logger.info(f"Total feature memory usage: {memory_mb:.1f} MB for {num_states} states")
-        self.logger.info(f"Completed pre-computation of {len(df_states)} market states with features")
+        self.logger.info(f"Placeholder memory usage: {placeholder_memory_mb:.1f} MB for {num_states} states")
+        self.logger.info(f"Completed FAST initialization of {len(df_states)} market states (features computed on-demand)")
         return df_states
         
     def _build_1s_bars_from_trades(self, trades_df: pd.DataFrame, 
@@ -1069,16 +996,71 @@ class MarketSimulator:
         )
         
     def get_current_features(self) -> Optional[Dict[str, np.ndarray]]:
-        """Get pre-calculated features for current timestamp"""
-        state = self.get_market_state()
-        if state is None:
+        """Get features for current timestamp (computed on-demand for speed)"""
+        if self.df_market_state is None or self.current_index >= len(self.df_market_state):
             return None
             
+        # Get current row
+        row = self.df_market_state.iloc[self.current_index]
+        timestamp = row.name
+        
+        # Check if features already computed for this timestamp
+        if not row.get('features_computed', False):
+            # Compute features on-demand
+            try:
+                # Build windows for this timestamp
+                hf_window = self._build_hf_window_with_warmup(timestamp)
+                mf_window = self._build_mf_window_with_warmup(timestamp)  
+                lf_window = self._build_lf_window_with_warmup(timestamp)
+                
+                # Create context
+                context = MarketContext(
+                    timestamp=timestamp,
+                    current_price=row['current_price'],
+                    hf_window=hf_window,
+                    mf_1m_window=mf_window,
+                    lf_5m_window=lf_window,
+                    prev_day_close=self.prev_day_data.get('close', 0),
+                    prev_day_high=self.prev_day_data.get('high', 0),
+                    prev_day_low=self.prev_day_data.get('low', 0),
+                    session_high=row['intraday_high'],
+                    session_low=row['intraday_low'],
+                    session=row['market_session'],
+                    market_cap=1e9,
+                    session_volume=row['session_volume'],
+                    session_trades=row['session_trades'],
+                    session_vwap=row['session_vwap']
+                )
+                
+                # Extract features
+                features = self.feature_manager.extract_features(context)
+                
+                # Update the DataFrame with computed features
+                self.df_market_state.at[timestamp, 'hf_features'] = features.get('hf', np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)))
+                self.df_market_state.at[timestamp, 'mf_features'] = features.get('mf', np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim)))
+                self.df_market_state.at[timestamp, 'lf_features'] = features.get('lf', np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim)))
+                self.df_market_state.at[timestamp, 'static_features'] = features.get('static', np.zeros(self.model_config.static_feat_dim))
+                self.df_market_state.at[timestamp, 'features_computed'] = True
+                
+                # Return computed features
+                return features
+                
+            except Exception as e:
+                self.logger.error(f"On-demand feature computation failed for {timestamp}: {e}")
+                # Return zeros on failure
+                return {
+                    'hf': np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)),
+                    'mf': np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim)),
+                    'lf': np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim)),
+                    'static': np.zeros(self.model_config.static_feat_dim)
+                }
+        
+        # Features already computed - return cached values
         return {
-            'hf': state.hf_features,
-            'mf': state.mf_features,
-            'lf': state.lf_features,
-            'static': state.static_features
+            'hf': row['hf_features'],
+            'mf': row['mf_features'],
+            'lf': row['lf_features'],
+            'static': row['static_features']
         }
         
     def get_current_market_data(self) -> Optional[Dict[str, Any]]:
