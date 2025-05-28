@@ -53,16 +53,12 @@ def main():
                              help="Continue training from best model")
     train_parser.add_argument("--symbol", type=str, default="MLGO",
                              help="Symbol to train on")
-    train_parser.add_argument("--start-date", type=str,
-                             help="Start date (YYYY-MM-DD)")
-    train_parser.add_argument("--end-date", type=str,
-                             help="End date (YYYY-MM-DD)")
-    train_parser.add_argument("--days", type=int, default=1,
-                             help="Number of trading days to use")
     train_parser.add_argument("--quick-test", action="store_true",
                              help="Use quick test configuration")
-    train_parser.add_argument("--models-dir", type=str, default="./best_models",
-                             help="Directory for best models")
+    train_parser.add_argument("--experiment", type=str,
+                             help="Experiment name")
+    train_parser.add_argument("--device", type=str, choices=["cuda", "cpu", "mps"],
+                             help="Device to use for training")
 
     # Backtest command
     backtest_parser = subparsers.add_parser("backtest", help="Backtest a model")
@@ -70,17 +66,22 @@ def main():
                                 help="Symbol to backtest on")
     backtest_parser.add_argument("--model-path", type=str,
                                 help="Path to model file")
-    backtest_parser.add_argument("--start-date", type=str, required=True,
-                                help="Start date (YYYY-MM-DD)")
-    backtest_parser.add_argument("--end-date", type=str, required=True,
-                                help="End date (YYYY-MM-DD)")
+    backtest_parser.add_argument("--date", type=str,
+                                help="Date to backtest (YYYY-MM-DD)")
 
     # Sweep command
     sweep_parser = subparsers.add_parser("sweep", help="Run hyperparameter sweep")
     sweep_parser.add_argument("--count", type=int, default=20,
                              help="Number of sweep runs")
-    sweep_parser.add_argument("--project", type=str, default="fx-ai",
-                             help="W&B project name")
+    sweep_parser.add_argument("--config", type=str, default="default.yaml",
+                             help="Sweep configuration file")
+    
+    # Scan command for momentum days
+    scan_parser = subparsers.add_parser("scan", help="Scan for momentum days")
+    scan_parser.add_argument("--symbol", type=str, required=True,
+                            help="Symbol to scan")
+    scan_parser.add_argument("--min-quality", type=float, default=0.5,
+                            help="Minimum quality score")
 
     # Parse arguments
     args = parser.parse_args()
@@ -100,6 +101,8 @@ def main():
         run_backtest(args, script_path)
     elif args.command == "sweep":
         run_sweep(args)
+    elif args.command == "scan":
+        run_scan(args)
     else:
         parser.print_help()
 
@@ -119,33 +122,59 @@ def run_training(args, script_path):
     # Continue training flag
     if args.continue_training:
         cmd.append("--continue")
-
-    # Date overrides (if needed, we'll need to add these to main.py argparse)
-    # For now, we'll use environment variables or config files
+        
+    # Experiment name
+    if args.experiment:
+        cmd.extend(["--experiment", args.experiment])
+        
+    # Device override
+    if args.device:
+        cmd.extend(["--device", args.device])
     
     # Run the command
     logger.info(f"Running command: {' '.join(cmd)}")
-    subprocess.run(cmd)
+    result = subprocess.run(cmd)
+    
+    if result.returncode != 0:
+        logger.error(f"Training failed with exit code {result.returncode}")
+        sys.exit(result.returncode)
 
 
 def run_backtest(args, script_path):
     """Run backtest with the specified arguments."""
-    # For backtesting, we'll need a separate backtest script or mode
-    # For now, let's create a simple error message
-    logger.error("Backtest functionality needs to be implemented separately from main.py")
-    logger.info("Please create a backtest.py script that uses the Pydantic config system")
+    logger.info("Backtest functionality is coming soon")
+    logger.info("The new architecture uses momentum-based episode selection")
+    logger.info("Backtesting will evaluate performance on specific momentum days")
     return
 
 
 def run_sweep(args):
     """Run hyperparameter sweep with the specified arguments."""
     sweep_script = Path(__file__).parent / "sweep.py"
-    cmd = [sys.executable, str(sweep_script), f"--project={args.project}", f"--count={args.count}"]
+    cmd = [sys.executable, str(sweep_script), "--config", args.config, "--count", str(args.count)]
 
     # Run the command
     logger.info(f"Running command: {' '.join(cmd)}")
-    subprocess.run(cmd)
+    result = subprocess.run(cmd)
+    
+    if result.returncode != 0:
+        logger.error(f"Sweep failed with exit code {result.returncode}")
+        sys.exit(result.returncode)
+
+
+def run_scan(args):
+    """Scan for momentum days."""
+    scan_script = Path(__file__).parent / "scan_momentum_days.py"
+    cmd = [sys.executable, str(scan_script), "--symbol", args.symbol, "--min-quality", str(args.min_quality)]
+    
+    logger.info(f"Running command: {' '.join(cmd)}")
+    result = subprocess.run(cmd)
+    
+    if result.returncode != 0:
+        logger.error(f"Scan failed with exit code {result.returncode}")
+        sys.exit(result.returncode)
 
 
 if __name__ == "__main__":
     main()
+
