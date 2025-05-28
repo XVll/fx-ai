@@ -483,7 +483,7 @@ class TradingEnvironment(gym.Env):
         max_offset_seconds = max_offset_minutes * 60
         
         random_offset_seconds = self.np_random.integers(-max_offset_seconds, max_offset_seconds + 1)
-        randomized_start = self.episode_start_time_utc + timedelta(seconds=random_offset_seconds)
+        randomized_start = self.episode_start_time_utc + timedelta(seconds=int(random_offset_seconds))
         
         # Log episode reset info
         original_time = reset_point['timestamp'].strftime('%H:%M:%S')
@@ -518,24 +518,28 @@ class TradingEnvironment(gym.Env):
             market_close_utc
         )
         
-        market_reset_options = {
-            'start_time': randomized_start,
-            'end_time': self.episode_end_time_utc,
-            'random_start': True  # Additional micro-randomization within MarketSimulator
-        }
-        
         # Update episode start time to randomized time
         self.episode_start_time_utc = randomized_start
-        initial_market_state = self.market_simulator.reset(options=market_reset_options)
+        
+        # Reset market simulator and set to randomized start time
+        if not self.market_simulator.reset():
+            self.logger.error("Market simulator failed to reset")
+            return self._get_dummy_observation(), {"error": "Market simulator reset failed"}
+            
+        if not self.market_simulator.set_time(randomized_start):
+            self.logger.error(f"Failed to set market simulator time to {randomized_start}")
+            return self._get_dummy_observation(), {"error": "Failed to set market time"}
+            
+        initial_market_state = self.market_simulator.get_market_state()
         
         if initial_market_state is None:
             self.logger.error("Market simulator failed to reset")
             return self._get_dummy_observation(), {"error": "Market simulator reset failed"}
 
         # Reset simulators
-        current_sim_time = initial_market_state['timestamp_utc']
+        current_sim_time = initial_market_state.timestamp
         self.execution_manager.reset(np_random_seed_source=self.np_random)
-        self.portfolio_manager.reset(episode_start_timestamp=current_sim_time)
+        self.portfolio_manager.reset(session_start=current_sim_time)
         self.initial_capital_for_session = self.portfolio_manager.initial_capital
         self.episode_peak_equity = self.initial_capital_for_session
 
@@ -594,11 +598,11 @@ class TradingEnvironment(gym.Env):
         """
         try:
             # Get current time from market simulator
-            market_state = self.market_simulator.get_current_market_state()
+            market_state = self.market_simulator.get_current_market_data()
             if market_state is None:
                 return None
                 
-            current_sim_time = market_state['timestamp_utc']
+            current_sim_time = market_state['timestamp']
             
             # Get pre-calculated features from MarketSimulator - O(1) lookup!
             features = self.market_simulator.get_current_features()
@@ -668,12 +672,12 @@ class TradingEnvironment(gym.Env):
         self.current_step += 1
 
         # Get current market state
-        market_state_at_decision = self.market_simulator.get_current_market_state()
+        market_state_at_decision = self.market_simulator.get_current_market_data()
         if market_state_at_decision is None:
             self.logger.error("Market simulator returned invalid state")
             return self._last_observation, 0.0, True, False, {"error": "Market state unavailable"}
 
-        current_sim_time_decision = market_state_at_decision['timestamp_utc']
+        current_sim_time_decision = market_state_at_decision['timestamp']
         
         # Check if we've reached episode end time
         if current_sim_time_decision >= self.episode_end_time_utc:
@@ -730,9 +734,9 @@ class TradingEnvironment(gym.Env):
         next_sim_time = None
 
         if market_advanced:
-            market_state_next_t = self.market_simulator.get_current_market_state()
-            if market_state_next_t and 'timestamp_utc' in market_state_next_t:
-                next_sim_time = market_state_next_t['timestamp_utc']
+            market_state_next_t = self.market_simulator.get_current_market_data()
+            if market_state_next_t and 'timestamp' in market_state_next_t:
+                next_sim_time = market_state_next_t['timestamp']
             else:
                 market_advanced = False
 
@@ -1004,7 +1008,10 @@ class TradingEnvironment(gym.Env):
             return None
             
         # Get current portfolio state
-        current_time = self.market_simulator.get_current_market_state()['timestamp_utc']
+        market_data = self.market_simulator.get_current_market_data()
+        if market_data is None:
+            return None
+        current_time = market_data['timestamp']
         portfolio_state = self.portfolio_manager.get_portfolio_state(current_time)
         
         # Check if we have any open positions
@@ -1016,11 +1023,11 @@ class TradingEnvironment(gym.Env):
                 has_positions = True
                 
                 # Get current market prices
-                market_state = self.market_simulator.get_current_market_state()
-                current_price = market_state.get('current_price', 0.0)
+                market_state = self.market_simulator.get_current_market_data()
+                current_price = market_state.get('current_price', 0.0) if market_state else 0.0
                 if current_price <= 0:
-                    ask = market_state.get('best_ask_price', 0)
-                    bid = market_state.get('best_bid_price', 0)
+                    ask = market_state.get('best_ask', 0) if market_state else 0
+                    bid = market_state.get('best_bid', 0) if market_state else 0
                     if ask > 0 and bid > 0:
                         current_price = (ask + bid) / 2
                 
@@ -1030,7 +1037,10 @@ class TradingEnvironment(gym.Env):
                 unrealized_pnl = pos_data['unrealized_pnl']
                 
                 # Estimate trading costs for closing (commission + slippage)
-                est_commission = self.config.simulation.commission_model.fixed_per_trade
+                est_commission = max(
+                    self.config.simulation.min_commission_per_order,
+                    position_value * self.config.simulation.commission_per_share * 0.01  # Rough estimate
+                )
                 est_slippage = position_value * 0.001  # 0.1% slippage estimate
                 
                 close_pnl = unrealized_pnl - est_commission - est_slippage
