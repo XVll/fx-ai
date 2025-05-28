@@ -399,10 +399,11 @@ def train(config: Config):
                 symbol=config.env.symbol,
                 min_quality=0.5  # Use configurable threshold in future
             )
-            if momentum_days:
+            if not momentum_days.empty:
                 # Use the first available momentum day
-                session_date = momentum_days[0]['date']
-                logger.info(f"🎯 Selected momentum day: {session_date} (quality: {momentum_days[0]['quality']:.3f})")
+                first_day = momentum_days.iloc[0]
+                session_date = first_day['date']
+                logger.info(f"🎯 Selected momentum day: {session_date} (quality: {first_day['activity_score']:.3f})")
             else:
                 # Fallback to latest available date in the data
                 logger.warning("No momentum days found, using latest available date")
