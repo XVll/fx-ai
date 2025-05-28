@@ -14,6 +14,9 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 import logging
 from zoneinfo import ZoneInfo
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing as mp
+from functools import partial
 
 from data.data_manager import DataManager
 from feature.feature_manager import FeatureManager
@@ -340,6 +343,216 @@ class MarketSimulator:
         
         return {'open': 0, 'high': 0, 'low': 0, 'close': 0, 'volume': 0, 'vwap': 0}
         
+    @staticmethod
+    def _extract_features_batch(batch_data: List[Tuple[int, pd.Timestamp, pd.Series]], 
+                               shared_data: Dict) -> List[Tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+        """Extract features for a batch of timestamps in parallel
+        
+        This is the worker function for parallel processing.
+        """
+        # Recreate feature manager in each process
+        feature_manager = FeatureManager(
+            symbol=shared_data['symbol'],
+            config=shared_data['model_config'],
+            logger=logging.getLogger(__name__)
+        )
+        
+        results = []
+        for idx, timestamp, row in batch_data:
+            # Build windows for this timestamp
+            hf_window = MarketSimulator._build_hf_window_for_batch(timestamp, shared_data)
+            mf_window = MarketSimulator._build_mf_window_for_batch(timestamp, shared_data)  
+            lf_window = MarketSimulator._build_lf_window_for_batch(timestamp, shared_data)
+            
+            # Create context
+            context = MarketContext(
+                timestamp=timestamp,
+                current_price=row['current_price'],
+                hf_window=hf_window,
+                mf_1m_window=mf_window,
+                lf_5m_window=lf_window,
+                prev_day_close=shared_data['prev_day_data'].get('close', 0),
+                prev_day_high=shared_data['prev_day_data'].get('high', 0),
+                prev_day_low=shared_data['prev_day_data'].get('low', 0),
+                session_high=row['intraday_high'],
+                session_low=row['intraday_low'],
+                session=row['market_session'],
+                market_cap=1e9,
+                session_volume=row['session_volume'],
+                session_trades=row['session_trades'],
+                session_vwap=row['session_vwap']
+            )
+            
+            # Extract features
+            features = feature_manager.extract_features(context)
+            
+            hf_feat = features.get('hf', np.zeros((shared_data['hf_seq_len'], shared_data['hf_feat_dim'])))
+            mf_feat = features.get('mf', np.zeros((shared_data['mf_seq_len'], shared_data['mf_feat_dim'])))
+            lf_feat = features.get('lf', np.zeros((shared_data['lf_seq_len'], shared_data['lf_feat_dim'])))
+            static_feat = features.get('static', np.zeros(shared_data['static_feat_dim']))
+            
+            results.append((idx, hf_feat, mf_feat, lf_feat, static_feat))
+            
+        return results
+        
+    @staticmethod
+    def _build_hf_window_for_batch(current_ts: pd.Timestamp, shared_data: Dict) -> List[Dict[str, Any]]:
+        """Build HF window using shared data for parallel processing"""
+        window_size = shared_data['hf_seq_len']
+        start_ts = current_ts - pd.Timedelta(seconds=window_size - 1)
+        
+        window = []
+        combined_trades = shared_data.get('combined_trades', pd.DataFrame())
+        combined_quotes = shared_data.get('combined_quotes', pd.DataFrame())
+        combined_bars_1s = shared_data.get('combined_bars_1s', pd.DataFrame())
+        
+        for i in range(window_size):
+            ts = start_ts + pd.Timedelta(seconds=i)
+            
+            # Get trades in this second
+            second_trades = []
+            if not combined_trades.empty:
+                mask = (combined_trades.index >= ts) & (combined_trades.index < ts + pd.Timedelta(seconds=1))
+                for _, trade in combined_trades[mask].iterrows():
+                    second_trades.append({
+                        'price': float(trade['price']),
+                        'size': int(trade.get('size', 100)),
+                        'conditions': []
+                    })
+                    
+            # Get quotes in this second
+            second_quotes = []
+            if not combined_quotes.empty:
+                mask = (combined_quotes.index >= ts) & (combined_quotes.index < ts + pd.Timedelta(seconds=1))
+                for _, quote in combined_quotes[mask].iterrows():
+                    second_quotes.append({
+                        'bid_price': float(quote.get('bid_price', 0)),
+                        'ask_price': float(quote.get('ask_price', 0)),
+                        'bid_size': int(quote.get('bid_size', 0)),
+                        'ask_size': int(quote.get('ask_size', 0))
+                    })
+                    
+            # Get 1s bar
+            bar_1s = None
+            if not combined_bars_1s.empty and ts in combined_bars_1s.index:
+                bar = combined_bars_1s.loc[ts]
+                bar_1s = {
+                    'timestamp': ts,
+                    'open': float(bar['open']),
+                    'high': float(bar['high']),
+                    'low': float(bar['low']),
+                    'close': float(bar['close']),
+                    'volume': float(bar['volume']),
+                    'is_synthetic': False
+                }
+                
+            window.append({
+                'timestamp': ts,
+                'trades': second_trades,
+                'quotes': second_quotes,
+                '1s_bar': bar_1s
+            })
+            
+        return window
+        
+    @staticmethod
+    def _build_mf_window_for_batch(current_ts: pd.Timestamp, shared_data: Dict) -> List[Dict[str, Any]]:
+        """Build MF window using shared data for parallel processing"""
+        window_size = shared_data['mf_seq_len']
+        current_minute = current_ts.floor('1min')
+        combined_bars_1m = shared_data.get('combined_bars_1m', pd.DataFrame())
+        prev_day_close = shared_data['prev_day_data'].get('close', 0)
+        
+        window = []
+        
+        for i in range(window_size):
+            bar_ts = current_minute - pd.Timedelta(minutes=window_size - 1 - i)
+            
+            if not combined_bars_1m.empty and bar_ts in combined_bars_1m.index:
+                bar = combined_bars_1m.loc[bar_ts]
+                window.append({
+                    'timestamp': bar_ts,
+                    'open': float(bar['open']),
+                    'high': float(bar['high']),
+                    'low': float(bar['low']),
+                    'close': float(bar['close']),
+                    'volume': float(bar['volume']),
+                    'is_synthetic': False
+                })
+            else:
+                # Synthetic bar
+                last_price = prev_day_close
+                if window:
+                    last_price = window[-1]['close']
+                elif not combined_bars_1m.empty:
+                    prev_bars = combined_bars_1m[combined_bars_1m.index < bar_ts]
+                    if not prev_bars.empty:
+                        last_price = prev_bars.iloc[-1]['close']
+                        
+                if last_price == 0:
+                    last_price = 10.0
+                        
+                window.append({
+                    'timestamp': bar_ts,
+                    'open': last_price,
+                    'high': last_price,
+                    'low': last_price,
+                    'close': last_price,
+                    'volume': 0,
+                    'is_synthetic': True
+                })
+                
+        return window
+        
+    @staticmethod
+    def _build_lf_window_for_batch(current_ts: pd.Timestamp, shared_data: Dict) -> List[Dict[str, Any]]:
+        """Build LF window using shared data for parallel processing"""
+        window_size = shared_data['lf_seq_len']
+        current_5m = current_ts.floor('5min')
+        combined_bars_5m = shared_data.get('combined_bars_5m', pd.DataFrame())
+        prev_day_close = shared_data['prev_day_data'].get('close', 0)
+        
+        window = []
+        
+        for i in range(window_size):
+            bar_ts = current_5m - pd.Timedelta(minutes=5 * (window_size - 1 - i))
+            
+            if not combined_bars_5m.empty and bar_ts in combined_bars_5m.index:
+                bar = combined_bars_5m.loc[bar_ts]
+                window.append({
+                    'timestamp': bar_ts,
+                    'open': float(bar['open']),
+                    'high': float(bar['high']),
+                    'low': float(bar['low']),
+                    'close': float(bar['close']),
+                    'volume': float(bar['volume']),
+                    'is_synthetic': False
+                })
+            else:
+                # Synthetic bar
+                last_price = prev_day_close
+                if window:
+                    last_price = window[-1]['close']
+                elif not combined_bars_5m.empty:
+                    prev_bars = combined_bars_5m[combined_bars_5m.index < bar_ts]
+                    if not prev_bars.empty:
+                        last_price = prev_bars.iloc[-1]['close']
+                        
+                if last_price == 0:
+                    last_price = 10.0
+                        
+                window.append({
+                    'timestamp': bar_ts,
+                    'open': last_price,
+                    'high': last_price,
+                    'low': last_price,
+                    'close': last_price,
+                    'volume': 0,
+                    'is_synthetic': True
+                })
+                
+        return window
+        
     def _precompute_states(self, timeline: pd.DatetimeIndex, 
                           day_data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         """Pre-compute all market states and features for the timeline
@@ -413,8 +626,8 @@ class MarketSimulator:
             df_states['intraday_high'] = df_states['current_price']
             df_states['intraday_low'] = df_states['current_price']
         
-        # Add feature extraction - this is the expensive part but necessary
-        self.logger.info("Extracting features for all timestamps...")
+        # Add feature extraction - using parallel processing for speed
+        self.logger.info("Extracting features for all timestamps using parallel processing...")
         
         # Pre-allocate feature arrays
         num_states = len(df_states)
@@ -423,41 +636,76 @@ class MarketSimulator:
         lf_features = np.zeros((num_states, self.model_config.lf_seq_len, self.model_config.lf_feat_dim))
         static_features = np.zeros((num_states, self.model_config.static_feat_dim))
         
-        # Extract features with progress reporting
+        # Prepare shared data for parallel processing
+        shared_data = {
+            'symbol': self.symbol,
+            'model_config': self.model_config,
+            'hf_seq_len': self.model_config.hf_seq_len,
+            'hf_feat_dim': self.model_config.hf_feat_dim,
+            'mf_seq_len': self.model_config.mf_seq_len,
+            'mf_feat_dim': self.model_config.mf_feat_dim,
+            'lf_seq_len': self.model_config.lf_seq_len,
+            'lf_feat_dim': self.model_config.lf_feat_dim,
+            'static_feat_dim': self.model_config.static_feat_dim,
+            'prev_day_data': self.prev_day_data,
+            'combined_trades': self.combined_trades,
+            'combined_quotes': self.combined_quotes,
+            'combined_bars_1s': self.combined_bars_1s,
+            'combined_bars_1m': self.combined_bars_1m,
+            'combined_bars_5m': self.combined_bars_5m
+        }
+        
+        # Determine optimal batch size and number of workers
+        num_workers = min(mp.cpu_count(), 8)  # Cap at 8 workers
+        batch_size = max(100, num_states // (num_workers * 10))  # At least 100 items per batch
+        
+        # Create batches of work
+        batches = []
+        batch_data = []
         for i, (timestamp, row) in enumerate(df_states.iterrows()):
-            if i % 3600 == 0:  # Every hour
-                self.logger.info(f"Feature extraction progress: {i}/{num_states} ({i/num_states*100:.1f}%)")
+            batch_data.append((i, timestamp, row))
+            if len(batch_data) >= batch_size:
+                batches.append(batch_data)
+                batch_data = []
+        if batch_data:  # Add remaining items
+            batches.append(batch_data)
             
-            # Build windows for this timestamp
-            hf_window = self._build_hf_window_with_warmup(timestamp)
-            mf_window = self._build_mf_window_with_warmup(timestamp)  
-            lf_window = self._build_lf_window_with_warmup(timestamp)
+        self.logger.info(f"Processing {num_states} states in {len(batches)} batches with {num_workers} workers")
+        
+        # Process batches in parallel
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            # Submit all batches
+            future_to_batch = {
+                executor.submit(self._extract_features_batch, batch, shared_data): batch_idx 
+                for batch_idx, batch in enumerate(batches)
+            }
             
-            # Create context
-            context = MarketContext(
-                timestamp=timestamp,
-                current_price=row['current_price'],
-                hf_window=hf_window,
-                mf_1m_window=mf_window,
-                lf_5m_window=lf_window,
-                prev_day_close=self.prev_day_data.get('close', 0),
-                prev_day_high=self.prev_day_data.get('high', 0),
-                prev_day_low=self.prev_day_data.get('low', 0),
-                session_high=row['intraday_high'],
-                session_low=row['intraday_low'],
-                session=row['market_session'],
-                market_cap=1e9,
-                session_volume=row['session_volume'],
-                session_trades=row['session_trades'],
-                session_vwap=row['session_vwap']
-            )
-            
-            # Extract features
-            features = self.feature_manager.extract_features(context)
-            hf_features[i] = features.get('hf', np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)))
-            mf_features[i] = features.get('mf', np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim)))
-            lf_features[i] = features.get('lf', np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim)))
-            static_features[i] = features.get('static', np.zeros(self.model_config.static_feat_dim))
+            # Collect results with progress reporting
+            completed = 0
+            for future in as_completed(future_to_batch):
+                batch_idx = future_to_batch[future]
+                try:
+                    results = future.result()
+                    # Place results in the correct positions
+                    for idx, hf, mf, lf, static in results:
+                        hf_features[idx] = hf
+                        mf_features[idx] = mf
+                        lf_features[idx] = lf
+                        static_features[idx] = static
+                    
+                    completed += len(results)
+                    if completed % 3600 == 0 or completed == num_states:
+                        self.logger.info(f"Feature extraction progress: {completed}/{num_states} ({completed/num_states*100:.1f}%)")
+                        
+                except Exception as e:
+                    self.logger.error(f"Batch {batch_idx} failed: {e}")
+                    # Fill with zeros for failed batch
+                    batch = batches[batch_idx]
+                    for idx, _, _ in batch:
+                        hf_features[idx] = np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim))
+                        mf_features[idx] = np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim))
+                        lf_features[idx] = np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim))
+                        static_features[idx] = np.zeros(self.model_config.static_feat_dim)
         
         # Add feature arrays to DataFrame
         df_states['hf_features'] = list(hf_features)
@@ -465,6 +713,22 @@ class MarketSimulator:
         df_states['lf_features'] = list(lf_features)
         df_states['static_features'] = list(static_features)
         
+        # Calculate memory usage
+        total_feature_values = num_states * (
+            self.model_config.hf_seq_len * self.model_config.hf_feat_dim +
+            self.model_config.mf_seq_len * self.model_config.mf_feat_dim +
+            self.model_config.lf_seq_len * self.model_config.lf_feat_dim +
+            self.model_config.static_feat_dim
+        )
+        memory_mb = (total_feature_values * 4) / (1024 * 1024)  # 4 bytes per float32
+        
+        self.logger.info(f"Feature dimensions per timestamp:")
+        self.logger.info(f"  - HF: {self.model_config.hf_seq_len}x{self.model_config.hf_feat_dim} = {self.model_config.hf_seq_len * self.model_config.hf_feat_dim} values")
+        self.logger.info(f"  - MF: {self.model_config.mf_seq_len}x{self.model_config.mf_feat_dim} = {self.model_config.mf_seq_len * self.model_config.mf_feat_dim} values")
+        self.logger.info(f"  - LF: {self.model_config.lf_seq_len}x{self.model_config.lf_feat_dim} = {self.model_config.lf_seq_len * self.model_config.lf_feat_dim} values")
+        self.logger.info(f"  - Static: {self.model_config.static_feat_dim} values")
+        self.logger.info(f"  - Total per timestamp: {self.model_config.hf_seq_len * self.model_config.hf_feat_dim + self.model_config.mf_seq_len * self.model_config.mf_feat_dim + self.model_config.lf_seq_len * self.model_config.lf_feat_dim + self.model_config.static_feat_dim} values")
+        self.logger.info(f"Total feature memory usage: {memory_mb:.1f} MB for {num_states} states")
         self.logger.info(f"Completed pre-computation of {len(df_states)} market states with features")
         return df_states
         
