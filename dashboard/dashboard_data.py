@@ -159,6 +159,7 @@ class DashboardState:
     def update_training_state(self, data: Dict[str, Any]):
         """Update training state with new data"""
         try:
+            
             # Update basic training metrics
             for key, value in data.items():
                 if hasattr(self.training_state, key):

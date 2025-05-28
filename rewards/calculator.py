@@ -73,6 +73,12 @@ class RewardSystem:
                 component.metadata.type.value
             )
         
+        # Register special components
+        self.metrics_tracker.register_component(
+            'position_reset_penalty',
+            'special'
+        )
+        
         # Trade tracking
         self.current_trade: Optional[TradeTracker] = None
         self.step_count = 0
