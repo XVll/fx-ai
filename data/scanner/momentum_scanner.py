@@ -16,7 +16,7 @@ from data.utils.helpers import ensure_timezone_aware
 
 
 class MomentumScanner:
-    """Scans historical data to identify momentum days and quality reset points."""
+    """Scans historical data to identify momentum days and quality reset points using activity-based scoring."""
     
     # Momentum day thresholds
     MIN_DAILY_MOVE = 0.10  # 10% minimum intraday movement
@@ -24,26 +24,26 @@ class MomentumScanner:
     MIN_VOLUME_MULTIPLIER = 2.0  # Minimum 2x average volume
     
     # Reset point parameters
-    MIN_RESET_POINTS_PER_DAY = 10
-    MAX_RESET_POINTS_PER_DAY = 20
-    RESET_LOOKBACK_MINUTES = 30  # Look back 30 minutes for pattern context
+    MIN_RESET_POINTS_PER_DAY = 20  # Minimum reset points for training coverage
+    MAX_RESET_POINTS_PER_DAY = 50  # Maximum reset points per day
+    TARGET_RESET_POINTS = 30  # Target number of reset points
     
-    # Pattern types
-    PATTERN_TYPES = [
-        'breakout',      # Price breaking through resistance
-        'flush',         # Sharp downward move
-        'bounce',        # Recovery from low
-        'consolidation', # Sideways movement after big move
-        'gap_fill',      # Filling morning gap
-        'momentum_cont', # Continuation of existing trend
-    ]
+    # Activity scoring parameters
+    VOLUME_RATIO_WEIGHT = 0.5  # Weight for volume ratio in activity score
+    PRICE_CHANGE_WEIGHT = 0.5  # Weight for price change in activity score
     
-    def __init__(self, data_dir: str, output_dir: str, logger: Optional[logging.Logger] = None):
+    # Directional filtering
+    DIRECTION_FILTER = 'both'  # Options: 'front_side', 'back_side', 'both'
+    
+    def __init__(self, data_dir: str, output_dir: str, 
+                 direction_filter: str = 'both',
+                 logger: Optional[logging.Logger] = None):
         """Initialize the momentum scanner.
         
         Args:
             data_dir: Directory containing Databento files
             output_dir: Directory to save index files
+            direction_filter: Filter for momentum direction ('front_side', 'back_side', 'both')
             logger: Optional logger instance
         """
         self.data_dir = Path(data_dir)
@@ -51,6 +51,7 @@ class MomentumScanner:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         self.logger = logger or logging.getLogger(__name__)
+        self.direction_filter = direction_filter
         
         # Index paths
         self.day_index_path = self.output_dir / "momentum_days.parquet"
@@ -196,7 +197,7 @@ class MomentumScanner:
     
     def _analyze_day(self, symbol: str, date: pd.Timestamp, 
                     day_data: pd.DataFrame, avg_volume: float) -> Tuple[Optional[Dict], List[Dict]]:
-        """Analyze a single day for momentum characteristics.
+        """Analyze a single day for momentum characteristics using activity-based scoring.
         
         Returns:
             Tuple of (day_record, reset_points) or (None, [])
@@ -214,10 +215,20 @@ class MomentumScanner:
         total_volume = day_data['volume'].sum()
         
         # Calculate price movement
-        daily_range = (high_price - low_price) / open_price
+        daily_return = (close_price - open_price) / open_price
         max_move_up = (high_price - open_price) / open_price
         max_move_down = (open_price - low_price) / open_price
         max_intraday_move = max(max_move_up, max_move_down)
+        
+        # Determine momentum direction
+        is_front_side = daily_return > 0.05  # 5% positive move
+        is_back_side = daily_return < -0.05  # 5% negative move
+        
+        # Apply direction filter
+        if self.direction_filter == 'front_side' and not is_front_side:
+            return None, []
+        elif self.direction_filter == 'back_side' and not is_back_side:
+            return None, []
         
         # Check momentum criteria
         is_momentum_day = (
@@ -231,10 +242,11 @@ class MomentumScanner:
         # Find halts
         halt_count = self._count_halts(symbol, date)
         
-        # Calculate quality score
-        quality_score = self._calculate_day_quality(
-            max_intraday_move, total_volume / avg_volume, halt_count
-        )
+        # Calculate activity score (simple and effective)
+        volume_ratio = min(total_volume / avg_volume, 10.0) / 10.0  # Normalize to 0-1
+        price_change = min(max_intraday_move, 0.30) / 0.30  # Normalize to 0-1
+        activity_score = (volume_ratio * self.VOLUME_RATIO_WEIGHT + 
+                         price_change * self.PRICE_CHANGE_WEIGHT)
         
         # Create day record
         day_record = {
@@ -245,24 +257,27 @@ class MomentumScanner:
             'low': low_price,
             'close': close_price,
             'volume': total_volume,
+            'daily_return': daily_return,
             'max_intraday_move': max_intraday_move,
             'volume_multiplier': total_volume / avg_volume,
             'halt_count': halt_count,
-            'quality_score': quality_score,
+            'activity_score': activity_score,
+            'is_front_side': is_front_side,
+            'is_back_side': is_back_side,
             'file_paths': [str(f) for f in self._find_day_files(symbol, date)]
         }
         
         # Find reset points within the day
-        reset_points = self._find_reset_points(symbol, date, day_data, quality_score)
+        reset_points = self._find_reset_points(symbol, date, day_data, activity_score)
         
         return day_record, reset_points
     
     def _find_reset_points(self, symbol: str, date: pd.Timestamp,
-                          day_data: pd.DataFrame, day_quality: float) -> List[Dict]:
-        """Find quality reset points within a momentum day."""
+                          day_data: pd.DataFrame, day_activity_score: float) -> List[Dict]:
+        """Find reset points within a momentum day using activity-based scoring."""
         reset_points = []
         
-        # Resample to 1-minute bars for pattern detection
+        # Resample to 1-minute bars for activity calculation
         minute_bars = day_data.resample('1min').agg({
             'open': 'first',
             'high': 'max',
@@ -274,176 +289,156 @@ class MomentumScanner:
         if len(minute_bars) < 60:  # Need at least 1 hour of data
             return reset_points
             
-        # Calculate technical indicators
-        minute_bars['sma_10'] = minute_bars['close'].rolling(10).mean()
-        minute_bars['sma_30'] = minute_bars['close'].rolling(30).mean()
+        # Calculate rolling metrics for activity scoring
         minute_bars['volume_sma'] = minute_bars['volume'].rolling(10).mean()
-        minute_bars['price_velocity'] = minute_bars['close'].pct_change(5)
         minute_bars['volume_ratio'] = minute_bars['volume'] / minute_bars['volume_sma']
+        minute_bars['price_change'] = minute_bars['close'].pct_change(5).abs()  # 5-minute price change
         
-        # Identify potential reset points
-        potential_points = []
-        
-        for i in range(self.RESET_LOOKBACK_MINUTES, len(minute_bars)):
-            timestamp = minute_bars.index[i]
-            lookback = minute_bars.iloc[i-self.RESET_LOOKBACK_MINUTES:i+1]
-            
-            # Detect patterns
-            pattern = self._detect_pattern(lookback)
-            if pattern:
-                quality = self._calculate_reset_quality(
-                    lookback, pattern, timestamp.hour
-                )
-                
-                potential_points.append({
-                    'timestamp': timestamp,
-                    'pattern': pattern,
-                    'quality': quality,
-                    'price': minute_bars['close'].iloc[i],
-                    'volume': minute_bars['volume'].iloc[i],
-                    'velocity': minute_bars['price_velocity'].iloc[i]
-                })
-        
-        # Select best reset points (distributed throughout the day)
-        selected_points = self._select_best_reset_points(
-            potential_points, 
-            min_points=self.MIN_RESET_POINTS_PER_DAY,
-            max_points=self.MAX_RESET_POINTS_PER_DAY
+        # Calculate activity score for each minute
+        minute_bars['activity_score'] = (
+            minute_bars['volume_ratio'].clip(0, 5) / 5 * self.VOLUME_RATIO_WEIGHT +
+            minute_bars['price_change'].clip(0, 0.05) / 0.05 * self.PRICE_CHANGE_WEIGHT
         )
         
-        # Create reset point records
-        for point in selected_points:
+        # Add direction information
+        minute_bars['price_direction'] = minute_bars['close'].pct_change(5)
+        minute_bars['is_positive_move'] = minute_bars['price_direction'] > 0.001
+        minute_bars['is_negative_move'] = minute_bars['price_direction'] < -0.001
+        
+        # Filter out low activity periods
+        minute_bars = minute_bars[minute_bars['activity_score'] > 0.1]
+        
+        if len(minute_bars) < self.MIN_RESET_POINTS_PER_DAY:
+            # If not enough high-activity points, use all available
+            minute_bars = day_data.resample('1min').agg({
+                'open': 'first',
+                'high': 'max',
+                'low': 'min', 
+                'close': 'last',
+                'volume': 'sum'
+            }).dropna()
+            minute_bars['activity_score'] = 0.5  # Default score
+            minute_bars['is_positive_move'] = True
+            minute_bars['is_negative_move'] = False
+        
+        # Generate reset points using cumulative distribution weighted by activity
+        reset_points = self._generate_activity_weighted_reset_points(
+            minute_bars, symbol, date, day_activity_score
+        )
+        
+        return reset_points
+    
+    def _generate_activity_weighted_reset_points(self, minute_bars: pd.DataFrame,
+                                               symbol: str, date: pd.Timestamp,
+                                               day_activity_score: float) -> List[Dict]:
+        """Generate reset points using activity-weighted distribution."""
+        reset_points = []
+        
+        # Clean data
+        minute_bars = minute_bars.dropna()
+        if len(minute_bars) == 0:
+            return reset_points
+            
+        # Calculate cumulative activity scores
+        activity_scores = minute_bars['activity_score'].fillna(0.1).values
+        cumulative_activity = np.cumsum(activity_scores)
+        total_activity = cumulative_activity[-1]
+        
+        if total_activity == 0:
+            # Fallback to uniform distribution
+            indices = np.linspace(0, len(minute_bars) - 1, self.TARGET_RESET_POINTS, dtype=int)
+        else:
+            # Generate reset points weighted by activity
+            target_points = min(self.TARGET_RESET_POINTS, len(minute_bars))
+            reset_thresholds = np.linspace(0, total_activity, target_points + 1)[1:]
+            
+            indices = []
+            for threshold in reset_thresholds:
+                idx = np.searchsorted(cumulative_activity, threshold)
+                if idx < len(minute_bars):
+                    indices.append(idx)
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_indices = []
+            for idx in indices:
+                if idx not in seen:
+                    seen.add(idx)
+                    unique_indices.append(idx)
+            indices = unique_indices
+        
+        # Create reset points from selected indices
+        for idx in indices:
+            if idx >= len(minute_bars):
+                continue
+                
+            row = minute_bars.iloc[idx]
+            
             reset_points.append({
                 'symbol': symbol,
                 'date': date,
-                'timestamp': point['timestamp'],
-                'pattern_type': point['pattern'],
-                'local_quality_score': point['quality'],
-                'day_quality_score': day_quality,
-                'combined_score': point['quality'] * day_quality,
-                'price': point['price'],
-                'volume': point['volume'],
-                'price_velocity': point['velocity']
+                'timestamp': row.name,  # Index is timestamp
+                'activity_score': row.get('activity_score', 0.5),
+                'day_activity_score': day_activity_score,
+                'combined_score': row.get('activity_score', 0.5) * day_activity_score,
+                'price': row['close'],
+                'volume': row['volume'],
+                'is_positive_move': row.get('is_positive_move', True),
+                'is_negative_move': row.get('is_negative_move', False),
+                'volume_ratio': row.get('volume_ratio', 1.0),
+                'price_change': row.get('price_change', 0.0)
             })
+        
+        # Ensure minimum reset points
+        if len(reset_points) < self.MIN_RESET_POINTS_PER_DAY and len(minute_bars) > self.MIN_RESET_POINTS_PER_DAY:
+            # Add uniformly distributed points to reach minimum
+            additional_needed = self.MIN_RESET_POINTS_PER_DAY - len(reset_points)
+            used_timestamps = {p['timestamp'] for p in reset_points}
             
-        return reset_points
+            # Find unused timestamps
+            all_timestamps = set(minute_bars.index)
+            unused_timestamps = sorted(all_timestamps - used_timestamps)
+            
+            if unused_timestamps:
+                # Select evenly spaced additional points
+                step = max(1, len(unused_timestamps) // additional_needed)
+                for i in range(0, len(unused_timestamps), step):
+                    if len(reset_points) >= self.MIN_RESET_POINTS_PER_DAY:
+                        break
+                        
+                    timestamp = unused_timestamps[i]
+                    row = minute_bars.loc[timestamp]
+                    
+                    reset_points.append({
+                        'symbol': symbol,
+                        'date': date,
+                        'timestamp': timestamp,
+                        'activity_score': 0.3,  # Lower score for filler points
+                        'day_activity_score': day_activity_score,
+                        'combined_score': 0.3 * day_activity_score,
+                        'price': row['close'],
+                        'volume': row['volume'],
+                        'is_positive_move': row.get('is_positive_move', True),
+                        'is_negative_move': row.get('is_negative_move', False),
+                        'volume_ratio': row.get('volume_ratio', 1.0),
+                        'price_change': row.get('price_change', 0.0)
+                    })
+        
+        # Sort by timestamp
+        reset_points.sort(key=lambda x: x['timestamp'])
+        
+        # Limit to maximum
+        return reset_points[:self.MAX_RESET_POINTS_PER_DAY]
     
-    def _detect_pattern(self, lookback: pd.DataFrame) -> Optional[str]:
-        """Detect momentum patterns in lookback window."""
-        if len(lookback) < 10:
-            return None
-            
-        # Calculate metrics
-        price_change = (lookback['close'].iloc[-1] - lookback['close'].iloc[0]) / lookback['close'].iloc[0]
-        high_to_low = (lookback['high'].max() - lookback['low'].min()) / lookback['close'].iloc[0]
-        recent_velocity = lookback['close'].pct_change().iloc[-5:].mean()
-        volume_surge = lookback['volume'].iloc[-5:].mean() / lookback['volume'].iloc[:-5].mean()
-        
-        # Pattern detection logic
-        if price_change > 0.02 and volume_surge > 1.5 and recent_velocity > 0:
-            if lookback['close'].iloc[-1] > lookback['high'].iloc[:-5].max():
-                return 'breakout'
-            else:
-                return 'momentum_cont'
-                
-        elif price_change < -0.02 and volume_surge > 1.5:
-            return 'flush'
-            
-        elif abs(price_change) < 0.01 and high_to_low > 0.02:
-            if lookback['low'].iloc[-5:].min() > lookback['low'].iloc[:-5].min():
-                return 'bounce'
-            else:
-                return 'consolidation'
-                
-        elif self._is_gap_fill(lookback):
-            return 'gap_fill'
-            
-        return None
-    
-    def _is_gap_fill(self, lookback: pd.DataFrame) -> bool:
-        """Check if current action represents gap fill pattern."""
-        # Simple gap fill detection - would need access to previous day's close
-        # For now, return False
-        return False
-    
-    def _calculate_reset_quality(self, lookback: pd.DataFrame, 
-                                pattern: str, hour: int) -> float:
-        """Calculate quality score for a reset point."""
-        score = 0.5  # Base score
-        
-        # Pattern quality multipliers
-        pattern_scores = {
-            'breakout': 1.2,
-            'flush': 1.1,
-            'bounce': 1.0,
-            'momentum_cont': 0.9,
-            'consolidation': 0.8,
-            'gap_fill': 1.0
-        }
-        score *= pattern_scores.get(pattern, 1.0)
-        
-        # Time of day multiplier
-        if 9 <= hour <= 10:  # Market open
-            score *= 1.2
-        elif 15 <= hour <= 16:  # Power hour
-            score *= 1.1
-        elif 11 <= hour <= 14:  # Midday
-            score *= 0.9
-            
-        # Volume quality
-        volume_ratio = lookback['volume'].iloc[-5:].mean() / lookback['volume'].mean()
-        score *= min(1.5, max(0.5, volume_ratio))
-        
-        # Price action clarity (low noise)
-        returns = lookback['close'].pct_change().dropna()
-        if len(returns) > 0:
-            noise_ratio = returns.std() / abs(returns.mean()) if returns.mean() != 0 else 10
-            clarity_multiplier = 1.0 / (1.0 + noise_ratio)
-            score *= clarity_multiplier
-            
-        return min(1.0, max(0.0, score))
-    
-    def _select_best_reset_points(self, points: List[Dict], 
-                                 min_points: int, max_points: int) -> List[Dict]:
-        """Select best reset points with good distribution throughout the day."""
-        if len(points) <= min_points:
-            return points
-            
-        # Sort by quality
-        points.sort(key=lambda x: x['quality'], reverse=True)
-        
-        # Take top quality points
-        selected = points[:max_points]
-        
-        # Ensure time distribution
-        if len(selected) > min_points:
-            # Group by hour and ensure coverage
-            hourly_groups = {}
-            for point in selected:
-                hour = point['timestamp'].hour
-                if hour not in hourly_groups:
-                    hourly_groups[hour] = []
-                hourly_groups[hour].append(point)
-                
-            # Rebalance if too concentrated
-            final_selected = []
-            points_per_hour = max_points // len(hourly_groups) if hourly_groups else 1
-            
-            for hour, hour_points in sorted(hourly_groups.items()):
-                # Take best from each hour
-                hour_points.sort(key=lambda x: x['quality'], reverse=True)
-                final_selected.extend(hour_points[:points_per_hour])
-                
-            # Fill remaining slots with best overall
-            remaining = max_points - len(final_selected)
-            if remaining > 0:
-                used_timestamps = {p['timestamp'] for p in final_selected}
-                unused = [p for p in selected if p['timestamp'] not in used_timestamps]
-                final_selected.extend(unused[:remaining])
-                
-            return final_selected[:max_points]
-        
-        return selected
+    def _is_within_trading_hours(self, timestamp: pd.Timestamp) -> bool:
+        """Check if timestamp is within trading hours (4 AM - 8 PM ET)."""
+        # Convert to ET for checking  
+        try:
+            et_time = timestamp.tz_convert('US/Eastern').time()
+            return pd.Timestamp('04:00').time() <= et_time <= pd.Timestamp('20:00').time()
+        except:
+            # Fallback for timezone issues
+            return True
     
     def _filter_trading_hours(self, df: pd.DataFrame) -> pd.DataFrame:
         """Filter data to regular trading hours (4 AM - 8 PM ET)."""
@@ -510,36 +505,6 @@ class MomentumScanner:
                 
         return halt_count
     
-    def _calculate_day_quality(self, max_move: float, volume_mult: float, 
-                              halt_count: int) -> float:
-        """Calculate overall quality score for a momentum day."""
-        # Base score from price movement
-        if max_move >= 0.20:  # 20%+ move
-            base_score = 0.9
-        elif max_move >= 0.15:  # 15-20% move
-            base_score = 0.7
-        else:  # 10-15% move
-            base_score = 0.5
-            
-        # Volume multiplier
-        if volume_mult >= 5.0:
-            volume_score = 1.2
-        elif volume_mult >= 3.0:
-            volume_score = 1.1
-        else:
-            volume_score = 1.0
-            
-        # Halt penalty (some halts are good for volatility training)
-        if halt_count == 0:
-            halt_score = 1.0
-        elif halt_count <= 2:
-            halt_score = 0.9
-        else:
-            halt_score = 0.7
-            
-        # Combine scores
-        final_score = base_score * volume_score * halt_score
-        return min(1.0, max(0.0, final_score))
     
     def _find_ohlcv_files(self, symbol: str, timeframe: str) -> List[Path]:
         """Find OHLCV files for a symbol and timeframe."""
@@ -612,16 +577,18 @@ class MomentumScanner:
             
         return day_df, reset_df
     
-    def query_momentum_days(self, symbol: str, min_quality: float = 0.5,
+    def query_momentum_days(self, symbol: str, min_activity: float = 0.5,
                            start_date: Optional[datetime] = None,
-                           end_date: Optional[datetime] = None) -> pd.DataFrame:
+                           end_date: Optional[datetime] = None,
+                           direction: Optional[str] = None) -> pd.DataFrame:
         """Query momentum days for a symbol.
         
         Args:
             symbol: Symbol to query
-            min_quality: Minimum quality score
+            min_activity: Minimum activity score
             start_date: Start date filter
             end_date: End date filter
+            direction: Filter by direction ('front_side', 'back_side', None for both)
             
         Returns:
             DataFrame of matching momentum days
@@ -634,8 +601,14 @@ class MomentumScanner:
         # Filter by symbol
         mask = day_df['symbol'] == symbol.upper()
         
-        # Filter by quality
-        mask &= day_df['quality_score'] >= min_quality
+        # Filter by activity score
+        mask &= day_df['activity_score'] >= min_activity
+        
+        # Filter by direction
+        if direction == 'front_side':
+            mask &= day_df['is_front_side'] == True
+        elif direction == 'back_side':
+            mask &= day_df['is_back_side'] == True
         
         # Filter by date range
         if start_date:
@@ -643,18 +616,18 @@ class MomentumScanner:
         if end_date:
             mask &= day_df['date'] <= pd.Timestamp(end_date)
             
-        return day_df[mask].sort_values('quality_score', ascending=False)
+        return day_df[mask].sort_values('activity_score', ascending=False)
     
     def query_reset_points(self, symbol: str, date: Optional[pd.Timestamp] = None,
-                          pattern_type: Optional[str] = None,
-                          min_quality: float = 0.5) -> pd.DataFrame:
+                          min_activity: float = 0.5,
+                          direction: Optional[str] = None) -> pd.DataFrame:
         """Query reset points for a symbol.
         
         Args:
             symbol: Symbol to query
             date: Specific date (None for all)
-            pattern_type: Filter by pattern type
-            min_quality: Minimum combined quality score
+            min_activity: Minimum combined activity score
+            direction: Filter by direction ('positive', 'negative', None for both)
             
         Returns:
             DataFrame of matching reset points
@@ -671,11 +644,63 @@ class MomentumScanner:
         if date:
             mask &= reset_df['date'] == date
             
-        # Filter by pattern
-        if pattern_type:
-            mask &= reset_df['pattern_type'] == pattern_type
-            
-        # Filter by quality
-        mask &= reset_df['combined_score'] >= min_quality
+        # Filter by activity
+        mask &= reset_df['combined_score'] >= min_activity
+        
+        # Filter by direction
+        if direction == 'positive':
+            mask &= reset_df['is_positive_move'] == True
+        elif direction == 'negative':
+            mask &= reset_df['is_negative_move'] == True
         
         return reset_df[mask].sort_values('combined_score', ascending=False)
+    
+    def get_top_momentum_days(self, symbol: str, top_n: int = 10,
+                             direction: Optional[str] = None) -> pd.DataFrame:
+        """Get top N momentum days by activity score.
+        
+        Args:
+            symbol: Symbol to query
+            top_n: Number of top days to return
+            direction: Filter by direction ('front_side', 'back_side', None for both)
+            
+        Returns:
+            DataFrame of top momentum days
+        """
+        days = self.query_momentum_days(symbol, min_activity=0.0, direction=direction)
+        return days.head(top_n)
+    
+    def get_momentum_day_summary(self) -> pd.DataFrame:
+        """Get summary statistics for all momentum days.
+        
+        Returns:
+            DataFrame with summary by symbol
+        """
+        day_df, _ = self.load_index()
+        
+        if day_df.empty:
+            return pd.DataFrame()
+            
+        summary = day_df.groupby('symbol').agg({
+            'date': 'count',
+            'activity_score': ['mean', 'max'],
+            'max_intraday_move': ['mean', 'max'],
+            'volume_multiplier': ['mean', 'max'],
+            'is_front_side': 'sum',
+            'is_back_side': 'sum'
+        })
+        
+        summary.columns = ['_'.join(col).strip() for col in summary.columns.values]
+        summary = summary.rename(columns={
+            'date_count': 'total_days',
+            'activity_score_mean': 'avg_activity',
+            'activity_score_max': 'max_activity',
+            'max_intraday_move_mean': 'avg_move',
+            'max_intraday_move_max': 'max_move',
+            'volume_multiplier_mean': 'avg_volume_mult',
+            'volume_multiplier_max': 'max_volume_mult',
+            'is_front_side_sum': 'front_side_days',
+            'is_back_side_sum': 'back_side_days'
+        })
+        
+        return summary.sort_values('total_days', ascending=False)

@@ -1,37 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(clear)",
-      "Bash(grep:*)",
-      "Bash(ls:*)",
-      "Bash(rg:*)",
-      "Bash(poetry run:*)",
-      "Bash(poetry install:*)",
-      "Bash(find:*)",
-      "Bash(python:*)",
-      "Bash(git add:*)",
-      "Bash(mkdir:*)",
-
-      "Bash(echo $HOME)",
-      "Bash(cp:*)",
-      "Bash(sed:*)",
-      "Bash(timeout:*)",
       "Bash(rm:*)",
-      "Bash(rm:*)",
-      "Bash(PYTHONPATH=/home/fx/Repositories/fx-ai poetry run pytest tests/simulators/test_market_simulator_v2.py::TestMarketSimulatorV2::test_initialization -v)",
-      "Bash(PYTHONPATH=/home/fx/Repositories/fx-ai poetry run python -m pytest tests/simulators/test_market_simulator_v2.py::TestMarketSimulatorV2::test_initialization -v)",
-      "Bash(poetry add:*)",
-      "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 poetry run pytest tests/envs/test_environment_simulator_v2.py::TestEnvironmentSimulator::test_initialization -xvs)",
-      "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 poetry run pytest tests/envs/test_environment_simulator_v2.py -xvs)",
-      "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 poetry run pytest tests/envs/test_environment_simulator_v2.py::TestEnvironmentSimulator::test_reset_loads_new_day -xvs)",
-      "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 poetry run pytest tests/envs/test_environment_simulator_v2.py -v --tb=short)",
-      "Bash(awk:*)"
-
-      "Bash(rm:*)",
-      "Bash(awk:*)",
-      "Bash(sed:*)",
-      "Bash(timeout:*)"
-
+      "Bash(mkdir:*)"
     ],
     "deny": []
   }
