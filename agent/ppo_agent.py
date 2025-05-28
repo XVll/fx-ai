@@ -36,6 +36,9 @@ class PPOTrainer:
             device: Optional[Union[str, torch.device]] = None,
             output_dir: str = "./ppo_output",
             callbacks: Optional[List[TrainingCallback]] = None,
+            curriculum_strategy: str = "quality_based",
+            min_quality_threshold: float = 0.3,
+            episode_selection_mode: str = "momentum_days",
     ):
         self.env = env
         self.model = model
@@ -108,7 +111,122 @@ class PPOTrainer:
         self.update_times = []
         self.episode_times = []
 
+        # Momentum-based training configuration
+        self.curriculum_strategy = curriculum_strategy
+        self.min_quality_threshold = min_quality_threshold
+        self.episode_selection_mode = episode_selection_mode
+        
+        # Momentum training state
+        self.current_momentum_day = None
+        self.used_momentum_days = set()
+        self.current_reset_points = []
+        self.used_reset_point_indices = set()
+        self.curriculum_progress = 0.0  # 0.0 = easy episodes, 1.0 = hard episodes
+
         self.logger.info(f"🤖 PPOTrainer initialized with metrics integration. Device: {self.device}")
+
+    def _select_next_momentum_day(self) -> bool:
+        """Select next momentum day based on curriculum strategy."""
+        if self.episode_selection_mode != "momentum_days":
+            return False
+            
+        # Try to get a new momentum day from environment
+        momentum_day_info = self.env.select_next_momentum_day(
+            exclude_dates=[day['date'] for day in self.used_momentum_days]
+        )
+        
+        if momentum_day_info is None:
+            self.logger.warning("No more momentum days available, resetting used days")
+            self.used_momentum_days.clear()
+            momentum_day_info = self.env.select_next_momentum_day()
+            
+        if momentum_day_info is None:
+            self.logger.error("No momentum days available in environment")
+            return False
+            
+        self.current_momentum_day = momentum_day_info
+        self.used_momentum_days.add(momentum_day_info)
+        self.current_reset_points = momentum_day_info.get('reset_points', [])
+        self.used_reset_point_indices.clear()
+        
+        self.logger.info(f"📅 Selected momentum day: {momentum_day_info['date'].strftime('%Y-%m-%d')} "
+                        f"(quality: {momentum_day_info.get('activity_score', 0):.3f}, "
+                        f"reset points: {len(self.current_reset_points)})")
+        return True
+
+    def _select_reset_point(self) -> int:
+        """Select next reset point based on curriculum strategy."""
+        if not self.current_reset_points:
+            return 0
+            
+        available_indices = [i for i in range(len(self.current_reset_points)) 
+                            if i not in self.used_reset_point_indices]
+        
+        if not available_indices:
+            # Reset used indices when all are exhausted
+            self.used_reset_point_indices.clear()
+            available_indices = list(range(len(self.current_reset_points)))
+            
+        if self.curriculum_strategy == "quality_based":
+            # Start with easier (lower activity) reset points, progress to harder ones
+            sorted_indices = sorted(available_indices, 
+                                  key=lambda i: self.current_reset_points[i].get('activity_score', 0))
+            
+            # Select based on curriculum progress
+            progress_idx = int(self.curriculum_progress * len(sorted_indices))
+            progress_idx = min(progress_idx, len(sorted_indices) - 1)
+            selected_idx = sorted_indices[progress_idx]
+            
+        elif self.curriculum_strategy == "random":
+            selected_idx = np.random.choice(available_indices)
+        else:
+            # Sequential
+            selected_idx = available_indices[0]
+            
+        self.used_reset_point_indices.add(selected_idx)
+        
+        reset_point = self.current_reset_points[selected_idx]
+        self.logger.debug(f"🎯 Selected reset point {selected_idx}: "
+                         f"{reset_point.get('timestamp', 'unknown')} "
+                         f"(activity: {reset_point.get('activity_score', 0):.3f})")
+        
+        return selected_idx
+
+    def _update_curriculum_progress(self):
+        """Update curriculum progress based on training performance."""
+        if len(self.recent_episode_rewards) < 10:
+            return
+            
+        # Calculate recent performance stability
+        recent_rewards = self.recent_episode_rewards[-20:]
+        if len(recent_rewards) >= 10:
+            mean_reward = np.mean(recent_rewards)
+            std_reward = np.std(recent_rewards)
+            
+            # If performance is stable and positive, increase difficulty
+            if std_reward < abs(mean_reward) * 0.3 and mean_reward > 0:
+                self.curriculum_progress = min(1.0, self.curriculum_progress + 0.02)
+            # If performance is poor, decrease difficulty slightly
+            elif mean_reward < -1.0:
+                self.curriculum_progress = max(0.0, self.curriculum_progress - 0.01)
+
+    def _reset_environment_with_momentum(self):
+        """Reset environment using momentum-based training."""
+        if self.episode_selection_mode == "momentum_days":
+            # Ensure we have a momentum day selected
+            if self.current_momentum_day is None:
+                if not self._select_next_momentum_day():
+                    # Fallback to standard reset
+                    return self.env.reset()
+                    
+            # Select reset point
+            reset_point_idx = self._select_reset_point()
+            
+            # Reset at the selected point
+            return self.env.reset_at_point(reset_point_idx)
+        else:
+            # Use standard reset
+            return self.env.reset()
 
     def _start_timer(self, stage: str):
         """Start timing for a stage."""
@@ -155,7 +273,7 @@ class PPOTrainer:
                 }
                 self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
 
-        current_env_state_np, _ = self.env.reset()
+        current_env_state_np, _ = self._reset_environment_with_momentum()
 
         for callback in self.callbacks:
             callback.on_rollout_start(self)
@@ -291,6 +409,9 @@ class PPOTrainer:
                 
                 # Update recent episode rewards for dashboard
                 self.recent_episode_rewards.append(current_episode_reward)
+                
+                # Update curriculum progress based on performance
+                self._update_curriculum_progress()
                 if len(self.recent_episode_rewards) > 10:  # Keep only last 10 episodes
                     self.recent_episode_rewards.pop(0)
                     
@@ -323,7 +444,7 @@ class PPOTrainer:
                     update_count=self.global_update_counter
                 )
 
-                current_env_state_np, _ = self.env.reset()
+                current_env_state_np, _ = self._reset_environment_with_momentum()
                 current_episode_reward = 0.0
                 current_episode_length = 0
                 episode_start_time = time.time()
@@ -848,7 +969,7 @@ class PPOTrainer:
         episode_details = []
 
         for i in range(n_episodes):
-            env_state_np, _ = self.env.reset()
+            env_state_np, _ = self._reset_environment_with_momentum()
             current_episode_reward = 0.0
             current_episode_length = 0
             done = False

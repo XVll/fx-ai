@@ -1,4 +1,7 @@
 # ai/networks.py
+# NOTE: These networks are currently unused as the MultiBranchTransformer 
+# has built-in actor-critic heads. Kept for potential future use.
+
 import torch
 import torch.nn as nn
 

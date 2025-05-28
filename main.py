@@ -29,8 +29,8 @@ from envs.trading_environment import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from ai.transformer import MultiBranchTransformer
 from metrics.factory import create_trading_metrics_system
-from agent.base_callbacks import ModelCheckpointCallback, EarlyStoppingCallback, TrainingCallback
-from agent.continous_training_callbacks import ContinuousTrainingCallback
+from agent.base_callbacks import ModelCheckpointCallback, EarlyStoppingCallback, TrainingCallback, MomentumTrackingCallback
+from agent.continuous_training_callbacks import ContinuousTrainingCallback
 
 # Global variables for signal handling
 training_interrupted = False
@@ -232,10 +232,10 @@ def create_metrics_components(config: Config, log: logging.Logger):
     # Enable dashboard if configured
     if config.dashboard.enabled:
         logging.info(f"Dashboard is enabled, initializing on port {config.dashboard.port}")
-        from dashboard.live_dashboard_v2 import LiveTradingDashboard
+        from dashboard.dashboard import MomentumDashboard
         from dashboard.dashboard_integration import DashboardMetricsCollector
         
-        dashboard = LiveTradingDashboard(
+        dashboard = MomentumDashboard(
             port=config.dashboard.port,
             update_interval=int(config.dashboard.update_interval * 1000)  # Convert to milliseconds
         )
@@ -334,6 +334,12 @@ def create_training_callbacks(config: Config, model_manager, output_dir: str,
         except Exception as e:
             logging.error(f"Failed to initialize continuous training callback: {e}")
             logging.warning("Continuing without continuous training callback...")
+    
+    # Momentum tracking callback for momentum-based training
+    if hasattr(config.env, 'use_momentum_training') and config.env.use_momentum_training:
+        momentum_callback = MomentumTrackingCallback(log_frequency=10)
+        callbacks.append(momentum_callback)
+        logging.info("🎯 Momentum tracking callback added")
     
     return callbacks
 
@@ -449,6 +455,18 @@ def train(config: Config):
             "batch_size": config.training.batch_size,
             "rollout_steps": config.training.rollout_steps
         }
+        
+        # Add momentum-based training parameters
+        if hasattr(config.env, 'use_momentum_training') and config.env.use_momentum_training:
+            training_params.update({
+                "curriculum_strategy": getattr(config.env, 'curriculum_strategy', 'quality_based'),
+                "min_quality_threshold": getattr(config.env, 'min_quality_threshold', 0.3),
+                "episode_selection_mode": "momentum_days"
+            })
+        else:
+            training_params.update({
+                "episode_selection_mode": "standard"
+            })
         
         # Create trainer
         trainer = PPOTrainer(
