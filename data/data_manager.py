@@ -295,8 +295,8 @@ class DataManager:
             
         return self.momentum_days_cache[
             (self.momentum_days_cache['symbol'] == symbol.upper()) &
-            (self.momentum_days_cache['quality_score'] >= min_quality)
-        ].sort_values('quality_score', ascending=False)
+            (self.momentum_days_cache['activity_score'] >= min_quality)
+        ].sort_values('activity_score', ascending=False)
         
     def get_reset_points(self, symbol: str, date: datetime) -> pd.DataFrame:
         """Get reset points for a symbol on a specific date."""

@@ -14,8 +14,7 @@ import wandb
 
 from config.loader import load_config, check_unused_configs
 from config.schemas import (
-    Config, ModelConfig, EnvConfig, TrainingConfig, 
-    DataConfig, SimulationConfig, WandbConfig, DashboardConfig
+    Config, TrainingConfig, DataConfig, WandbConfig
 )
 from simulators.portfolio_simulator import PortfolioSimulator
 from utils.logger import console, setup_rich_logging, get_logger
@@ -26,9 +25,6 @@ from utils.model_manager import ModelManager
 # Import components
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DatabentoFileProvider
-# MarketSimulator is created inside TradingEnvironment during setup_session
-from simulators.execution_simulator import ExecutionSimulator
-# FeatureExtractor is created inside TradingEnvironment
 from envs.trading_environment import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from ai.transformer import MultiBranchTransformer
@@ -170,60 +166,35 @@ def create_data_provider(data_config: DataConfig):
         raise ValueError(f"Unknown provider type: {data_config.provider}")
 
 
-def create_data_components(config: Config, logger: logging.Logger):
+def create_data_components(config: Config, log: logging.Logger):
     """Create data-related components with proper config passing"""
     # Data Manager with DataConfig
     data_provider = create_data_provider(config.data)
     data_manager = DataManager(
         provider=data_provider,
-        logger=logger
+        logger=log
     )
     
-
-    # Market Simulator with SimulationConfig, ModelConfig and symbol
-    market_simulator = MarketSimulator(
-        symbol=config.env.symbol,
-        data_manager=data_manager,
-        simulation_config=config.simulation,
-        model_config=config.model,
-        start_time=config.data.start_date,
-        end_time=config.data.end_date,
-        logger=logger
-    )
-    
-    return data_manager, market_simulator
+    return data_manager
 
 
-def create_simulation_components(env_config: EnvConfig, 
-                               simulation_config: SimulationConfig,
-                               model_config: ModelConfig,
-                               logger: logging.Logger):
-    """Create simulation components with proper config passing"""
-    # NOTE: These simulators are not actually used by TradingEnvironment
-    # The environment creates its own simulators in setup_session()
-    # This function is kept for backward compatibility but could be removed
-    return None, None
+# Simulation components are now created inside TradingEnvironment.setup_session()
 
 
-def create_env_components(config: Config, market_simulator, logger: logging.Logger):
+def create_env_components(config: Config, data_manager: DataManager, log: logging.Logger):
     """Create environment and related components with proper config passing"""
-    # NOTE: Feature extractor is created inside TradingEnvironment.setup_session()
-    # so we don't need to create it here
-
-    
-    # Trading Environment with full config (for now, will be refactored later)
+    # Trading Environment with full config
     env = TradingEnvironment(
-        config=config,  # TODO: Refactor to take specific configs
+        config=config,
         data_manager=data_manager,
-        logger=logger,
+        logger=log,
         metrics_integrator=None  # Will be set later
     )
     
-
     return env
 
 
-def create_metrics_components(config: Config, logger: logging.Logger):
+def create_metrics_components(config: Config, log: logging.Logger):
     """Create metrics and dashboard components with proper config passing"""
     # Dashboard can work without W&B - only return None if both are disabled
     if not config.wandb.enabled and not config.dashboard.enabled:
@@ -287,8 +258,8 @@ def create_metrics_components(config: Config, logger: logging.Logger):
     return metrics_manager, metrics_integrator
 
 
-def create_model_components(config: Config, env, device: torch.device, 
-                           output_dir: str, logger: logging.Logger):
+def create_model_components(config: Config, device: torch.device, 
+                           output_dir: str, log: logging.Logger):
     """Create model and training components with proper config passing"""
     # Model Manager with TrainingConfig
     model_manager = ModelManager(
@@ -299,14 +270,13 @@ def create_model_components(config: Config, env, device: torch.device,
         symbol=config.env.symbol
     )
     
-    # Get observation to initialize model
-    obs, info = env.reset()
+    # Model dimensions are known from config, no need to reset env here
     
     # Create model with ModelConfig
     model = MultiBranchTransformer(
         model_config=config.model,
         device=device,
-        logger=logger
+        logger=log
     )
     logging.info("✅ Model created successfully")
     
@@ -373,10 +343,8 @@ def train(config: Config):
     global current_components
     
     # Setup logging
-
-    logger = setup_rich_logging(
+    setup_rich_logging(
         level=config.logging.level,
-
     )
     logger = get_logger("fx-ai")
     
@@ -412,35 +380,18 @@ def train(config: Config):
         data_manager = create_data_components(config, logger)
         current_components['data_manager'] = data_manager
         
-
-        # Simulation components (not used, but kept for compatibility)
-        _, _ = create_simulation_components(
-            config.env, config.simulation, config.model, logger
-        )
-        
-        # Environment components
+        # Environment components  
         env = create_env_components(
-            config, market_simulator, logger
-
+            config, data_manager, logger
         )
         current_components['env'] = env
         
         # Setup environment session
-        # Use default date range if not specified (last 3 months)
-        if config.data.start_date is None:
-            start_date = "2025-02-01"  # Default start date
-        else:
-            start_date = config.data.start_date
-            
-        if config.data.end_date is None:
-            end_date = "2025-04-29"  # Default end date
-        else:
-            end_date = config.data.end_date
-            
+        # The new environment uses momentum-based episode selection
+        # It will load available momentum days from the data manager
         env.setup_session(
             symbol=config.env.symbol,
-            start_time=start_date,
-            end_time=end_date
+            date=datetime.now()  # Will select appropriate momentum day
         )
         
         # Metrics components
@@ -453,7 +404,7 @@ def train(config: Config):
         
         # Model components
         model, optimizer, model_manager = create_model_components(
-            config, env, device, str(output_dir), logger
+            config, device, str(output_dir), logger
         )
         current_components['model_manager'] = model_manager
         
