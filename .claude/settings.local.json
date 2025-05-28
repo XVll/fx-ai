@@ -6,7 +6,10 @@
       "Bash(python test:*)",
       "Bash(rg:*)",
       "Bash(python:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(poetry run python:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

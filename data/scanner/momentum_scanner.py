@@ -509,10 +509,18 @@ class MomentumScanner:
     def _find_ohlcv_files(self, symbol: str, timeframe: str) -> List[Path]:
         """Find OHLCV files for a symbol and timeframe."""
         files = []
-        pattern = f"*{symbol.lower()}*.ohlcv-{timeframe}.dbn*"
         
+        # First try with symbol in filename
+        pattern = f"*{symbol.lower()}*.ohlcv-{timeframe}.dbn*"
         for file_path in self.data_dir.rglob(pattern):
             files.append(file_path)
+        
+        # If no files found, try generic pattern and verify symbol
+        if not files:
+            pattern = f"*.ohlcv-{timeframe}.dbn*"
+            for file_path in self.data_dir.rglob(pattern):
+                if self._file_contains_symbol(file_path, symbol):
+                    files.append(file_path)
             
         return sorted(files)
     
