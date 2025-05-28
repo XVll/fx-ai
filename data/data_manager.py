@@ -312,6 +312,7 @@ class DataManager:
     def _check_memory_cache(self, symbol: str, data_type: str,
                             start_time: datetime, end_time: datetime) -> Optional[pd.DataFrame]:
         """Check if data is in memory cache and return it if found."""
+
         if symbol not in self.data_cache or data_type not in self.data_cache[symbol]:
             self.session_stats['cache_misses'] += 1
             return None
