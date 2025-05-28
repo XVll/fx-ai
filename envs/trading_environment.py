@@ -20,7 +20,7 @@ from gymnasium import spaces
 
 from config.schemas import Config
 from data.data_manager import DataManager
-from rewards.calculator import RewardSystemV2
+from rewards.calculator import RewardSystem
 from simulators.execution_simulator import ExecutionSimulator
 from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import (
@@ -97,10 +97,8 @@ class TradingEnvironment(gym.Env):
         self.max_session_loss_percentage: float = 1.0 - env_cfg.early_stop_loss_threshold
         self.default_position_value = config.simulation.default_position_value
 
-        # Action Space - same as before
-        self.action_types = list(ActionTypeEnum)
-        self.position_size_types = list(PositionSizeTypeEnum)
-        self.action_space = spaces.MultiDiscrete([len(self.action_types), len(self.position_size_types)])
+        # Action Space - execution simulator handles decoding now
+        self.action_space = spaces.MultiDiscrete([3, 4])  # [action_types, position_sizes]
 
         # Observation Space - same as before
         model_cfg = self.config.model
@@ -122,7 +120,7 @@ class TradingEnvironment(gym.Env):
         self.next_market_simulator: Optional[MarketSimulator] = None  # For background preparation
         self.execution_manager: Optional[ExecutionSimulator] = None
         self.portfolio_manager: Optional[PortfolioSimulator] = None
-        self.reward_calculator: Optional[RewardSystemV2] = None
+        self.reward_calculator: Optional[RewardSystem] = None
 
         # Episode state
         self.current_step: int = 0
@@ -328,15 +326,15 @@ class TradingEnvironment(gym.Env):
         self.portfolio_manager = PortfolioSimulator(
             logger=logging.getLogger(f"{__name__}.PortfolioMgr"),
             env_config=self.config.env,
-            tradable_assets=[self.primary_asset],
             simulation_config=self.config.simulation,
             model_config=self.config.model,
+            tradable_assets=[self.primary_asset],
             trade_callback=self._on_trade_completed
         )
 
         # Reward system V2
-        self.reward_calculator = RewardSystemV2(
-            config=self.config.env.reward_v2,
+        self.reward_calculator = RewardSystem(
+            config=self.config.env.reward,
             metrics_integrator=self.metrics_integrator,
             logger=logging.getLogger(f"{__name__}.RewardV2")
         )
@@ -475,6 +473,19 @@ class TradingEnvironment(gym.Env):
             market_close_utc
         )
 
+        # Start metrics tracking
+        if self.metrics_integrator:
+            self.metrics_integrator.start_episode()
+
+        # Reset market simulator with adaptive randomization
+        # Adjust randomization window based on pattern type and quality
+        max_offset_minutes = self._get_adaptive_randomization_window(reset_point)
+        max_offset_seconds = max_offset_minutes * 60
+        
+        random_offset_seconds = self.np_random.integers(-max_offset_seconds, max_offset_seconds + 1)
+        randomized_start = self.episode_start_time_utc + timedelta(seconds=random_offset_seconds)
+        
+        # Log episode reset info
         original_time = reset_point['timestamp'].strftime('%H:%M:%S')
         randomized_time = randomized_start.strftime('%H:%M:%S') 
         offset_minutes = random_offset_seconds // 60
@@ -491,18 +502,6 @@ class TradingEnvironment(gym.Env):
         self.logger.info(f"🎯 Episode {self.episode_number} reset: {original_time} → {randomized_time} "
                         f"({offset_minutes:+d}m/±{window_minutes}m) | Activity: {reset_point.get('activity_score', 0.5):.2f} "
                         f"| Combined: {reset_point.get('combined_score', 0.5):.2f} | {direction} | {reset_point.get('reset_type', 'momentum')}")
-
-        # Start metrics tracking
-        if self.metrics_integrator:
-            self.metrics_integrator.start_episode()
-
-        # Reset market simulator with adaptive randomization
-        # Adjust randomization window based on pattern type and quality
-        max_offset_minutes = self._get_adaptive_randomization_window(reset_point)
-        max_offset_seconds = max_offset_minutes * 60
-        
-        random_offset_seconds = self.np_random.integers(-max_offset_seconds, max_offset_seconds + 1)
-        randomized_start = self.episode_start_time_utc + timedelta(seconds=random_offset_seconds)
         
         # Ensure we don't go before 4 AM or after 8 PM
         market_open = datetime.combine(self.current_session_date.date(), time(4, 0))
@@ -658,141 +657,10 @@ class TradingEnvironment(gym.Env):
             dummy_obs[key] = np.zeros(space_item.shape, dtype=space_item.dtype)
         return dummy_obs
 
-    def _decode_action(self, raw_action) -> Dict[str, Any]:
-        """Decode the agent's action into a structured format."""
-        # Extract action components
-        if isinstance(raw_action, (tuple, list)):
-            action_type_idx, size_type_idx = raw_action
-            raw_action_list = list(raw_action)
-        elif hasattr(raw_action, 'tolist'):  # NumPy array or PyTorch tensor
-            action_type_idx, size_type_idx = raw_action
-            raw_action_list = raw_action.tolist()
-        else:
-            self.logger.error(f"Unexpected action type: {type(raw_action)}")
-            action_type_idx, size_type_idx = 0, 0
-            raw_action_list = [0, 0]
 
-        # Ensure indices are valid
-        action_type_idx = int(action_type_idx) % len(self.action_types)
-        size_type_idx = int(size_type_idx) % len(self.position_size_types)
-
-        action_type = self.action_types[action_type_idx]
-        size_type = self.position_size_types[size_type_idx]
-
-        # Track action counts
-        self.action_counts[action_type.name] += 1
-
-        return {
-            "type": action_type,
-            "size_enum": size_type,
-            "size_float": size_type.value_float,
-            "raw_action": raw_action_list,
-            "invalid_reason": None
-        }
-
-    def _translate_agent_action_to_order(self, decoded_action: Dict[str, Any], 
-                                       portfolio_state: PortfolioState,
-                                       market_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Translate agent action to order parameters."""
-        action_type = decoded_action['type']
-        size_float = decoded_action['size_float']
-
-        if not self.primary_asset:
-            decoded_action['invalid_reason'] = "Primary asset not set"
-            self.invalid_action_count_episode += 1
-            return None
-
-        asset_id = self.primary_asset
-
-        # Get market prices
-        ideal_ask = market_state.get('best_ask_price')
-        ideal_bid = market_state.get('best_bid_price')
-        current_price_fallback = market_state.get('current_price')
-
-        if ideal_ask is None or ideal_bid is None:
-            if current_price_fallback is not None and current_price_fallback > 0:
-                ideal_ask = current_price_fallback * 1.0002
-                ideal_bid = current_price_fallback * 0.9998
-            else:
-                decoded_action['invalid_reason'] = "Missing market prices"
-                self.invalid_action_count_episode += 1
-                return None
-
-        # Validate prices
-        if ideal_ask <= 0 or ideal_bid <= 0 or ideal_ask <= ideal_bid:
-            decoded_action['invalid_reason'] = f"Invalid BBO prices: Ask ${ideal_ask:.4f}, Bid ${ideal_bid:.4f}"
-            self.invalid_action_count_episode += 1
-            return None
-
-        # Get position data
-        pos_data = portfolio_state['positions'].get(asset_id)
-        if not pos_data:
-            decoded_action['invalid_reason'] = f"Position data for {asset_id} not found"
-            self.invalid_action_count_episode += 1
-            return None
-
-        current_qty = pos_data['quantity']
-        current_pos_side = pos_data['current_side']
-        cash = portfolio_state['cash']
-        total_equity = portfolio_state['total_equity']
-
-        max_pos_value_abs = total_equity * self.portfolio_manager.max_position_value_ratio
-        allow_shorting = self.portfolio_manager.allow_shorting
-
-        quantity_to_trade = 0.0
-        order_side: Optional[OrderSideEnum] = None
-
-        if action_type == ActionTypeEnum.HOLD:
-            return None
-
-        elif action_type == ActionTypeEnum.BUY:
-            # Use fixed dollar amount for consistency
-            target_buy_value = self.default_position_value * size_float
-            available_cash = min(cash, target_buy_value)
-            target_buy_value = min(available_cash, max_pos_value_abs)
-
-            if target_buy_value > 10.0 and ideal_ask > 0.01:
-                quantity_to_trade = target_buy_value / ideal_ask
-                order_side = OrderSideEnum.BUY
-
-                # Handle covering short positions
-                if current_pos_side == PositionSideEnum.SHORT:
-                    quantity_to_trade += abs(current_qty)
-            else:
-                decoded_action['invalid_reason'] = f"Insufficient buying power: ${target_buy_value:.2f}"
-
-        elif action_type == ActionTypeEnum.SELL:
-            if current_pos_side == PositionSideEnum.LONG and current_qty > 0:
-                # Sell percentage of current position
-                quantity_to_trade = size_float * current_qty
-                order_side = OrderSideEnum.SELL
-            else:
-                # Long-only strategy - can't sell without a position
-                decoded_action['invalid_reason'] = "SELL: No long position (long-only strategy)"
-
-        # Validate final order
-        if quantity_to_trade > 0.01 and order_side is not None:
-            quantity_to_trade = abs(quantity_to_trade)
-            order_params = {
-                'asset_id': asset_id,
-                'order_type': OrderTypeEnum.MARKET,
-                'order_side': order_side,
-                'quantity': quantity_to_trade,
-                'ideal_decision_price_ask': ideal_ask,
-                'ideal_decision_price_bid': ideal_bid
-            }
-            return order_params
-
-        elif decoded_action['invalid_reason'] is None and action_type != ActionTypeEnum.HOLD:
-            decoded_action['invalid_reason'] = f"Quantity too small: {quantity_to_trade:.6f}"
-
-        if decoded_action['invalid_reason']:
-            self.invalid_action_count_episode += 1
-
-        return None
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
-        """Execute one environment step."""
+        """Execute one environment step - simplified to use ExecutionSimulator."""
         if self._last_observation is None or self.primary_asset is None:
             self.logger.error("Step called with invalid state")
             return self._get_dummy_observation(), 0.0, True, False, {"error": "Invalid state"}
@@ -814,29 +682,34 @@ class TradingEnvironment(gym.Env):
                 "termination_reason": TerminationReasonEnum.MAX_DURATION.value
             }
 
-        # Process action
+        # Get portfolio state before action
         self._last_portfolio_state_before_action = self.portfolio_manager.get_portfolio_state(current_sim_time_decision)
-        self._last_decoded_action = self._decode_action(action)
-        order_request = self._translate_agent_action_to_order(
-            self._last_decoded_action, self._last_portfolio_state_before_action, market_state_at_decision
-        )
 
-        # Execute order if valid
+        # Execute action through ExecutionSimulator (handles decode -> validate -> execute)
+        execution_result = self.execution_manager.execute_action(
+            raw_action=action,
+            market_state=market_state_at_decision,
+            portfolio_state=self._last_portfolio_state_before_action,
+            primary_asset=self.primary_asset,
+            portfolio_manager=self.portfolio_manager
+        )
+        
+        # Store decoded action for metrics and reward calculation
+        self._last_decoded_action = execution_result.action_decode_result.to_dict()
+        
+        # Track action counts and invalid actions
+        action_name = execution_result.action_decode_result.action_type
+        self.action_counts[action_name] = self.action_counts.get(action_name, 0) + 1
+        if not execution_result.action_decode_result.is_valid:
+            self.invalid_action_count_episode += 1
+
+        # Handle fill if order was executed
         fill_details_list: List[FillDetails] = []
-        if order_request:
-            fill = self.execution_manager.execute_order(
-                asset_id=order_request['asset_id'],
-                order_type=order_request['order_type'],
-                order_side=order_request['order_side'],
-                requested_quantity=order_request['quantity'],
-                ideal_decision_price_ask=order_request['ideal_decision_price_ask'],
-                ideal_decision_price_bid=order_request['ideal_decision_price_bid'],
-                decision_timestamp=current_sim_time_decision
-            )
-            if fill:
-                fill_details_list.append(fill)
-                self.episode_fills.append(fill)
-                self.portfolio_manager.update_fill(fill)
+        if execution_result.fill_details:
+            # Process fill and get enriched details for reward system
+            enriched_fill = self.portfolio_manager.process_fill(execution_result.fill_details)
+            fill_details_list.append(enriched_fill)
+            self.episode_fills.append(enriched_fill)
 
         # Update portfolio with current market prices
         time_for_pf_update = fill_details_list[-1]['fill_timestamp'] if fill_details_list else current_sim_time_decision
@@ -848,7 +721,7 @@ class TradingEnvironment(gym.Env):
                 current_price = (ask + bid) / 2
 
         prices_at_decision = {self.primary_asset: current_price}
-        self.portfolio_manager.update_market_value(prices_at_decision, time_for_pf_update)
+        self.portfolio_manager.update_market_values(prices_at_decision, time_for_pf_update)
         portfolio_state_after_action = self.portfolio_manager.get_portfolio_state(time_for_pf_update)
 
         # Advance market simulator
@@ -873,7 +746,7 @@ class TradingEnvironment(gym.Env):
                     next_price = (ask + bid) / 2
 
             prices_at_next_time = {self.primary_asset: next_price}
-            self.portfolio_manager.update_market_value(prices_at_next_time, next_sim_time)
+            self.portfolio_manager.update_market_values(prices_at_next_time, next_sim_time)
 
         portfolio_state_next_t = self.portfolio_manager.get_portfolio_state(
             next_sim_time or time_for_pf_update
@@ -989,8 +862,8 @@ class TradingEnvironment(gym.Env):
             return
 
         # Environment step metrics
-        action_name = self._last_decoded_action['type'].name if self._last_decoded_action else 'UNKNOWN'
-        is_invalid = bool(self._last_decoded_action.get('invalid_reason')) if self._last_decoded_action else False
+        action_name = self._last_decoded_action.get('action_type', 'UNKNOWN') if self._last_decoded_action else 'UNKNOWN'
+        is_invalid = not self._last_decoded_action.get('is_valid', True) if self._last_decoded_action else False
 
         self.metrics_integrator.record_environment_step(
             reward=reward,
@@ -1006,9 +879,9 @@ class TradingEnvironment(gym.Env):
             cash=portfolio_state['cash'],
             unrealized_pnl=portfolio_state['unrealized_pnl'],
             realized_pnl=portfolio_state['realized_pnl_session'],
-            total_commission=portfolio_state.get('total_commissions_session', 0.0),
-            total_slippage=portfolio_state.get('total_slippage_cost_session', 0.0),
-            total_fees=portfolio_state.get('total_fees_session', 0.0)
+            total_commission=portfolio_state['session_metrics'].get('total_commissions_session', 0.0),
+            total_slippage=portfolio_state['session_metrics'].get('total_slippage_cost_session', 0.0),
+            total_fees=portfolio_state['session_metrics'].get('total_fees_session', 0.0)
         )
 
         # Position metrics
@@ -1038,7 +911,7 @@ class TradingEnvironment(gym.Env):
     def _handle_episode_end(self, portfolio_state: PortfolioState, info: Dict[str, Any]):
         """Handle episode termination."""
         episode_duration = datetime.now().timestamp() - self.episode_start_time
-        final_metrics = self.portfolio_manager.get_trader_vue_metrics()
+        final_metrics = self.portfolio_manager.get_trading_metrics()
 
         # Episode summary
         info['episode_summary'] = {
@@ -1050,9 +923,9 @@ class TradingEnvironment(gym.Env):
             "max_drawdown_pct": self.episode_max_drawdown * 100,
             "session_realized_pnl_net": portfolio_state['realized_pnl_session'],
             "session_net_profit_equity_change": portfolio_state['total_equity'] - self.initial_capital_for_session,
-            "session_total_commissions": portfolio_state['total_commissions_session'],
-            "session_total_fees": portfolio_state['total_fees_session'],
-            "session_total_slippage_cost": portfolio_state['total_slippage_cost_session'],
+            "session_total_commissions": portfolio_state['session_metrics']['total_commissions_session'],
+            "session_total_fees": portfolio_state['session_metrics']['total_fees_session'],
+            "session_total_slippage_cost": portfolio_state['session_metrics']['total_slippage_cost_session'],
             "termination_reason": self.current_termination_reason or "UNKNOWN",
             "invalid_actions_in_episode": self.invalid_action_count_episode,
             "total_fills": len(self.episode_fills),
@@ -1099,7 +972,7 @@ class TradingEnvironment(gym.Env):
             'portfolio_cash': current_portfolio_state_for_info['cash'],
             'portfolio_unrealized_pnl': current_portfolio_state_for_info['unrealized_pnl'],
             'portfolio_realized_pnl_session_net': current_portfolio_state_for_info['realized_pnl_session'],
-            'invalid_action_in_step': bool(self._last_decoded_action.get('invalid_reason')) if self._last_decoded_action else False,
+            'invalid_action_in_step': not self._last_decoded_action.get('is_valid', True) if self._last_decoded_action else False,
             'invalid_actions_total_episode': self.invalid_action_count_episode,
             'episode_number': self.episode_number,
             'reset_point_idx': self.current_reset_idx,

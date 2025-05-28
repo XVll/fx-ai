@@ -13,7 +13,7 @@ from rewards.components import (
     MFEPenalty,
     TerminalPenalty
 )
-from rewards.calculator import RewardSystemV2
+from rewards.calculator import RewardSystem
 
 __all__ = [
     'RewardComponent',
@@ -28,5 +28,5 @@ __all__ = [
     'MAEPenalty',
     'MFEPenalty',
     'TerminalPenalty',
-    'RewardSystemV2'
+    'RewardSystem'
 ]

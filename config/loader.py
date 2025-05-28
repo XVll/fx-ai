@@ -92,15 +92,15 @@ class ConfigLoader:
             self.logger.warning(f"Could not validate action space: {e}")
         
         # Validate reward components
-        reward_v2_dict = config.env.reward_v2.model_dump()
+        reward_dict = config.env.reward.model_dump()
         enabled_components = []
-        for name, value in reward_v2_dict.items():
+        for name, value in reward_dict.items():
             if isinstance(value, dict) and value.get('enabled', True):
                 enabled_components.append(name)
             elif name not in ['scale_factor', 'clip_range']:  # Skip non-component fields
                 # For simple component configs like RewardComponentConfig
-                if hasattr(config.env.reward_v2, name):
-                    comp = getattr(config.env.reward_v2, name)
+                if hasattr(config.env.reward, name):
+                    comp = getattr(config.env.reward, name)
                     if hasattr(comp, 'enabled') and comp.enabled:
                         enabled_components.append(name)
 
@@ -111,17 +111,17 @@ class ConfigLoader:
         self.logger.info(f"Action space: {action_types} types × {position_sizes} sizes = {expected_actions} total actions")
         
         # Validate reward components
-        reward_v2_data = config.env.reward_v2.model_dump() if hasattr(config.env.reward_v2, 'model_dump') else config.env.reward_v2
+        reward_data = config.env.reward.model_dump() if hasattr(config.env.reward, 'model_dump') else config.env.reward
         enabled_components = [
-            name for name, comp in reward_v2_data.items()
+            name for name, comp in reward_data.items()
             if isinstance(comp, dict) and comp.get('enabled', True)
         ]
 
         self.logger.info(f"Enabled reward components: {', '.join(enabled_components)}")
         
         # Check for deprecated configs
-        if hasattr(config.env, 'reward'):
-            self.logger.warning("Deprecated 'reward' config found - use 'reward_v2' instead")
+        if hasattr(config.env, 'reward_v2'):
+            self.logger.warning("Deprecated 'reward_v2' config found - use 'reward' instead")
     
     def _save_used_config(self, config: Config):
         """Save the complete config used for this run"""

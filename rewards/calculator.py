@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import yaml
 import numpy as np
 
-from config.schemas import RewardV2Config
+from config.schemas import RewardConfig
 from rewards.core import RewardAggregator, RewardState
 from rewards.components import (
     RealizedPnLReward,
@@ -38,13 +38,13 @@ class TradeTracker:
         self.min_unrealized_pnl = min(self.min_unrealized_pnl, unrealized_pnl)
 
 
-class RewardSystemV2:
+class RewardSystem:
     """
     Advanced reward system with comprehensive metrics and anti-hacking measures
     """
     
 
-    def __init__(self, config: RewardV2Config, metrics_integrator=None, logger: Optional[logging.Logger] = None):
+    def __init__(self, config: RewardConfig, metrics_integrator=None, logger: Optional[logging.Logger] = None):
         self.reward_config = config
 
         self.metrics_integrator = metrics_integrator
@@ -152,40 +152,40 @@ class RewardSystemV2:
             components.append(QuickProfitIncentive(profit_config, self.logger))
             self.logger.info("Initialized quick profit incentive component")
             
-
-        """Initialize all reward components based on enabled flags in RewardV2Config"""
-        components = []
-        
-        # Initialize components based on RewardV2Config attributes
-        # For now, use simple PnL-based reward components
-        
-        # Basic PnL reward
-        if hasattr(self.reward_config, 'pnl') and self.reward_config.pnl.enabled:
-            pnl_config = {
-                'coefficient': self.reward_config.pnl.coefficient,
-                'enabled': self.reward_config.pnl.enabled
+        # Initialize spread penalty 
+        if self.reward_config.spread_penalty.enabled:
+            spread_config = {
+                'enabled': True,
+                'weight': self.reward_config.spread_penalty.coefficient,
+                'penalty_per_trade': 0.001
             }
-            components.append(RealizedPnLReward(pnl_config, self.logger))
-            self.logger.info(f"Initialized PnL reward component")
+            # Note: SpreadPenalty component needs to be implemented
+            # components.append(SpreadPenalty(spread_config, self.logger))
+            self.logger.info("Spread penalty component not yet implemented")
             
-        # Holding penalty
-        if hasattr(self.reward_config, 'holding_penalty') and self.reward_config.holding_penalty.enabled:
-            holding_config = {
-                'coefficient': self.reward_config.holding_penalty.coefficient,
-                'enabled': self.reward_config.holding_penalty.enabled
+        # Initialize quick profit bonus
+        if self.reward_config.quick_profit.enabled:
+            quick_profit_config = {
+                'enabled': True,
+                'weight': self.reward_config.quick_profit.coefficient,
+                'quick_profit_time': 30,
+                'bonus_rate': 0.5
             }
-            components.append(HoldingTimePenalty(holding_config, self.logger))
-            self.logger.info(f"Initialized holding penalty component")
+            # QuickProfitIncentive already added above as profitable_exit
+            # This is a duplicate - keeping only one
+            # components.append(QuickProfitIncentive(quick_profit_config, self.logger))
+            self.logger.info("Quick profit incentive already added as profitable_exit")
             
-        # Drawdown penalty
-        if hasattr(self.reward_config, 'drawdown_penalty') and self.reward_config.drawdown_penalty.enabled:
-            drawdown_config = {
-                'coefficient': self.reward_config.drawdown_penalty.coefficient,
-                'enabled': self.reward_config.drawdown_penalty.enabled
+        # Initialize invalid action penalty
+        if self.reward_config.invalid_action_penalty.enabled:
+            invalid_config = {
+                'enabled': True,
+                'weight': self.reward_config.invalid_action_penalty.coefficient,
+                'penalty_per_invalid': 0.01
             }
-            components.append(DrawdownPenalty(drawdown_config, self.logger))
-            self.logger.info(f"Initialized drawdown penalty component")
-                    
+            # Note: InvalidActionPenalty component needs to be implemented
+            # components.append(InvalidActionPenalty(invalid_config, self.logger))
+            self.logger.info("Invalid action penalty component not yet implemented")
 
         return components
     
