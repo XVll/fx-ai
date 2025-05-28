@@ -15,7 +15,11 @@
       "Bash(timeout 30s poetry run poe quick)",
       "Bash(pkill:*)",
       "Bash(timeout 60s poetry run poe quick)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(poetry run pytest:*)",
+      "Bash(poetry run pytest:*)",
+      "Bash(poetry run pytest:*)",
+      "Bash(poetry run pytest:*)"
     ],
     "deny": []
   },

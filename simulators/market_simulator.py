@@ -341,7 +341,8 @@ class MarketSimulator:
                 'vwap': float(last_row.get('vwap', last_row.get('close', 0)))
             }
         
-        return {'open': 0, 'high': 0, 'low': 0, 'close': 0, 'volume': 0, 'vwap': 0}
+        # Return reasonable defaults when no previous day data exists
+        return {'open': 100.0, 'high': 100.0, 'low': 100.0, 'close': 100.0, 'volume': 0, 'vwap': 100.0}
         
     @staticmethod
     def _extract_features_batch(batch_data: List[Tuple[int, pd.Timestamp, pd.Series]], 
@@ -569,11 +570,11 @@ class MarketSimulator:
         # Create base DataFrame with timeline
         df_states = pd.DataFrame(index=timeline)
         
-        # Initialize default values
-        last_price = self.prev_day_data.get('close', 100.0)  # Default fallback
-        df_states['current_price'] = last_price
-        df_states['best_bid'] = last_price * 0.999
-        df_states['best_ask'] = last_price * 1.001
+        # Initialize default values with proper float types
+        last_price = float(self.prev_day_data.get('close', 100.0))  # Default fallback
+        df_states['current_price'] = float(last_price)
+        df_states['best_bid'] = float(last_price * 0.999)
+        df_states['best_ask'] = float(last_price * 1.001)
         df_states['bid_size'] = 100
         df_states['ask_size'] = 100
         df_states['is_halted'] = False
@@ -620,11 +621,11 @@ class MarketSimulator:
             df_states['intraday_high'] = bars_in_day['high'].expanding().max().fillna(last_price)
             df_states['intraday_low'] = bars_in_day['low'].expanding().min().fillna(last_price)
         else:
-            df_states['session_volume'] = 0
+            df_states['session_volume'] = 0.0
             df_states['session_trades'] = 0  
-            df_states['session_vwap'] = df_states['current_price']
-            df_states['intraday_high'] = df_states['current_price']
-            df_states['intraday_low'] = df_states['current_price']
+            df_states['session_vwap'] = df_states['current_price'].astype(float)
+            df_states['intraday_high'] = df_states['current_price'].astype(float)
+            df_states['intraday_low'] = df_states['current_price'].astype(float)
         
         # FAST APPROACH: Skip feature extraction during initialization
         # Features will be calculated on-demand during training for better performance
