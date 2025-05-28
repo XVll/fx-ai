@@ -370,6 +370,36 @@ class RewardSystemV2:
             'win_rate': self.metrics_tracker.episode_profitable_trades / max(1, self.metrics_tracker.episode_trades)
         }
     
+    def apply_position_close_penalty(self, close_pnl: float):
+        """Apply a penalty/reward for positions that are open at episode reset.
+        
+        This ensures the model experiences the consequences of holding positions
+        when episodes end, preventing it from gaming the system by holding losers
+        knowing they'll disappear.
+        
+        Args:
+            close_pnl: The P&L that would be realized if the position was closed
+        """
+        # Scale the P&L to match reward scaling
+        # Use a scaling factor that's significant but not overwhelming
+        scaled_penalty = close_pnl * 0.01  # 1% of P&L as reward impact
+        
+        # Track this as a special component
+        if hasattr(self, 'metrics_tracker'):
+            self.metrics_tracker.update_component(
+                'position_reset_penalty',
+                scaled_penalty,
+                {'close_pnl': close_pnl, 'scaled_value': scaled_penalty},
+                self.step_count,
+                'RESET',
+                close_pnl > 0
+            )
+            
+        self.logger.info(f"Applied position reset penalty: P&L ${close_pnl:+.2f} → Reward impact {scaled_penalty:+.4f}")
+        
+        # Store this for the next calculate() call to include
+        self._pending_reset_penalty = scaled_penalty
+    
     def get_wandb_metrics(self) -> Dict[str, Any]:
         """Get metrics formatted for W&B logging"""
         metrics = {}

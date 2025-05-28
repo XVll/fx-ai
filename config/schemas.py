@@ -32,7 +32,6 @@ class ModelConfig(BaseModel):
     n_layers: int = 4
     d_ff: int = 2048
     dropout: float = 0.1
-    d_fused: int = Field(default=512, description="Dimension after fusion")
     
     # Branch-specific heads and layers
     hf_layers: int = 2
@@ -205,13 +204,27 @@ class DataConfig(BaseModel):
     load_ohlcv: bool = True
     
     # Date range
-    start_date: Optional[str] = Field(default="03.27.2025", description="Start date YYYY-MM-DD")
-    end_date: Optional[str] = Field(default="03.27.2025", description="End date YYYY-MM-DD")
+    start_date: Optional[str] = Field(default="2025-03-27", description="Start date YYYY-MM-DD")
+    end_date: Optional[str] = Field(default="2025-03-27", description="End date YYYY-MM-DD")
+    
+    # Activity filtering for day selection
+    min_activity_score: float = Field(default=0.0, description="Minimum activity score for training days")
+    max_activity_score: float = Field(default=1.0, description="Maximum activity score for training days")
+    
+    # Training order
+    training_order: Literal["random", "sequential", "activity_desc", "activity_asc"] = Field(
+        default="activity_desc", 
+        description="Order to process training days"
+    )
     
     # Performance
     cache_enabled: bool = True
     cache_dir: str = "cache"
-    preload_days: int = Field(default=5, description="Days to preload for session features")
+    preload_days: int = Field(default=2, description="Days to preload for session features")
+    
+    # Momentum indices
+    index_dir: str = Field(default="indices", description="Directory for momentum indices")
+    auto_build_index: bool = Field(default=True, description="Auto-build index if missing")
 
 
 class TrainingConfig(BaseModel):
@@ -263,7 +276,7 @@ class SimulationConfig(BaseModel):
     # Execution simulation
     execution_delay_ms: int = Field(default=50, description="Order execution delay")
     partial_fill_probability: float = Field(default=0.0, description="Probability of partial fills")
-    allow_shorting: bool = Field(default=False, description="Allow short selling")
+    allow_shorting: bool = Field(default=False, description="Allow short selling (default: long-only)")
     
     # Latency simulation
     mean_latency_ms: float = Field(default=50.0, description="Mean execution latency")
@@ -347,6 +360,68 @@ class WandbConfig(BaseModel):
     save_model: bool = True
 
 
+class ActivityScoringConfig(BaseModel):
+    """Activity-based scoring configuration"""
+    # Score calculation
+    volume_ratio_cap: float = Field(default=5.0, description="Max volume ratio for scoring")
+    price_change_cap: float = Field(default=0.10, description="Max price change for scoring (10%)")
+    
+    # Reset point generation
+    reset_points_per_day: int = Field(default=25, description="Number of reset points per day")
+    min_activity_threshold: float = Field(default=0.1, description="Minimum activity score to include")
+    
+    # Direction detection
+    front_side_threshold: float = Field(default=0.05, description="Min positive move for front side")
+    back_side_threshold: float = Field(default=-0.05, description="Min negative move for back side")
+    
+    # Randomization windows (minutes) based on activity level
+    high_activity_window: List[int] = Field(default=[3, 5], description="Window for activity >= 0.8")
+    medium_activity_window: List[int] = Field(default=[10, 15], description="Window for 0.3-0.8")
+    low_activity_window: List[int] = Field(default=[20, 30], description="Window for < 0.3")
+
+
+class CurriculumStageConfig(BaseModel):
+    """Configuration for a curriculum training stage"""
+    episode_range: List[Optional[int]] = Field(description="[start, end] episode range")
+    min_activity_score: float = Field(default=0.0, description="Minimum activity score for days")
+    direction_filter: Literal["both", "front_side", "back_side"] = Field(
+        default="both", 
+        description="Direction filter for training"
+    )
+
+
+class CurriculumConfig(BaseModel):
+    """Curriculum learning configuration"""
+    stage_1_beginner: CurriculumStageConfig = Field(
+        default=CurriculumStageConfig(
+            episode_range=[0, 1000],
+            min_activity_score=0.7,
+            direction_filter="both"
+        )
+    )
+    stage_2_intermediate: CurriculumStageConfig = Field(
+        default=CurriculumStageConfig(
+            episode_range=[1000, 3000],
+            min_activity_score=0.3,
+            direction_filter="both"
+        )
+    )
+    stage_3_advanced: CurriculumStageConfig = Field(
+        default=CurriculumStageConfig(
+            episode_range=[3000, 5000],
+            min_activity_score=0.0,
+            direction_filter="both"
+        )
+    )
+    stage_4_specialization: CurriculumStageConfig = Field(
+        default=CurriculumStageConfig(
+            episode_range=[5000, None],
+            min_activity_score=0.0,
+            direction_filter="both"
+        )
+    )
+
+
 class DashboardConfig(BaseModel):
     """Live dashboard configuration"""
     enabled: bool = True
@@ -380,6 +455,10 @@ class Config(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     wandb: WandbConfig = Field(default_factory=WandbConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
+    
+    # Activity-based configurations
+    activity_scoring: ActivityScoringConfig = Field(default_factory=ActivityScoringConfig)
+    curriculum: CurriculumConfig = Field(default_factory=CurriculumConfig)
     
     # Experiment settings
     experiment_name: str = Field(default="default", description="Experiment identifier")
