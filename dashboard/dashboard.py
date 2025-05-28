@@ -682,7 +682,7 @@ class MomentumDashboard:
         
         try:
             def run_server():
-                self.app.run_server(
+                self.app.run(
                     debug=debug,
                     host='127.0.0.1',
                     port=self.port,
