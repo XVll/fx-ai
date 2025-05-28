@@ -107,6 +107,9 @@ class MarketSimulator:
         self.current_index = 0
         self.current_date = None
         
+        # Cache for precomputed states
+        self._precomputed_cache = {}  # {(symbol, date): df_market_state}
+        
         # Previous day data cache
         self.prev_day_data = {}
         
@@ -132,6 +135,15 @@ class MarketSimulator:
         try:
             self.logger.info(f"Initializing market simulator for {self.symbol} on {date}")
             
+            # Check cache first
+            cache_key = (self.symbol, pd.Timestamp(date).date())
+            if cache_key in self._precomputed_cache:
+                self.logger.info(f"Using cached precomputed states for {self.symbol} on {date}")
+                self.df_market_state = self._precomputed_cache[cache_key]
+                self.current_index = 0
+                self.current_date = pd.Timestamp(date).date()
+                return True
+            
             # Load current day data
             day_data = self.data_manager.load_day(self.symbol, date)
             if not day_data:
@@ -152,6 +164,15 @@ class MarketSimulator:
             
             # Pre-compute all states and features
             self.df_market_state = self._precompute_states(timeline, day_data)
+            
+            # Cache the precomputed states
+            if self.df_market_state is not None and not self.df_market_state.empty:
+                self._precomputed_cache[cache_key] = self.df_market_state
+                # Limit cache size to prevent memory issues
+                if len(self._precomputed_cache) > 5:
+                    # Remove oldest entry
+                    oldest_key = next(iter(self._precomputed_cache))
+                    del self._precomputed_cache[oldest_key]
             
             if self.df_market_state is None or self.df_market_state.empty:
                 self.logger.error("Failed to pre-compute market states")
@@ -323,144 +344,129 @@ class MarketSimulator:
                           day_data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
         """Pre-compute all market states and features for the timeline
         
-        Uses combined data (with warmup) for feature calculation but only
-        stores states for the current day's timeline.
+        Uses vectorized operations for much faster processing.
         """
+        self.logger.info(f"Starting vectorized pre-computation of {len(timeline)} market states...")
         
         # Extract current day data
         trades_df = day_data.get('trades', pd.DataFrame())
         quotes_df = day_data.get('quotes', pd.DataFrame())
         status_df = day_data.get('status', pd.DataFrame())
         
-        # For the current day timeline, we'll use the combined data for lookback
-        # but track current day statistics separately
+        # Create base DataFrame with timeline
+        df_states = pd.DataFrame(index=timeline)
         
-        # Initialize tracking variables
-        last_price = self.prev_day_data.get('close', 0)
-        last_bid = last_price * 0.999 if last_price > 0 else 0
-        last_ask = last_price * 1.001 if last_price > 0 else 0
-        last_bid_size = 100
-        last_ask_size = 100
+        # Initialize default values
+        last_price = self.prev_day_data.get('close', 100.0)  # Default fallback
+        df_states['current_price'] = last_price
+        df_states['best_bid'] = last_price * 0.999
+        df_states['best_ask'] = last_price * 1.001
+        df_states['bid_size'] = 100
+        df_states['ask_size'] = 100
+        df_states['is_halted'] = False
         
-        intraday_high = None
-        intraday_low = None
-        session_volume = 0
-        session_trades = 0
-        session_value = 0  # For VWAP calculation
+        # Vectorized quote processing
+        if not quotes_df.empty:
+            self.logger.info("Processing quotes vectorized...")
+            # Forward fill quotes to timeline
+            quotes_reindexed = quotes_df.reindex(timeline, method='ffill')
+            mask = quotes_reindexed.notna().any(axis=1)
+            df_states.loc[mask, 'best_bid'] = quotes_reindexed.loc[mask, 'bid_price'].fillna(df_states['best_bid'])
+            df_states.loc[mask, 'best_ask'] = quotes_reindexed.loc[mask, 'ask_price'].fillna(df_states['best_ask'])
+            df_states.loc[mask, 'bid_size'] = quotes_reindexed.loc[mask, 'bid_size'].fillna(df_states['bid_size'])
+            df_states.loc[mask, 'ask_size'] = quotes_reindexed.loc[mask, 'ask_size'].fillna(df_states['ask_size'])
         
-        # Storage for all states
-        states = []
-        
-        # Process each second
-        total_seconds = len(timeline)
-        for i, timestamp in enumerate(timeline):
-            if i % 3600 == 0:  # Log progress every hour
-                self.logger.info(f"Processing {i}/{total_seconds} ({i/total_seconds*100:.1f}%)")
+        # Vectorized 1s bar processing  
+        if not self.combined_bars_1s.empty:
+            self.logger.info("Processing 1s bars vectorized...")
+            bars_in_timeline = self.combined_bars_1s.reindex(timeline, method='ffill')
+            valid_bars = bars_in_timeline.dropna(subset=['close'])
+            if not valid_bars.empty:
+                df_states.loc[valid_bars.index, 'current_price'] = valid_bars['close']
                 
-            # Get market session
-            market_session = self._get_market_session(timestamp)
+        # Calculate derived fields vectorized
+        df_states['mid_price'] = (df_states['best_bid'] + df_states['best_ask']) / 2
+        df_states['spread'] = df_states['best_ask'] - df_states['best_bid']
+        
+        # Fix invalid spreads
+        invalid_spread = (df_states['best_bid'] >= df_states['best_ask']) | (df_states['best_bid'] <= 0)
+        df_states.loc[invalid_spread, 'spread'] = df_states.loc[invalid_spread, 'current_price'] * 0.001
+        df_states.loc[invalid_spread, 'best_bid'] = df_states.loc[invalid_spread, 'current_price'] - df_states.loc[invalid_spread, 'spread'] / 2
+        df_states.loc[invalid_spread, 'best_ask'] = df_states.loc[invalid_spread, 'current_price'] + df_states.loc[invalid_spread, 'spread'] / 2
+        
+        # Market session vectorized
+        df_states['market_session'] = df_states.index.to_series().apply(self._get_market_session)
+        
+        # Session statistics (cumulative)
+        if not self.combined_bars_1s.empty:
+            bars_in_day = self.combined_bars_1s.reindex(timeline).fillna(0)
+            df_states['session_volume'] = bars_in_day['volume'].cumsum()
+            df_states['session_trades'] = bars_in_day.get('trade_count', 0).cumsum()
+            df_states['session_value'] = (bars_in_day['close'] * bars_in_day['volume']).cumsum()
+            df_states['session_vwap'] = df_states['session_value'] / df_states['session_volume'].replace(0, 1)
+            df_states['intraday_high'] = bars_in_day['high'].expanding().max().fillna(last_price)
+            df_states['intraday_low'] = bars_in_day['low'].expanding().min().fillna(last_price)
+        else:
+            df_states['session_volume'] = 0
+            df_states['session_trades'] = 0  
+            df_states['session_vwap'] = df_states['current_price']
+            df_states['intraday_high'] = df_states['current_price']
+            df_states['intraday_low'] = df_states['current_price']
+        
+        # Add feature extraction - this is the expensive part but necessary
+        self.logger.info("Extracting features for all timestamps...")
+        
+        # Pre-allocate feature arrays
+        num_states = len(df_states)
+        hf_features = np.zeros((num_states, self.model_config.hf_seq_len, self.model_config.hf_feat_dim))
+        mf_features = np.zeros((num_states, self.model_config.mf_seq_len, self.model_config.mf_feat_dim))
+        lf_features = np.zeros((num_states, self.model_config.lf_seq_len, self.model_config.lf_feat_dim))
+        static_features = np.zeros((num_states, self.model_config.static_feat_dim))
+        
+        # Extract features with progress reporting
+        for i, (timestamp, row) in enumerate(df_states.iterrows()):
+            if i % 3600 == 0:  # Every hour
+                self.logger.info(f"Feature extraction progress: {i}/{num_states} ({i/num_states*100:.1f}%)")
             
-            # Update quotes if available
-            quote_state = self._get_quote_at_time(quotes_df, timestamp)
-            if quote_state:
-                if quote_state['bid_price'] > 0:
-                    last_bid = quote_state['bid_price']
-                    last_bid_size = quote_state['bid_size']
-                if quote_state['ask_price'] > 0:
-                    last_ask = quote_state['ask_price']
-                    last_ask_size = quote_state['ask_size']
-                    
-            # Get 1s bar if available (from current day data only)
-            if not self.combined_bars_1s.empty and timestamp in self.combined_bars_1s.index:
-                bar_1s = self.combined_bars_1s.loc[timestamp]
-                if bar_1s['close'] > 0:
-                    last_price = bar_1s['close']
-                    
-                    # Update session stats (only for current day)
-                    session_volume += bar_1s['volume']
-                    session_trades += bar_1s.get('trade_count', 0)
-                    session_value += bar_1s['close'] * bar_1s['volume']
-                    
-                    # Update intraday high/low
-                    if intraday_high is None or bar_1s['high'] > intraday_high:
-                        intraday_high = bar_1s['high']
-                    if intraday_low is None or bar_1s['low'] < intraday_low:
-                        intraday_low = bar_1s['low']
-                    
-            # Ensure valid spread
-            if last_bid >= last_ask or last_bid <= 0 or last_ask <= 0:
-                spread = max(0.01, last_price * 0.001)
-                last_bid = last_price - spread / 2
-                last_ask = last_price + spread / 2
-            
-            # Calculate derived values
-            mid_price = (last_bid + last_ask) / 2
-            spread = last_ask - last_bid
-            session_vwap = session_value / max(1, session_volume)
-            
-            # Check trading status
-            is_halted = self._is_halted_at_time(status_df, timestamp)
-            
-            # Get data windows for features - use combined data for lookback
+            # Build windows for this timestamp
             hf_window = self._build_hf_window_with_warmup(timestamp)
-            mf_window = self._build_mf_window_with_warmup(timestamp)
+            mf_window = self._build_mf_window_with_warmup(timestamp)  
             lf_window = self._build_lf_window_with_warmup(timestamp)
             
-            # Create market context
+            # Create context
             context = MarketContext(
                 timestamp=timestamp,
-                current_price=last_price,
+                current_price=row['current_price'],
                 hf_window=hf_window,
                 mf_1m_window=mf_window,
                 lf_5m_window=lf_window,
                 prev_day_close=self.prev_day_data.get('close', 0),
                 prev_day_high=self.prev_day_data.get('high', 0),
                 prev_day_low=self.prev_day_data.get('low', 0),
-                session_high=intraday_high or last_price,
-                session_low=intraday_low or last_price,
-                session=market_session,
-                market_cap=1e9,  # Default, should come from data
-                session_volume=session_volume,
-                session_trades=session_trades,
-                session_vwap=session_vwap
+                session_high=row['intraday_high'],
+                session_low=row['intraday_low'],
+                session=row['market_session'],
+                market_cap=1e9,
+                session_volume=row['session_volume'],
+                session_trades=row['session_trades'],
+                session_vwap=row['session_vwap']
             )
             
             # Extract features
             features = self.feature_manager.extract_features(context)
-            
-            # Create market state
-            state = {
-                'timestamp': timestamp,
-                'current_price': last_price,
-                'best_bid': last_bid,
-                'best_ask': last_ask,
-                'bid_size': last_bid_size,
-                'ask_size': last_ask_size,
-                'mid_price': mid_price,
-                'spread': spread,
-                'market_session': market_session,
-                'is_halted': is_halted,
-                'intraday_high': intraday_high or last_price,
-                'intraday_low': intraday_low or last_price,
-                'session_volume': session_volume,
-                'session_trades': session_trades,
-                'session_vwap': session_vwap,
-                
-                # Store features as binary blobs for efficiency
-                'hf_features': features.get('hf', np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim))),
-                'mf_features': features.get('mf', np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim))),
-                'lf_features': features.get('lf', np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim))),
-                'static_features': features.get('static', np.zeros(self.model_config.static_feat_dim))
-            }
-            
-            states.append(state)
-            
-        # Convert to DataFrame
-        df = pd.DataFrame(states)
-        df.set_index('timestamp', inplace=True)
+            hf_features[i] = features.get('hf', np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)))
+            mf_features[i] = features.get('mf', np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim)))
+            lf_features[i] = features.get('lf', np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim)))
+            static_features[i] = features.get('static', np.zeros(self.model_config.static_feat_dim))
         
-        self.logger.info(f"Pre-computed {len(df)} market states with features")
-        return df
+        # Add feature arrays to DataFrame
+        df_states['hf_features'] = list(hf_features)
+        df_states['mf_features'] = list(mf_features)
+        df_states['lf_features'] = list(lf_features)
+        df_states['static_features'] = list(static_features)
+        
+        self.logger.info(f"Completed pre-computation of {len(df_states)} market states with features")
+        return df_states
         
     def _build_1s_bars_from_trades(self, trades_df: pd.DataFrame, 
                                    timeline: pd.DatetimeIndex) -> pd.DataFrame:
@@ -945,6 +951,9 @@ class MarketSimulator:
         if self.df_market_state is not None:
             del self.df_market_state
             self.df_market_state = None
+            
+        # Clear cache
+        self._precomputed_cache.clear()
             
         # Clean up combined data
         if self.combined_bars_1s is not None:
