@@ -50,12 +50,12 @@ class ModelConfig(BaseModel):
     hf_seq_len: int = 60
     hf_feat_dim: int = 20
     mf_seq_len: int = 30
-    mf_feat_dim: int = 20  # Changed from 24 to match saved model
-    lf_seq_len: int = 30   # Changed from 10 to match saved model
-    lf_feat_dim: int = 20  # Changed from 12 to match saved model
-    static_feat_dim: int = 5  # Changed from 10 to match saved model
-    portfolio_seq_len: int = 5  # Changed from 10 to match saved model
-    portfolio_feat_dim: int = 5  # Changed from 10 to match saved model
+    mf_feat_dim: int = 20  # Medium-frequency features (1m/5m timeframe)
+    lf_seq_len: int = 30   # Low-frequency sequence length (daily/session timeframe)
+    lf_feat_dim: int = 20  # Low-frequency features (daily timeframe)
+    static_feat_dim: int = 5  # Static features (market cap, time encodings)
+    portfolio_seq_len: int = 5  # Portfolio history length
+    portfolio_feat_dim: int = 5  # Portfolio features (position, P&L, risk metrics)
     
     # Action space - Single source of truth
     action_dim: List[int] = Field(default=[3, 4], description="[action_types, position_sizes]")
