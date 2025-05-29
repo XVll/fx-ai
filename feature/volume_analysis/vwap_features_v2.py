@@ -3,10 +3,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from ..feature_base import BaseFeature
-from ..feature_registry import feature_registry
 
 
-@feature_registry.register("vwap_interaction_dynamics", category="mf")
 class VWAPInteractionDynamicsFeature(BaseFeature):
     """Analyzes how price interacts with VWAP over time sequences.
     
@@ -84,7 +82,6 @@ class VWAPInteractionDynamicsFeature(BaseFeature):
         return {'data_type': 'mf_data', 'lookback': 20, 'fields': ['close', 'vwap']}
 
 
-@feature_registry.register("vwap_breakout_quality", category="mf")
 class VWAPBreakoutQualityFeature(BaseFeature):
     """Measures quality of VWAP breakouts for momentum trading.
     
@@ -188,7 +185,6 @@ class VWAPBreakoutQualityFeature(BaseFeature):
         return {'data_type': 'mf_data', 'lookback': 15, 'fields': ['close', 'vwap', 'volume']}
 
 
-@feature_registry.register("vwap_mean_reversion_tendency", category="mf")
 class VWAPMeanReversionTendencyFeature(BaseFeature):
     """Measures how strongly price tends to revert to VWAP.
     

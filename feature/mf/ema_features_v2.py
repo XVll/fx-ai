@@ -3,10 +3,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from ..feature_base import BaseFeature
-from ..feature_registry import feature_registry
 
 
-@feature_registry.register("ema_interaction_pattern", category="mf")
 class EMAInteractionPatternFeature(BaseFeature):
     """Analyzes price interaction patterns with EMAs over time.
     
@@ -109,7 +107,6 @@ class EMAInteractionPatternFeature(BaseFeature):
         return {'data_type': 'mf_data', 'lookback': 20, 'fields': ['close']}
 
 
-@feature_registry.register("ema_crossover_dynamics", category="mf")
 class EMACrossoverDynamicsFeature(BaseFeature):
     """Analyzes EMA crossover behavior and momentum quality.
     
@@ -228,7 +225,6 @@ class EMACrossoverDynamicsFeature(BaseFeature):
         return {'data_type': 'mf_data', 'lookback': 25, 'fields': ['close', 'volume']}
 
 
-@feature_registry.register("ema_trend_alignment", category="mf")
 class EMATrendAlignmentFeature(BaseFeature):
     """Measures multi-timeframe EMA trend alignment for momentum confirmation.
     

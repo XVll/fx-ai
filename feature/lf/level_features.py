@@ -2,7 +2,6 @@
 import numpy as np
 from typing import Dict, Any, List, Optional
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
 def detect_support_levels(daily_bars: List[Dict], lookback: int = 20) -> List[float]:
@@ -65,7 +64,6 @@ def detect_resistance_levels(daily_bars: List[Dict], lookback: int = 20) -> List
     return resistance_levels
 
 
-@feature_registry.register("support_distance", category="lf")
 class DistanceToClosestSupportFeature(BaseFeature):
     """Distance to nearest support level"""
     
@@ -124,7 +122,6 @@ class DistanceToClosestSupportFeature(BaseFeature):
         }
 
 
-@feature_registry.register("resistance_distance", category="lf")
 class DistanceToClosestResistanceFeature(BaseFeature):
     """Distance to nearest resistance level"""
     
@@ -183,7 +180,6 @@ class DistanceToClosestResistanceFeature(BaseFeature):
         }
 
 
-@feature_registry.register("whole_dollar_proximity", category="lf")
 class WholeDollarProximityFeature(BaseFeature):
     """Proximity to whole dollar levels"""
     
@@ -228,7 +224,6 @@ class WholeDollarProximityFeature(BaseFeature):
         }
 
 
-@feature_registry.register("half_dollar_proximity", category="lf")
 class HalfDollarProximityFeature(BaseFeature):
     """Proximity to half dollar levels"""
     

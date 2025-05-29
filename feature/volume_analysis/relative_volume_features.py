@@ -4,10 +4,8 @@ import numpy as np
 from typing import Dict, Any, List
 from datetime import time
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("relative_volume", category="mf")
 class RelativeVolumeFeature(BaseFeature):
     """Current volume compared to average volume over recent period.
     
@@ -62,7 +60,6 @@ class RelativeVolumeFeature(BaseFeature):
         }
 
 
-@feature_registry.register("volume_surge", category="mf")
 class VolumeSurgeFeature(BaseFeature):
     """Detects sudden volume spikes compared to recent average.
     
@@ -118,7 +115,6 @@ class VolumeSurgeFeature(BaseFeature):
         }
 
 
-@feature_registry.register("cumulative_volume_delta", category="mf")
 class CumulativeVolumeDeltaFeature(BaseFeature):
     """Cumulative difference between buy and sell volume.
     
@@ -201,7 +197,6 @@ class CumulativeVolumeDeltaFeature(BaseFeature):
         }
 
 
-@feature_registry.register("volume_momentum", category="mf")
 class VolumeMomentumFeature(BaseFeature):
     """Rate of change in volume over time.
     

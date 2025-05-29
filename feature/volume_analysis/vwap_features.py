@@ -3,10 +3,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("distance_to_vwap", category="mf")
 class DistanceToVWAPFeature(BaseFeature):
     """Distance from current price to VWAP as percentage.
     
@@ -55,7 +53,6 @@ class DistanceToVWAPFeature(BaseFeature):
         }
 
 
-@feature_registry.register("vwap_slope", category="mf")
 class VWAPSlopeFeature(BaseFeature):
     """Rate of change of VWAP over recent period.
     
@@ -120,7 +117,6 @@ class VWAPSlopeFeature(BaseFeature):
         }
 
 
-@feature_registry.register("price_vwap_divergence", category="mf")
 class PriceVWAPDivergenceFeature(BaseFeature):
     """Measures divergence between price trend and VWAP trend.
     

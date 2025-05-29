@@ -52,7 +52,6 @@ price_momentum = {
 
 ### HF Aggregated (Replace 4 features with 2):
 ```python
-@feature_registry.register("price_momentum_stats", category="hf")
 class PriceMomentumStats:
     def calculate_raw(self, market_data):
         prices = extract_prices_from_hf_window(market_data)
@@ -65,7 +64,6 @@ class PriceMomentumStats:
             'momentum_persistence': calculate_persistence(returns)
         }
 
-@feature_registry.register("volume_profile_stats", category="hf") 
 class VolumeProfileStats:
     def calculate_raw(self, market_data):
         volumes = extract_volumes_from_hf_window(market_data)
@@ -80,7 +78,6 @@ class VolumeProfileStats:
 
 ### MF Aggregated (Replace 8 features with 2):
 ```python
-@feature_registry.register("candle_pattern_stats", category="mf")
 class CandlePatternStats:
     def calculate_raw(self, market_data):
         bars = market_data.get('mf_bars_1m', [])
