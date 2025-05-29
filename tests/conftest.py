@@ -44,7 +44,6 @@ def mock_config():
     config.model.lf_feat_dim = 6
     config.model.portfolio_seq_len = 1
     config.model.portfolio_feat_dim = 5
-    config.model.static_feat_dim = 4
     
     # Simulation config
     config.simulation = MagicMock()

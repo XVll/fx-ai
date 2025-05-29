@@ -101,7 +101,6 @@ class TestTradingEnvironmentInitialization:
         config.model.lf_feat_dim = 6
         config.model.portfolio_seq_len = 1
         config.model.portfolio_feat_dim = 5
-        config.model.static_feat_dim = 4
         
         config.simulation = MagicMock()
         config.simulation.default_position_value = 10000.0

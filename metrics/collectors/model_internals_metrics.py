@@ -55,7 +55,7 @@ class ModelInternalsCollector(MetricCollector):
         self.register_metric("attention_focus_branch", MetricMetadata(
             category=MetricCategory.MODEL,
             metric_type=MetricType.GAUGE,
-            description="Branch with highest attention (0=HF, 1=MF, 2=LF, 3=Portfolio, 4=Static)",
+            description="Branch with highest attention (0=HF, 1=MF, 2=LF, 3=Portfolio)",
             unit="branch_id",
             frequency="step"
         ))
@@ -94,7 +94,7 @@ class ModelInternalsCollector(MetricCollector):
         ))
         
         # Feature distribution metrics for each branch
-        for branch in ['hf', 'mf', 'lf', 'portfolio', 'static']:
+        for branch in ['hf', 'mf', 'lf', 'portfolio']:
             self.register_metric(f"feature_{branch}_mean", MetricMetadata(
                 category=MetricCategory.MODEL,
                 metric_type=MetricType.GAUGE,

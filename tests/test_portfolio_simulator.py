@@ -67,7 +67,6 @@ def model_config():
         mf_feat_dim=15,
         lf_seq_len=10,
         lf_feat_dim=10,
-        static_feat_dim=8,
         action_dim=[3, 4],
         d_model=128,
         n_heads=8,
