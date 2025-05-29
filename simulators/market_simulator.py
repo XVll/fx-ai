@@ -19,7 +19,7 @@ import multiprocessing as mp
 from functools import partial
 
 from data.data_manager import DataManager
-from feature.feature_manager import FeatureManager
+from feature.simple_feature_manager import SimpleFeatureManager
 from feature.contexts import MarketContext
 from config.schemas import ModelConfig, SimulationConfig
 
@@ -71,7 +71,7 @@ class MarketSimulator:
                  data_manager: DataManager,
                  model_config: ModelConfig,
                  simulation_config: SimulationConfig,
-                 feature_manager: Optional[FeatureManager] = None,
+                 feature_manager: Optional[SimpleFeatureManager] = None,
                  logger: Optional[logging.Logger] = None):
         """Initialize the market simulator
         
@@ -91,7 +91,7 @@ class MarketSimulator:
         
         # Initialize feature manager if not provided
         if feature_manager is None:
-            self.feature_manager = FeatureManager(
+            self.feature_manager = SimpleFeatureManager(
                 symbol=symbol,
                 config=model_config,
                 logger=self.logger
@@ -347,13 +347,13 @@ class MarketSimulator:
         
     @staticmethod
     def _extract_features_batch(batch_data: List[Tuple[int, pd.Timestamp, pd.Series]], 
-                               shared_data: Dict) -> List[Tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+                               shared_data: Dict) -> List[Tuple[int, np.ndarray, np.ndarray, np.ndarray]]:
         """Extract features for a batch of timestamps in parallel
         
         This is the worker function for parallel processing.
         """
         # Recreate feature manager in each process
-        feature_manager = FeatureManager(
+        feature_manager = SimpleFeatureManager(
             symbol=shared_data['symbol'],
             config=shared_data['model_config'],
             logger=logging.getLogger(__name__)
@@ -393,7 +393,7 @@ class MarketSimulator:
             lf_feat = features.get('lf', np.zeros((shared_data['lf_seq_len'], shared_data['lf_feat_dim'])))
             # Static features have been moved to lf branch, no longer separate
             
-            results.append((idx, hf_feat, mf_feat, lf_feat, static_feat))
+            results.append((idx, hf_feat, mf_feat, lf_feat))
             
         return results
         

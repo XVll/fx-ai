@@ -3,10 +3,8 @@ from typing import Dict, Any, Optional
 import numpy as np
 from feature.feature_base import BaseFeature, FeatureConfig
 from feature.normalizers import MinMaxNormalizer
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("hf_volume_velocity", category="hf")
 class VolumeVelocityFeature(BaseFeature):
     """1-second volume velocity - rate of volume change"""
     
@@ -66,7 +64,6 @@ class VolumeVelocityFeature(BaseFeature):
         }
 
 
-@feature_registry.register("hf_volume_acceleration", category="hf")
 class VolumeAccelerationFeature(BaseFeature):
     """1-second volume acceleration - change in volume velocity"""
     

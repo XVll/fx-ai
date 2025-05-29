@@ -2,7 +2,6 @@
 import numpy as np
 from typing import Dict, Any, List
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
 def calculate_ema(values: List[float], period: int) -> float:
@@ -30,7 +29,6 @@ def calculate_ema(values: List[float], period: int) -> float:
     return ema
 
 
-@feature_registry.register("1m_ema9_distance", category="mf")
 class DistanceToEMA9_1mFeature(BaseFeature):
     """Distance to 9-period EMA on 1-minute bars"""
     
@@ -81,7 +79,6 @@ class DistanceToEMA9_1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("1m_ema20_distance", category="mf")
 class DistanceToEMA20_1mFeature(BaseFeature):
     """Distance to 20-period EMA on 1-minute bars"""
     
@@ -132,7 +129,6 @@ class DistanceToEMA20_1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_ema9_distance", category="mf")
 class DistanceToEMA9_5mFeature(BaseFeature):
     """Distance to 9-period EMA on 5-minute bars"""
     
@@ -183,7 +179,6 @@ class DistanceToEMA9_5mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_ema20_distance", category="mf")
 class DistanceToEMA20_5mFeature(BaseFeature):
     """Distance to 20-period EMA on 5-minute bars"""
     

@@ -2,10 +2,8 @@
 from typing import Dict, Any, Optional
 import numpy as np
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("1m_position_in_previous_candle", category="mf")
 class PositionInPreviousCandle1mFeature(BaseFeature):
     """Position of current price in previous 1-minute candle range"""
     
@@ -54,7 +52,6 @@ class PositionInPreviousCandle1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_position_in_previous_candle", category="mf")
 class PositionInPreviousCandle5mFeature(BaseFeature):
     """Position of current price in previous 5-minute candle range"""
     
@@ -103,7 +100,6 @@ class PositionInPreviousCandle5mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("1m_upper_wick_relative", category="mf")
 class UpperWickRelative1mFeature(BaseFeature):
     """Upper wick size relative to candle range for 1-minute bars"""
     
@@ -158,7 +154,6 @@ class UpperWickRelative1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("1m_lower_wick_relative", category="mf")
 class LowerWickRelative1mFeature(BaseFeature):
     """Lower wick size relative to candle range for 1-minute bars"""
     
@@ -213,7 +208,6 @@ class LowerWickRelative1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_upper_wick_relative", category="mf")
 class UpperWickRelative5mFeature(BaseFeature):
     """Upper wick size relative to candle range for 5-minute bars"""
     
@@ -268,7 +262,6 @@ class UpperWickRelative5mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_lower_wick_relative", category="mf")
 class LowerWickRelative5mFeature(BaseFeature):
     """Lower wick size relative to candle range for 5-minute bars"""
     

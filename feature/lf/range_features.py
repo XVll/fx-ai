@@ -2,10 +2,8 @@
 import numpy as np
 from typing import Dict, Any, Optional
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("daily_range_position", category="lf")
 class PositionInDailyRangeFeature(BaseFeature):
     """Position of current price within today's range"""
     
@@ -45,7 +43,6 @@ class PositionInDailyRangeFeature(BaseFeature):
         }
 
 
-@feature_registry.register("position_in_prev_day_range", category="lf")
 class PositionInPrevDayRangeFeature(BaseFeature):
     """Position relative to previous day's range"""
     
@@ -92,7 +89,6 @@ class PositionInPrevDayRangeFeature(BaseFeature):
         }
 
 
-@feature_registry.register("price_change_from_prev_close", category="lf")
 class PriceChangeFromPrevCloseFeature(BaseFeature):
     """Percentage change from previous close"""
     

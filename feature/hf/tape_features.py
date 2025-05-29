@@ -2,10 +2,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("tape_imbalance", category="hf")
 class TapeImbalanceFeature(BaseFeature):
     """Buy/sell volume imbalance in 1-second window"""
     
@@ -112,7 +110,6 @@ class TapeImbalanceFeature(BaseFeature):
         }
 
 
-@feature_registry.register("tape_aggression_ratio", category="hf")
 class TapeAggressionRatioFeature(BaseFeature):
     """Ratio of aggressive orders (hitting bid/ask)"""
     

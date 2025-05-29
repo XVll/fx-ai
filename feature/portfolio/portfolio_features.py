@@ -3,10 +3,8 @@ from typing import Dict, Any, Optional
 import numpy as np
 from datetime import datetime, timezone
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("portfolio_position_size", category="portfolio")
 class PortfolioPositionSizeFeature(BaseFeature):
     """Current position size as percentage of portfolio"""
     
@@ -54,7 +52,6 @@ class PortfolioPositionSizeFeature(BaseFeature):
         }
 
 
-@feature_registry.register("portfolio_average_price", category="portfolio")
 class PortfolioAveragePriceFeature(BaseFeature):
     """Average entry price distance from current price"""
     
@@ -101,7 +98,6 @@ class PortfolioAveragePriceFeature(BaseFeature):
         }
 
 
-@feature_registry.register("portfolio_unrealized_pnl", category="portfolio")
 class PortfolioUnrealizedPnLFeature(BaseFeature):
     """Unrealized P&L as percentage of equity"""
     
@@ -141,7 +137,6 @@ class PortfolioUnrealizedPnLFeature(BaseFeature):
         }
 
 
-@feature_registry.register("portfolio_time_in_position", category="portfolio")
 class PortfolioTimeInPositionFeature(BaseFeature):
     """Time in position normalized to trading session"""
     
@@ -199,7 +194,6 @@ class PortfolioTimeInPositionFeature(BaseFeature):
         }
 
 
-@feature_registry.register("portfolio_max_adverse_excursion", category="portfolio")
 class PortfolioMaxAdverseExcursionFeature(BaseFeature):
     """Maximum adverse excursion during trade"""
     

@@ -3,7 +3,6 @@
 import numpy as np
 from typing import Dict, Any, Tuple
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
 class LULDCalculator:
@@ -40,7 +39,6 @@ class LULDCalculator:
         return lower_band, upper_band
 
 
-@feature_registry.register("distance_to_luld_up", category="lf")
 class DistanceToLULDUpFeature(BaseFeature):
     """Distance to upper LULD band as percentage of current price.
     
@@ -90,7 +88,6 @@ class DistanceToLULDUpFeature(BaseFeature):
         }
 
 
-@feature_registry.register("distance_to_luld_down", category="lf")
 class DistanceToLULDDownFeature(BaseFeature):
     """Distance to lower LULD band as percentage of current price.
     
@@ -140,7 +137,6 @@ class DistanceToLULDDownFeature(BaseFeature):
         }
 
 
-@feature_registry.register("luld_band_width", category="lf")
 class LULDBandWidthFeature(BaseFeature):
     """Width of LULD bands as percentage of price.
     
