@@ -7,6 +7,7 @@ import torch.optim as optim
 
 from .manager import MetricsManager
 from .transmitters.wandb_transmitter import WandBTransmitter, WandBConfig
+from .transmitters.dashboard_transmitter import DashboardTransmitter
 from .collectors.model_metrics import ModelMetricsCollector, OptimizerMetricsCollector
 from .collectors.training_metrics import TrainingMetricsCollector, EvaluationMetricsCollector
 from .collectors.trading_metrics import PortfolioMetricsCollector, PositionMetricsCollector, TradeMetricsCollector
@@ -34,6 +35,11 @@ class MetricsFactory:
             save_code=config.save_code,
             log_frequency=config.log_frequency
         )
+    
+    @staticmethod
+    def create_dashboard_transmitter(port: int = 8050, update_interval: float = 0.1) -> DashboardTransmitter:
+        """Create a dashboard transmitter"""
+        return DashboardTransmitter(port=port, update_interval=update_interval)
 
     @staticmethod
     def create_model_collectors(model: Optional[nn.Module] = None,
@@ -96,7 +102,9 @@ class MetricsFactory:
             optimizer: Optional[optim.Optimizer] = None,
             symbol: str = "UNKNOWN",
             initial_capital: float = 25000.0,
-            include_system: bool = True
+            include_system: bool = True,
+            enable_dashboard: bool = False,
+            dashboard_port: int = 8050
     ) -> MetricsManager:
         """Create a complete metrics system with all components"""
 
@@ -111,6 +119,11 @@ class MetricsFactory:
         if wandb_config.project_name != "local":
             wandb_transmitter = MetricsFactory.create_wandb_transmitter(wandb_config)
             manager.add_transmitter(wandb_transmitter)
+            
+        # Add dashboard transmitter if enabled
+        if enable_dashboard:
+            dashboard_transmitter = MetricsFactory.create_dashboard_transmitter(port=dashboard_port)
+            manager.add_transmitter(dashboard_transmitter)
 
         # Add all collectors
         collectors = []
@@ -182,15 +195,6 @@ class MetricsIntegrator:
         if collector:
             metrics = collector.record_ppo_metrics(clip_fraction, approx_kl, explained_variance)
             self._transmit_metrics(metrics)
-            
-        # Forward PPO metrics to dashboard if available
-        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
-            ppo_data = {
-                'clip_fraction': clip_fraction,
-                'approx_kl': approx_kl,
-                'explained_variance': explained_variance
-            }
-            self.metrics_manager.dashboard_collector.on_ppo_metrics(ppo_data)
 
     def record_learning_rate(self, learning_rate: float):
         """Record learning rate"""
@@ -288,15 +292,6 @@ class MetricsIntegrator:
         collector = self.get_collector('PortfolioMetricsCollector')
         if collector:
             collector.update_portfolio_state(equity, cash, unrealized_pnl, realized_pnl)
-        
-        # Pass costs to dashboard if available through metrics manager
-        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
-            # Update dashboard with portfolio costs
-            self.metrics_manager.update_dashboard_step({
-                'total_commission': total_commission,
-                'total_slippage': total_slippage,
-                'total_fees': total_fees
-            })
 
     def update_position(self, quantity: float, side: str, avg_entry_price: float,
                         market_value: float, unrealized_pnl: float, current_price: float):
@@ -312,9 +307,8 @@ class MetricsIntegrator:
         if collector:
             collector.record_trade(trade_data)
             
-        # Forward trade to dashboard if available
-        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
-            self.metrics_manager.update_dashboard_trade(trade_data)
+        # Emit trade event for dashboard
+        self.metrics_manager.emit_event('trade_execution', trade_data)
 
     # Execution integration methods
     def record_fill(self, fill_data: Dict[str, Any]):
@@ -323,17 +317,15 @@ class MetricsIntegrator:
         if collector:
             collector.record_fill(fill_data)
             
-        # Forward fill as trade to dashboard if available
-        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
-            # Convert fill to trade data format for dashboard
-            trade_data = {
-                'quantity': fill_data.get('executed_quantity', 0),
-                'price': fill_data.get('executed_price', 0),
-                'commission': fill_data.get('commission', 0),
-                'slippage': fill_data.get('slippage_cost_total', 0),
-                'fees': fill_data.get('fees', 0)
-            }
-            self.metrics_manager.update_dashboard_trade(trade_data)
+        # Emit trade event for dashboard
+        trade_data = {
+            'quantity': fill_data.get('executed_quantity', 0),
+            'price': fill_data.get('executed_price', 0),
+            'commission': fill_data.get('commission', 0),
+            'slippage': fill_data.get('slippage_cost_total', 0),
+            'fees': fill_data.get('fees', 0)
+        }
+        self.metrics_manager.emit_event('trade_execution', trade_data)
 
     # Environment integration methods
     def record_environment_step(self, reward: float, action: str, is_invalid: bool = False,
@@ -350,21 +342,8 @@ class MetricsIntegrator:
             if reward_collector:
                 reward_collector.update_reward(reward, reward_components)
                 
-        # Forward step data to dashboard if available
-        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
-            step_data = {
-                'reward': reward,
-                'action': action,
-                'is_invalid': is_invalid,
-                'episode_reward': episode_reward
-            }
-            if reward_components:
-                step_data['reward_components'] = reward_components
-            self.metrics_manager.update_dashboard_step(step_data)
-            
-            # Also update reward components specifically
-            if reward_components:
-                self.metrics_manager.dashboard_collector.on_reward_components(reward_components)
+            # Emit reward components event
+            self.metrics_manager.emit_event('reward_components', {'components': reward_components})
 
     def record_episode_end(self, episode_reward: float):
         """Record episode end in environment"""
@@ -377,13 +356,12 @@ class MetricsIntegrator:
         if reward_collector:
             reward_collector.reset_episode()
             
-        # Forward episode end to dashboard if available
-        if hasattr(self.metrics_manager, 'dashboard_collector') and self.metrics_manager.dashboard_collector:
-            episode_data = {
-                'episode_reward': episode_reward,
-                'episode_num': self.metrics_manager.current_episode
-            }
-            self.metrics_manager.update_dashboard_episode(episode_data)
+        # Emit episode end event
+        episode_data = {
+            'episode_reward': episode_reward,
+            'episode_num': self.metrics_manager.current_episode
+        }
+        self.metrics_manager.emit_event('episode_end', episode_data)
             
     # Reward integration methods
     def register_reward_component(self, component_name: str, component_type: str):
@@ -456,6 +434,10 @@ class MetricsConfig:
                  # Trading Configuration
                  symbol: str = "UNKNOWN",
                  initial_capital: float = 25000.0,
+                 
+                 # Dashboard Configuration
+                 enable_dashboard: bool = False,
+                 dashboard_port: int = 8050,
 
                  # Log Frequencies (in steps)
                  log_frequencies: Optional[Dict[str, int]] = None):
@@ -472,6 +454,9 @@ class MetricsConfig:
 
         self.symbol = symbol
         self.initial_capital = initial_capital
+        
+        self.enable_dashboard = enable_dashboard
+        self.dashboard_port = dashboard_port
 
         self.log_frequencies = log_frequencies or {
             "model": 1,
@@ -509,7 +494,9 @@ class MetricsConfig:
             optimizer=optimizer,
             symbol=self.symbol,
             initial_capital=self.initial_capital,
-            include_system=self.include_system_metrics
+            include_system=self.include_system_metrics,
+            enable_dashboard=self.enable_dashboard,
+            dashboard_port=self.dashboard_port
         )
 
         integrator = MetricsIntegrator(manager)

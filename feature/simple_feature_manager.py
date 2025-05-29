@@ -21,8 +21,6 @@ class SimpleFeatureManager:
         self.mf_feat_dim = config.mf_feat_dim
         self.lf_seq_len = config.lf_seq_len
         self.lf_feat_dim = config.lf_feat_dim
-        self.portfolio_seq_len = config.portfolio_seq_len
-        self.portfolio_feat_dim = config.portfolio_feat_dim
         
         # Initialize feature collections
         self._feature_collections = self._initialize_features()
@@ -32,20 +30,19 @@ class SimpleFeatureManager:
         return {
             'hf': self._create_hf_features(),
             'mf': self._create_mf_features(), 
-            'lf': self._create_lf_features(),
-            'portfolio': self._create_portfolio_features()
+            'lf': self._create_lf_features()
         }
     
     def _create_hf_features(self) -> List[BaseFeature]:
-        """Create high-frequency features"""
+        """Create ALL high-frequency features"""
         features = []
         
         try:
-            # Import actual HF feature classes
+            # Import ALL HF feature classes
             from .hf.price_features import PriceVelocityFeature, PriceAccelerationFeature
             from .hf.tape_features import TapeImbalanceFeature, TapeAggressionRatioFeature
-            from .hf.quote_features import SpreadCompressionFeature, QuoteImbalanceFeature
-            from .hf.volume_features import VolumeVelocityFeature
+            from .hf.quote_features import SpreadCompressionFeature, QuoteVelocityFeature, QuoteImbalanceFeature
+            from .hf.volume_features import VolumeVelocityFeature, VolumeAccelerationFeature
             
             hf_feature_classes = [
                 ('price_velocity', PriceVelocityFeature),
@@ -53,8 +50,10 @@ class SimpleFeatureManager:
                 ('tape_imbalance', TapeImbalanceFeature),
                 ('tape_aggression_ratio', TapeAggressionRatioFeature),
                 ('spread_compression', SpreadCompressionFeature),
+                ('quote_velocity', QuoteVelocityFeature),
                 ('quote_imbalance', QuoteImbalanceFeature),
-                ('volume_velocity', VolumeVelocityFeature)
+                ('volume_velocity', VolumeVelocityFeature),
+                ('volume_acceleration', VolumeAccelerationFeature)
             ]
             
             for name, feature_class in hf_feature_classes:
@@ -71,29 +70,137 @@ class SimpleFeatureManager:
         return features
     
     def _create_mf_features(self) -> List[BaseFeature]:
-        """Create medium-frequency features"""
+        """Create ALL medium-frequency features"""
         features = []
         
         try:
-            # Import actual MF feature classes
-            from .mf.candle_features import PositionInCurrentCandle1mFeature, BodySizeRelative1mFeature
-            from .mf.ema_features import DistanceToEMA9_1mFeature, DistanceToEMA20_1mFeature
-            from .mf.swing_features import SwingHighDistance1mFeature, SwingLowDistance1mFeature
-            from .mf.velocity_features import PriceVelocity1mFeature, VolumeVelocity1mFeature
-            from .volume_analysis.vwap_features import DistanceToVWAPFeature
-            from .volume_analysis.relative_volume_features import RelativeVolumeFeature
+            # Import ALL MF feature classes
+            from .mf.candle_features import (
+                PositionInCurrentCandle1mFeature, PositionInCurrentCandle5mFeature,
+                BodySizeRelative1mFeature, BodySizeRelative5mFeature
+            )
+            from .mf.candle_analysis_features import (
+                PositionInPreviousCandle1mFeature, PositionInPreviousCandle5mFeature,
+                UpperWickRelative1mFeature, LowerWickRelative1mFeature,
+                UpperWickRelative5mFeature, LowerWickRelative5mFeature
+            )
+            from .mf.ema_features import (
+                DistanceToEMA9_1mFeature, DistanceToEMA20_1mFeature,
+                DistanceToEMA9_5mFeature, DistanceToEMA20_5mFeature
+            )
+            from .mf.ema_features_v2 import (
+                EMAInteractionPatternFeature, EMACrossoverDynamicsFeature, EMATrendAlignmentFeature
+            )
+            from .mf.swing_features import (
+                SwingHighDistance1mFeature, SwingLowDistance1mFeature,
+                SwingHighDistance5mFeature, SwingLowDistance5mFeature
+            )
+            from .mf.velocity_features import (
+                PriceVelocity1mFeature, PriceVelocity5mFeature,
+                VolumeVelocity1mFeature, VolumeVelocity5mFeature
+            )
+            from .mf.acceleration_features import (
+                PriceAcceleration1mFeature, PriceAcceleration5mFeature,
+                VolumeAcceleration1mFeature, VolumeAcceleration5mFeature
+            )
+            from .volume_analysis.vwap_features import (
+                DistanceToVWAPFeature, VWAPSlopeFeature, PriceVWAPDivergenceFeature
+            )
+            from .volume_analysis.vwap_features_v2 import (
+                VWAPInteractionDynamicsFeature, VWAPBreakoutQualityFeature, VWAPMeanReversionTendencyFeature
+            )
+            from .volume_analysis.relative_volume_features import (
+                RelativeVolumeFeature, VolumeSurgeFeature, CumulativeVolumeDeltaFeature, VolumeMomentumFeature
+            )
+            from .professional.ta_features import (
+                ProfessionalEMASystemFeature, ProfessionalVWAPAnalysisFeature,
+                ProfessionalMomentumQualityFeature, ProfessionalVolatilityRegimeFeature
+            )
+            from .sequence_aware.sequence_features import (
+                TrendAccelerationFeature, VolumePatternEvolutionFeature,
+                MomentumQualityFeature, PatternMaturationFeature
+            )
+            from .aggregated.aggregated_features import (
+                MFTrendConsistencyFeature, MFVolumePriceDivergenceFeature, MFMomentumPersistenceFeature
+            )
+            from .adaptive.adaptive_features import (
+                VolatilityAdjustedMomentumFeature, RegimeRelativeVolumeFeature
+            )
             
             mf_feature_classes = [
+                # Candle features
                 ('1m_position_in_current_candle', PositionInCurrentCandle1mFeature),
+                ('5m_position_in_current_candle', PositionInCurrentCandle5mFeature),
                 ('1m_body_size_relative', BodySizeRelative1mFeature),
+                ('5m_body_size_relative', BodySizeRelative5mFeature),
+                ('1m_position_in_previous_candle', PositionInPreviousCandle1mFeature),
+                ('5m_position_in_previous_candle', PositionInPreviousCandle5mFeature),
+                ('1m_upper_wick_relative', UpperWickRelative1mFeature),
+                ('1m_lower_wick_relative', LowerWickRelative1mFeature),
+                ('5m_upper_wick_relative', UpperWickRelative5mFeature),
+                ('5m_lower_wick_relative', LowerWickRelative5mFeature),
+                
+                # EMA features
                 ('distance_to_ema9_1m', DistanceToEMA9_1mFeature),
                 ('distance_to_ema20_1m', DistanceToEMA20_1mFeature),
-                ('swing_high_distance', SwingHighDistance1mFeature),
-                ('swing_low_distance', SwingLowDistance1mFeature),
+                ('distance_to_ema9_5m', DistanceToEMA9_5mFeature),
+                ('distance_to_ema20_5m', DistanceToEMA20_5mFeature),
+                ('ema_interaction_pattern', EMAInteractionPatternFeature),
+                ('ema_crossover_dynamics', EMACrossoverDynamicsFeature),
+                ('ema_trend_alignment', EMATrendAlignmentFeature),
+                
+                # Swing features
+                ('swing_high_distance_1m', SwingHighDistance1mFeature),
+                ('swing_low_distance_1m', SwingLowDistance1mFeature),
+                ('swing_high_distance_5m', SwingHighDistance5mFeature),
+                ('swing_low_distance_5m', SwingLowDistance5mFeature),
+                
+                # Velocity features
                 ('price_velocity_1m', PriceVelocity1mFeature),
+                ('price_velocity_5m', PriceVelocity5mFeature),
                 ('volume_velocity_1m', VolumeVelocity1mFeature),
+                ('volume_velocity_5m', VolumeVelocity5mFeature),
+                
+                # Acceleration features
+                ('price_acceleration_1m', PriceAcceleration1mFeature),
+                ('price_acceleration_5m', PriceAcceleration5mFeature),
+                ('volume_acceleration_1m', VolumeAcceleration1mFeature),
+                ('volume_acceleration_5m', VolumeAcceleration5mFeature),
+                
+                # VWAP features
                 ('distance_to_vwap', DistanceToVWAPFeature),
-                ('relative_volume', RelativeVolumeFeature)
+                ('vwap_slope', VWAPSlopeFeature),
+                ('price_vwap_divergence', PriceVWAPDivergenceFeature),
+                ('vwap_interaction_dynamics', VWAPInteractionDynamicsFeature),
+                ('vwap_breakout_quality', VWAPBreakoutQualityFeature),
+                ('vwap_mean_reversion_tendency', VWAPMeanReversionTendencyFeature),
+                
+                # Volume features
+                ('relative_volume', RelativeVolumeFeature),
+                ('volume_surge', VolumeSurgeFeature),
+                ('cumulative_volume_delta', CumulativeVolumeDeltaFeature),
+                ('volume_momentum', VolumeMomentumFeature),
+                
+                # Professional features
+                ('professional_ema_system', ProfessionalEMASystemFeature),
+                ('professional_vwap_analysis', ProfessionalVWAPAnalysisFeature),
+                ('professional_momentum_quality', ProfessionalMomentumQualityFeature),
+                ('professional_volatility_regime', ProfessionalVolatilityRegimeFeature),
+                
+                # Sequence-aware features
+                ('trend_acceleration', TrendAccelerationFeature),
+                ('volume_pattern_evolution', VolumePatternEvolutionFeature),
+                ('momentum_quality', MomentumQualityFeature),
+                ('pattern_maturation', PatternMaturationFeature),
+                
+                # Aggregated features
+                ('mf_trend_consistency', MFTrendConsistencyFeature),
+                ('mf_volume_price_divergence', MFVolumePriceDivergenceFeature),
+                ('mf_momentum_persistence', MFMomentumPersistenceFeature),
+                
+                # Adaptive features
+                ('volatility_adjusted_momentum', VolatilityAdjustedMomentumFeature),
+                ('regime_relative_volume', RegimeRelativeVolumeFeature)
             ]
             
             for name, feature_class in mf_feature_classes:
@@ -110,23 +217,73 @@ class SimpleFeatureManager:
         return features
     
     def _create_lf_features(self) -> List[BaseFeature]:
-        """Create low-frequency features"""
+        """Create ALL low-frequency features"""
         features = []
         
         try:
-            # Import actual LF feature classes
-            from .lf.range_features import PositionInDailyRangeFeature, PriceChangeFromPrevCloseFeature
-            from .lf.level_features import DistanceToClosestSupportFeature, WholeDollarProximityFeature
-            from .lf.time_features import MarketSessionTypeFeature, TimeOfDaySinFeature, TimeOfDayCosFeature
+            # Import ALL LF feature classes
+            from .lf.range_features import (
+                PositionInDailyRangeFeature, PositionInPrevDayRangeFeature, PriceChangeFromPrevCloseFeature
+            )
+            from .lf.level_features import (
+                DistanceToClosestSupportFeature, DistanceToClosestResistanceFeature,
+                WholeDollarProximityFeature, HalfDollarProximityFeature
+            )
+            from .lf.time_features import (
+                MarketSessionTypeFeature, TimeOfDaySinFeature, TimeOfDayCosFeature
+            )
+            from .market_structure.halt_features import (
+                HaltStateFeature, TimeSinceHaltFeature
+            )
+            from .market_structure.luld_features import (
+                DistanceToLULDUpFeature, DistanceToLULDDownFeature, LULDBandWidthFeature
+            )
+            from .context.context_features import (
+                SessionProgressFeature, MarketStressFeature, SessionVolumeProfileFeature
+            )
+            from .adaptive.adaptive_features import (
+                AdaptiveSupportResistanceFeature,
+            )
+            from .aggregated.aggregated_features import (
+                HFMomentumSummaryFeature, HFVolumeDynamicsFeature, HFMicrostructureQualityFeature
+            )
             
             lf_feature_classes = [
+                # Range features
                 ('daily_range_position', PositionInDailyRangeFeature),
+                ('prev_day_range_position', PositionInPrevDayRangeFeature),
                 ('price_change_from_prev_close', PriceChangeFromPrevCloseFeature),
+                
+                # Level features
                 ('support_distance', DistanceToClosestSupportFeature),
+                ('resistance_distance', DistanceToClosestResistanceFeature),
                 ('whole_dollar_proximity', WholeDollarProximityFeature),
+                ('half_dollar_proximity', HalfDollarProximityFeature),
+                
+                # Time features
                 ('market_session_type', MarketSessionTypeFeature),
                 ('time_of_day_sin', TimeOfDaySinFeature),
-                ('time_of_day_cos', TimeOfDayCosFeature)
+                ('time_of_day_cos', TimeOfDayCosFeature),
+                
+                # Market structure features
+                ('halt_state', HaltStateFeature),
+                ('time_since_halt', TimeSinceHaltFeature),
+                ('distance_to_luld_up', DistanceToLULDUpFeature),
+                ('distance_to_luld_down', DistanceToLULDDownFeature),
+                ('luld_band_width', LULDBandWidthFeature),
+                
+                # Context features
+                ('session_progress', SessionProgressFeature),
+                ('market_stress', MarketStressFeature),
+                ('session_volume_profile', SessionVolumeProfileFeature),
+                
+                # Adaptive features
+                ('adaptive_support_resistance', AdaptiveSupportResistanceFeature),
+                
+                # Aggregated HF summary features (moved to LF for daily context)
+                ('hf_momentum_summary', HFMomentumSummaryFeature),
+                ('hf_volume_dynamics', HFVolumeDynamicsFeature),
+                ('hf_microstructure_quality', HFMicrostructureQualityFeature)
             ]
             
             for name, feature_class in lf_feature_classes:
@@ -139,32 +296,6 @@ class SimpleFeatureManager:
                     
         except ImportError as e:
             self.logger.warning(f"Failed to import LF features: {e}")
-        
-        return features
-    
-    def _create_portfolio_features(self) -> List[BaseFeature]:
-        """Create portfolio features"""
-        features = []
-        
-        try:
-            # Import actual Portfolio feature classes
-            from .portfolio.portfolio_features import PortfolioPositionSizeFeature, PortfolioUnrealizedPnLFeature
-            
-            portfolio_feature_classes = [
-                ('portfolio_position_size', PortfolioPositionSizeFeature),
-                ('portfolio_unrealized_pnl', PortfolioUnrealizedPnLFeature)
-            ]
-            
-            for name, feature_class in portfolio_feature_classes:
-                try:
-                    config = FeatureConfig(name=name, enabled=True, normalize=True)
-                    features.append(feature_class(config))
-                    self.logger.debug(f"Created Portfolio feature: {name}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to create Portfolio feature {name}: {e}")
-                    
-        except ImportError as e:
-            self.logger.warning(f"Failed to import Portfolio features: {e}")
         
         return features
     
@@ -252,15 +383,13 @@ class SimpleFeatureManager:
             # Extract features for each category
             results = {}
             
-            for category in ['hf', 'mf', 'lf', 'portfolio']:
+            for category in ['hf', 'mf', 'lf']:
                 if category == 'hf':
                     features = self._extract_hf_features(context)
                 elif category == 'mf':
                     features = self._extract_mf_features(context)
                 elif category == 'lf':
                     features = self._extract_lf_features(context)
-                elif category == 'portfolio':
-                    features = self._extract_portfolio_features(context)
                 
                 if features is None:
                     return None
@@ -393,40 +522,6 @@ class SimpleFeatureManager:
         except Exception as e:
             self.logger.error(f"LF feature extraction failed: {e}")
             return np.zeros((self.lf_seq_len, self.lf_feat_dim), dtype=np.float32)
-    
-    def _extract_portfolio_features(self, context: MarketContext) -> Optional[np.ndarray]:
-        """Extract portfolio features"""
-        try:
-            if not context.portfolio_state:
-                return np.zeros((self.portfolio_seq_len, self.portfolio_feat_dim), dtype=np.float32)
-            
-            market_data = {
-                'timestamp': context.timestamp,
-                'current_price': context.current_price,
-                'portfolio_state': context.portfolio_state
-            }
-            
-            features = self.calculate_features(market_data, 'portfolio')
-            vector = self.vectorize_features(features, 'portfolio')
-            
-            # Ensure correct dimensions
-            if len(vector) < self.portfolio_feat_dim:
-                padded = np.zeros(self.portfolio_feat_dim, dtype=np.float32)
-                padded[:len(vector)] = vector
-                vector = padded
-            elif len(vector) > self.portfolio_feat_dim:
-                vector = vector[:self.portfolio_feat_dim]
-            
-            vector = np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0)
-            
-            # Repeat for all timesteps in sequence
-            feature_matrix = np.tile(vector, (self.portfolio_seq_len, 1))
-            
-            return feature_matrix.astype(np.float32)
-            
-        except Exception as e:
-            self.logger.error(f"Portfolio feature extraction failed: {e}")
-            return np.zeros((self.portfolio_seq_len, self.portfolio_feat_dim), dtype=np.float32)
     
     def reset(self):
         """Reset feature manager state"""

@@ -28,7 +28,7 @@ from data.provider.data_bento.databento_file_provider import DatabentoFileProvid
 from envs.trading_environment import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from ai.transformer import MultiBranchTransformer
-from metrics.factory import create_trading_metrics_system
+from metrics.factory import MetricsConfig
 from agent.base_callbacks import ModelCheckpointCallback, EarlyStoppingCallback, TrainingCallback, MomentumTrackingCallback
 from agent.continuous_training_callbacks import ContinuousTrainingCallback
 
@@ -58,11 +58,13 @@ def signal_handler(signum, frame):
     # Stop dashboard immediately if running
     if 'metrics_manager' in current_components:
         metrics_manager = current_components['metrics_manager']
-        if hasattr(metrics_manager, 'dashboard_collector') and metrics_manager.dashboard_collector:
-            try:
-                metrics_manager.dashboard_collector.stop()
-            except:
-                pass
+        try:
+            # Close all transmitters which includes dashboard
+            for transmitter in metrics_manager.transmitters:
+                if hasattr(transmitter, 'close'):
+                    transmitter.close()
+        except:
+            pass
     
     def force_exit():
         time.sleep(5)
@@ -212,14 +214,21 @@ def create_metrics_components(config: Config, log: logging.Logger):
     if not run_name and config.training.continue_training:
         run_name = f"continuous_{config.env.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
-    # Create metrics system with WandbConfig (will handle W&B being disabled internally)
-    metrics_manager, metrics_integrator = create_trading_metrics_system(
-        project_name=config.wandb.project if config.wandb.enabled else "local",
+    # Create metrics config
+    metrics_config = MetricsConfig(
+        wandb_project=config.wandb.project if config.wandb.enabled else "local",
+        wandb_entity=config.wandb.entity if config.wandb.enabled else None,
+        wandb_run_name=run_name,
+        wandb_tags=["trading", "ppo", config.env.symbol],
         symbol=config.env.symbol,
         initial_capital=config.env.initial_capital,
-        entity=config.wandb.entity if config.wandb.enabled else None,
-        run_name=run_name
+        enable_dashboard=config.dashboard.enabled,
+        dashboard_port=config.dashboard.port,
+        transmit_interval=0.5  # More frequent for trading
     )
+    
+    # Create metrics system
+    metrics_manager, metrics_integrator = metrics_config.create_metrics_system()
     
     # Start auto-transmission
     metrics_manager.start_auto_transmit()
@@ -229,31 +238,10 @@ def create_metrics_components(config: Config, log: logging.Logger):
     
     logging.info("✅ Metrics system initialized, auto-transmission started")
     
-    # Enable dashboard if configured
+    # Start dashboard if enabled
     if config.dashboard.enabled:
-        logging.info(f"Dashboard is enabled, initializing on port {config.dashboard.port}")
-        from dashboard.dashboard import MomentumDashboard
-        from dashboard.dashboard_integration import DashboardMetricsCollector
-        
-        dashboard = MomentumDashboard(
-            port=config.dashboard.port,
-            update_interval=int(config.dashboard.update_interval * 1000)  # Convert to milliseconds
-        )
-        
-        dashboard_collector = DashboardMetricsCollector(dashboard)
-        if metrics_manager:
-            metrics_manager.dashboard_collector = dashboard_collector
-            metrics_manager._dashboard_enabled = True
-            logging.info("Dashboard collector attached to metrics manager")
-        else:
-            logging.warning("No metrics manager available for dashboard")
-        
-        dashboard_collector.start(open_browser=True)
+        metrics_manager.start_dashboard(open_browser=True)
         logging.info(f"🚀 Live dashboard enabled at http://localhost:{config.dashboard.port}")
-        
-        # Set initial model info
-        model_name = f"PPO_Transformer_{config.env.symbol}"
-        dashboard_collector.set_model_info(model_name)
     
     return metrics_manager, metrics_integrator
 

@@ -152,6 +152,11 @@ class PPOTrainer:
         self.logger.info(f"📅 Selected momentum day: {momentum_day_info['date'].strftime('%Y-%m-%d')} "
                         f"(quality: {momentum_day_info.get('activity_score', 0):.3f}, "
                         f"reset points: {len(self.current_reset_points)})")
+        
+        # Emit momentum day change event
+        if hasattr(self.metrics, 'metrics_manager'):
+            self.metrics.metrics_manager.emit_event('momentum_day_change', momentum_day_info)
+        
         return True
 
     def _select_reset_point(self) -> int:
@@ -209,6 +214,13 @@ class PPOTrainer:
             # If performance is poor, decrease difficulty slightly
             elif mean_reward < -1.0:
                 self.curriculum_progress = max(0.0, self.curriculum_progress - 0.01)
+                
+            # Emit curriculum progress event
+            if hasattr(self.metrics, 'metrics_manager'):
+                self.metrics.metrics_manager.emit_event('curriculum_progress', {
+                    'progress': self.curriculum_progress,
+                    'strategy': self.curriculum_strategy
+                })
 
     def _reset_environment_with_momentum(self):
         """Reset environment using momentum-based training."""
@@ -259,19 +271,18 @@ class PPOTrainer:
         self.buffer.clear()
         
         # Update dashboard that we're in rollout phase
-        if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
-            if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
-                training_data = {
-                    'mode': 'Training',
-                    'stage': 'Collecting Rollout',
-                    'updates': self.global_update_counter,
-                    'global_steps': self.global_step_counter,
-                    'total_episodes': self.global_episode_counter,
-                    'stage_status': f"Collecting {self.rollout_steps} steps...",
-                    'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
-                    'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
-                }
-                self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
+        if hasattr(self.metrics, "metrics_manager"):
+            training_data = {
+                'mode': 'Training',
+                'stage': 'Collecting Rollout',
+                'updates': self.global_update_counter,
+                'global_steps': self.global_step_counter,
+                'total_episodes': self.global_episode_counter,
+                'stage_status': f"Collecting {self.rollout_steps} steps...",
+                'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+                'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
+            }
+            self.metrics.metrics_manager.emit_event("training_update", training_data)
 
         current_env_state_np, _ = self._reset_environment_with_momentum()
 
@@ -290,21 +301,20 @@ class PPOTrainer:
 
         while collected_steps < self.rollout_steps:
             # Update rollout progress periodically
-            if collected_steps % 100 == 0 and hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
-                if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
-                    training_data = {
-                        'mode': 'Training',
-                        'stage': 'Collecting Rollouts',
-                        'updates': self.global_update_counter,
-                        'global_steps': self.global_step_counter,
-                        'total_episodes': self.global_episode_counter,
-                        'rollout_steps': collected_steps,
-                        'rollout_total': self.rollout_steps,
-                        'stage_status': f"Collecting: {collected_steps}/{self.rollout_steps} steps",
-                        'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
-                        'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
-                    }
-                    self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
+            if collected_steps % 100 == 0 and hasattr(self.metrics, "metrics_manager"):
+                training_data = {
+                    'mode': 'Training',
+                    'stage': 'Collecting Rollouts',
+                    'updates': self.global_update_counter,
+                    'global_steps': self.global_step_counter,
+                    'total_episodes': self.global_episode_counter,
+                    'rollout_steps': collected_steps,
+                    'rollout_total': self.rollout_steps,
+                    'stage_status': f"Collecting: {collected_steps}/{self.rollout_steps} steps",
+                    'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+                    'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
+                }
+                self.metrics.metrics_manager.emit_event("training_update", training_data)
             single_step_tensors = {
                 k: torch.as_tensor(v, dtype=torch.float32).to(self.device)
                 for k, v in current_env_state_np.items()
@@ -569,27 +579,26 @@ class PPOTrainer:
         self.metrics.start_update()
         
         # Update dashboard that we're in update phase
-        if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
-            if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
-                # Calculate current performance metrics
-                current_time = time.time()
-                elapsed_time = current_time - self.training_start_time
-                steps_per_second = self.global_step_counter / elapsed_time if elapsed_time > 0 else 0
-                episodes_per_hour = (self.global_episode_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
-                
-                training_data = {
-                    'mode': 'Training',
-                    'stage': 'Updating Policy',
-                    'updates': self.global_update_counter,
-                    'global_steps': self.global_step_counter,
-                    'total_episodes': self.global_episode_counter,
-                    'stage_status': f"PPO Update {self.global_update_counter + 1}...",
-                    'steps_per_second': steps_per_second,
-                    'episodes_per_hour': episodes_per_hour,
-                    'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
-                    'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
-                }
-                self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
+        if hasattr(self.metrics, "metrics_manager"):
+            # Calculate current performance metrics
+            current_time = time.time()
+            elapsed_time = current_time - self.training_start_time
+            steps_per_second = self.global_step_counter / elapsed_time if elapsed_time > 0 else 0
+            episodes_per_hour = (self.global_episode_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
+            
+            training_data = {
+                'mode': 'Training',
+                'stage': 'Updating Policy',
+                'updates': self.global_update_counter,
+                'global_steps': self.global_step_counter,
+                'total_episodes': self.global_episode_counter,
+                'stage_status': f"PPO Update {self.global_update_counter + 1}...",
+                'steps_per_second': steps_per_second,
+                'episodes_per_hour': episodes_per_hour,
+                'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+                'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
+            }
+            self.metrics.metrics_manager.emit_event("training_update", training_data)
 
         self._compute_advantages_and_returns()
 
@@ -634,21 +643,20 @@ class PPOTrainer:
                 current_batch += 1
                 
                 # Update dashboard with epoch/batch progress
-                if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
-                    if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
-                        training_data = {
-                            'mode': 'Training',
-                            'stage': 'PPO Update',
-                            'updates': self.global_update_counter,
-                            'global_steps': self.global_step_counter,
-                            'total_episodes': self.global_episode_counter,
-                            'current_epoch': epoch + 1,
-                            'total_epochs': self.ppo_epochs,
-                            'current_batch': current_batch,
-                            'total_batches': total_batches,
-                            'stage_status': f"Epoch {epoch + 1}/{self.ppo_epochs}, Batch {current_batch}/{total_batches}"
-                        }
-                        self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
+                if hasattr(self.metrics, "metrics_manager"):
+                    training_data = {
+                        'mode': 'Training',
+                        'stage': 'PPO Update',
+                        'updates': self.global_update_counter,
+                        'global_steps': self.global_step_counter,
+                        'total_episodes': self.global_episode_counter,
+                        'current_epoch': epoch + 1,
+                        'total_epochs': self.ppo_epochs,
+                        'current_batch': current_batch,
+                        'total_batches': total_batches,
+                        'stage_status': f"Epoch {epoch + 1}/{self.ppo_epochs}, Batch {current_batch}/{total_batches}"
+                    }
+                    self.metrics.metrics_manager.emit_event("training_update", training_data)
                 # Ensure batch indices don't exceed available samples
                 end_idx = min(start_idx + self.batch_size, num_samples)
                 batch_indices = indices[start_idx:end_idx]
@@ -757,21 +765,20 @@ class PPOTrainer:
         self.metrics.record_learning_rate(self.lr)
 
         # Update dashboard with PPO metrics
-        if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
-            if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
-                mean_reward = np.mean(self.recent_episode_rewards) if len(self.recent_episode_rewards) > 0 else 0
-                ppo_data = {
-                    'lr': self.lr,
-                    'mean_reward': mean_reward,
-                    'policy_loss': avg_actor_loss,
-                    'value_loss': avg_critic_loss,
-                    'entropy': avg_entropy,
-                    'total_loss': avg_actor_loss + avg_critic_loss,
-                    'clip_fraction': avg_clipfrac,
-                    'approx_kl': avg_approx_kl,
-                    'explained_variance': avg_explained_variance
-                }
-                self.metrics.metrics_manager.dashboard_collector.on_ppo_metrics(ppo_data)
+        if hasattr(self.metrics, "metrics_manager"):
+            mean_reward = np.mean(self.recent_episode_rewards) if len(self.recent_episode_rewards) > 0 else 0
+            ppo_data = {
+                'lr': self.lr,
+                'mean_reward': mean_reward,
+                'policy_loss': avg_actor_loss,
+                'value_loss': avg_critic_loss,
+                'entropy': avg_entropy,
+                'total_loss': avg_actor_loss + avg_critic_loss,
+                'clip_fraction': avg_clipfrac,
+                'approx_kl': avg_approx_kl,
+                'explained_variance': avg_explained_variance
+            }
+            self.metrics.metrics_manager.emit_event("ppo_metrics", ppo_data)
 
         # End update timing
         self.metrics.end_update()
@@ -815,20 +822,19 @@ class PPOTrainer:
             callback.on_update_end(self, update_metrics)
         
         # Reset dashboard stage progress after update completes
-        if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
-            if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
-                training_data = {
-                    'mode': 'Training',
-                    'stage': 'Preparing Next Rollout',
-                    'updates': self.global_update_counter,
-                    'global_steps': self.global_step_counter,
-                    'total_episodes': self.global_episode_counter,
-                    'stage_progress': 0.0,  # Reset stage progress
-                    'stage_status': 'Update completed, preparing next rollout...',
-                    'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
-                    'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
-                }
-                self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
+        # Emit training update event
+        training_data = {
+            'mode': 'Training',
+            'stage': 'Preparing Next Rollout',
+            'updates': self.global_update_counter,
+            'global_steps': self.global_step_counter,
+            'total_episodes': self.global_episode_counter,
+            'stage_progress': 0.0,  # Reset stage progress
+            'stage_status': 'Update completed, preparing next rollout...',
+            'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+            'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
+        }
+        self.metrics.metrics_manager.emit_event('training_update', training_data)
 
         return update_metrics
 
@@ -846,22 +852,21 @@ class PPOTrainer:
             callback.on_training_start(self)
             
         # Initialize dashboard training state
-        if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
-            if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
-                training_data = {
-                    'mode': 'Training',
-                    'stage': 'Initializing',
-                    'updates': 0,
-                    'global_steps': 0,
-                    'total_episodes': 0,
-                    'overall_progress': 0.0,
-                    'stage_progress': 0.0,
-                    'stage_status': 'Starting training...',
-                    'steps_per_second': 0.0,
-                    'time_per_update': 0.0,
-                    'time_per_episode': 0.0
-                }
-                self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
+        # Emit training update event
+        training_data = {
+            'mode': 'Training',
+            'stage': 'Initializing',
+            'updates': 0,
+            'global_steps': 0,
+            'total_episodes': 0,
+            'overall_progress': 0.0,
+            'stage_progress': 0.0,
+            'stage_status': 'Starting training...',
+            'steps_per_second': 0.0,
+            'time_per_update': 0.0,
+            'time_per_episode': 0.0
+        }
+        self.metrics.metrics_manager.emit_event('training_update', training_data)
 
         best_eval_reward = -float('inf')
 
@@ -886,22 +891,21 @@ class PPOTrainer:
             eta_hours = remaining_steps / steps_per_hour if steps_per_hour > 0 else 0
 
             # Always update dashboard with training progress (not just every 5 updates)
-            if hasattr(self.metrics, 'metrics_manager') and hasattr(self.metrics.metrics_manager, '_dashboard_enabled') and self.metrics.metrics_manager._dashboard_enabled:
-                if hasattr(self.metrics.metrics_manager, 'dashboard_collector') and self.metrics.metrics_manager.dashboard_collector:
-                    training_data = {
-                        'mode': 'Training',
-                        'stage': 'Active Training',
-                        'updates': self.global_update_counter,
-                        'global_steps': self.global_step_counter,
-                        'total_episodes': self.global_episode_counter,
-                        'overall_progress': progress,
-                        'stage_progress': progress,
-                        'stage_status': f"Update {self.global_update_counter}/{total_training_steps // self.rollout_steps}",
-                        'steps_per_second': steps_per_hour / 3600 if steps_per_hour > 0 else 0,
-                        'time_per_update': update_metrics.get('update_time', 0) if 'update_metrics' in locals() else 0,
-                        'time_per_episode': rollout_info.get('rollout_time', 0) / max(1, rollout_info.get('num_episodes_in_rollout', 1)) if 'rollout_info' in locals() else 0
-                    }
-                    self.metrics.metrics_manager.dashboard_collector.on_training_update(training_data)
+            if hasattr(self.metrics, "metrics_manager"):
+                training_data = {
+                    'mode': 'Training',
+                    'stage': 'Active Training',
+                    'updates': self.global_update_counter,
+                    'global_steps': self.global_step_counter,
+                    'total_episodes': self.global_episode_counter,
+                    'overall_progress': progress,
+                    'stage_progress': progress,
+                    'stage_status': f"Update {self.global_update_counter}/{total_training_steps // self.rollout_steps}",
+                    'steps_per_second': steps_per_hour / 3600 if steps_per_hour > 0 else 0,
+                    'time_per_update': update_metrics.get('update_time', 0) if 'update_metrics' in locals() else 0,
+                    'time_per_episode': rollout_info.get('rollout_time', 0) / max(1, rollout_info.get('num_episodes_in_rollout', 1)) if 'rollout_info' in locals() else 0
+                }
+                self.metrics.metrics_manager.emit_event("training_update", training_data)
 
             if self.global_update_counter % 5 == 0:  # Log every 5 updates
                 # Calculate recent performance trends

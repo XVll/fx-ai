@@ -58,10 +58,6 @@ class MetricsManager:
         
         # Visualization collector reference
         self.visualization_collector = None
-        
-        # Dashboard integration
-        self.dashboard_collector = None
-        self._dashboard_enabled = False
 
         self.logger.info("MetricsManager initialized")
 
@@ -295,6 +291,13 @@ class MetricsManager:
             self._transmit_thread = threading.Thread(target=self._auto_transmit_loop, daemon=True)
             self._transmit_thread.start()
             self.logger.info("Started automatic metric transmission")
+            
+    def start_dashboard(self, open_browser: bool = True):
+        """Start dashboard transmitter if available"""
+        for transmitter in self.transmitters:
+            if hasattr(transmitter, 'start') and transmitter.__class__.__name__ == 'DashboardTransmitter':
+                transmitter.start(open_browser=open_browser)
+                self.logger.info("Dashboard transmitter started")
 
     def stop_auto_transmit(self):
         """Stop automatic metric transmission"""
@@ -378,47 +381,12 @@ class MetricsManager:
                     except Exception as e:
                         self.logger.error(f"Error transmitting visualizations: {e}")
                         
-    # Dashboard methods
-    def enable_dashboard(self, port: int = 8050, open_browser: bool = True):
-        """Enable and start the live dashboard"""
-        if not self._dashboard_enabled:
-            try:
-                from dashboard.dashboard_integration import DashboardMetricsCollector
-                self.dashboard_collector = DashboardMetricsCollector()
-                self.dashboard_collector.start(open_browser=open_browser)
-                self._dashboard_enabled = True
-                self.logger.info(f"Dashboard enabled on port {port}")
-            except Exception as e:
-                self.logger.error(f"Failed to start dashboard: {e}")
-                
-    def disable_dashboard(self):
-        """Disable and stop the dashboard"""
-        if self._dashboard_enabled and self.dashboard_collector:
-            self.dashboard_collector.stop()
-            self._dashboard_enabled = False
-            self.logger.info("Dashboard disabled")
-            
-    def update_dashboard_step(self, step_data: Dict[str, Any]):
-        """Update dashboard with step data"""
-        if self._dashboard_enabled and self.dashboard_collector:
-            self.dashboard_collector.on_step(step_data)
-            
-    def update_dashboard_trade(self, trade_data: Dict[str, Any]):
-        """Update dashboard with trade data"""
-        if self._dashboard_enabled and self.dashboard_collector:
-            self.dashboard_collector.on_trade(trade_data)
-            
-    def update_dashboard_episode(self, episode_data: Dict[str, Any]):
-        """Update dashboard with episode end data"""
-        if self._dashboard_enabled and self.dashboard_collector:
-            self.dashboard_collector.on_episode_end(episode_data)
-    
-    def update_dashboard_training(self, training_data: Dict[str, Any]):
-        """Update dashboard with training progress"""
-        if self._dashboard_enabled and self.dashboard_collector:
-            self.dashboard_collector.on_training_update(training_data)
-    
-    def update_dashboard_ppo(self, ppo_data: Dict[str, Any]):
-        """Update dashboard with PPO metrics"""
-        if self._dashboard_enabled and self.dashboard_collector:
-            self.dashboard_collector.on_ppo_metrics(ppo_data)
+    # Custom event methods for transmitters
+    def emit_event(self, event_name: str, event_data: Dict[str, Any]):
+        """Emit a custom event to all transmitters that support events"""
+        for transmitter in self.transmitters:
+            if hasattr(transmitter, 'on_event'):
+                try:
+                    transmitter.on_event(event_name, event_data)
+                except Exception as e:
+                    self.logger.error(f"Error emitting event {event_name} to {type(transmitter).__name__}: {e}")
