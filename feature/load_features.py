@@ -11,7 +11,7 @@ def load_all_features():
     from feature.mf import acceleration_features, candle_analysis_features, swing_features
     
     # LF features
-    from feature.lf import range_features, level_features
+    from feature.lf import range_features, level_features, time_features
     
     # Portfolio features
     from feature.portfolio import portfolio_features

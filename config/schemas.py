@@ -38,13 +38,11 @@ class ModelConfig(BaseModel):
     mf_layers: int = 2
     lf_layers: int = 2
     portfolio_layers: int = 2
-    static_layers: int = 2
 
     hf_heads: int = 4
     lf_heads: int = 4
     mf_heads: int = 4
     portfolio_heads: int = 4
-    static_heads: int = 4
 
     # Feature dimensions
     hf_seq_len: int = 60

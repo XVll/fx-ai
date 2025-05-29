@@ -56,7 +56,7 @@ class MarketState:
     hf_features: np.ndarray  # (seq_len, feat_dim)
     mf_features: np.ndarray  # (seq_len, feat_dim)
     lf_features: np.ndarray  # (seq_len, feat_dim)
-    static_features: np.ndarray  # (feat_dim,)
+    # static_features removed - moved to lf branch
     
 
 class MarketSimulator:
@@ -391,7 +391,7 @@ class MarketSimulator:
             hf_feat = features.get('hf', np.zeros((shared_data['hf_seq_len'], shared_data['hf_feat_dim'])))
             mf_feat = features.get('mf', np.zeros((shared_data['mf_seq_len'], shared_data['mf_feat_dim'])))
             lf_feat = features.get('lf', np.zeros((shared_data['lf_seq_len'], shared_data['lf_feat_dim'])))
-            static_feat = features.get('static', np.zeros(shared_data['static_feat_dim']))
+            # Static features have been moved to lf branch, no longer separate
             
             results.append((idx, hf_feat, mf_feat, lf_feat, static_feat))
             
@@ -638,13 +638,13 @@ class MarketSimulator:
         empty_hf = np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim), dtype=np.float32)
         empty_mf = np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim), dtype=np.float32)
         empty_lf = np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim), dtype=np.float32)
-        empty_static = np.zeros(self.model_config.static_feat_dim, dtype=np.float32)
+        # Static features have been moved to lf branch
         
         # Fill with placeholder arrays - features computed on-demand
         df_states['hf_features'] = [empty_hf.copy() for _ in range(num_states)]
         df_states['mf_features'] = [empty_mf.copy() for _ in range(num_states)]
         df_states['lf_features'] = [empty_lf.copy() for _ in range(num_states)]
-        df_states['static_features'] = [empty_static.copy() for _ in range(num_states)]
+        # Static features have been moved to lf branch
         
         # Mark that features need computation
         df_states['features_computed'] = False
@@ -656,7 +656,7 @@ class MarketSimulator:
         self.logger.info(f"  - HF: {self.model_config.hf_seq_len}x{self.model_config.hf_feat_dim} = {self.model_config.hf_seq_len * self.model_config.hf_feat_dim} values")
         self.logger.info(f"  - MF: {self.model_config.mf_seq_len}x{self.model_config.mf_feat_dim} = {self.model_config.mf_seq_len * self.model_config.mf_feat_dim} values")
         self.logger.info(f"  - LF: {self.model_config.lf_seq_len}x{self.model_config.lf_feat_dim} = {self.model_config.lf_seq_len * self.model_config.lf_feat_dim} values")
-        self.logger.info(f"  - Static: {self.model_config.static_feat_dim} values")
+        # Static features have been moved to lf branch
         self.logger.info(f"Placeholder memory usage: {placeholder_memory_mb:.1f} MB for {num_states} states")
         self.logger.info(f"Completed FAST initialization of {len(df_states)} market states (features computed on-demand)")
         return df_states
@@ -994,7 +994,7 @@ class MarketSimulator:
             hf_features=row['hf_features'],
             mf_features=row['mf_features'],
             lf_features=row['lf_features'],
-            static_features=row['static_features']
+            # static_features removed - moved to lf branch
         )
         
     def get_current_features(self) -> Optional[Dict[str, np.ndarray]]:
@@ -1041,7 +1041,7 @@ class MarketSimulator:
                 self.df_market_state.at[timestamp, 'hf_features'] = features.get('hf', np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)))
                 self.df_market_state.at[timestamp, 'mf_features'] = features.get('mf', np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim)))
                 self.df_market_state.at[timestamp, 'lf_features'] = features.get('lf', np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim)))
-                self.df_market_state.at[timestamp, 'static_features'] = features.get('static', np.zeros(self.model_config.static_feat_dim))
+                # Static features have been moved to lf branch
                 self.df_market_state.at[timestamp, 'features_computed'] = True
                 
                 # Return computed features
@@ -1054,15 +1054,14 @@ class MarketSimulator:
                     'hf': np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)),
                     'mf': np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim)),
                     'lf': np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim)),
-                    'static': np.zeros(self.model_config.static_feat_dim)
+                    # Static features have been moved to lf branch
                 }
         
         # Features already computed - return cached values
         return {
             'hf': row['hf_features'],
             'mf': row['mf_features'],
-            'lf': row['lf_features'],
-            'static': row['static_features']
+            'lf': row['lf_features']
         }
         
     def get_current_market_data(self) -> Optional[Dict[str, Any]]:
