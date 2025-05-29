@@ -20,7 +20,13 @@ poetry run poe init
 poetry run poe train
 
 # Run backtest
-poetry run poe backtest
+poetry run poe backtest          # Uses date 2025-04-15
+poetry run poe backtest-custom   # Uses date 2025-03-27
+
+# Scan for momentum days in data
+poetry run poe scan              # Min quality 0.5
+poetry run poe scan-high         # Min quality 0.7  
+poetry run poe scan-all          # All momentum days (0.0)
 
 # Run with custom parameters
 poetry run python scripts/run.py train --symbol MLGO --continue-training
@@ -31,11 +37,24 @@ poetry run python scripts/sweep.py --config default.yaml --count 20
 
 # Live dashboard (auto-launches with training)
 # Access at http://localhost:8050
+
+# Kill dashboard if stuck
+poetry run poe killport
 ```
 
 ### Testing & Validation
 ```bash
-# No test commands defined yet - tests directory exists but empty
+# Run all tests with verbose output
+poetry run poe test
+
+# Run tests with short traceback
+poetry run poe test-fast
+
+# Run specific test files
+poetry run pytest tests/test_market_simulator.py -v
+poetry run pytest tests/test_execution_simulator.py -v
+poetry run pytest tests/test_portfolio_simulator.py -v
+poetry run pytest tests/test_trading_environment.py -v
 ```
 
 ## Architecture Overview
@@ -59,9 +78,11 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
      - Portfolio - Position, P&L, risk metrics
    - ~100+ features extracted across timeframes
 
-3. **Trading Environment** (`envs/trading_env.py`)
+3. **Trading Environment** (`envs/trading_environment.py`)
    - Gymnasium-compatible environment
    - Discrete action space: (ActionType, PositionSize) tuples
+   - Action enums: ActionTypeEnum (HOLD=0, BUY=1, SELL=2)
+   - Position size enums: PositionSizeTypeEnum (SIZE_25=0, SIZE_50=1, SIZE_75=2, SIZE_100=3)
    - Realistic market simulation with slippage and fees
    - RewardSystemV2 with modular components
 
@@ -81,6 +102,8 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
    - **MarketSimulator** - Manages market state and rolling data windows
    - **ExecutionSimulator** - Simulates order execution with latency, slippage, market impact
    - **PortfolioSimulator** - Tracks positions, P&L, and risk metrics
+   - Portfolio enums: OrderTypeEnum, OrderSideEnum, PositionSideEnum
+   - Comprehensive test coverage for all simulators
 
 7. **Reward System V2** (`rewards/`)
    - Modular design with 10+ specialized components
@@ -114,6 +137,8 @@ Uses Hydra for hierarchical configuration management:
 4. **Comprehensive Features**: 100+ features covering price action, volume, order flow, market structure
 5. **Live Dashboard**: Real-time training visualization with charts, metrics, and component analysis
 6. **Model Management**: Keeps top 5 models by reward with metadata tracking
+7. **Momentum Day Scanner**: Identify high-quality momentum trading days in historical data
+8. **Test Suite**: Comprehensive testing for simulators and environment with pytest
 
 ### Data Flow
 
@@ -157,9 +182,12 @@ Databento Files → DataManager → MarketSimulator → FeatureExtractor → PPO
 - The system focuses on momentum/squeeze trading strategies for low-float stocks
 - Feature extraction is critical - see README.md for planned v2 feature architecture
 - Model checkpoints are saved in `best_models/MLGO/` with JSON metadata
-- Databento data files are stored in `dnb/Mlgo/` directory structure
+- Databento data files are stored in `dnb/mlgo/` directory structure
 - Logging configured through `utils/logger.py` using Rich handler
 - Invalid action handling is configurable with tracking and limits
+- Use `TradingEnvironment` class from `envs.trading_environment` (not the old `TradingEnv`)
+- Test suite available with pytest - run `poetry run poe test` for full test coverage
+- Momentum day scanner available via `scripts/scan_momentum_days.py`
 
 ## Memory
 
