@@ -40,7 +40,6 @@ class FeatureExtractor:
         self.mf_feat_dim = config.mf_feat_dim
         self.lf_seq_len = config.lf_seq_len
         self.lf_feat_dim = config.lf_feat_dim
-        self.static_feat_dim = config.static_feat_dim
         self.portfolio_seq_len = config.portfolio_seq_len
         self.portfolio_feat_dim = config.portfolio_feat_dim
         
@@ -191,7 +190,6 @@ class FeatureExtractor:
             'hf': (self.hf_seq_len, self.hf_feat_dim),
             'mf': (self.mf_seq_len, self.mf_feat_dim),
             'lf': (self.lf_seq_len, self.lf_feat_dim),
-            'static': (self.static_feat_dim,),
             'portfolio': (self.portfolio_seq_len, self.portfolio_feat_dim)
         }
         
@@ -245,10 +243,6 @@ class FeatureExtractor:
             'lf': {
                 'shape': (self.lf_seq_len, self.lf_feat_dim),
                 'description': 'Low-frequency features (5-minute bars)'
-            },
-            'static': {
-                'shape': (self.static_feat_dim,),
-                'description': 'Static features (time encodings, market context)'
             },
             'portfolio': {
                 'shape': (self.portfolio_seq_len, self.portfolio_feat_dim),

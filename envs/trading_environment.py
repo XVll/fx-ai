@@ -119,7 +119,6 @@ class TradingEnvironment(gym.Env):
             'portfolio': spaces.Box(low=-np.inf, high=np.inf,
                                     shape=(model_cfg.portfolio_seq_len, model_cfg.portfolio_feat_dim),
                                     dtype=np.float32),
-            'static': spaces.Box(low=-np.inf, high=np.inf, shape=(1, model_cfg.static_feat_dim), dtype=np.float32),
         })
 
         # Core components - initialized in setup_session
@@ -630,7 +629,6 @@ class TradingEnvironment(gym.Env):
                 'hf': features.get('hf'),
                 'mf': features.get('mf'), 
                 'lf': features.get('lf'),
-                'static': features.get('static'),
                 'portfolio': portfolio_features_array
             }
 
@@ -646,9 +644,6 @@ class TradingEnvironment(gym.Env):
                     space_item = self.observation_space[key]
                     obs[key] = np.zeros(space_item.shape, dtype=space_item.dtype)
 
-                # Ensure static features have correct shape
-                if key == 'static' and obs[key].ndim == 1:
-                    obs[key] = obs[key].reshape(1, -1)
 
                 # Validate shape
                 expected_shape = self.observation_space[key].shape
