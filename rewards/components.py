@@ -27,7 +27,7 @@ class RealizedPnLReward(RewardComponent):
         # Include commission and slippage
         total_costs = 0.0
         for fill in state.fill_details:
-            total_costs += fill.get('commission', 0.0) + fill.get('slippage_cost', 0.0)
+            total_costs += fill.get('commission', 0.0) + fill.get('slippage_cost_total', 0.0)
         
         net_pnl = pnl_change - total_costs
         
