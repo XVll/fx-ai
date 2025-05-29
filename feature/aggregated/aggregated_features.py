@@ -84,8 +84,16 @@ class HFVolumeDynamicsFeature(BaseFeature):
             
             volumes = np.array(volumes)
             
-            # Volume trend (increasing vs decreasing)
-            volume_trend = np.corrcoef(np.arange(len(volumes)), volumes)[0, 1] if len(volumes) > 1 else 0.0
+            # Volume trend (increasing vs decreasing)  
+            try:
+                if len(volumes) > 1 and np.std(volumes) > 1e-8:
+                    volume_trend = np.corrcoef(np.arange(len(volumes)), volumes)[0, 1]
+                    if np.isnan(volume_trend) or np.isinf(volume_trend):
+                        volume_trend = 0.0
+                else:
+                    volume_trend = 0.0
+            except:
+                volume_trend = 0.0
             
             # Volume acceleration (recent vs earlier)
             mid_point = len(volumes) // 2
@@ -266,7 +274,15 @@ class MFVolumePriceDivergenceFeature(BaseFeature):
             volume_direction = 1.0 if late_volume > early_volume else -1.0
             
             # Calculate correlation between price and volume
-            price_volume_corr = np.corrcoef(closes, volumes)[0, 1] if len(closes) > 1 else 0.0
+            try:
+                if len(closes) > 1 and np.std(closes) > 1e-8 and np.std(volumes) > 1e-8:
+                    price_volume_corr = np.corrcoef(closes, volumes)[0, 1]
+                    if np.isnan(price_volume_corr) or np.isinf(price_volume_corr):
+                        price_volume_corr = 0.0
+                else:
+                    price_volume_corr = 0.0
+            except:
+                price_volume_corr = 0.0
             
             # Divergence score (positive when volume confirms price, negative when divergent)
             confirmation_score = price_direction * volume_direction

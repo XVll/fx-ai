@@ -29,7 +29,6 @@ class FeatureManager:
         self.mf_feat_dim = config.mf_feat_dim
         self.lf_seq_len = config.lf_seq_len
         self.lf_feat_dim = config.lf_feat_dim
-        self.static_feat_dim = config.static_feat_dim
         self.portfolio_seq_len = config.portfolio_seq_len
         self.portfolio_feat_dim = config.portfolio_feat_dim
         
@@ -52,8 +51,6 @@ class FeatureManager:
                 '1m_body_size_relative', '5m_body_size_relative',
                 '1m_upper_wick_relative', '5m_upper_wick_relative',
                 '1m_lower_wick_relative', '5m_lower_wick_relative',
-                '1m_ema9_distance', '1m_ema20_distance',
-                '5m_ema9_distance', '5m_ema20_distance',
                 # Pattern detection features (removed redundant swing features)
                 'swing_high_distance', 'swing_low_distance',
                 'swing_high_price_pct', 'swing_low_price_pct',
@@ -63,8 +60,8 @@ class FeatureManager:
                 'range_compression', 'consolidation_score',
                 'triangle_apex_distance', 'momentum_alignment',
                 'breakout_potential', 'squeeze_intensity',
-                # Volume analysis features
-                'distance_to_vwap', 'vwap_slope', 'price_vwap_divergence',
+                # Professional VWAP analysis using pandas/ta
+                'professional_vwap_analysis',
                 'relative_volume', 'volume_surge', 'cumulative_volume_delta',
                 'volume_momentum',
                 # Sequence-aware features (new)
@@ -72,6 +69,8 @@ class FeatureManager:
                 'momentum_quality', 'pattern_maturation',
                 # Adaptive features (new)
                 'volatility_adjusted_momentum', 'regime_relative_volume',
+                # Professional EMA and momentum analysis using ta library
+                'professional_ema_system', 'professional_momentum_quality', 'professional_volatility_regime',
                 # Aggregated features that efficiently use sequence windows
                 'mf_trend_consistency', 'mf_volume_price_divergence', 'mf_momentum_persistence'
             ],
@@ -83,14 +82,14 @@ class FeatureManager:
                 # Market structure features
                 'distance_to_luld_up', 'distance_to_luld_down', 'luld_band_width',
                 # Adaptive features (new)
-                'adaptive_support_resistance'
-            ],
-            'static': [
+                'adaptive_support_resistance',
+                # Session/time context features (moved from misnamed "static")
                 'market_session_type', 'time_of_day_sin', 'time_of_day_cos',
-                # Market structure features
+                'session_progress',
+                # Market structure/halt features  
                 'is_halted', 'time_since_halt',
-                # Context features (new - more dynamic than traditional "static")
-                'session_progress', 'market_stress_level', 'session_volume_profile'
+                # Dynamic market context features
+                'market_stress_level', 'session_volume_profile'
             ],
             'portfolio': [
                 'portfolio_position_size', 'portfolio_average_price', 'portfolio_unrealized_pnl',
@@ -275,11 +274,6 @@ class FeatureManager:
             if lf_features is None:
                 return None
                 
-            # Extract static features
-            static_features = self._extract_static_features(context)
-            if static_features is None:
-                return None
-                
             # Extract portfolio features
             portfolio_features = self._extract_portfolio_features(context)
             if portfolio_features is None:
@@ -289,7 +283,6 @@ class FeatureManager:
                 'hf': hf_features,
                 'mf': mf_features,
                 'lf': lf_features,
-                'static': static_features,
                 'portfolio': portfolio_features
             }
             
@@ -454,42 +447,6 @@ class FeatureManager:
         except Exception as e:
             self.logger.error(f"LF feature extraction failed: {e}")
             return np.zeros((self.lf_seq_len, self.lf_feat_dim), dtype=np.float32)
-    
-    def _extract_static_features(self, context: MarketContext) -> Optional[np.ndarray]:
-        """Extract static features"""
-        try:
-            # Prepare market data for static features
-            market_data = {
-                'timestamp': context.timestamp,
-                'current_price': context.current_price,
-                'market_session': context.session,
-                'market_cap': context.market_cap
-            }
-            
-            # Calculate all static features
-            features = self.calculate_features(market_data, 'static')
-            vector = self.vectorize_features(features, 'static')
-            
-            # Ensure vector has correct dimensions and no invalid values
-            if len(vector) < self.static_feat_dim:
-                # Pad with zeros if too few features
-                padded = np.zeros(self.static_feat_dim, dtype=np.float32)
-                padded[:len(vector)] = vector
-                vector = padded
-            elif len(vector) > self.static_feat_dim:
-                # Truncate if too many features
-                vector = vector[:self.static_feat_dim]
-                self.logger.warning(f"Static vector too long ({len(vector)}), truncating to {self.static_feat_dim}")
-            
-            # Final safety check
-            vector = np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0)
-            
-            # Return as 2D array with shape (1, static_feat_dim)
-            return vector.reshape(1, -1).astype(np.float32)
-            
-        except Exception as e:
-            self.logger.error(f"Static feature extraction failed: {e}")
-            return np.zeros((1, self.static_feat_dim), dtype=np.float32)
     
     def _extract_portfolio_features(self, context: MarketContext) -> Optional[np.ndarray]:
         """Extract portfolio features"""
