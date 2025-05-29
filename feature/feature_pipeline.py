@@ -22,9 +22,6 @@ class FeaturePipeline:
             # Concatenate all features into single array
             all_features = []
             
-            # Static features first (flattened)
-            if 'static' in features:
-                all_features.extend(features['static'].flatten())
             
             # HF features (flattened)
             if 'hf' in features:

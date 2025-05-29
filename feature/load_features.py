@@ -2,8 +2,6 @@
 
 def load_all_features():
     """Import all feature modules to register them with the registry"""
-    # Static features
-    from feature.static import time_features, session_features
     
     # HF features
     from feature.hf import price_features, tape_features, quote_features, volume_features
