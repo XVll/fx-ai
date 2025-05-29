@@ -5,7 +5,7 @@ all features. It simply retrieves the pre-calculated features and adds portfolio
 """
 
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 import numpy as np
 
 from config.schemas import ModelConfig
