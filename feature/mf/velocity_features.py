@@ -2,10 +2,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("1m_price_velocity", category="mf")
 class PriceVelocity1mFeature(BaseFeature):
     """1-minute price velocity"""
     
@@ -48,7 +46,6 @@ class PriceVelocity1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_price_velocity", category="mf")
 class PriceVelocity5mFeature(BaseFeature):
     """5-minute price velocity"""
     
@@ -91,7 +88,6 @@ class PriceVelocity5mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("1m_volume_velocity", category="mf")
 class VolumeVelocity1mFeature(BaseFeature):
     """1-minute volume velocity"""
     
@@ -134,7 +130,6 @@ class VolumeVelocity1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_volume_velocity", category="mf")
 class VolumeVelocity5mFeature(BaseFeature):
     """5-minute volume velocity"""
     

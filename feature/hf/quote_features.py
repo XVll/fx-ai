@@ -2,10 +2,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("spread_compression", category="hf")
 class SpreadCompressionFeature(BaseFeature):
     """Bid-ask spread compression over 1 second"""
     
@@ -71,7 +69,6 @@ class SpreadCompressionFeature(BaseFeature):
         }
 
 
-@feature_registry.register("quote_velocity", category="hf")
 class QuoteVelocityFeature(BaseFeature):
     """Mid-price velocity from quotes"""
     
@@ -143,7 +140,6 @@ class QuoteVelocityFeature(BaseFeature):
             "fields": ["hf_data_window"]
         }
 
-@feature_registry.register("quote_imbalance", category="hf")
 class QuoteImbalanceFeature(BaseFeature):
     """Quote volume imbalance - bid size vs ask size"""
     

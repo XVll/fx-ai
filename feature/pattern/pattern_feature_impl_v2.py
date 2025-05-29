@@ -1,6 +1,5 @@
 """Individual pattern feature implementations using base class."""
 
-from feature.feature_registry import feature_registry
 from .pattern_feature_base import PatternFeatureBase
 
 
@@ -38,4 +37,4 @@ for feature_name in pattern_features:
     })
     
     # Register it
-    feature_registry.register(feature_name, category="mf")(feature_class)
+    # Registry removed - feature_class is ready to use directly

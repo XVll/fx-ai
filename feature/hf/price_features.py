@@ -2,10 +2,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("price_velocity", category="hf")
 class PriceVelocityFeature(BaseFeature):
     """1-second price velocity"""
     
@@ -62,7 +60,6 @@ class PriceVelocityFeature(BaseFeature):
         }
 
 
-@feature_registry.register("price_acceleration", category="hf")
 class PriceAccelerationFeature(BaseFeature):
     """1-second price acceleration (change in velocity)"""
     

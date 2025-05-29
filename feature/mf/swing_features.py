@@ -2,10 +2,8 @@
 from typing import Dict, Any, Optional, List
 import numpy as np
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("1m_swing_high_distance", category="mf")
 class SwingHighDistance1mFeature(BaseFeature):
     """Distance to recent swing high on 1-minute timeframe"""
     
@@ -74,7 +72,6 @@ class SwingHighDistance1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("1m_swing_low_distance", category="mf")
 class SwingLowDistance1mFeature(BaseFeature):
     """Distance to recent swing low on 1-minute timeframe"""
     
@@ -142,7 +139,6 @@ class SwingLowDistance1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_swing_high_distance", category="mf")
 class SwingHighDistance5mFeature(BaseFeature):
     """Distance to recent swing high on 5-minute timeframe"""
     
@@ -207,7 +203,6 @@ class SwingHighDistance5mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_swing_low_distance", category="mf")
 class SwingLowDistance5mFeature(BaseFeature):
     """Distance to recent swing low on 5-minute timeframe"""
     

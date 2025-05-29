@@ -3,10 +3,8 @@
 import numpy as np
 from typing import Dict, Any
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("volatility_adjusted_momentum", category="mf")
 class VolatilityAdjustedMomentumFeature(BaseFeature):
     """Price momentum normalized by current volatility regime.
     
@@ -65,7 +63,6 @@ class VolatilityAdjustedMomentumFeature(BaseFeature):
         return {'mf_bars_1m': {'lookback': 20, 'fields': ['close']}}
 
 
-@feature_registry.register("regime_relative_volume", category="mf")
 class RegimeRelativeVolumeFeature(BaseFeature):
     """Volume relative to current volatility regime.
     
@@ -140,7 +137,6 @@ class RegimeRelativeVolumeFeature(BaseFeature):
         return {'mf_bars_1m': {'lookback': 30, 'fields': ['close', 'volume']}}
 
 
-@feature_registry.register("adaptive_support_resistance", category="lf")
 class AdaptiveSupportResistanceFeature(BaseFeature):
     """Support/resistance levels that adapt to recent price action.
     

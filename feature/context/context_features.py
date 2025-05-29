@@ -4,10 +4,8 @@ import numpy as np
 from typing import Dict, Any
 from datetime import datetime
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("session_progress", category="lf")
 class SessionProgressFeature(BaseFeature):
     """How far through the trading session we are.
     
@@ -66,7 +64,6 @@ class SessionProgressFeature(BaseFeature):
         return {'current': {'fields': ['timestamp', 'session']}}
 
 
-@feature_registry.register("market_stress_level", category="lf")
 class MarketStressFeature(BaseFeature):
     """Current market stress/volatility level.
     
@@ -135,7 +132,6 @@ class MarketStressFeature(BaseFeature):
         }
 
 
-@feature_registry.register("session_volume_profile", category="lf")
 class SessionVolumeProfileFeature(BaseFeature):
     """Where we are relative to typical session volume pattern.
     

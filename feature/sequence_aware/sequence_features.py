@@ -3,10 +3,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("trend_acceleration", category="mf")
 class TrendAccelerationFeature(BaseFeature):
     """Measures how trend strength is accelerating over the sequence.
     
@@ -58,7 +56,6 @@ class TrendAccelerationFeature(BaseFeature):
         return {'mf_bars_1m': {'lookback': 20, 'fields': ['close']}}
 
 
-@feature_registry.register("volume_pattern_evolution", category="mf")
 class VolumePatternEvolutionFeature(BaseFeature):
     """Tracks how volume patterns evolve over the sequence.
     
@@ -115,7 +112,6 @@ class VolumePatternEvolutionFeature(BaseFeature):
         return {'mf_bars_1m': {'lookback': 15, 'fields': ['volume']}}
 
 
-@feature_registry.register("momentum_quality", category="mf")
 class MomentumQualityFeature(BaseFeature):
     """Measures quality of momentum - smooth vs choppy.
     
@@ -177,7 +173,6 @@ class MomentumQualityFeature(BaseFeature):
         return {'mf_bars_1m': {'lookback': 10, 'fields': ['close']}}
 
 
-@feature_registry.register("pattern_maturation", category="mf")
 class PatternMaturationFeature(BaseFeature):
     """Tracks how close a pattern is to completion/breakout.
     

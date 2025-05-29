@@ -3,10 +3,8 @@ from typing import Dict, Any, Optional
 import numpy as np
 from feature.feature_base import BaseFeature, FeatureConfig
 from feature.normalizers import MinMaxNormalizer
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("1m_price_acceleration", category="mf")
 class PriceAcceleration1mFeature(BaseFeature):
     """1-minute price acceleration - change in price velocity"""
     
@@ -61,7 +59,6 @@ class PriceAcceleration1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_price_acceleration", category="mf")
 class PriceAcceleration5mFeature(BaseFeature):
     """5-minute price acceleration - change in price velocity"""
     
@@ -115,7 +112,6 @@ class PriceAcceleration5mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("1m_volume_acceleration", category="mf")
 class VolumeAcceleration1mFeature(BaseFeature):
     """1-minute volume acceleration - change in volume velocity"""
     
@@ -175,7 +171,6 @@ class VolumeAcceleration1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_volume_acceleration", category="mf")
 class VolumeAcceleration5mFeature(BaseFeature):
     """5-minute volume acceleration - change in volume velocity"""
     

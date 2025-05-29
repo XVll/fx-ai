@@ -2,10 +2,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("1m_position_in_current_candle", category="mf")
 class PositionInCurrentCandle1mFeature(BaseFeature):
     """Position of current price within current 1m candle"""
     
@@ -61,7 +59,6 @@ class PositionInCurrentCandle1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_position_in_current_candle", category="mf")
 class PositionInCurrentCandle5mFeature(BaseFeature):
     """Position of current price within current 5m candle"""
     
@@ -117,7 +114,6 @@ class PositionInCurrentCandle5mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("1m_body_size_relative", category="mf")
 class BodySizeRelative1mFeature(BaseFeature):
     """Relative body size of 1m candles"""
     
@@ -168,7 +164,6 @@ class BodySizeRelative1mFeature(BaseFeature):
         }
 
 
-@feature_registry.register("5m_body_size_relative", category="mf")
 class BodySizeRelative5mFeature(BaseFeature):
     """Relative body size of 5m candles"""
     

@@ -2,10 +2,8 @@
 
 from typing import Dict, Any
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("is_halted", category="static")
 class HaltStateFeature(BaseFeature):
     """Trading halt status indicator.
     
@@ -40,7 +38,6 @@ class HaltStateFeature(BaseFeature):
         }
 
 
-@feature_registry.register("time_since_halt", category="static")
 class TimeSinceHaltFeature(BaseFeature):
     """Time since last trading halt in seconds.
     

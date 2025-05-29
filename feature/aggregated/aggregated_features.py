@@ -2,10 +2,8 @@
 import numpy as np
 from typing import Dict, Any, List
 from ..feature_base import BaseFeature
-from ..feature_registry import feature_registry
 
 
-@feature_registry.register("hf_momentum_summary", category="hf")
 class HFMomentumSummaryFeature(BaseFeature):
     """Comprehensive momentum analysis using entire HF window"""
     
@@ -62,7 +60,6 @@ class HFMomentumSummaryFeature(BaseFeature):
         return {'data_type': 'hf_data', 'lookback': 60, 'fields': ['1s_bar']}
 
 
-@feature_registry.register("hf_volume_dynamics", category="hf")  
 class HFVolumeDynamicsFeature(BaseFeature):
     """Volume pattern analysis using entire HF window"""
     
@@ -122,7 +119,6 @@ class HFVolumeDynamicsFeature(BaseFeature):
         return {'data_type': 'hf_data', 'lookback': 60, 'fields': ['1s_bar']}
 
 
-@feature_registry.register("hf_microstructure_quality", category="hf")
 class HFMicrostructureQualityFeature(BaseFeature):
     """Microstructure quality using spread and quote data"""
     
@@ -183,7 +179,6 @@ class HFMicrostructureQualityFeature(BaseFeature):
         return {'data_type': 'hf_data', 'lookback': 60, 'fields': ['quotes']}
 
 
-@feature_registry.register("mf_trend_consistency", category="mf")
 class MFTrendConsistencyFeature(BaseFeature):
     """Trend consistency analysis using entire MF window"""
     
@@ -239,7 +234,6 @@ class MFTrendConsistencyFeature(BaseFeature):
         return {'data_type': 'mf_data', 'lookback': 30, 'fields': ['close']}
 
 
-@feature_registry.register("mf_volume_price_divergence", category="mf")
 class MFVolumePriceDivergenceFeature(BaseFeature):
     """Volume-price divergence analysis using MF window"""
     
@@ -305,7 +299,6 @@ class MFVolumePriceDivergenceFeature(BaseFeature):
         return {'data_type': 'mf_data', 'lookback': 30, 'fields': ['close', 'volume']}
 
 
-@feature_registry.register("mf_momentum_persistence", category="mf")
 class MFMomentumPersistenceFeature(BaseFeature):
     """Momentum persistence analysis across MF window"""
     

@@ -4,10 +4,8 @@ import numpy as np
 from typing import Dict, Any
 from datetime import time
 from feature.feature_base import BaseFeature, FeatureConfig
-from feature.feature_registry import feature_registry
 
 
-@feature_registry.register("time_of_day_sin", category="lf")
 class TimeOfDaySinFeature(BaseFeature):
     """Sine encoding of time of day for cyclical representation.
     
@@ -52,7 +50,6 @@ class TimeOfDaySinFeature(BaseFeature):
         return {'current': {'fields': ['timestamp']}}
 
 
-@feature_registry.register("time_of_day_cos", category="lf")
 class TimeOfDayCosFeature(BaseFeature):
     """Cosine encoding of time of day for cyclical representation.
     
@@ -97,7 +94,6 @@ class TimeOfDayCosFeature(BaseFeature):
         return {'current': {'fields': ['timestamp']}}
 
 
-@feature_registry.register("market_session_type", category="lf")
 class MarketSessionTypeFeature(BaseFeature):
     """Market session type indicator.
     

@@ -5,10 +5,8 @@ import numpy as np
 import ta
 from typing import Dict, Any, List
 from ..feature_base import BaseFeature
-from ..feature_registry import feature_registry
 
 
-@feature_registry.register("professional_ema_system", category="mf")
 class ProfessionalEMASystemFeature(BaseFeature):
     """EMA analysis using ta library - industry standard implementation."""
     
@@ -71,7 +69,6 @@ class ProfessionalEMASystemFeature(BaseFeature):
         return {'data_type': 'mf_data', 'lookback': 25, 'fields': ['close']}
 
 
-@feature_registry.register("professional_vwap_analysis", category="mf")
 class ProfessionalVWAPAnalysisFeature(BaseFeature):
     """VWAP analysis using pandas - vectorized operations."""
     
@@ -149,7 +146,6 @@ class ProfessionalVWAPAnalysisFeature(BaseFeature):
         return {'data_type': 'mf_data', 'lookback': 15, 'fields': ['close', 'volume', 'high', 'low']}
 
 
-@feature_registry.register("professional_momentum_quality", category="mf")
 class ProfessionalMomentumQualityFeature(BaseFeature):
     """Momentum quality using ta library indicators."""
     
@@ -230,7 +226,6 @@ class ProfessionalMomentumQualityFeature(BaseFeature):
         return {'data_type': 'mf_data', 'lookback': 20, 'fields': ['close', 'volume', 'high', 'low']}
 
 
-@feature_registry.register("professional_volatility_regime", category="mf")
 class ProfessionalVolatilityRegimeFeature(BaseFeature):
     """Volatility regime detection using ta library."""
     
