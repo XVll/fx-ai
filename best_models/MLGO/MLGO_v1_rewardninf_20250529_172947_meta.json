@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "timestamp": "20250529_172947",
+  "reward": -Infinity,
+  "metrics": {
+    "actor_loss": 0.012380229270638666,
+    "critic_loss": 334.0476443052292,
+    "entropy": 1.6173522932454945,
+    "clipfrac": 0.2708740234375,
+    "approx_kl": 0.026580607883806805,
+    "value_function_explained_variance": 0.7275254413485527,
+    "gradient_norm": 691.5558309555054,
+    "global_step_counter": 40960,
+    "global_episode_counter": 45,
+    "global_update_counter": 10,
+    "collected_steps": 4096,
+    "mean_reward": 0,
+    "std_reward": 0,
+    "mean_episode_length": 0,
+    "num_episodes_in_rollout": 0,
+    "rollout_time": 154.27947998046875,
+    "steps_per_second": 26.54922093669579,
+    "invalid_actions": 271,
+    "update_iter": 10,
+    "timestamp": 1748528987.611188,
+    "is_periodic_sync": true
+  },
+  "source": "outputs/default_20250529_170142/models/latest_checkpoint_iter10.pt",
+  "symbol": "MLGO"
+}
