@@ -166,18 +166,6 @@ class ReplayBuffer:
                     logger.warning(
                         f"Unexpected shape for {key}: {first_tensor.shape}. Attempting default concatenation.")
                     self.states[key] = torch.cat(tensors_list, dim=0)
-            elif key == 'static':
-                # Static should be [feat_dim] tensors stacked into [batch_size, feat_dim]
-                if first_tensor.ndim == 1:  # [feat_dim]
-                    self.states[key] = torch.stack(tensors_list, dim=0)
-                    logger.debug(f"Stacked {key} tensors to shape: {self.states[key].shape}")
-                elif first_tensor.ndim == 2 and first_tensor.shape[0] == 1:  # [1, feat_dim]
-                    self.states[key] = torch.cat(tensors_list, dim=0)
-                    logger.debug(f"Concatenated {key} tensors to shape: {self.states[key].shape}")
-                else:
-                    logger.warning(
-                        f"Unexpected shape for {key}: {first_tensor.shape}. Attempting default concatenation.")
-                    self.states[key] = torch.cat(tensors_list, dim=0)
             else:
                 # Other components: default to concatenation
                 logger.debug(f"Default concatenation for {key} tensors")

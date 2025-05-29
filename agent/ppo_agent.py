@@ -319,13 +319,6 @@ class PPOTrainer:
                         current_model_state_torch_batched[key] = tensor_val
                     else:
                         current_model_state_torch_batched[key] = tensor_val
-                elif key == 'static':
-                    if tensor_val.ndim == 2 and tensor_val.shape[0] == 1:
-                        current_model_state_torch_batched[key] = tensor_val
-                    elif tensor_val.ndim == 1:
-                        current_model_state_torch_batched[key] = tensor_val.unsqueeze(0)
-                    else:
-                        current_model_state_torch_batched[key] = tensor_val
                 else:
                     current_model_state_torch_batched[key] = tensor_val
 
