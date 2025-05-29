@@ -1,0 +1,1 @@
+# Adaptive features that adjust to market conditions
