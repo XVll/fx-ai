@@ -19,8 +19,7 @@ class MultiBranchTransformer(nn.Module):
     Multi-Branch Transformer with Attention Fusion for financial trading.
 
     Processes high, medium, and low-frequency features through separate transformer
-    branches, plus a static branch for position and S/R features, then fuses them
-    with an attention mechanism.
+    branches, plus portfolio features, then fuses them with an attention mechanism.
     """
 
     def __init__(
@@ -65,7 +64,6 @@ class MultiBranchTransformer(nn.Module):
         self.mf_seq_len = model_config.mf_seq_len
         self.lf_seq_len = model_config.lf_seq_len
         self.portfolio_seq_len = model_config.portfolio_seq_len
-        self.static_feat_dim = model_config.static_feat_dim
 
         # Feature dimensions
         self.hf_feat_dim = model_config.hf_feat_dim
@@ -98,15 +96,6 @@ class MultiBranchTransformer(nn.Module):
                                                           dropout=model_config.dropout)
         self.portfolio_encoder = TransformerEncoder(encoder_layer_portfolio, model_config.portfolio_layers)
 
-        # Static Branch (Position, S/R, etc.)
-        self.static_encoder = nn.Sequential(
-            nn.Linear(model_config.static_feat_dim, model_config.d_model),
-            nn.LayerNorm(model_config.d_model),
-            nn.GELU(),
-            nn.Linear(model_config.d_model, model_config.d_model),
-            nn.LayerNorm(model_config.d_model),
-            nn.GELU()
-        )
 
         # Cross-timeframe attention for pattern recognition
         # This allows HF features to attend to MF/LF patterns
@@ -126,8 +115,8 @@ class MultiBranchTransformer(nn.Module):
             nn.AdaptiveMaxPool1d(1)  # Extract most prominent pattern
         )
         
-        # Fusion Layer - now with 6 inputs (includes cross-attention)
-        self.fusion = AttentionFusion(model_config.d_model, 6, model_config.d_fused, 4)
+        # Fusion Layer - 5 inputs: HF, MF, LF, Portfolio, Cross-attention
+        self.fusion = AttentionFusion(model_config.d_model, 5, model_config.d_fused, 4)
 
         # Output layers - different depending on continuous vs. discrete
         if model_config.continuous_action:
@@ -167,7 +156,6 @@ class MultiBranchTransformer(nn.Module):
                 - hf: (batch_size, hf_seq_len, hf_feat_dim)
                 - mf: (batch_size, mf_seq_len, mf_feat_dim)
                 - lf: (batch_size, lf_seq_len, lf_feat_dim)
-                - static: (batch_size, static_feat_dim)
                 - portfolio: (batch_size, portfolio_seq_len, portfolio_feat_dim)
 
         Returns:
@@ -187,7 +175,6 @@ class MultiBranchTransformer(nn.Module):
         hf_features = state_dict['hf'].to(self.device)
         mf_features = state_dict['mf'].to(self.device)
         lf_features = state_dict['lf'].to(self.device)
-        static_features = state_dict['static'].to(self.device)
         portfolio_features = state_dict['portfolio'].to(self.device)
 
         # HF features: should be [batch_size, hf_seq_len, hf_feat_dim]
@@ -206,9 +193,6 @@ class MultiBranchTransformer(nn.Module):
         if portfolio_features.ndim == 2:  # [seq_len, feat_dim]
             portfolio_features = portfolio_features.unsqueeze(0)  # Add batch dim
 
-        # Static features: should be [batch_size, static_feat_dim]
-        if static_features.ndim == 1:  # [feat_dim]
-            static_features = static_features.unsqueeze(0)  # Add batch dim
 
         # Add missing dimensions if needed - this makes the model more robust
         # HF features
@@ -244,12 +228,6 @@ class MultiBranchTransformer(nn.Module):
             elif portfolio_features.ndim == 2:  # [seq_len, feat_dim]
                 portfolio_features = portfolio_features.unsqueeze(0)  # [1, seq_len, feat_dim]
 
-        # Static features
-        if static_features.ndim < 2:
-            self.logger.warning(
-                f"static_features has unexpected shape: {static_features.shape}. Adding missing dimensions.")
-            if static_features.ndim == 1:  # [feat_dim]
-                static_features = static_features.unsqueeze(0)  # [1, feat_dim]
 
         # Process HF Branch
         # Shape: (batch_size, hf_seq_len, d_model)
@@ -318,9 +296,6 @@ class MultiBranchTransformer(nn.Module):
         portfolio_weighted = portfolio_x * time_weights
         portfolio_rep = portfolio_weighted.sum(dim=1)  # (batch_size, d_model)
 
-        # Process Static Branch
-        # Shape: (batch_size, d_model)
-        static_rep = self.static_encoder(static_features)
 
         # Cross-timeframe attention - HF attends to MF/LF patterns
         # This helps identify entry points within larger patterns
@@ -347,13 +322,12 @@ class MultiBranchTransformer(nn.Module):
 
         # Fusion via attention
         # Prepares all branches for fusion
-        # Shape: (batch_size, 6, d_model) - now includes cross-attention
+        # Shape: (batch_size, 5, d_model) - HF, MF, LF, Portfolio, Cross-attention
         features_to_fuse = torch.stack([
             hf_rep, 
             mf_rep, 
             lf_rep, 
             portfolio_rep, 
-            static_rep,
             cross_attn_rep
         ], dim=1)
 
