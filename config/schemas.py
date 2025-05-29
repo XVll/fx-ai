@@ -48,12 +48,12 @@ class ModelConfig(BaseModel):
 
     # Feature dimensions
     hf_seq_len: int = 60
-    hf_feat_dim: int = 20
+    hf_feat_dim: int = 7  # High-frequency features (1s timeframe) - removed 5 velocity features, added 3 aggregated
     mf_seq_len: int = 30
-    mf_feat_dim: int = 26  # Medium-frequency features (1m/5m timeframe) - 26 features defined
+    mf_feat_dim: int = 46  # MF features - removed 8 velocity features, added 3 aggregated (net -5)
     lf_seq_len: int = 30   # Low-frequency sequence length (daily/session timeframe)
-    lf_feat_dim: int = 20  # Low-frequency features (daily timeframe)
-    static_feat_dim: int = 5  # Static features (market cap, time encodings)
+    lf_feat_dim: int = 11  # LF features - 7 original + 3 LULD + 1 adaptive
+    static_feat_dim: int = 8  # Context features - 3 original + 2 halt + 3 context (renamed from static)
     portfolio_seq_len: int = 5  # Portfolio history length
     portfolio_feat_dim: int = 5  # Portfolio features (position, P&L, risk metrics)
     

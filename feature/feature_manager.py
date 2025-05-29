@@ -41,9 +41,10 @@ class FeatureManager:
         # Define all available features by category
         available_features = {
             'hf': [
-                'price_velocity', 'price_acceleration', 'spread_compression',
-                'quote_velocity', 'tape_imbalance', 'tape_aggression_ratio',
-                'hf_volume_velocity', 'hf_volume_acceleration', 'quote_imbalance'
+                'spread_compression', 'tape_imbalance', 'tape_aggression_ratio',
+                'quote_imbalance',
+                # Aggregated features that efficiently use sequence windows
+                'hf_momentum_summary', 'hf_volume_dynamics', 'hf_microstructure_quality'
             ],
             'mf': [
                 '1m_position_in_current_candle', '5m_position_in_current_candle',
@@ -53,21 +54,43 @@ class FeatureManager:
                 '1m_lower_wick_relative', '5m_lower_wick_relative',
                 '1m_ema9_distance', '1m_ema20_distance',
                 '5m_ema9_distance', '5m_ema20_distance',
-                '1m_price_velocity', '5m_price_velocity',
-                '1m_price_acceleration', '5m_price_acceleration',
-                '1m_volume_velocity', '5m_volume_velocity',
-                '1m_volume_acceleration', '5m_volume_acceleration',
-                '1m_swing_high_distance', '1m_swing_low_distance',
-                '5m_swing_high_distance', '5m_swing_low_distance'
+                # Pattern detection features (removed redundant swing features)
+                'swing_high_distance', 'swing_low_distance',
+                'swing_high_price_pct', 'swing_low_price_pct',
+                'bars_since_swing_high', 'bars_since_swing_low',
+                'higher_highs_count', 'higher_lows_count',
+                'lower_highs_count', 'lower_lows_count',
+                'range_compression', 'consolidation_score',
+                'triangle_apex_distance', 'momentum_alignment',
+                'breakout_potential', 'squeeze_intensity',
+                # Volume analysis features
+                'distance_to_vwap', 'vwap_slope', 'price_vwap_divergence',
+                'relative_volume', 'volume_surge', 'cumulative_volume_delta',
+                'volume_momentum',
+                # Sequence-aware features (new)
+                'trend_acceleration', 'volume_pattern_evolution',
+                'momentum_quality', 'pattern_maturation',
+                # Adaptive features (new)
+                'volatility_adjusted_momentum', 'regime_relative_volume',
+                # Aggregated features that efficiently use sequence windows
+                'mf_trend_consistency', 'mf_volume_price_divergence', 'mf_momentum_persistence'
             ],
             'lf': [
                 'support_distance', 'resistance_distance',
                 'whole_dollar_proximity', 'half_dollar_proximity',
                 'daily_range_position', 'position_in_prev_day_range',
-                'price_change_from_prev_close'
+                'price_change_from_prev_close',
+                # Market structure features
+                'distance_to_luld_up', 'distance_to_luld_down', 'luld_band_width',
+                # Adaptive features (new)
+                'adaptive_support_resistance'
             ],
             'static': [
-                'market_session_type', 'time_of_day_sin', 'time_of_day_cos'
+                'market_session_type', 'time_of_day_sin', 'time_of_day_cos',
+                # Market structure features
+                'is_halted', 'time_since_halt',
+                # Context features (new - more dynamic than traditional "static")
+                'session_progress', 'market_stress_level', 'session_volume_profile'
             ],
             'portfolio': [
                 'portfolio_position_size', 'portfolio_average_price', 'portfolio_unrealized_pnl',

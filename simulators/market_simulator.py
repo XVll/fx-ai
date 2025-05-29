@@ -109,6 +109,7 @@ class MarketSimulator:
         # Current state tracking
         self.current_index = 0
         self.current_date = None
+
         
         # Cache for precomputed states
         self._precomputed_cache = {}  # {(symbol, date): df_market_state}

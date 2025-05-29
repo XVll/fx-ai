@@ -1,6 +1,7 @@
 import logging
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from typing import Dict, Tuple, Optional, Union, List
 
@@ -58,7 +59,8 @@ class MultiBranchTransformer(nn.Module):
                 self.action_types = model_config.action_dim
                 self.action_sizes = None
 
-        # Store dimensions for reference
+        # Store model config and dimensions for reference
+        self.model_config = model_config
         self.hf_seq_len = model_config.hf_seq_len
         self.mf_seq_len = model_config.mf_seq_len
         self.lf_seq_len = model_config.lf_seq_len
@@ -106,8 +108,26 @@ class MultiBranchTransformer(nn.Module):
             nn.GELU()
         )
 
-        # Fusion Layer
-        self.fusion = AttentionFusion(model_config.d_model, 5, model_config.d_fused, 4)
+        # Cross-timeframe attention for pattern recognition
+        # This allows HF features to attend to MF/LF patterns
+        self.cross_timeframe_attention = nn.MultiheadAttention(
+            embed_dim=model_config.d_model,
+            num_heads=4,
+            dropout=model_config.dropout,
+            batch_first=True
+        )
+        
+        # Pattern extraction layer - identifies key points in sequences
+        self.pattern_extractor = nn.Sequential(
+            nn.Conv1d(model_config.d_model, model_config.d_model // 2, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(model_config.d_model // 2, model_config.d_model // 4, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveMaxPool1d(1)  # Extract most prominent pattern
+        )
+        
+        # Fusion Layer - now with 6 inputs (includes cross-attention)
+        self.fusion = AttentionFusion(model_config.d_model, 6, model_config.d_fused, 4)
 
         # Output layers - different depending on continuous vs. discrete
         if model_config.continuous_action:
@@ -237,9 +257,16 @@ class MultiBranchTransformer(nn.Module):
         hf_x = self.hf_pos_enc(hf_x)
         # Shape: (batch_size, hf_seq_len, d_model)
         hf_x = self.hf_encoder(hf_x)
-        # Take last timestep's representation
-        # Shape: (batch_size, d_model)
-        hf_rep = hf_x[:, -1, :]
+        # Use temporal attention pooling to preserve pattern information
+        # Recent timesteps get more weight (exponential decay)
+        seq_len = hf_x.size(1)
+        time_weights = torch.exp(torch.linspace(-2, 0, seq_len, device=hf_x.device))
+        time_weights = time_weights.unsqueeze(0).unsqueeze(-1)  # (1, seq_len, 1)
+        time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)  # Normalize
+        
+        # Weighted temporal pooling
+        hf_weighted = hf_x * time_weights
+        hf_rep = hf_weighted.sum(dim=1)  # (batch_size, d_model)
 
         # Process MF Branch
         # Shape: (batch_size, mf_seq_len, d_model)
@@ -247,9 +274,16 @@ class MultiBranchTransformer(nn.Module):
         mf_x = self.mf_pos_enc(mf_x)
         # Shape: (batch_size, mf_seq_len, d_model)
         mf_x = self.mf_encoder(mf_x)
-        # Take last timestep's representation
-        # Shape: (batch_size, d_model)
-        mf_rep = mf_x[:, -1, :]
+        # Use temporal attention pooling for medium frequency
+        # Pattern recognition needs to see the whole sequence
+        seq_len = mf_x.size(1)
+        time_weights = torch.exp(torch.linspace(-1.5, 0, seq_len, device=mf_x.device))
+        time_weights = time_weights.unsqueeze(0).unsqueeze(-1)
+        time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)
+        
+        # Weighted temporal pooling
+        mf_weighted = mf_x * time_weights
+        mf_rep = mf_weighted.sum(dim=1)  # (batch_size, d_model)
 
         # Process LF Branch
         # Shape: (batch_size, lf_seq_len, d_model)
@@ -257,9 +291,16 @@ class MultiBranchTransformer(nn.Module):
         lf_x = self.lf_pos_enc(lf_x)
         # Shape: (batch_size, lf_seq_len, d_model)
         lf_x = self.lf_encoder(lf_x)
-        # Take last timestep's representation
-        # Shape: (batch_size, d_model)
-        lf_rep = lf_x[:, -1, :]
+        # Use temporal attention pooling for low frequency
+        # Swing points and patterns across the full window
+        seq_len = lf_x.size(1)
+        time_weights = torch.exp(torch.linspace(-1, 0, seq_len, device=lf_x.device))
+        time_weights = time_weights.unsqueeze(0).unsqueeze(-1)
+        time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)
+        
+        # Weighted temporal pooling
+        lf_weighted = lf_x * time_weights
+        lf_rep = lf_weighted.sum(dim=1)  # (batch_size, d_model)
 
         # Process Portfolio Branch
         # Shape: (batch_size, portfolio_seq_len, d_model)
@@ -267,18 +308,54 @@ class MultiBranchTransformer(nn.Module):
         portfolio_x = self.portfolio_pos_enc(portfolio_x)
         # Shape: (batch_size, portfolio_seq_len, d_model)
         portfolio_x = self.portfolio_encoder(portfolio_x)
-        # Take last timestep's representation
-        # Shape: (batch_size, d_model)
-        portfolio_rep = portfolio_x[:, -1, :]
+        # Portfolio uses recent history with decay
+        seq_len = portfolio_x.size(1)
+        time_weights = torch.exp(torch.linspace(-1, 0, seq_len, device=portfolio_x.device))
+        time_weights = time_weights.unsqueeze(0).unsqueeze(-1)
+        time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)
+        
+        # Weighted temporal pooling
+        portfolio_weighted = portfolio_x * time_weights
+        portfolio_rep = portfolio_weighted.sum(dim=1)  # (batch_size, d_model)
 
         # Process Static Branch
         # Shape: (batch_size, d_model)
         static_rep = self.static_encoder(static_features)
 
+        # Cross-timeframe attention - HF attends to MF/LF patterns
+        # This helps identify entry points within larger patterns
+        # Concatenate MF and LF sequences for context
+        pattern_context = torch.cat([mf_x, lf_x], dim=1)  # (batch, mf_len + lf_len, d_model)
+        
+        # Use recent HF data as query to find relevant patterns
+        hf_recent = hf_x[:, -10:, :]  # Last 10 seconds for entry timing
+        cross_attn_output, cross_attn_weights = self.cross_timeframe_attention(
+            query=hf_recent,
+            key=pattern_context,
+            value=pattern_context
+        )
+        # Average the cross-attention output
+        cross_attn_rep = cross_attn_output.mean(dim=1)  # (batch, d_model)
+        
+        # Extract key patterns from LF data (swing points, consolidations)
+        # Transpose for Conv1d: (batch, d_model, seq_len)
+        lf_patterns = lf_x.transpose(1, 2)
+        pattern_features = self.pattern_extractor(lf_patterns).squeeze(-1)  # (batch, d_model//4)
+        
+        # Pad pattern features to match d_model
+        pattern_features_padded = F.pad(pattern_features, (0, self.model_config.d_model - pattern_features.size(-1)))
+
         # Fusion via attention
         # Prepares all branches for fusion
-        # Shape: (batch_size, 5, d_model)
-        features_to_fuse = torch.stack([hf_rep, mf_rep, lf_rep, portfolio_rep, static_rep], dim=1)
+        # Shape: (batch_size, 6, d_model) - now includes cross-attention
+        features_to_fuse = torch.stack([
+            hf_rep, 
+            mf_rep, 
+            lf_rep, 
+            portfolio_rep, 
+            static_rep,
+            cross_attn_rep
+        ], dim=1)
 
         # Fuse all-branches
         # Shape: (batch_size, d_fused)
