@@ -1,1 +1,0 @@
-# Static features - time and session based

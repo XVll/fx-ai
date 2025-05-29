@@ -20,7 +20,11 @@
       "Bash(poetry run pytest:*)",
       "Bash(poetry run pytest:*)",
       "Bash(poetry run pytest:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(curl:*)",
+      "Bash(echo:*)",
+      "Bash(timeout 30 poetry run python:*)",
+      "Bash(timeout 60 poetry run python:*)"
     ],
     "deny": []
   },
