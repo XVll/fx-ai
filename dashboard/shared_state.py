@@ -80,6 +80,7 @@ class SharedDashboardState:
     price_history: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=3600))  # 1 hour at 1s
     ppo_metrics_history: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=200))
     reward_history: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=200))
+    candle_data_1m: List[Dict[str, Any]] = field(default_factory=list)  # 1-minute OHLCV bars
     
     # Recent events for display
     recent_trades: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=20))
@@ -345,6 +346,13 @@ class DashboardStateManager:
         with self._lock:
             self._state.episode_reward_components = {}
             self._state.episode_action_distribution = {'HOLD': 0, 'BUY': 0, 'SELL': 0}
+            # Clear trade markers but keep candle data
+            self._state.recent_trades.clear()
+            
+    def update_candle_data(self, candle_data_1m: List[Dict[str, Any]]):
+        """Update the 1-minute candle data for the chart"""
+        with self._lock:
+            self._state.candle_data_1m = candle_data_1m
 
 
 # Global instance

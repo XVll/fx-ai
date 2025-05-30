@@ -1220,6 +1220,41 @@ class MarketSimulator:
         }
         
         
+    def get_1m_candle_data(self, lookback_minutes: int = 390) -> List[Dict[str, Any]]:
+        """Get 1-minute candle data for dashboard display
+        
+        Args:
+            lookback_minutes: Number of minutes to look back (default 390 = full trading day)
+            
+        Returns:
+            List of candle dictionaries suitable for dashboard
+        """
+        if self.combined_bars_1m is None or self.combined_bars_1m.empty:
+            return []
+            
+        # Get current timestamp
+        if self.df_market_state is None or self.current_index >= len(self.df_market_state):
+            return []
+            
+        current_time = self.df_market_state.index[self.current_index]
+        
+        # Get candles up to current time
+        candles = self.combined_bars_1m[self.combined_bars_1m.index <= current_time].tail(lookback_minutes)
+        
+        # Convert to dashboard format
+        candle_list = []
+        for timestamp, row in candles.iterrows():
+            candle_list.append({
+                'timestamp': timestamp.isoformat(),
+                'open': float(row['open']),
+                'high': float(row['high']),
+                'low': float(row['low']),
+                'close': float(row['close']),
+                'volume': float(row['volume'])
+            })
+            
+        return candle_list
+    
     def close(self):
         """Clean up resources"""
         if self.df_market_state is not None:
