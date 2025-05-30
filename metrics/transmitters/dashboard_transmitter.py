@@ -40,6 +40,7 @@ class DashboardTransmitter(MetricTransmitter):
         # Event queue for dashboard updates
         self._event_queue = Queue(maxsize=1000)
         self._update_thread = None
+        self._dashboard_thread = None
         self._stop_event = threading.Event()
         
         # Metric buffering for efficient updates
@@ -54,7 +55,7 @@ class DashboardTransmitter(MetricTransmitter):
         }
         
     def start(self, open_browser: bool = True):
-        """Start the dashboard transmitter update thread"""
+        """Start the dashboard transmitter and dashboard server"""
         if not self._is_started:
             try:
                 # Start update thread
@@ -62,10 +63,18 @@ class DashboardTransmitter(MetricTransmitter):
                 self._update_thread = threading.Thread(target=self._update_loop, daemon=True)
                 self._update_thread.start()
                 
+                # Start the actual dashboard server
+                from dashboard import start_dashboard
+                self._dashboard_thread = threading.Thread(
+                    target=lambda: start_dashboard(port=self.port, open_browser=open_browser),
+                    daemon=True
+                )
+                self._dashboard_thread.start()
+                
                 self._is_started = True
                 self.logger.info(f"Dashboard transmitter started")
+                self.logger.info(f"Dashboard server starting on port {self.port}")
                 
-                # Note: The actual dashboard server will be started separately
             except Exception as e:
                 self.logger.error(f"Failed to start dashboard transmitter: {e}")
     
