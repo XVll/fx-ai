@@ -291,6 +291,31 @@ class EnvironmentMetricsCollector(MetricCollector):
             unit="%",
             frequency="episode"
         ))
+        
+        # Action count metrics
+        self.register_metric("action_hold_count", MetricMetadata(
+            category=MetricCategory.ENVIRONMENT,
+            metric_type=MetricType.COUNTER,
+            description="Total number of HOLD actions",
+            unit="count",
+            frequency="session"
+        ))
+        
+        self.register_metric("action_buy_count", MetricMetadata(
+            category=MetricCategory.ENVIRONMENT,
+            metric_type=MetricType.COUNTER,
+            description="Total number of BUY actions",
+            unit="count",
+            frequency="session"
+        ))
+        
+        self.register_metric("action_sell_count", MetricMetadata(
+            category=MetricCategory.ENVIRONMENT,
+            metric_type=MetricType.COUNTER,
+            description="Total number of SELL actions",
+            unit="count",
+            frequency="session"
+        ))
 
         # Reward component metrics (will be registered dynamically)
         self.register_metric("reward_equity_change", MetricMetadata(
@@ -339,6 +364,11 @@ class EnvironmentMetricsCollector(MetricCollector):
                 metrics[f"{self.category.value}.{self.name}.action_hold_pct"] = MetricValue(hold_pct)
                 metrics[f"{self.category.value}.{self.name}.action_buy_pct"] = MetricValue(buy_pct)
                 metrics[f"{self.category.value}.{self.name}.action_sell_pct"] = MetricValue(sell_pct)
+                
+                # Raw action counts
+                metrics[f"{self.category.value}.{self.name}.action_hold_count"] = MetricValue(self.action_counts.get('HOLD', 0))
+                metrics[f"{self.category.value}.{self.name}.action_buy_count"] = MetricValue(self.action_counts.get('BUY', 0))
+                metrics[f"{self.category.value}.{self.name}.action_sell_count"] = MetricValue(self.action_counts.get('SELL', 0))
 
         except Exception as e:
             self.logger.debug(f"Error collecting environment metrics: {e}")
