@@ -209,3 +209,86 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             return model, {}
+
+    def save_checkpoint(
+            self,
+            model,
+            optimizer,
+            global_step_counter: int,
+            global_episode_counter: int,
+            global_update_counter: int,
+            metadata: Dict[str, Any],
+            checkpoint_path: Optional[str] = None
+    ) -> str:
+        """Save a checkpoint with full training state"""
+        if checkpoint_path is None:
+            checkpoint_path = os.path.join(
+                self.symbol_base_dir if self.symbol else self.base_dir,
+                "checkpoint.pt"
+            )
+
+        try:
+            checkpoint = {
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict() if optimizer else None,
+                'global_step_counter': global_step_counter,
+                'global_episode_counter': global_episode_counter,
+                'global_update_counter': global_update_counter,
+                'metadata': metadata,
+                'timestamp': datetime.now().isoformat(),
+                'symbol': self.symbol
+            }
+
+            # Ensure directory exists
+            checkpoint_dir = os.path.dirname(checkpoint_path)
+            if checkpoint_dir:
+                os.makedirs(checkpoint_dir, exist_ok=True)
+            
+            torch.save(checkpoint, checkpoint_path)
+            logger.info(f"Saved checkpoint: {checkpoint_path}")
+            return checkpoint_path
+
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint: {e}")
+            return ""
+
+    def load_checkpoint(
+            self,
+            model,
+            optimizer=None,
+            checkpoint_path: Optional[str] = None
+    ) -> Tuple[Any, Dict[str, Any]]:
+        """Load a checkpoint with full training state"""
+        if checkpoint_path is None:
+            checkpoint_path = os.path.join(
+                self.symbol_base_dir if self.symbol else self.base_dir,
+                "checkpoint.pt"
+            )
+
+        if not os.path.exists(checkpoint_path):
+            logger.warning(f"Checkpoint not found: {checkpoint_path}")
+            return model, {}
+
+        try:
+            device = next(model.parameters()).device
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+
+            model.load_state_dict(checkpoint['model_state_dict'])
+            if optimizer and 'optimizer_state_dict' in checkpoint and checkpoint['optimizer_state_dict']:
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+            training_state = {
+                'global_step': checkpoint.get('global_step_counter', 0),
+                'global_episode': checkpoint.get('global_episode_counter', 0),
+                'global_update': checkpoint.get('global_update_counter', 0),
+                'metadata': checkpoint.get('metadata', {}),
+                'timestamp': checkpoint.get('timestamp', ''),
+                'symbol': checkpoint.get('symbol', self.symbol)
+            }
+
+            logger.info(f"Loaded checkpoint: {checkpoint_path}")
+            return model, training_state
+
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint: {e}")
+            return model, {}

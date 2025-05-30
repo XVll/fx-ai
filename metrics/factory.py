@@ -330,11 +330,24 @@ class MetricsIntegrator:
     # Environment integration methods
     def record_environment_step(self, reward: float, action: str, is_invalid: bool = False,
                                 reward_components: Optional[Dict[str, float]] = None,
-                                episode_reward: Optional[float] = None):
+                                episode_reward: Optional[float] = None,
+                                current_step: Optional[int] = None,
+                                max_steps: Optional[int] = None,
+                                episode_number: Optional[int] = None):
         """Record environment step"""
         collector = self.get_collector('EnvironmentMetricsCollector')
         if collector:
             collector.record_step(reward, action, is_invalid, reward_components, episode_reward)
+            
+            # Update episode state if parameters provided
+            if all(x is not None for x in [current_step, max_steps, episode_number]):
+                collector.update_episode_state(
+                    current_step=current_step,
+                    max_steps=max_steps,
+                    episode_number=episode_number,
+                    cumulative_reward=episode_reward or 0.0,
+                    step_reward=reward
+                )
             
         # Also update reward metrics if components provided
         if reward_components:

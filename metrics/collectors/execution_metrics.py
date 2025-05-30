@@ -211,6 +211,13 @@ class EnvironmentMetricsCollector(MetricCollector):
         self.total_steps = 0
         self.total_episodes = 0
         self.invalid_actions = 0
+        
+        # Current episode state
+        self.current_step = 0
+        self.max_steps = 0
+        self.episode_number = 0
+        self.cumulative_reward = 0.0
+        self.last_step_reward = 0.0
 
         # Reward tracking
         self.step_rewards = deque(maxlen=buffer_size)
@@ -232,6 +239,39 @@ class EnvironmentMetricsCollector(MetricCollector):
             metric_type=MetricType.COUNTER,
             description="Total environment steps",
             unit="steps",
+            frequency="step"
+        ))
+        
+        # Episode state metrics
+        self.register_metric("current_step", MetricMetadata(
+            category=MetricCategory.ENVIRONMENT,
+            metric_type=MetricType.GAUGE,
+            description="Current step in episode",
+            unit="steps",
+            frequency="step"
+        ))
+        
+        self.register_metric("max_steps", MetricMetadata(
+            category=MetricCategory.ENVIRONMENT,
+            metric_type=MetricType.GAUGE,
+            description="Maximum steps per episode",
+            unit="steps",
+            frequency="episode"
+        ))
+        
+        self.register_metric("episode_number", MetricMetadata(
+            category=MetricCategory.ENVIRONMENT,
+            metric_type=MetricType.COUNTER,
+            description="Current episode number",
+            unit="episodes",
+            frequency="episode"
+        ))
+        
+        self.register_metric("cumulative_reward", MetricMetadata(
+            category=MetricCategory.ENVIRONMENT,
+            metric_type=MetricType.GAUGE,
+            description="Cumulative episode reward",
+            unit="reward",
             frequency="step"
         ))
 
@@ -341,6 +381,12 @@ class EnvironmentMetricsCollector(MetricCollector):
         try:
             # Basic counters
             metrics[f"{self.category.value}.{self.name}.total_env_steps"] = MetricValue(self.total_steps)
+            
+            # Episode state metrics
+            metrics[f"{self.category.value}.{self.name}.current_step"] = MetricValue(self.current_step)
+            metrics[f"{self.category.value}.{self.name}.max_steps"] = MetricValue(self.max_steps)
+            metrics[f"{self.category.value}.{self.name}.episode_number"] = MetricValue(self.episode_number)
+            metrics[f"{self.category.value}.{self.name}.cumulative_reward"] = MetricValue(self.cumulative_reward)
 
             # Step rewards
             if self.step_rewards:
@@ -348,6 +394,9 @@ class EnvironmentMetricsCollector(MetricCollector):
                 mean_reward = np.mean(self.step_rewards)
                 metrics[f"{self.category.value}.{self.name}.step_reward"] = MetricValue(current_reward)
                 metrics[f"{self.category.value}.{self.name}.step_reward_mean"] = MetricValue(mean_reward)
+            elif self.last_step_reward != 0.0:
+                # Fallback to last step reward if no deque data
+                metrics[f"{self.category.value}.{self.name}.step_reward"] = MetricValue(self.last_step_reward)
 
             # Invalid action rate
             if self.total_steps > 0:
@@ -459,6 +508,19 @@ class EnvironmentMetricsCollector(MetricCollector):
                     metrics[full_name] = MetricValue(value)
 
         return metrics
+    
+    def update_episode_state(self, current_step: int, max_steps: int, episode_number: int, 
+                           cumulative_reward: float, step_reward: float = 0.0):
+        """Update episode state tracking"""
+        self.current_step = current_step
+        self.max_steps = max_steps
+        self.episode_number = episode_number
+        self.cumulative_reward = cumulative_reward
+        self.last_step_reward = step_reward
+        
+        # Update step rewards deque
+        if step_reward != 0.0:
+            self.step_rewards.append(step_reward)
 
     def _get_metadata(self, metric_name: str) -> MetricMetadata:
         """Get metadata for a metric by name"""

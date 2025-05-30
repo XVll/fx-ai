@@ -127,7 +127,7 @@ class DashboardServer:
                     
                     # Environment/Curriculum Card
                     html.Div([
-                        html.H4("Quality", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                        html.H4("Curriculum", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                         html.Div(id='env-content')
                     ], style=self._card_style()),
                 ], style={'display': 'grid', 'gridTemplateColumns': '1fr 1fr 1fr 1fr', 'gap': '6px', 'marginBottom': '6px'}),
@@ -163,7 +163,7 @@ class DashboardServer:
                 'backgroundColor': DARK_THEME['bg_secondary'],
                 'borderTop': f"1px solid {DARK_THEME['border']}",
                 'textAlign': 'center',
-                'fontSize': '11px'
+                'fontSize': '12px'
             }),
             
             # Auto-refresh interval
@@ -261,17 +261,21 @@ class DashboardServer:
                 self._info_row("Win Rate", f"{state.win_rate:.0%}"),
             ])
             
-            # Recent trades table
+            # Recent trades table (completed trades only)
             if state.recent_trades:
                 trades_df = pd.DataFrame(list(state.recent_trades)[-10:])  # Last 10 trades
                 trades_table = dash_table.DataTable(
                     data=trades_df.to_dict('records'),
                     columns=[
-                        {'name': 'Time', 'id': 'timestamp'},
+                        {'name': 'Entry', 'id': 'entry_time'},
+                        {'name': 'Exit', 'id': 'exit_time'},
                         {'name': 'Side', 'id': 'side'},
                         {'name': 'Qty', 'id': 'quantity'},
-                        {'name': 'Price', 'id': 'fill_price', 'type': 'numeric', 'format': {'specifier': '$.3f'}},
-                        {'name': 'P&L', 'id': 'pnl', 'type': 'numeric', 'format': {'specifier': '$.2f'}}
+                        {'name': 'Entry $', 'id': 'entry_price', 'type': 'numeric', 'format': {'specifier': '$.3f'}},
+                        {'name': 'Exit $', 'id': 'exit_price', 'type': 'numeric', 'format': {'specifier': '$.3f'}},
+                        {'name': 'P&L', 'id': 'pnl', 'type': 'numeric', 'format': {'specifier': '$.2f'}},
+                        {'name': 'Hold', 'id': 'hold_time'},
+                        {'name': 'Status', 'id': 'status'}
                     ],
                     style_cell={
                         'backgroundColor': DARK_THEME['bg_tertiary'],
@@ -306,9 +310,23 @@ class DashboardServer:
             else:
                 trades_table = html.Div("No trades yet", style={'color': DARK_THEME['text_muted'], 'textAlign': 'center', 'padding': '20px'})
             
-            # Actions table similar to rewards
-            episode_actions = getattr(state, 'episode_action_distribution', state.action_distribution)
-            session_actions = getattr(state, 'session_action_distribution', state.action_distribution)
+            # Actions table - check for proper action distributions
+            episode_actions = getattr(state, 'episode_action_distribution', {'HOLD': 0, 'BUY': 0, 'SELL': 0})
+            session_actions = getattr(state, 'session_action_distribution', {'HOLD': 0, 'BUY': 0, 'SELL': 0})
+            
+            # Fallback logic for both episode and session actions
+            event_stream_actions = getattr(state, 'action_distribution', {'HOLD': 0, 'BUY': 0, 'SELL': 0})
+            
+            # If session actions are empty but event stream has data, use event stream as session fallback
+            if all(v == 0 for v in session_actions.values()) and sum(event_stream_actions.values()) > 0:
+                session_actions = event_stream_actions.copy()
+            
+            # If episode actions are empty but event stream has data, show partial episode progress
+            # This handles the case where metrics haven't arrived yet but actions are being tracked
+            if all(v == 0 for v in episode_actions.values()) and sum(event_stream_actions.values()) > 0:
+                # Use event stream as episode actions if we're in an active episode
+                if state.current_step > 0:  # Only if we're actually in an episode
+                    episode_actions = event_stream_actions.copy()
             
             action_data = []
             for action_type in ['HOLD', 'BUY', 'SELL']:
@@ -328,6 +346,16 @@ class DashboardServer:
                     'Session': f"{session_count}",
                     'Session %': f"{session_pct:.1f}%"
                 })
+            
+            # Add invalid actions row
+            invalid_actions = getattr(state, 'invalid_actions', 0)
+            action_data.append({
+                'Action': 'INVALID',
+                'Episode': f"{invalid_actions}",
+                'Episode %': "—",
+                'Session': f"{invalid_actions}",
+                'Session %': "—"
+            })
             
             actions_table = dash_table.DataTable(
                 data=action_data,
@@ -358,6 +386,10 @@ class DashboardServer:
                     {
                         'if': {'column_id': 'Action', 'filter_query': '{Action} = SELL'},
                         'color': DARK_THEME['accent_red']
+                    },
+                    {
+                        'if': {'column_id': 'Action', 'filter_query': '{Action} = INVALID'},
+                        'color': DARK_THEME['accent_orange']
                     }
                 ],
                 style_header={
@@ -373,42 +405,73 @@ class DashboardServer:
             
             # Episode info - more compact
             progress = (state.current_step / state.max_steps * 100) if state.max_steps > 0 else 0
+            
+            # Handle display when values are zero or missing
+            episode_display = state.episode_number if state.episode_number > 0 else "-"
+            step_display = f"{state.current_step:,}/{state.max_steps:,}" if state.max_steps > 0 else f"{state.current_step:,}/∞"
+            progress_display = f"{progress:.1f}%" if state.max_steps > 0 else "∞"
+            
             episode_content = html.Div([
-                self._info_row("Episode", f"{state.episode_number}"),
-                self._info_row("Step", f"{state.current_step:,}/{state.max_steps:,}"),
-                self._info_row("Progress", f"{progress:.1f}%"),
+                self._info_row("Episode", str(episode_display)),
+                self._info_row("Step", step_display),
+                self._info_row("Progress", progress_display),
                 self._info_row("Cum. Reward", f"{state.cumulative_reward:.2f}"),
                 self._info_row("Step Reward", f"{state.last_step_reward:.3f}"),
-                # Compact progress bar
+                # Compact progress bar with numbers
                 html.Div([
                     html.Div(style={
                         'backgroundColor': DARK_THEME['bg_tertiary'],
-                        'height': '6px',
-                        'borderRadius': '3px',
-                        'marginTop': '4px'
+                        'height': '8px',
+                        'borderRadius': '4px',
+                        'marginTop': '4px',
+                        'marginBottom': '2px'
                     }, children=[
                         html.Div(style={
                             'backgroundColor': DARK_THEME['accent_blue'],
                             'height': '100%',
                             'width': f"{progress}%",
-                            'borderRadius': '3px',
+                            'borderRadius': '4px',
                             'transition': 'width 0.3s ease'
                         })
-                    ])
+                    ]),
+                    html.Div(step_display, style={
+                        'color': DARK_THEME['text_primary'], 
+                        'fontSize': '10px', 
+                        'textAlign': 'center',
+                        'marginTop': '2px'
+                    })
                 ])
             ])
             
             # Training progress
-            invalid_actions = getattr(state, 'invalid_actions', 0)
-            eps_per_hour = getattr(state, 'episodes_per_hour', 0.0)
-            training_content = html.Div([
+            max_updates = getattr(state, 'max_updates', 0)
+            update_display = f"{state.updates:,}" + (f"/{max_updates:,}" if max_updates > 0 else "")
+            
+            training_children = [
                 self._info_row("Mode", state.mode, color=DARK_THEME['accent_purple']),
                 self._info_row("Stage", state.stage),
                 self._info_row("Episodes", f"{state.total_episodes:,}"),
+                self._info_row("Updates", update_display),
                 self._info_row("Global Steps", f"{state.global_steps:,}"),
-                self._info_row("Eps/Hour", f"{eps_per_hour:.1f}"),
-                self._info_row("Invalid", f"{invalid_actions}", color=DARK_THEME['accent_orange'] if invalid_actions > 0 else None),
-            ])
+            ]
+            
+            # Add training completion progress bar (if max_updates is available)
+            if max_updates > 0:
+                progress_section = self._create_progress_section(
+                    "Training Progress", 
+                    state.updates, 
+                    max_updates,
+                    f"Update {state.updates:,}/{max_updates:,}"
+                )
+                if progress_section:
+                    training_children.append(progress_section)
+            
+            # Add current stage progress bar
+            stage_progress = self._create_stage_progress_section(state)
+            if stage_progress:
+                training_children.append(stage_progress)
+                
+            training_content = html.Div(training_children)
             
             # PPO Metrics - simplified
             ppo_content = html.Div([
@@ -501,30 +564,52 @@ class DashboardServer:
             day_activity_score = getattr(state, 'day_activity_score', 0.0)
             reset_point_quality = getattr(state, 'reset_point_quality', 0.0)
             intraday_move = getattr(state, 'max_intraday_move', 0.0)
-            curriculum_stage = getattr(state, 'curriculum_stage', 'unknown')
+            
+            # Curriculum learning metrics
+            curriculum_stage = getattr(state, 'curriculum_stage', 'early')
+            curriculum_progress = getattr(state, 'curriculum_progress', 0.0)
+            curriculum_min_quality = getattr(state, 'curriculum_min_quality', 0.8)
+            total_episodes_curriculum = getattr(state, 'total_episodes_for_curriculum', state.total_episodes)
+            
+            # Determine curriculum stage color
+            stage_colors = {
+                'early': DARK_THEME['accent_orange'],      # Orange for beginner
+                'intermediate': DARK_THEME['accent_blue'], # Blue for intermediate
+                'advanced': DARK_THEME['accent_green'],    # Green for advanced
+                'unknown': DARK_THEME['text_muted']
+            }
+            curriculum_color = stage_colors.get(curriculum_stage, DARK_THEME['text_muted'])
+            
+            # Calculate next stage progress
+            stage_thresholds = {'early': 10000, 'intermediate': 50000, 'advanced': float('inf')}
+            current_threshold = stage_thresholds.get(curriculum_stage, float('inf'))
+            progress_pct = (total_episodes_curriculum / current_threshold * 100) if current_threshold != float('inf') else 100
+            progress_pct = min(100, progress_pct)
             
             # Determine momentum direction
             momentum_direction = 'Front' if is_front_side else ('Back' if is_back_side else 'Mixed')
             momentum_color = DARK_THEME['accent_green'] if is_front_side else (DARK_THEME['accent_red'] if is_back_side else DARK_THEME['text_muted'])
             
             env_content = html.Div([
+                self._info_row("Curriculum", curriculum_stage.title(), color=curriculum_color),
+                self._info_row("Progress", f"{progress_pct:.1f}%", color=curriculum_color),
+                self._info_row("Min Quality", f"{curriculum_min_quality:.2f}"),
+                self._info_row("Total Episodes", f"{total_episodes_curriculum:,}"),
                 self._info_row("Data Quality", f"{state.data_quality:.1%}"),
-                self._info_row("Momentum Score", f"{state.momentum_score:.2f}"),
                 self._info_row("Day Activity", f"{day_activity_score:.2f}"),
                 self._info_row("Reset Quality", f"{reset_point_quality:.2f}"),
                 self._info_row("Direction", momentum_direction, color=momentum_color),
                 self._info_row("Volatility", f"{state.volatility:.1%}"),
                 self._info_row("Intraday Move", f"{intraday_move:.1%}"),
-                self._info_row("Volume Ratio", f"{volume_ratio:.1f}x"),
-                self._info_row("Spread", f"${avg_spread:.3f}"),
-                self._info_row("Halts", f"{halt_count}", color=DARK_THEME['accent_orange'] if halt_count > 0 else None),
             ])
             
             # Custom candlestick chart
             candlestick_chart = self._create_price_chart(state)
             
-            # Performance footer
-            footer = f"Steps/sec: {state.steps_per_second:.1f} | Updates/sec: {state.updates_per_second:.1f} | Episodes/hr: {state.episodes_per_hour:.1f}"
+            # Performance footer with eps/Hour moved here
+            eps_per_hour = getattr(state, 'episodes_per_hour', 0.0)
+            updates_per_hour = state.updates_per_second * 3600
+            footer = f"Steps/sec: {state.steps_per_second:.1f} | Updates/hr: {updates_per_hour:.1f} | Episodes/hr: {eps_per_hour:.1f}"
             
             return (header_info, session_time_str, market_info, position_info, portfolio_info,
                    trades_table, actions_content, episode_content, training_content, ppo_content,
@@ -543,6 +628,99 @@ class DashboardServer:
             'marginBottom': '2px',
             'minHeight': '16px'
         })
+    
+    def _create_progress_section(self, title: str, current: int, total: int, text: str) -> Optional[html.Div]:
+        """Create a progress section with title, progress bar, and text"""
+        if total <= 0:
+            return None
+            
+        progress_pct = min(100.0, (current / total) * 100.0)
+        
+        return html.Div([
+            html.Div(title, style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px', 'marginBottom': '2px'}),
+            html.Div([
+                html.Div(style={
+                    'backgroundColor': DARK_THEME['bg_tertiary'],
+                    'height': '8px',
+                    'borderRadius': '4px',
+                    'marginBottom': '2px'
+                }, children=[
+                    html.Div(style={
+                        'backgroundColor': DARK_THEME['accent_green'],
+                        'height': '100%',
+                        'width': f"{progress_pct}%",
+                        'borderRadius': '4px',
+                        'transition': 'width 0.3s ease'
+                    })
+                ])
+            ]),
+            html.Div(text, style={'color': DARK_THEME['text_primary'], 'fontSize': '10px', 'textAlign': 'center'})
+        ], style={'marginTop': '8px'})
+    
+    def _create_stage_progress_section(self, state) -> Optional[html.Div]:
+        """Create current stage progress section"""
+        stage = getattr(state, 'stage', '')
+        stage_status = getattr(state, 'stage_status', '')
+        
+        # Handle rollout collection progress
+        if 'rollout' in stage.lower():
+            rollout_steps = getattr(state, 'rollout_steps', 0)
+            rollout_total = getattr(state, 'rollout_total', 0)
+            if rollout_total > 0:
+                progress_pct = min(100, (rollout_steps / rollout_total) * 100)
+                text = f"{rollout_steps:,}/{rollout_total:,} steps collected"
+                return self._create_progress_bar_with_text("Current Stage", progress_pct, text)
+        
+        # Handle PPO update progress  
+        elif 'update' in stage.lower() or 'ppo' in stage.lower():
+            current_epoch = getattr(state, 'current_epoch', 0)
+            total_epochs = getattr(state, 'total_epochs', 0)
+            current_batch = getattr(state, 'current_batch', 0)
+            total_batches = getattr(state, 'total_batches', 0)
+            
+            if total_epochs > 0:
+                epoch_progress = min(100, (current_epoch / total_epochs) * 100)
+                if total_batches > 0:
+                    batch_progress = min(100, (current_batch / total_batches) * 100)
+                    text = f"Epoch {current_epoch}/{total_epochs}, Batch {current_batch}/{total_batches}"
+                else:
+                    text = f"Epoch {current_epoch}/{total_epochs}"
+                    
+                # Use epoch progress primarily, with some batch detail
+                progress_pct = epoch_progress
+                return self._create_progress_bar_with_text("Current Stage", progress_pct, text)
+        
+        # Fallback to stage status if available
+        if stage_status:
+            return html.Div([
+                html.Div("Current Stage", style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px', 'marginBottom': '2px'}),
+                html.Div(stage_status, style={'color': DARK_THEME['text_primary'], 'fontSize': '10px', 'textAlign': 'center'})
+            ], style={'marginTop': '8px'})
+        
+        return None
+    
+    def _create_progress_bar_with_text(self, title: str, progress_pct: float, text: str) -> html.Div:
+        """Create a progress bar with title and text"""
+        return html.Div([
+            html.Div(title, style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px', 'marginBottom': '2px'}),
+            html.Div([
+                html.Div(style={
+                    'backgroundColor': DARK_THEME['bg_tertiary'],
+                    'height': '8px',
+                    'borderRadius': '4px',
+                    'marginBottom': '2px'
+                }, children=[
+                    html.Div(style={
+                        'backgroundColor': DARK_THEME['accent_blue'],
+                        'height': '100%',
+                        'width': f"{progress_pct}%",
+                        'borderRadius': '4px',
+                        'transition': 'width 0.3s ease'
+                    })
+                ])
+            ]),
+            html.Div(text, style={'color': DARK_THEME['text_primary'], 'fontSize': '10px', 'textAlign': 'center'})
+        ], style={'marginTop': '8px'})
         
     def _metric_with_sparkline(self, label: str, value: float, history: List[float]) -> html.Div:
         """Create a metric with inline sparkline"""
@@ -643,33 +821,49 @@ class DashboardServer:
                     row=2, col=1
                 )
                 
-                # Add trade markers
-                if trades_data:
-                    for trade in trades_data[-10:]:  # Last 10 trades
+                # Add horizontal line for current price
+                current_price = getattr(state, 'current_price', 0)
+                if current_price > 0:
+                    fig.add_hline(
+                        y=current_price,
+                        line_dash="dash",
+                        line_color=DARK_THEME['accent_blue'],
+                        line_width=1,
+                        annotation_text=f"${current_price:.2f}",
+                        annotation_position="right",
+                        annotation_font_size=10,
+                        annotation_font_color=DARK_THEME['accent_blue'],
+                        row=1, col=1
+                    )
+                
+                # Add execution markers (not completed trades)
+                executions_data = list(state.recent_executions) if state.recent_executions else []
+                if executions_data:
+                    for execution in executions_data[-20:]:  # Last 20 executions
                         # Use raw timestamp for chart plotting
-                        trade_time = trade.get('timestamp_raw', trade.get('timestamp'))
-                        trade_price = trade.get('fill_price', 0)
+                        exec_time = execution.get('timestamp_raw', execution.get('timestamp'))
+                        exec_price = execution.get('fill_price', 0)
                         
-                        if trade_time and trade_price > 0:
-                            # Parse trade timestamp and ensure timezone-naive
+                        if exec_time and exec_price > 0:
+                            # Parse execution timestamp and ensure timezone-naive
                             try:
-                                trade_dt = pd.to_datetime(trade_time)
+                                exec_dt = pd.to_datetime(exec_time)
                                 # Remove timezone if present
-                                if trade_dt.tz is not None:
-                                    trade_dt = trade_dt.tz_localize(None)
+                                if exec_dt.tz is not None:
+                                    exec_dt = exec_dt.tz_localize(None)
                             except:
                                 continue
                             
-                            # Only show trades within the chart time range
-                            if trade_dt >= df['timestamp'].min() and trade_dt <= df['timestamp'].max():
-                                is_buy = trade.get('side') == 'BUY'
+                            # Only show executions within the chart time range
+                            if exec_dt >= df['timestamp'].min() and exec_dt <= df['timestamp'].max():
+                                is_buy = execution.get('side') == 'BUY'
                                 marker_color = DARK_THEME['accent_green'] if is_buy else DARK_THEME['accent_red']
                                 marker_symbol = 'triangle-up' if is_buy else 'triangle-down'
                                 
                                 fig.add_trace(
                                     go.Scatter(
-                                        x=[trade_dt],
-                                        y=[trade_price],
+                                        x=[exec_dt],
+                                        y=[exec_price],
                                         mode='markers',
                                         marker=dict(
                                             size=12,
@@ -677,9 +871,9 @@ class DashboardServer:
                                             symbol=marker_symbol,
                                             line=dict(width=1, color=DARK_THEME['text_primary'])
                                         ),
-                                        name=trade.get('side', 'Trade'),
+                                        name=execution.get('side', 'Execution'),
                                         showlegend=False,
-                                        hovertemplate=f"{trade.get('side', 'Trade')}<br>Price: ${trade_price:.3f}<br>Qty: {trade.get('quantity', 0)}<extra></extra>"
+                                        hovertemplate=f"{execution.get('side', 'Execution')}<br>Price: ${exec_price:.3f}<br>Qty: {execution.get('quantity', 0)}<extra></extra>"
                                     ),
                                     row=1, col=1
                                 )
