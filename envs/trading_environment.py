@@ -983,6 +983,13 @@ class TradingEnvironment(gym.Env):
                 'fees': fill.fees,
                 'slippage_cost_total': fill.slippage_cost_total
             })
+            
+        # Update dashboard with candle data every 10 steps to avoid too frequent updates
+        if self.current_step % 10 == 0 and self.market_simulator:
+            candle_data = self.market_simulator.get_1m_candle_data()
+            if candle_data:
+                from dashboard.shared_state import dashboard_state
+                dashboard_state.update_candle_data(candle_data)
 
     def _handle_episode_end(self, portfolio_state: PortfolioState, info: Dict[str, Any]):
         """Handle episode termination."""

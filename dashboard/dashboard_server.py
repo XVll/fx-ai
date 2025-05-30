@@ -12,7 +12,6 @@ import plotly.graph_objs as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
-import numpy as np
 
 from .shared_state import dashboard_state
 
@@ -151,7 +150,7 @@ class DashboardServer:
                 # Row 4: Full-width Chart
                 html.Div([
                     html.H4("Price & Volume", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
-                    dcc.Graph(id='price-chart', style={'height': '220px'})
+                    dcc.Graph(id='candlestick-chart', style={'height': '300px'})
                 ], style=self._card_style()),
                 
             ], style={'padding': '6px', 'backgroundColor': DARK_THEME['bg_primary']}),
@@ -197,7 +196,7 @@ class DashboardServer:
              Output('ppo-metrics-content', 'children'),
              Output('reward-table-container', 'children'),
              Output('env-content', 'children'),
-             Output('price-chart', 'figure'),
+             Output('candlestick-chart', 'figure'),
              Output('performance-footer', 'children')],
             Input('interval-component', 'n_intervals')
         )
@@ -521,15 +520,15 @@ class DashboardServer:
                 self._info_row("Halts", f"{halt_count}", color=DARK_THEME['accent_orange'] if halt_count > 0 else None),
             ])
             
-            # Price chart with trades
-            price_fig = self._create_price_chart(state)
+            # Custom candlestick chart
+            candlestick_chart = self._create_price_chart(state)
             
             # Performance footer
             footer = f"Steps/sec: {state.steps_per_second:.1f} | Updates/sec: {state.updates_per_second:.1f} | Episodes/hr: {state.episodes_per_hour:.1f}"
             
             return (header_info, session_time_str, market_info, position_info, portfolio_info,
                    trades_table, actions_content, episode_content, training_content, ppo_content,
-                   reward_table, env_content, price_fig, footer)
+                   reward_table, env_content, candlestick_chart, footer)
             
     def _info_row(self, label: str, value: str, color: Optional[str] = None) -> html.Div:
         """Create an info row with label left-aligned and value right-aligned"""
@@ -578,59 +577,134 @@ class DashboardServer:
             return self._info_row(label, f"{value:.4f}")
             
     def _create_price_chart(self, state) -> go.Figure:
-        """Create candlestick chart with trade markers"""
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                           vertical_spacing=0.03, row_heights=[0.7, 0.3])
+        """Create candlestick chart with 1m bars using Plotly"""
+        # Get 1m candle data from state
+        candle_data = getattr(state, 'candle_data_1m', [])
+        trades_data = list(state.recent_trades) if state.recent_trades else []
         
-        if state.price_history:
-            # Price line
-            price_history_list = list(state.price_history)[-200:]  # Last 200 points
-            times = [p['time'] for p in price_history_list]
-            prices = [p['price'] for p in price_history_list]
+        # Create subplots with candlestick and volume
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            row_heights=[0.7, 0.3],
+            subplot_titles=(None, None)
+        )
+        
+        if not candle_data:
+            # Return empty figure with message
+            fig.add_annotation(
+                text="No market data available",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=14, color=DARK_THEME['text_muted'])
+            )
+        else:
+            # Get last N candles (e.g., 60 for 1 hour of 1m bars)
+            num_candles = min(60, len(candle_data))
+            candles = candle_data[-num_candles:]
             
-            fig.add_trace(go.Scatter(
-                x=times, y=prices,
-                mode='lines',
-                name='Price',
-                line=dict(color=DARK_THEME['accent_blue'], width=2)
-            ), row=1, col=1)
-            
-            # Add trade markers
-            for trade in list(state.recent_trades)[-20:]:  # Last 20 trades
-                color = DARK_THEME['accent_green'] if trade['side'] == 'BUY' else DARK_THEME['accent_red']
-                fig.add_trace(go.Scatter(
-                    x=[trade['timestamp']],
-                    y=[trade['fill_price']],
-                    mode='markers',
-                    marker=dict(size=10, color=color, symbol='triangle-up' if trade['side'] == 'BUY' else 'triangle-down'),
-                    name=trade['side'],
-                    showlegend=False
-                ), row=1, col=1)
-            
-            # Volume bars
-            volume_history = getattr(state, 'volume_history', [])
-            if volume_history:
-                vol_times = [v['time'] for v in volume_history[-200:]]
-                volumes = [v['volume'] for v in volume_history[-200:]]
+            if candles:
+                # Convert to dataframe for easier handling
+                df = pd.DataFrame(candles)
                 
-                fig.add_trace(go.Bar(
-                    x=vol_times, y=volumes,
-                    name='Volume',
-                    marker_color=DARK_THEME['accent_purple']
-                ), row=2, col=1)
+                # Parse timestamps and ensure timezone-naive
+                df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize(None)
+                
+                # Add candlestick trace
+                fig.add_trace(
+                    go.Candlestick(
+                        x=df['timestamp'],
+                        open=df['open'],
+                        high=df['high'],
+                        low=df['low'],
+                        close=df['close'],
+                        name='Price',
+                        increasing_line_color=DARK_THEME['accent_green'],
+                        decreasing_line_color=DARK_THEME['accent_red'],
+                        increasing_fillcolor=DARK_THEME['accent_green'],
+                        decreasing_fillcolor=DARK_THEME['accent_red']
+                    ),
+                    row=1, col=1
+                )
+                
+                # Add volume bars
+                colors = [DARK_THEME['accent_green'] if close >= open else DARK_THEME['accent_red'] 
+                         for open, close in zip(df['open'], df['close'])]
+                
+                fig.add_trace(
+                    go.Bar(
+                        x=df['timestamp'],
+                        y=df['volume'],
+                        name='Volume',
+                        marker_color=colors,
+                        opacity=0.5
+                    ),
+                    row=2, col=1
+                )
+                
+                # Add trade markers
+                if trades_data:
+                    for trade in trades_data[-10:]:  # Last 10 trades
+                        trade_time = trade.get('timestamp')
+                        trade_price = trade.get('fill_price', 0)
+                        
+                        if trade_time and trade_price > 0:
+                            # Parse trade timestamp and ensure timezone-naive
+                            try:
+                                trade_dt = pd.to_datetime(trade_time)
+                                # Remove timezone if present
+                                if trade_dt.tz is not None:
+                                    trade_dt = trade_dt.tz_localize(None)
+                            except:
+                                continue
+                            
+                            # Only show trades within the chart time range
+                            if trade_dt >= df['timestamp'].min() and trade_dt <= df['timestamp'].max():
+                                is_buy = trade.get('side') == 'BUY'
+                                marker_color = DARK_THEME['accent_green'] if is_buy else DARK_THEME['accent_red']
+                                marker_symbol = 'triangle-up' if is_buy else 'triangle-down'
+                                
+                                fig.add_trace(
+                                    go.Scatter(
+                                        x=[trade_dt],
+                                        y=[trade_price],
+                                        mode='markers',
+                                        marker=dict(
+                                            size=12,
+                                            color=marker_color,
+                                            symbol=marker_symbol,
+                                            line=dict(width=1, color=DARK_THEME['text_primary'])
+                                        ),
+                                        name=trade.get('side', 'Trade'),
+                                        showlegend=False,
+                                        hovertemplate=f"{trade.get('side', 'Trade')}<br>Price: ${trade_price:.3f}<br>Qty: {trade.get('quantity', 0)}<extra></extra>"
+                                    ),
+                                    row=1, col=1
+                                )
         
         # Update layout
         fig.update_layout(
+            template='plotly_dark',
             plot_bgcolor=DARK_THEME['bg_tertiary'],
             paper_bgcolor=DARK_THEME['bg_secondary'],
             font_color=DARK_THEME['text_primary'],
-            xaxis=dict(gridcolor=DARK_THEME['border']),
+            xaxis=dict(gridcolor=DARK_THEME['border'], rangeslider=dict(visible=False)),
             yaxis=dict(gridcolor=DARK_THEME['border'], title='Price'),
             xaxis2=dict(gridcolor=DARK_THEME['border']),
             yaxis2=dict(gridcolor=DARK_THEME['border'], title='Volume'),
-            margin=dict(l=60, r=40, t=40, b=40),
+            margin=dict(l=60, r=40, t=20, b=40),
             showlegend=False,
-            hovermode='x unified'
+            hovermode='x unified',
+            height=220
+        )
+        
+        # Update x-axis to show time nicely
+        fig.update_xaxes(
+            tickformat='%H:%M',
+            tickmode='auto',
+            nticks=10
         )
         
         return fig
