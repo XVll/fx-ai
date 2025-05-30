@@ -22,6 +22,7 @@ from data.data_manager import DataManager
 from feature.simple_feature_manager import SimpleFeatureManager
 from feature.contexts import MarketContext
 from config.schemas import ModelConfig, SimulationConfig
+from dashboard.event_stream import event_stream, EventType
 
 # Market hours configuration
 MARKET_HOURS = {
@@ -1079,6 +1080,22 @@ class MarketSimulator:
         state = self.get_market_state()
         if state is None:
             return None
+        
+        # Emit market update event for dashboard
+        event_stream.emit_market_update(
+            symbol=self.symbol,
+            price=float(state.current_price),
+            bid=float(state.best_bid),
+            ask=float(state.best_ask),
+            volume=int(state.session_volume),
+            bid_size=int(state.bid_size),
+            ask_size=int(state.ask_size),
+            high=float(state.intraday_high),
+            low=float(state.intraday_low),
+            vwap=float(state.session_vwap),
+            is_halted=state.is_halted,
+            market_session=state.market_session
+        )
             
         return {
             'timestamp': state.timestamp,

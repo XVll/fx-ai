@@ -7,6 +7,7 @@ from queue import Queue, Empty
 import time
 
 from ..core import MetricTransmitter, MetricValue, MetricFilter, MetricCategory
+from dashboard.shared_state import dashboard_state
 
 
 class DashboardTransmitter(MetricTransmitter):
@@ -24,8 +25,7 @@ class DashboardTransmitter(MetricTransmitter):
         self.port = port
         self.update_interval = update_interval
         
-        # Dashboard instance (lazy loaded)
-        self._dashboard = None
+        # We now use shared state instead of dashboard instance
         self._is_started = False
         
         # Metric filtering
@@ -54,21 +54,18 @@ class DashboardTransmitter(MetricTransmitter):
         }
         
     def start(self, open_browser: bool = True):
-        """Start the dashboard and update thread"""
+        """Start the dashboard transmitter update thread"""
         if not self._is_started:
             try:
-                # Lazy import to avoid circular dependencies
-                from dashboard.dashboard import MomentumDashboard
-                self._dashboard = MomentumDashboard(port=self.port)
-                self._dashboard.start(open_browser=open_browser)
-                
                 # Start update thread
                 self._stop_event.clear()
                 self._update_thread = threading.Thread(target=self._update_loop, daemon=True)
                 self._update_thread.start()
                 
                 self._is_started = True
-                self.logger.info(f"Dashboard transmitter started on port {self.port}")
+                self.logger.info(f"Dashboard transmitter started")
+                
+                # Note: The actual dashboard server will be started separately
             except Exception as e:
                 self.logger.error(f"Failed to start dashboard transmitter: {e}")
     
@@ -126,11 +123,11 @@ class DashboardTransmitter(MetricTransmitter):
             try:
                 # Process buffered metrics
                 with self._buffer_lock:
-                    if self._metric_buffer and self._dashboard:
-                        # Convert metrics to dashboard format
+                    if self._metric_buffer:
+                        # Convert metrics to dashboard format and update shared state
                         dashboard_update = self._convert_metrics_to_dashboard_format(self._metric_buffer)
                         if dashboard_update:
-                            self._dashboard.update_training_state(dashboard_update)
+                            dashboard_state.update_metrics(dashboard_update)
                         self._metric_buffer.clear()
                 
                 # Process events (with timeout to allow checking stop event)
@@ -199,53 +196,25 @@ class DashboardTransmitter(MetricTransmitter):
     
     def _process_event(self, event_name: str, event_data: Dict[str, Any]):
         """Process custom events for dashboard"""
-        if not self._dashboard:
-            return
-            
         try:
-            if event_name == 'training_update':
-                # Direct training state update
-                self._dashboard.update_training_state(event_data)
-                
-            elif event_name == 'ppo_metrics':
-                # PPO metrics update (also sent as training update)
-                self._dashboard.update_training_state(event_data)
+            if event_name in ['training_update', 'ppo_metrics']:
+                # Update metrics in shared state
+                dashboard_state.update_metrics(event_data)
                 
             elif event_name == 'episode_end':
-                self._dashboard.state.update_episode_data(event_data)
-                
-            elif event_name == 'momentum_day_change':
-                # Convert to MomentumDay object
-                from dashboard.dashboard_data import MomentumDay
-                momentum_day = MomentumDay(
-                    date=event_data.get('date'),
-                    symbol=event_data.get('symbol', 'UNKNOWN'),
-                    activity_score=event_data.get('activity_score', 0.0),
-                    max_intraday_move=event_data.get('max_intraday_move', 0.0),
-                    volume_multiplier=event_data.get('volume_multiplier', 0.0),
-                    reset_points=event_data.get('reset_points', []),
-                    is_front_side=event_data.get('is_front_side', False),
-                    is_back_side=event_data.get('is_back_side', False),
-                    halt_count=event_data.get('halt_count', 0)
-                )
-                self._dashboard.update_momentum_day(momentum_day)
-                
-            elif event_name == 'curriculum_progress':
-                progress = event_data.get('progress', 0.0)
-                strategy = event_data.get('strategy')
-                self._dashboard.update_curriculum_progress(progress, strategy)
+                # Extract episode data
+                episode_metrics = {
+                    'episode_number': event_data.get('episode_number', 0),
+                    'cumulative_reward': event_data.get('episode_reward', 0),
+                    'episode_length': event_data.get('episode_length', 0)
+                }
+                dashboard_state.update_metrics(episode_metrics)
                 
             elif event_name == 'reward_components':
                 components = event_data.get('components', {})
-                self._dashboard.state.update_reward_components(components)
+                dashboard_state.update_metrics({'reward_components': components})
                 
-            elif event_name == 'reset_point_performance':
-                reset_idx = event_data.get('reset_point_idx', 0)
-                performance = event_data.get('performance_data', {})
-                self._dashboard.state.update_reset_point_performance(reset_idx, performance)
-                
-            elif event_name == 'trade_execution':
-                self._dashboard.state.update_trade_data(event_data)
+            # Other events can be handled as needed
                 
         except Exception as e:
             self.logger.error(f"Error processing event {event_name}: {e}")
@@ -260,11 +229,7 @@ class DashboardTransmitter(MetricTransmitter):
             self._update_thread.join(timeout=2.0)
             self._update_thread = None
         
-        # Stop dashboard
-        if self._is_started and self._dashboard:
-            self._dashboard.stop()
-            self._dashboard = None
-            self._is_started = False
+        self._is_started = False
             
         self.logger.info("Dashboard transmitter closed")
     
