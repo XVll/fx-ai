@@ -158,8 +158,8 @@ class EnvConfig(BaseModel):
     feature_update_interval: int = Field(default=1, description="Steps between feature updates")
     
     # Episode settings
-    max_episode_steps: Optional[int] = Field(default=None, description="Max steps per episode")
-    max_steps: Optional[int] = Field(default=None, description="Alias for max_episode_steps")
+    max_episode_steps: int = Field(default=256, description="Max steps per episode")
+    max_steps: int = Field(default=256, description="Alias for max_episode_steps")
     early_stop_loss_threshold: float = Field(default=0.9, description="Stop if equity < threshold * initial")
     random_reset: bool = Field(default=True, description="Random episode start within session")
     max_episode_loss_percent: float = Field(default=0.2, description="Max loss percentage before termination")
@@ -181,8 +181,9 @@ class EnvConfig(BaseModel):
     @classmethod
     def sync_max_steps(cls, v, info):
         """Keep max_steps in sync with max_episode_steps"""
-        if v is None and info.data.get('max_episode_steps') is not None:
-            return info.data['max_episode_steps']
+        # If max_steps is not provided, use max_episode_steps
+        if v is None:
+            return info.data.get('max_episode_steps', 256)
         return v
 
 
@@ -242,7 +243,7 @@ class TrainingConfig(BaseModel):
     max_grad_norm: float = 0.5
     
     # Rollout settings
-    rollout_steps: int = Field(default=256, description="Steps per rollout")
+    rollout_steps: int = Field(default=512, description="Steps per rollout")
     
     # Learning rate schedule
     use_lr_annealing: bool = True
