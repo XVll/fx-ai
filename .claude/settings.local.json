@@ -24,7 +24,8 @@
       "Bash(curl:*)",
       "Bash(echo:*)",
       "Bash(timeout 30 poetry run python:*)",
-      "Bash(timeout 60 poetry run python:*)"
+      "Bash(timeout 60 poetry run python:*)",
+      "Bash(timeout 5 poetry run python test_new_dashboard.py)"
     ],
     "deny": []
   },
