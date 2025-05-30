@@ -263,7 +263,7 @@ class DashboardServer:
             
             # Recent trades table
             if state.recent_trades:
-                trades_df = pd.DataFrame(state.recent_trades[-10:])  # Last 10 trades
+                trades_df = pd.DataFrame(list(state.recent_trades)[-10:])  # Last 10 trades
                 trades_table = dash_table.DataTable(
                     data=trades_df.to_dict('records'),
                     columns=[
@@ -327,7 +327,7 @@ class DashboardServer:
                 html.Div([
                     html.Div(f"{a['time']}: {a['action']} ({a['confidence']:.1%})", 
                             style={'color': DARK_THEME['text_muted'], 'fontSize': '12px', 'marginBottom': '5px'})
-                    for a in state.recent_actions[-5:]
+                    for a in list(state.recent_actions)[-5:]
                 ])
             ])
             
@@ -440,8 +440,10 @@ class DashboardServer:
         # Create mini sparkline
         if len(history) > 1:
             fig = go.Figure()
+            # Convert to list if it's a deque to handle slicing
+            history_list = list(history) if hasattr(history, 'popleft') else history
             fig.add_trace(go.Scatter(
-                y=history[-20:],  # Last 20 values
+                y=history_list[-20:],  # Last 20 values
                 mode='lines',
                 line=dict(color=DARK_THEME['accent_blue'], width=1),
                 showlegend=False
@@ -472,8 +474,9 @@ class DashboardServer:
         
         if state.price_history:
             # Price line
-            times = [p['time'] for p in state.price_history[-200:]]  # Last 200 points
-            prices = [p['price'] for p in state.price_history[-200:]]
+            price_history_list = list(state.price_history)[-200:]  # Last 200 points
+            times = [p['time'] for p in price_history_list]
+            prices = [p['price'] for p in price_history_list]
             
             fig.add_trace(go.Scatter(
                 x=times, y=prices,
@@ -483,7 +486,7 @@ class DashboardServer:
             ), row=1, col=1)
             
             # Add trade markers
-            for trade in state.recent_trades[-20:]:  # Last 20 trades
+            for trade in list(state.recent_trades)[-20:]:  # Last 20 trades
                 color = DARK_THEME['accent_green'] if trade['side'] == 'BUY' else DARK_THEME['accent_red']
                 fig.add_trace(go.Scatter(
                     x=[trade['time']],
