@@ -601,9 +601,8 @@ class DashboardServer:
                 font=dict(size=14, color=DARK_THEME['text_muted'])
             )
         else:
-            # Get last N candles (e.g., 60 for 1 hour of 1m bars)
-            num_candles = min(60, len(candle_data))
-            candles = candle_data[-num_candles:]
+            # Use ALL candles for the full trading day (4 AM - 8 PM = 16 hours = 960 minutes)
+            candles = candle_data  # Use all available data
             
             if candles:
                 # Convert to dataframe for easier handling
@@ -690,21 +689,28 @@ class DashboardServer:
             plot_bgcolor=DARK_THEME['bg_tertiary'],
             paper_bgcolor=DARK_THEME['bg_secondary'],
             font_color=DARK_THEME['text_primary'],
-            xaxis=dict(gridcolor=DARK_THEME['border'], rangeslider=dict(visible=False)),
+            xaxis=dict(
+                gridcolor=DARK_THEME['border'], 
+                rangeslider=dict(visible=False),
+                # Force show all data without zoom
+                autorange=True,
+                fixedrange=True  # Disable zoom/pan to see all data
+            ),
             yaxis=dict(gridcolor=DARK_THEME['border'], title='Price'),
-            xaxis2=dict(gridcolor=DARK_THEME['border']),
+            xaxis2=dict(gridcolor=DARK_THEME['border'], fixedrange=True),
             yaxis2=dict(gridcolor=DARK_THEME['border'], title='Volume'),
             margin=dict(l=60, r=40, t=20, b=40),
             showlegend=False,
             hovermode='x unified',
-            height=220
+            height=300
         )
         
         # Update x-axis to show time nicely
         fig.update_xaxes(
             tickformat='%H:%M',
             tickmode='auto',
-            nticks=10
+            nticks=16,  # Show more ticks for full day
+            type='date'
         )
         
         return fig

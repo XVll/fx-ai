@@ -986,10 +986,23 @@ class TradingEnvironment(gym.Env):
             
         # Update dashboard with candle data every 10 steps to avoid too frequent updates
         if self.current_step % 10 == 0 and self.market_simulator:
-            candle_data = self.market_simulator.get_1m_candle_data()
-            if candle_data:
-                from dashboard.shared_state import dashboard_state
-                dashboard_state.update_candle_data(candle_data)
+            # Get ALL 1-minute bars for the full trading day
+            if hasattr(self.market_simulator, 'combined_bars_1m') and self.market_simulator.combined_bars_1m is not None:
+                # Convert the entire day's 1m bars to list format for dashboard
+                candle_list = []
+                for timestamp, row in self.market_simulator.combined_bars_1m.iterrows():
+                    candle_list.append({
+                        'timestamp': timestamp.isoformat(),
+                        'open': float(row['open']),
+                        'high': float(row['high']),
+                        'low': float(row['low']),
+                        'close': float(row['close']),
+                        'volume': float(row.get('volume', 0))
+                    })
+                
+                if candle_list:
+                    from dashboard.shared_state import dashboard_state
+                    dashboard_state.update_candle_data(candle_list)
 
     def _handle_episode_end(self, portfolio_state: PortfolioState, info: Dict[str, Any]):
         """Handle episode termination."""
