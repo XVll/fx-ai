@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from config.schemas import EnvConfig, SimulationConfig, ModelConfig
+from dashboard.event_stream import event_stream, EventType
 
 
 class OrderTypeEnum(Enum):
@@ -62,7 +63,8 @@ class Position:
         return self.side == PositionSideEnum.FLAT or abs(self.quantity) < 1e-6
 
 
-class FillDetails(TypedDict):
+@dataclass
+class FillDetails:
     """Details of an executed trade fill."""
     asset_id: str
     fill_timestamp: datetime
@@ -74,14 +76,24 @@ class FillDetails(TypedDict):
     commission: float
     fees: float
     slippage_cost_total: float
+    closes_position: bool = False
+    realized_pnl: Optional[float] = None
+    holding_time_minutes: Optional[float] = None
     
-    # Additional fields for reward system compatibility
-    closes_position: bool
-    realized_pnl: Optional[float]
-    holding_time_minutes: Optional[float]
-    price: float  # Alias for executed_price
-    quantity: float  # Alias for executed_quantity
-    slippage_cost: float  # Alias for slippage_cost_total
+    @property 
+    def price(self) -> float:
+        """Alias for executed_price"""
+        return self.executed_price
+    
+    @property
+    def quantity(self) -> float:
+        """Alias for executed_quantity"""
+        return self.executed_quantity
+    
+    @property
+    def slippage_cost(self) -> float:
+        """Alias for slippage_cost_total"""
+        return self.slippage_cost_total
 
 
 class TradeRecord(TypedDict):
@@ -540,6 +552,17 @@ class PortfolioSimulator:
             position.unrealized_pnl = unrealized_pnl
             total_unrealized_pnl += unrealized_pnl
             total_market_value += position.market_value
+
+            # Emit position update event for dashboard
+            event_stream.emit_position_update(
+                side=position.side.name,
+                quantity=int(position.quantity),
+                avg_price=position.avg_price,
+                current_price=current_price,
+                unrealized_pnl=unrealized_pnl,
+                realized_pnl=self.realized_pnl,
+                market_value=position.market_value
+            )
 
             # Update MFE/MAE for open trades
             if hasattr(position, 'trade_id') and position.trade_id in self.open_trades:
