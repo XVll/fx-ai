@@ -192,6 +192,36 @@ class DashboardTransmitter(MetricTransmitter):
                     dashboard_data['mean_episode_reward'] = value
                 elif 'length' in metric_name and 'mean' in metric_name:
                     dashboard_data['mean_episode_length'] = value
+                elif 'current_step' in metric_name:
+                    dashboard_data['current_step'] = value
+                elif 'max_steps' in metric_name:
+                    dashboard_data['max_steps'] = value
+                elif 'cumulative_reward' in metric_name:
+                    dashboard_data['cumulative_reward'] = value
+                elif 'step_reward' in metric_name:
+                    dashboard_data['last_step_reward'] = value
+                elif 'episode_number' in metric_name:
+                    dashboard_data['episode_number'] = value
+                    
+            elif 'trading.portfolio' in metric_name:
+                # Portfolio metrics
+                if 'total_equity' in metric_name:
+                    dashboard_data['total_equity'] = value
+                elif 'cash_balance' in metric_name:
+                    dashboard_data['cash_balance'] = value
+                elif 'realized_pnl_session' in metric_name:
+                    dashboard_data['session_pnl'] = value
+                    dashboard_data['realized_pnl'] = value
+                elif 'unrealized_pnl' in metric_name:
+                    dashboard_data['unrealized_pnl'] = value
+                elif 'max_drawdown_pct' in metric_name:
+                    dashboard_data['max_drawdown'] = value / 100.0  # Convert to decimal
+                elif 'sharpe_ratio' in metric_name:
+                    dashboard_data['sharpe_ratio'] = value
+                    
+            elif 'trading.trades' in metric_name:
+                if 'win_rate' in metric_name:
+                    dashboard_data['win_rate'] = value / 100.0  # Convert to decimal
                     
             elif 'trading.performance' in metric_name:
                 if 'total_pnl' in metric_name:
@@ -201,7 +231,7 @@ class DashboardTransmitter(MetricTransmitter):
                 elif 'sharpe_ratio' in metric_name:
                     dashboard_data['sharpe_ratio'] = value
                     
-            elif 'execution.environment' in metric_name:
+            elif 'execution.environment' in metric_name or 'environment.environment' in metric_name:
                 # Action counts
                 if 'action_hold_count' in metric_name:
                     dashboard_data['execution.environment.action_hold_count'] = value
@@ -209,6 +239,17 @@ class DashboardTransmitter(MetricTransmitter):
                     dashboard_data['execution.environment.action_buy_count'] = value
                 elif 'action_sell_count' in metric_name:
                     dashboard_data['execution.environment.action_sell_count'] = value
+                # Environment episode metrics
+                elif 'current_step' in metric_name:
+                    dashboard_data['current_step'] = value
+                elif 'max_steps' in metric_name:
+                    dashboard_data['max_steps'] = value
+                elif 'cumulative_reward' in metric_name:
+                    dashboard_data['cumulative_reward'] = value
+                elif 'step_reward' in metric_name:
+                    dashboard_data['last_step_reward'] = value
+                elif 'episode_number' in metric_name:
+                    dashboard_data['episode_number'] = value
                 # Reward components
                 elif 'reward_' in metric_name:
                     # Pass through reward component metrics
@@ -255,6 +296,16 @@ class DashboardTransmitter(MetricTransmitter):
                 # Handle episode action counts
                 dashboard_state.update_metrics(event_data)
                 
+            elif event_name == 'curriculum_progress':
+                # Handle curriculum learning progression
+                curriculum_data = {
+                    'curriculum_stage': event_data.get('stage', 'early'),
+                    'curriculum_progress': event_data.get('progress', 0.0),
+                    'curriculum_min_quality': event_data.get('min_quality', 0.8),
+                    'total_episodes_for_curriculum': event_data.get('total_episodes', 0)
+                }
+                dashboard_state.update_metrics(curriculum_data)
+                
             # Other events can be handled as needed
                 
         except Exception as e:
@@ -280,4 +331,4 @@ class DashboardTransmitter(MetricTransmitter):
     
     def is_running(self) -> bool:
         """Check if dashboard is running"""
-        return self._is_started and self._dashboard is not None
+        return self._is_started and self._dashboard_thread is not None

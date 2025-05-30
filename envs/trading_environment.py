@@ -598,6 +598,9 @@ class TradingEnvironment(gym.Env):
         else:
             initial_info['had_open_position_at_reset'] = False
 
+        # Update dashboard with quality metrics from reset point
+        self._update_dashboard_quality_metrics(reset_point)
+
         return self._last_observation, initial_info
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -759,6 +762,15 @@ class TradingEnvironment(gym.Env):
         self.action_counts[action_name] = self.action_counts.get(action_name, 0) + 1
         if not execution_result.action_decode_result.is_valid:
             self.invalid_action_count_episode += 1
+            
+        # Emit action to dashboard
+        from dashboard.event_stream import event_stream
+        event_stream.emit_action_decision(
+            action=action_name,
+            confidence=1.0,  # Default confidence
+            reasoning={},
+            features={}
+        )
 
         # Handle fill if order was executed
         fill_details_list: List[FillDetails] = []
@@ -946,7 +958,10 @@ class TradingEnvironment(gym.Env):
             action=action_name,
             is_invalid=is_invalid,
             reward_components=self.reward_calculator.get_last_reward_components(),
-            episode_reward=self.episode_total_reward
+            episode_reward=self.episode_total_reward,
+            current_step=self.current_step,
+            max_steps=self.max_steps,
+            episode_number=self.episode_number
         )
 
         # Portfolio metrics
@@ -1109,6 +1124,81 @@ class TradingEnvironment(gym.Env):
 
         return info
 
+    def _update_dashboard_quality_metrics(self, reset_point: Dict):
+        """Update dashboard with quality metrics from the current reset point."""
+        try:
+            from dashboard.shared_state import dashboard_state
+            
+            # Extract quality metrics from reset point
+            quality_metrics = {
+                'day_activity_score': reset_point.get('day_activity_score', 0.0),
+                'volume_ratio': reset_point.get('volume_ratio', 1.0),
+                'is_front_side': reset_point.get('is_front_side', False),
+                'is_back_side': reset_point.get('is_back_side', False),
+                'reset_point_quality': reset_point.get('combined_score', 0.0),
+            }
+            
+            # Get day-level metrics from data manager momentum days
+            if self.data_manager and self.primary_asset and self.current_session_date:
+                momentum_days = self.data_manager.get_momentum_days(self.primary_asset, min_quality=0.0)
+                if not momentum_days.empty:
+                    # Find the current day's data
+                    current_day_data = momentum_days[
+                        momentum_days['date'].dt.date == self.current_session_date.date()
+                    ]
+                    if not current_day_data.empty:
+                        day_data = current_day_data.iloc[0]
+                        quality_metrics.update({
+                            'halt_count': day_data.get('halt_count', 0),
+                            'max_intraday_move': day_data.get('max_intraday_move', 0.0)
+                        })
+            
+            # Calculate average spread from current market data if available
+            if self.market_simulator:
+                market_state = self.market_simulator.get_current_market_data()
+                if market_state:
+                    bid = market_state.get('best_bid_price', 0)
+                    ask = market_state.get('best_ask_price', 0)
+                    if bid > 0 and ask > 0:
+                        quality_metrics['avg_spread'] = ask - bid
+            
+            # Calculate curriculum information if data manager has curriculum support
+            curriculum_metrics = {}
+            if hasattr(self.data_manager, 'index_utils') and self.data_manager.index_utils:
+                # Get curriculum stage from the index utils
+                index_utils = self.data_manager.index_utils
+                total_episodes = getattr(index_utils, 'total_episodes', self.total_episodes)
+                
+                # Calculate curriculum stage based on episode count
+                if total_episodes < 10000:
+                    stage = 'early'
+                    min_quality = 0.8
+                    next_threshold = 10000
+                elif total_episodes < 50000:
+                    stage = 'intermediate'
+                    min_quality = 0.6
+                    next_threshold = 50000
+                else:
+                    stage = 'advanced'
+                    min_quality = 0.0
+                    next_threshold = None
+                
+                curriculum_metrics.update({
+                    'curriculum_stage': stage,
+                    'curriculum_min_quality': min_quality,
+                    'total_episodes_for_curriculum': total_episodes,
+                    'curriculum_progress': (total_episodes / next_threshold * 100) if next_threshold else 100.0
+                })
+                
+                # Update the quality metrics dict to include curriculum info
+                quality_metrics.update(curriculum_metrics)
+            
+            # Update dashboard state
+            dashboard_state.update_quality_metrics(quality_metrics)
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to update dashboard quality metrics: {e}")
+
     def _handle_open_positions_at_reset(self) -> Optional[float]:
         """Handle any open positions before episode reset.
         
@@ -1183,6 +1273,23 @@ class TradingEnvironment(gym.Env):
                 self.win_loss_counts['wins'] += 1
             elif pnl < 0:
                 self.win_loss_counts['losses'] += 1
+                
+            # Emit completed trade to dashboard
+            from dashboard.event_stream import event_stream
+            event_stream.emit_trade(
+                side=trade.get('side', 'UNKNOWN'),
+                quantity=int(trade.get('entry_quantity', 0)),
+                price=trade.get('avg_entry_price', 0),
+                fill_price=trade.get('avg_exit_price', 0),
+                pnl=pnl,
+                commission=trade.get('commission', 0),
+                order_id=trade.get('trade_id', ''),
+                # Additional trade-specific data
+                entry_timestamp=trade.get('entry_timestamp'),
+                exit_timestamp=trade.get('exit_timestamp'),
+                holding_time_seconds=trade.get('holding_period_seconds', 0),
+                is_completed_trade=True  # Flag to distinguish from executions
+            )
         except Exception as e:
             self.logger.warning(f"Error in trade callback: {e}")
 

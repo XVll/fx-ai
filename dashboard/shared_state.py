@@ -61,6 +61,16 @@ class SharedDashboardState:
     global_steps: int = 0
     total_episodes: int = 0
     
+    # Progress tracking for UI
+    rollout_steps: int = 0
+    rollout_total: int = 0
+    current_epoch: int = 0
+    total_epochs: int = 0
+    current_batch: int = 0
+    total_batches: int = 0
+    stage_status: str = ""
+    max_updates: int = 0  # For training completion progress
+    
     # Performance metrics (from metrics)
     steps_per_second: float = 0.0
     episodes_per_hour: float = 0.0
@@ -87,6 +97,7 @@ class SharedDashboardState:
     
     # Recent events for display
     recent_trades: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=20))
+    recent_executions: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=50))  # All executions
     recent_actions: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=20))
     action_distribution: Dict[str, int] = field(default_factory=lambda: {'HOLD': 0, 'BUY': 0, 'SELL': 0})
     
@@ -98,6 +109,22 @@ class SharedDashboardState:
     momentum_score: float = 0.0
     volatility: float = 0.0
     data_quality: float = 1.0
+    
+    # Quality metrics (from environment reset points)
+    day_activity_score: float = 0.0
+    volume_ratio: float = 1.0
+    is_front_side: bool = False
+    is_back_side: bool = False
+    reset_point_quality: float = 0.0
+    halt_count: int = 0
+    max_intraday_move: float = 0.0
+    avg_spread: float = 0.0
+    
+    # Curriculum learning metrics
+    curriculum_stage: str = "early"
+    curriculum_progress: float = 0.0
+    curriculum_min_quality: float = 0.8
+    total_episodes_for_curriculum: int = 0
 
 
 class DashboardStateManager:
@@ -176,16 +203,45 @@ class DashboardStateManager:
                 except:
                     trade_time_str = str(trade_timestamp)
                     trade_timestamp_chart = trade_timestamp
+                
+                # Check if this is a completed trade or just an execution
+                is_completed_trade = data.get('is_completed_trade', False)
+                
+                if is_completed_trade:
+                    # This is a completed trade (entry + exit)
+                    entry_ts = data.get('entry_timestamp')
+                    exit_ts = data.get('exit_timestamp')
                     
-                self._state.recent_trades.append({
-                    'timestamp': trade_time_str,  # Store as formatted string for display
-                    'timestamp_raw': trade_timestamp_chart,  # Keep timezone-naive for chart plotting
-                    'side': data.get('side'),
-                    'quantity': data.get('quantity'),
-                    'price': data.get('price'),
-                    'fill_price': data.get('fill_price'),
-                    'pnl': data.get('pnl', 0)
-                })
+                    # Format timestamps
+                    entry_time_str = self._format_timestamp_ny(entry_ts)
+                    exit_time_str = self._format_timestamp_ny(exit_ts)
+                    
+                    # Calculate hold time in minutes
+                    hold_time_seconds = data.get('holding_time_seconds', 0)
+                    hold_time_minutes = hold_time_seconds / 60
+                    
+                    self._state.recent_trades.append({
+                        'entry_time': entry_time_str,
+                        'exit_time': exit_time_str,
+                        'side': data.get('side'),
+                        'quantity': data.get('quantity'),
+                        'entry_price': data.get('price'),
+                        'exit_price': data.get('fill_price'),
+                        'pnl': data.get('pnl', 0),
+                        'hold_time': f"{hold_time_minutes:.1f}m",
+                        'status': 'CLOSED'
+                    })
+                else:
+                    # This is just an execution, store it separately
+                    self._state.recent_executions.append({
+                        'timestamp': trade_time_str,
+                        'timestamp_raw': trade_timestamp_chart,
+                        'side': data.get('side'),
+                        'quantity': data.get('quantity'),
+                        'price': data.get('price'),
+                        'fill_price': data.get('fill_price'),
+                        'pnl': data.get('pnl', 0)
+                    })
                 
             elif event.event_type == EventType.POSITION_UPDATE:
                 data = event.data
@@ -216,9 +272,15 @@ class DashboardStateManager:
                     'reasoning': data.get('reasoning', {})
                 })
                 
-                # Update action distribution
+                # Update both episode and general action distributions
                 if action in self._state.action_distribution:
                     self._state.action_distribution[action] += 1
+                if action in self._state.episode_action_distribution:
+                    self._state.episode_action_distribution[action] += 1
+                    # Debug log action updates
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.debug(f"Action {action} recorded. Episode counts: {self._state.episode_action_distribution}, Session total: {self._state.action_distribution}")
         
         # Notify callbacks
         self._notify_callbacks()
@@ -237,6 +299,12 @@ class DashboardStateManager:
             # Performance metrics
             for key in ['steps_per_second', 'episodes_per_hour', 'updates_per_second',
                        'global_steps', 'total_episodes', 'updates']:
+                if key in metrics:
+                    setattr(self._state, key, metrics[key])
+                    
+            # Progress tracking metrics
+            for key in ['rollout_steps', 'rollout_total', 'current_epoch', 'total_epochs',
+                       'current_batch', 'total_batches', 'stage_status', 'max_updates']:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
             
@@ -283,20 +351,33 @@ class DashboardStateManager:
                     self._state.session_reward_components[component] += value
                 
             # Action tracking from metrics (session-level from execution collector)
+            action_updated = False
             if 'execution.environment.action_hold_count' in metrics:
                 self._state.session_action_distribution['HOLD'] = int(metrics['execution.environment.action_hold_count'])
+                action_updated = True
             if 'execution.environment.action_buy_count' in metrics:
                 self._state.session_action_distribution['BUY'] = int(metrics['execution.environment.action_buy_count'])
+                action_updated = True
             if 'execution.environment.action_sell_count' in metrics:
                 self._state.session_action_distribution['SELL'] = int(metrics['execution.environment.action_sell_count'])
+                action_updated = True
                 
             # Episode action tracking (from episode events)
             if 'episode_action_hold_count' in metrics:
                 self._state.episode_action_distribution['HOLD'] = int(metrics['episode_action_hold_count'])
+                action_updated = True
             if 'episode_action_buy_count' in metrics:
                 self._state.episode_action_distribution['BUY'] = int(metrics['episode_action_buy_count'])
+                action_updated = True
             if 'episode_action_sell_count' in metrics:
                 self._state.episode_action_distribution['SELL'] = int(metrics['episode_action_sell_count'])
+                action_updated = True
+                
+            # Debug logging for action updates
+            if action_updated:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Action counts updated - Episode: {self._state.episode_action_distribution}, Session: {self._state.session_action_distribution}")
                 
             # Update reward history
             if 'mean_episode_reward' in metrics:
@@ -304,6 +385,25 @@ class DashboardStateManager:
                     'timestamp': datetime.now(),
                     'value': metrics['mean_episode_reward']
                 })
+        
+        # Notify callbacks
+        self._notify_callbacks()
+    
+    def update_quality_metrics(self, metrics: Dict[str, Any]):
+        """Update quality metrics from reset point data"""
+        with self._lock:
+            # Update quality metrics if provided
+            for key in ['day_activity_score', 'volume_ratio', 'halt_count', 
+                       'is_front_side', 'is_back_side', 'reset_point_quality',
+                       'max_intraday_move', 'avg_spread']:
+                if key in metrics:
+                    setattr(self._state, key, metrics[key])
+            
+            # Update curriculum metrics if provided
+            for key in ['curriculum_stage', 'curriculum_progress', 
+                       'curriculum_min_quality', 'total_episodes_for_curriculum']:
+                if key in metrics:
+                    setattr(self._state, key, metrics[key])
         
         # Notify callbacks
         self._notify_callbacks()
@@ -368,6 +468,20 @@ class DashboardStateManager:
             if callback in self._update_callbacks:
                 self._update_callbacks.remove(callback)
                 
+    def _format_timestamp_ny(self, timestamp) -> str:
+        """Format timestamp as NY time string"""
+        if timestamp is None:
+            return ""
+        try:
+            ts = pd.Timestamp(timestamp)
+            if ts.tz is not None:
+                ts_ny = ts.tz_convert('America/New_York')
+            else:
+                ts_ny = ts.tz_localize('UTC').tz_convert('America/New_York')
+            return ts_ny.strftime('%H:%M:%S')
+        except:
+            return str(timestamp)
+    
     def _notify_callbacks(self):
         """Notify all registered callbacks of state change"""
         for callback in self._update_callbacks:
@@ -385,10 +499,18 @@ class DashboardStateManager:
     def reset_episode(self):
         """Reset episode-level data while preserving session data"""
         with self._lock:
+            # Log current episode action counts before reset
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Resetting episode - Previous episode actions: {self._state.episode_action_distribution}")
+            
             self._state.episode_reward_components = {}
             self._state.episode_action_distribution = {'HOLD': 0, 'BUY': 0, 'SELL': 0}
             # Clear trade markers but keep candle data
             self._state.recent_trades.clear()
+            # Don't reset action_distribution here - it's managed by event stream
+            
+            logger.debug(f"Episode reset complete - New episode actions: {self._state.episode_action_distribution}")
             
     def update_candle_data(self, candle_data_1m: List[Dict[str, Any]]):
         """Update the 1-minute candle data for the chart"""

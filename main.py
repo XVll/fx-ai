@@ -108,15 +108,19 @@ def cleanup_resources():
             if hasattr(trainer, 'model'):
                 try:
                     interrupted_path = Path(model_manager.base_dir) / "interrupted_model.pt"
-                    model_manager.save_checkpoint(
+                    saved_path = model_manager.save_checkpoint(
                         trainer.model,
                         trainer.optimizer,
                         trainer.global_step_counter,
                         trainer.global_episode_counter,
                         trainer.global_update_counter,
-                        {"interrupted": True}
+                        {"interrupted": True},
+                        str(interrupted_path)
                     )
-                    logging.info(f"Saved interrupted model to: {interrupted_path}")
+                    if saved_path:
+                        logging.info(f"Saved interrupted model to: {saved_path}")
+                    else:
+                        logging.warning("Failed to save interrupted model")
                 except Exception as e:
                     logging.error(f"Error saving interrupted model: {e}")
         
