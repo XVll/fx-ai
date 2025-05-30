@@ -307,21 +307,70 @@ class DashboardServer:
             else:
                 trades_table = html.Div("No trades yet", style={'color': DARK_THEME['text_muted'], 'textAlign': 'center', 'padding': '20px'})
             
-            # Actions analysis - more compact
-            actions_content = html.Div([
-                # Action distribution as info rows
-                self._info_row("HOLD", f"{state.action_distribution.get('HOLD', 0)}", color=DARK_THEME['accent_blue']),
-                self._info_row("BUY", f"{state.action_distribution.get('BUY', 0)}", color=DARK_THEME['accent_green']),
-                self._info_row("SELL", f"{state.action_distribution.get('SELL', 0)}", color=DARK_THEME['accent_red']),
+            # Actions table similar to rewards
+            episode_actions = getattr(state, 'episode_action_distribution', state.action_distribution)
+            session_actions = getattr(state, 'session_action_distribution', state.action_distribution)
+            
+            action_data = []
+            for action_type in ['HOLD', 'BUY', 'SELL']:
+                episode_count = episode_actions.get(action_type, 0)
+                session_count = session_actions.get(action_type, 0)
                 
-                # Recent actions - most recent 3
-                html.Div("Recent:", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px', 'marginTop': '4px', 'marginBottom': '2px'}),
-                html.Div([
-                    html.Div(f"{a['action']} {a['confidence']:.0%}", 
-                            style={'color': DARK_THEME['text_muted'], 'fontSize': '11px', 'marginBottom': '1px'})
-                    for a in list(state.recent_actions)[-3:]
-                ])
-            ])
+                # Calculate percentages
+                episode_total = sum(episode_actions.values()) or 1
+                session_total = sum(session_actions.values()) or 1
+                episode_pct = episode_count / episode_total * 100
+                session_pct = session_count / session_total * 100
+                
+                action_data.append({
+                    'Action': action_type,
+                    'Episode': f"{episode_count}",
+                    'Episode %': f"{episode_pct:.1f}%",
+                    'Session': f"{session_count}",
+                    'Session %': f"{session_pct:.1f}%"
+                })
+            
+            actions_table = dash_table.DataTable(
+                data=action_data,
+                columns=[
+                    {'name': 'Action', 'id': 'Action'},
+                    {'name': 'Episode', 'id': 'Episode', 'type': 'numeric'},
+                    {'name': 'Ep %', 'id': 'Episode %'},
+                    {'name': 'Session', 'id': 'Session', 'type': 'numeric'},
+                    {'name': 'Sess %', 'id': 'Session %'}
+                ],
+                style_cell={
+                    'backgroundColor': DARK_THEME['bg_tertiary'],
+                    'color': DARK_THEME['text_primary'],
+                    'border': f"1px solid {DARK_THEME['border']}",
+                    'fontSize': '11px',
+                    'padding': '4px 6px',
+                    'textAlign': 'left'
+                },
+                style_data_conditional=[
+                    {
+                        'if': {'column_id': 'Action', 'filter_query': '{Action} = HOLD'},
+                        'color': DARK_THEME['accent_blue']
+                    },
+                    {
+                        'if': {'column_id': 'Action', 'filter_query': '{Action} = BUY'},
+                        'color': DARK_THEME['accent_green']
+                    },
+                    {
+                        'if': {'column_id': 'Action', 'filter_query': '{Action} = SELL'},
+                        'color': DARK_THEME['accent_red']
+                    }
+                ],
+                style_header={
+                    'backgroundColor': DARK_THEME['bg_secondary'],
+                    'color': DARK_THEME['text_secondary'],
+                    'fontWeight': 'bold',
+                    'fontSize': '10px'
+                },
+                page_size=10
+            )
+            
+            actions_content = actions_table
             
             # Episode info - more compact
             progress = (state.current_step / state.max_steps * 100) if state.max_steps > 0 else 0
@@ -372,32 +421,39 @@ class DashboardServer:
                 self._info_row("Clip Frac", f"{getattr(state, 'clip_fraction', 0.0):.2f}"),
             ])
             
-            # Reward components table
+            # Reward components table with episode vs session stats
             if state.reward_components:
-                # Calculate additional metrics for each component
+                # Get episode and session reward data
+                episode_rewards = getattr(state, 'episode_reward_components', {})
+                session_rewards = getattr(state, 'session_reward_components', {})
+                
+                # Use all components from either current, episode, or session
+                all_components = set(state.reward_components.keys()) | set(episode_rewards.keys()) | set(session_rewards.keys())
+                
                 reward_data = []
-                for component, value in state.reward_components.items():
-                    # Get component history if available
-                    component_history = getattr(state, f'{component.lower()}_history', [])
-                    count = len(component_history) if component_history else 1
-                    total = sum(component_history) if component_history else value
-                    mean_val = total / count if count > 0 else value
+                for component in sorted(all_components):
+                    episode_value = episode_rewards.get(component, 0.0)
+                    session_total = session_rewards.get(component, 0.0)
+                    
+                    # Estimate episode count for mean calculation (rough approximation)
+                    episodes_estimate = max(1, state.total_episodes)
+                    session_mean = session_total / episodes_estimate if episodes_estimate > 0 else session_total
                     
                     reward_data.append({
                         'Component': component,
-                        'Current': f"{value:.3f}",
-                        'Mean': f"{mean_val:.3f}",
-                        'Total': f"{total:.2f}",
-                        'Count': str(count)
+                        'Episode': f"{episode_value:.3f}",
+                        'Session Total': f"{session_total:.2f}",
+                        'Session Mean': f"{session_mean:.3f}",
+                        'Count': str(episodes_estimate)
                     })
                 
                 reward_table = dash_table.DataTable(
                     data=reward_data,
                     columns=[
                         {'name': 'Component', 'id': 'Component'},
-                        {'name': 'Current', 'id': 'Current', 'type': 'numeric'},
-                        {'name': 'Mean', 'id': 'Mean', 'type': 'numeric'},
-                        {'name': 'Total', 'id': 'Total', 'type': 'numeric'},
+                        {'name': 'Episode', 'id': 'Episode', 'type': 'numeric'},
+                        {'name': 'Sess Total', 'id': 'Session Total', 'type': 'numeric'},
+                        {'name': 'Sess Mean', 'id': 'Session Mean', 'type': 'numeric'},
                         {'name': 'Count', 'id': 'Count', 'type': 'numeric'}
                     ],
                     style_cell={
@@ -410,19 +466,19 @@ class DashboardServer:
                     },
                     style_data_conditional=[
                         {
-                            'if': {'column_id': 'Current', 'filter_query': '{Current} > 0'},
+                            'if': {'column_id': 'Episode', 'filter_query': '{Episode} > 0'},
                             'color': DARK_THEME['accent_green']
                         },
                         {
-                            'if': {'column_id': 'Current', 'filter_query': '{Current} < 0'},
+                            'if': {'column_id': 'Episode', 'filter_query': '{Episode} < 0'},
                             'color': DARK_THEME['accent_red']
                         },
                         {
-                            'if': {'column_id': 'Mean', 'filter_query': '{Mean} > 0'},
+                            'if': {'column_id': 'Session Mean', 'filter_query': '{Session Mean} > 0'},
                             'color': DARK_THEME['accent_green']
                         },
                         {
-                            'if': {'column_id': 'Mean', 'filter_query': '{Mean} < 0'},
+                            'if': {'column_id': 'Session Mean', 'filter_query': '{Session Mean} < 0'},
                             'color': DARK_THEME['accent_red']
                         }
                     ],

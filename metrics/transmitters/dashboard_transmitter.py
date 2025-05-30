@@ -51,7 +51,7 @@ class DashboardTransmitter(MetricTransmitter):
         self._supported_events = {
             'episode_end', 'momentum_day_change', 'curriculum_progress',
             'reward_components', 'reset_point_performance', 'trade_execution',
-            'training_update', 'ppo_metrics'
+            'training_update', 'ppo_metrics', 'episode_actions'
         }
         
     def start(self, open_browser: bool = True):
@@ -136,6 +136,14 @@ class DashboardTransmitter(MetricTransmitter):
                         # Convert metrics to dashboard format and update shared state
                         dashboard_update = self._convert_metrics_to_dashboard_format(self._metric_buffer)
                         if dashboard_update:
+                            # Debug logging for actions and rewards
+                            action_metrics = [k for k in dashboard_update.keys() if 'action' in k]
+                            reward_metrics = [k for k in dashboard_update.keys() if 'reward' in k]
+                            if action_metrics:
+                                self.logger.debug(f"Transmitting action metrics: {action_metrics}")
+                            if reward_metrics:
+                                self.logger.debug(f"Transmitting reward metrics: {reward_metrics}")
+                                
                             dashboard_state.update_metrics(dashboard_update)
                         self._metric_buffer.clear()
                 
@@ -176,6 +184,8 @@ class DashboardTransmitter(MetricTransmitter):
                     dashboard_data['learning_rate'] = value
                 elif 'clip_fraction' in metric_name:
                     dashboard_data['clip_fraction'] = value
+                elif 'kl_divergence' in metric_name:
+                    dashboard_data['kl_divergence'] = value
                     
             elif 'training.episode' in metric_name:
                 if 'reward' in metric_name and 'mean' in metric_name:
@@ -191,10 +201,26 @@ class DashboardTransmitter(MetricTransmitter):
                 elif 'sharpe_ratio' in metric_name:
                     dashboard_data['sharpe_ratio'] = value
                     
+            elif 'execution.environment' in metric_name:
+                # Action counts
+                if 'action_hold_count' in metric_name:
+                    dashboard_data['execution.environment.action_hold_count'] = value
+                elif 'action_buy_count' in metric_name:
+                    dashboard_data['execution.environment.action_buy_count'] = value
+                elif 'action_sell_count' in metric_name:
+                    dashboard_data['execution.environment.action_sell_count'] = value
+                # Reward components
+                elif 'reward_' in metric_name:
+                    # Pass through reward component metrics
+                    dashboard_data[metric_name] = value
+                    
             elif 'environment.reward' in metric_name:
                 if 'total' in metric_name:
                     dashboard_data['current_reward'] = value
-                    
+                # Pass through all environment reward metrics for components
+                elif 'reward_' in metric_name:
+                    dashboard_data[metric_name] = value
+        
         # Add metadata if available
         if metrics:
             first_metric = next(iter(metrics.values()))
@@ -218,10 +244,16 @@ class DashboardTransmitter(MetricTransmitter):
                     'episode_length': event_data.get('episode_length', 0)
                 }
                 dashboard_state.update_metrics(episode_metrics)
+                # Reset episode-level data for next episode
+                dashboard_state.reset_episode()
                 
             elif event_name == 'reward_components':
                 components = event_data.get('components', {})
                 dashboard_state.update_metrics({'reward_components': components})
+                
+            elif event_name == 'episode_actions':
+                # Handle episode action counts
+                dashboard_state.update_metrics(event_data)
                 
             # Other events can be handled as needed
                 

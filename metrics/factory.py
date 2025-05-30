@@ -345,11 +345,28 @@ class MetricsIntegrator:
             # Emit reward components event
             self.metrics_manager.emit_event('reward_components', {'components': reward_components})
 
-    def record_episode_end(self, episode_reward: float):
+    def record_episode_end(self, episode_reward: float, episode_action_counts: Dict[str, int] = None):
         """Record episode end in environment"""
         collector = self.get_collector('EnvironmentMetricsCollector')
         if collector:
             collector.record_episode_end(episode_reward)
+            
+        # Record episode action counts for dashboard
+        if episode_action_counts:
+            metrics = {}
+            for action, count in episode_action_counts.items():
+                metrics[f'episode_action_{action.lower()}_count'] = count
+            
+            # Send to dashboard via metrics manager
+            if self.metrics_manager:
+                self.metrics_manager.emit_event('episode_actions', metrics)
+                
+        # Emit episode end event for dashboard
+        if self.metrics_manager:
+            self.metrics_manager.emit_event('episode_end', {
+                'episode_reward': episode_reward,
+                'episode_number': getattr(self, '_current_episode', 0)
+            })
             
         # Reset reward collector for new episode
         reward_collector = self.get_collector('RewardMetricsCollector')
