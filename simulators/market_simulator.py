@@ -1011,9 +1011,17 @@ class MarketSimulator:
             # Compute features on-demand
             try:
                 # Build windows for this timestamp
+                self.logger.debug(f"DEBUG: Building HF window for {timestamp}")
                 hf_window = self._build_hf_window_with_warmup(timestamp)
-                mf_window = self._build_mf_window_with_warmup(timestamp)  
+                self.logger.debug(f"DEBUG: HF window built, size: {len(hf_window)}")
+                
+                self.logger.debug(f"DEBUG: Building MF window for {timestamp}")
+                mf_window = self._build_mf_window_with_warmup(timestamp)
+                self.logger.debug(f"DEBUG: MF window built, size: {len(mf_window)}")
+                
+                self.logger.debug(f"DEBUG: Building LF window for {timestamp}")
                 lf_window = self._build_lf_window_with_warmup(timestamp)
+                self.logger.debug(f"DEBUG: LF window built, size: {len(lf_window)}")
                 
                 # Create context
                 context = MarketContext(
@@ -1035,7 +1043,9 @@ class MarketSimulator:
                 )
                 
                 # Extract features
+                self.logger.debug(f"DEBUG: About to extract features for timestamp {timestamp}")
                 features = self.feature_manager.extract_features(context)
+                self.logger.debug(f"DEBUG: Features extracted successfully")
                 
                 # Update the DataFrame with computed features
                 self.df_market_state.at[timestamp, 'hf_features'] = features.get('hf', np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)))

@@ -230,10 +230,18 @@ class VWAPMeanReversionTendencyFeature(BaseFeature):
             # Calculate autocorrelation of distances (persistence vs reversion)
             if len(distances) > 4:
                 # Simple autocorrelation at lag 1
-                distances_normalized = (distances - np.mean(distances)) / (np.std(distances) + 1e-8)
-                autocorr = np.corrcoef(distances_normalized[:-1], distances_normalized[1:])[0, 1]
-                if np.isnan(autocorr):
-                    autocorr = 0.0
+                distances_std = np.std(distances)
+                if distances_std > 1e-8:  # Only calculate if there's meaningful variation
+                    distances_normalized = (distances - np.mean(distances)) / distances_std
+                    # Check if normalized values have variation
+                    if np.std(distances_normalized[:-1]) > 1e-8 and np.std(distances_normalized[1:]) > 1e-8:
+                        autocorr = np.corrcoef(distances_normalized[:-1], distances_normalized[1:])[0, 1]
+                        if np.isnan(autocorr):
+                            autocorr = 0.0
+                    else:
+                        autocorr = 0.0  # No variation, no correlation
+                else:
+                    autocorr = 0.0  # No variation in distances
             else:
                 autocorr = 0.0
             
