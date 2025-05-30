@@ -1,0 +1,17 @@
+{
+  "version": 6,
+  "timestamp": "20250530_224054",
+  "reward": -Infinity,
+  "metrics": {
+    "total_steps_trained": 2560,
+    "total_updates": 5,
+    "total_episodes": 10,
+    "training_time_hours": 0.14708969473838807,
+    "session_duration": 529.5248489379883,
+    "best_reward": -Infinity,
+    "is_final": true,
+    "timestamp": 1748634054.509024
+  },
+  "source": "outputs/default_20250530_223031/models/final_model.pt",
+  "symbol": "MLGO"
+}

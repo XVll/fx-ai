@@ -133,9 +133,15 @@ class DashboardStateManager:
                 market_timestamp = data.get('timestamp')
                 if market_timestamp:
                     try:
-                        # Convert to datetime and format as time
+                        # Convert to pandas timestamp
                         ts = pd.Timestamp(market_timestamp)
-                        self._state.ny_time = ts.strftime('%H:%M:%S')
+                        # If timezone-aware, convert to NY time
+                        if ts.tz is not None:
+                            ts_ny = ts.tz_convert('America/New_York')
+                        else:
+                            # Assume UTC and convert to NY
+                            ts_ny = ts.tz_localize('UTC').tz_convert('America/New_York')
+                        self._state.ny_time = ts_ny.strftime('%H:%M:%S')
                     except:
                         self._state.ny_time = datetime.now().strftime('%H:%M:%S')
                 
@@ -153,8 +159,27 @@ class DashboardStateManager:
                 
             elif event.event_type == EventType.TRADE_EXECUTION:
                 data = event.data
+                # Format timestamp as NY time for display
+                trade_timestamp = event.timestamp
+                try:
+                    # Convert to pandas timestamp
+                    ts = pd.Timestamp(trade_timestamp)
+                    # If timezone-aware, convert to NY time
+                    if ts.tz is not None:
+                        ts_ny = ts.tz_convert('America/New_York')
+                    else:
+                        # Assume UTC and convert to NY
+                        ts_ny = ts.tz_localize('UTC').tz_convert('America/New_York')
+                    trade_time_str = ts_ny.strftime('%H:%M:%S')
+                    # Store timezone-naive version for chart
+                    trade_timestamp_chart = ts_ny.tz_localize(None)
+                except:
+                    trade_time_str = str(trade_timestamp)
+                    trade_timestamp_chart = trade_timestamp
+                    
                 self._state.recent_trades.append({
-                    'timestamp': event.timestamp,
+                    'timestamp': trade_time_str,  # Store as formatted string for display
+                    'timestamp_raw': trade_timestamp_chart,  # Keep timezone-naive for chart plotting
                     'side': data.get('side'),
                     'quantity': data.get('quantity'),
                     'price': data.get('price'),

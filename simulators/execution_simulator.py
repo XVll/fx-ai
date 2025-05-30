@@ -271,7 +271,12 @@ class ExecutionSimulator:
         # Determine order parameters
         quantity_to_trade = 0.0
         order_side = None
-        decision_timestamp = market_state.get('timestamp_utc', datetime.now(timezone.utc))
+        # Get timestamp from market state (it's already in the simulation time)
+        decision_timestamp = market_state.get('timestamp')
+        if decision_timestamp is None:
+            decision_timestamp = datetime.now(timezone.utc)
+        elif isinstance(decision_timestamp, str):
+            decision_timestamp = pd.Timestamp(decision_timestamp).to_pydatetime()
 
         if action_result.action_type == "BUY":
             # Calculate target buy value
@@ -380,7 +385,8 @@ class ExecutionSimulator:
                 commission=fill_details.commission,
                 order_id=f"{fill_details.fill_timestamp.timestamp():.0f}",
                 slippage_cost=fill_details.slippage_cost_total,
-                latency_ms=latency_ms
+                latency_ms=latency_ms,
+                timestamp=fill_details.fill_timestamp  # Add the actual fill timestamp
             )
 
             self.total_orders_filled += 1
