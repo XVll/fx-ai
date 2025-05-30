@@ -77,90 +77,84 @@ class DashboardServer:
                 'borderBottom': f"1px solid {DARK_THEME['border']}"
             }),
             
-            # Main content area
+            # Main content area with 4-column grid
             html.Div([
-                # Row 1: Market Info and Position
+                # Row 1: 4-column layout - Market Info, Position, Portfolio, Actions
                 html.Div([
                     # Market Info Card
                     html.Div([
-                        html.H4("Market Info", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
+                        html.H4("Market Info", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                         html.Div(id='market-info-content')
-                    ], style=self._card_style(), className='col-6'),
+                    ], style=self._card_style()),
                     
                     # Position Card
                     html.Div([
-                        html.H4("Position", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
+                        html.H4("Position", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                         html.Div(id='position-content')
-                    ], style=self._card_style(), className='col-6'),
-                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
-                
-                # Row 2: Portfolio and Recent Trades
-                html.Div([
+                    ], style=self._card_style()),
+                    
                     # Portfolio Card
                     html.Div([
-                        html.H4("Portfolio", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
+                        html.H4("Portfolio", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                         html.Div(id='portfolio-content')
-                    ], style=self._card_style(), className='col-6'),
+                    ], style=self._card_style()),
                     
-                    # Recent Trades Card
-                    html.Div([
-                        html.H4("Recent Trades", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
-                        html.Div(id='trades-table-container')
-                    ], style=self._card_style(), className='col-6'),
-                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
-                
-                # Row 3: Actions and Episode Info
-                html.Div([
                     # Actions Card
                     html.Div([
-                        html.H4("Actions Analysis", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
+                        html.H4("Actions", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                         html.Div(id='actions-content')
-                    ], style=self._card_style(), className='col-6'),
-                    
+                    ], style=self._card_style()),
+                ], style={'display': 'grid', 'gridTemplateColumns': '1fr 1fr 1fr 1fr', 'gap': '6px', 'marginBottom': '6px'}),
+                
+                # Row 2: 4-column layout - Episode, Training, PPO, Environment
+                html.Div([
                     # Episode Info Card
                     html.Div([
-                        html.H4("Episode Info", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
+                        html.H4("Episode", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                         html.Div(id='episode-content')
-                    ], style=self._card_style(), className='col-6'),
-                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
-                
-                # Row 4: Training Progress and PPO Metrics
-                html.Div([
+                    ], style=self._card_style()),
+                    
                     # Training Progress Card
                     html.Div([
-                        html.H4("Training Progress", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
+                        html.H4("Training", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                         html.Div(id='training-content')
-                    ], style=self._card_style(), className='col-6'),
+                    ], style=self._card_style()),
                     
                     # PPO Metrics Card
                     html.Div([
-                        html.H4("PPO Metrics", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
+                        html.H4("PPO", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                         html.Div(id='ppo-metrics-content')
-                    ], style=self._card_style(), className='col-6'),
-                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
+                    ], style=self._card_style()),
+                    
+                    # Environment/Curriculum Card
+                    html.Div([
+                        html.H4("Quality", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                        html.Div(id='env-content')
+                    ], style=self._card_style()),
+                ], style={'display': 'grid', 'gridTemplateColumns': '1fr 1fr 1fr 1fr', 'gap': '6px', 'marginBottom': '6px'}),
                 
-                # Row 5: Reward Components and Environment Info
+                # Row 3: Split layout - Trades table + Reward chart
                 html.Div([
+                    # Recent Trades Card
+                    html.Div([
+                        html.H4("Trades", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                        html.Div(id='trades-table-container')
+                    ], style=self._card_style()),
+                    
                     # Reward Components Card
                     html.Div([
-                        html.H4("Reward Components", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
-                        dcc.Graph(id='reward-components-chart', style={'height': '200px'})
-                    ], style=self._card_style(), className='col-8'),
-                    
-                    # Environment Info Card
-                    html.Div([
-                        html.H4("Environment", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
-                        html.Div(id='env-content')
-                    ], style=self._card_style(), className='col-4'),
-                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
+                        html.H4("Rewards", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                        dcc.Graph(id='reward-components-chart', style={'height': '160px'})
+                    ], style=self._card_style()),
+                ], style={'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '6px', 'marginBottom': '6px'}),
                 
-                # Row 6: Full-width Chart
+                # Row 4: Full-width Chart
                 html.Div([
-                    html.H4("Price Action & Trades", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
-                    dcc.Graph(id='price-chart', style={'height': '300px'})
+                    html.H4("Price & Volume", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                    dcc.Graph(id='price-chart', style={'height': '220px'})
                 ], style=self._card_style()),
                 
-            ], style={'padding': '8px', 'backgroundColor': DARK_THEME['bg_primary']}),
+            ], style={'padding': '6px', 'backgroundColor': DARK_THEME['bg_primary']}),
             
             # Footer
             html.Div([
@@ -183,9 +177,8 @@ class DashboardServer:
         return {
             'backgroundColor': DARK_THEME['bg_secondary'],
             'border': f"1px solid {DARK_THEME['border']}",
-            'borderRadius': '4px',
-            'padding': '8px 12px',
-            'flex': '1'
+            'borderRadius': '3px',
+            'padding': '6px 8px'
         }
         
     def _setup_callbacks(self):
@@ -226,10 +219,11 @@ class DashboardServer:
             ny_time = getattr(state, 'ny_time', datetime.now().strftime('%H:%M:%S'))
             trading_hours = getattr(state, 'trading_hours', 'MARKET')
             market_info = html.Div([
-                self._info_row("NY Time", ny_time),
+                self._info_row("Time", ny_time),
                 self._info_row("Session", trading_hours, color=DARK_THEME['accent_orange']),
                 self._info_row("Price", f"${state.current_price:.2f}", color=DARK_THEME['accent_blue']),
-                self._info_row("Bid/Ask", f"${state.bid_price:.2f} / ${state.ask_price:.2f}"),
+                self._info_row("Bid", f"${state.bid_price:.2f}"),
+                self._info_row("Ask", f"${state.ask_price:.2f}"),
                 self._info_row("Spread", f"${spread:.3f}"),
                 self._info_row("Volume", f"{state.volume:,}"),
             ])
@@ -240,26 +234,32 @@ class DashboardServer:
                 pnl_color = DARK_THEME['accent_green'] if position_pnl >= 0 else DARK_THEME['accent_red']
                 position_info = html.Div([
                     self._info_row("Side", state.position_side, color=DARK_THEME['accent_blue']),
-                    self._info_row("Quantity", f"{state.position_qty:,}"),
-                    self._info_row("Avg Entry", f"${state.avg_entry_price:.3f}"),
-                    self._info_row("P&L", f"${position_pnl:.2f}", color=pnl_color),
-                    self._info_row("P&L %", f"{state.position_pnl_percent:.2f}%", color=pnl_color),
+                    self._info_row("Qty", f"{state.position_qty:,}"),
+                    self._info_row("Entry", f"${state.avg_entry_price:.3f}"),
+                    self._info_row("P&L $", f"${position_pnl:.2f}", color=pnl_color),
+                    self._info_row("P&L %", f"{state.position_pnl_percent:.1f}%", color=pnl_color),
+                    self._info_row("Hold Time", f"{getattr(state, 'position_hold_time_minutes', 0):.0f}m"),
                 ])
             else:
                 position_info = html.Div([
-                    html.Div("No Position", style={'color': DARK_THEME['text_muted'], 'textAlign': 'center', 'padding': '40px'})
+                    self._info_row("Side", "FLAT", color=DARK_THEME['text_muted']),
+                    self._info_row("Qty", "0"),
+                    self._info_row("Entry", "-"),
+                    self._info_row("P&L $", "$0.00"),
+                    self._info_row("P&L %", "0.0%"),
+                    self._info_row("Hold Time", "0m"),
                 ])
             
             # Portfolio info
             session_pnl_color = DARK_THEME['accent_green'] if state.session_pnl >= 0 else DARK_THEME['accent_red']
             portfolio_info = html.Div([
-                self._info_row("Total Equity", f"${state.total_equity:.2f}"),
-                self._info_row("Cash", f"${state.cash_balance:.2f}"),
+                self._info_row("Equity", f"${state.total_equity:.0f}"),
+                self._info_row("Cash", f"${state.cash_balance:.0f}"),
                 self._info_row("Session P&L", f"${state.session_pnl:.2f}", color=session_pnl_color),
-                self._info_row("Realized P&L", f"${state.realized_pnl:.2f}"),
-                self._info_row("Max Drawdown", f"{state.max_drawdown:.2%}", color=DARK_THEME['accent_orange']),
-                self._info_row("Sharpe Ratio", f"{state.sharpe_ratio:.2f}"),
-                self._info_row("Win Rate", f"{state.win_rate:.1%}"),
+                self._info_row("Realized", f"${state.realized_pnl:.2f}"),
+                self._info_row("Drawdown", f"{state.max_drawdown:.1%}", color=DARK_THEME['accent_orange']),
+                self._info_row("Sharpe", f"{state.sharpe_ratio:.2f}"),
+                self._info_row("Win Rate", f"{state.win_rate:.0%}"),
             ])
             
             # Recent trades table
@@ -307,51 +307,43 @@ class DashboardServer:
             else:
                 trades_table = html.Div("No trades yet", style={'color': DARK_THEME['text_muted'], 'textAlign': 'center', 'padding': '20px'})
             
-            # Actions analysis
+            # Actions analysis - more compact
             actions_content = html.Div([
-                html.Div("Action Distribution:", style={'color': DARK_THEME['text_secondary'], 'marginBottom': '4px', 'fontSize': '11px'}),
+                # Action distribution as info rows
+                self._info_row("HOLD", f"{state.action_distribution.get('HOLD', 0)}", color=DARK_THEME['accent_blue']),
+                self._info_row("BUY", f"{state.action_distribution.get('BUY', 0)}", color=DARK_THEME['accent_green']),
+                self._info_row("SELL", f"{state.action_distribution.get('SELL', 0)}", color=DARK_THEME['accent_red']),
+                
+                # Recent actions - most recent 3
+                html.Div("Recent:", style={'color': DARK_THEME['text_secondary'], 'fontSize': '9px', 'marginTop': '4px', 'marginBottom': '2px'}),
                 html.Div([
-                    html.Div([
-                        html.Span("HOLD: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'}),
-                        html.Span(f"{state.action_distribution.get('HOLD', 0)}", style={'color': DARK_THEME['accent_blue'], 'fontSize': '11px', 'fontWeight': 'bold'})
-                    ], style={'flex': '1'}),
-                    html.Div([
-                        html.Span("BUY: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'}),
-                        html.Span(f"{state.action_distribution.get('BUY', 0)}", style={'color': DARK_THEME['accent_green'], 'fontSize': '11px', 'fontWeight': 'bold'})
-                    ], style={'flex': '1'}),
-                    html.Div([
-                        html.Span("SELL: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'}),
-                        html.Span(f"{state.action_distribution.get('SELL', 0)}", style={'color': DARK_THEME['accent_red'], 'fontSize': '11px', 'fontWeight': 'bold'})
-                    ], style={'flex': '1'}),
-                ], style={'display': 'flex', 'marginBottom': '6px'}),
-                html.Div("Recent Actions:", style={'color': DARK_THEME['text_secondary'], 'marginBottom': '4px', 'fontSize': '11px'}),
-                html.Div([
-                    html.Div(f"{a['timestamp']}: {a['action']} ({a['confidence']:.1%})", 
-                            style={'color': DARK_THEME['text_muted'], 'fontSize': '10px', 'marginBottom': '2px'})
-                    for a in list(state.recent_actions)[-5:]
+                    html.Div(f"{a['action']} {a['confidence']:.0%}", 
+                            style={'color': DARK_THEME['text_muted'], 'fontSize': '9px', 'marginBottom': '1px'})
+                    for a in list(state.recent_actions)[-3:]
                 ])
             ])
             
-            # Episode info
+            # Episode info - more compact
             progress = (state.current_step / state.max_steps * 100) if state.max_steps > 0 else 0
             episode_content = html.Div([
                 self._info_row("Episode", f"{state.episode_number}"),
-                self._info_row("Step", f"{state.current_step:,} / {state.max_steps:,}"),
+                self._info_row("Step", f"{state.current_step:,}/{state.max_steps:,}"),
                 self._info_row("Progress", f"{progress:.1f}%"),
-                self._info_row("Cumulative Reward", f"{state.cumulative_reward:.2f}"),
-                self._info_row("Last Step Reward", f"{state.last_step_reward:.3f}"),
+                self._info_row("Cum. Reward", f"{state.cumulative_reward:.2f}"),
+                self._info_row("Step Reward", f"{state.last_step_reward:.3f}"),
+                # Compact progress bar
                 html.Div([
                     html.Div(style={
                         'backgroundColor': DARK_THEME['bg_tertiary'],
-                        'height': '10px',
-                        'borderRadius': '5px',
-                        'marginTop': '10px'
+                        'height': '6px',
+                        'borderRadius': '3px',
+                        'marginTop': '4px'
                     }, children=[
                         html.Div(style={
                             'backgroundColor': DARK_THEME['accent_blue'],
                             'height': '100%',
                             'width': f"{progress}%",
-                            'borderRadius': '5px',
+                            'borderRadius': '3px',
                             'transition': 'width 0.3s ease'
                         })
                     ])
@@ -360,25 +352,24 @@ class DashboardServer:
             
             # Training progress
             invalid_actions = getattr(state, 'invalid_actions', 0)
+            eps_per_hour = getattr(state, 'episodes_per_hour', 0.0)
             training_content = html.Div([
                 self._info_row("Mode", state.mode, color=DARK_THEME['accent_purple']),
                 self._info_row("Stage", state.stage),
                 self._info_row("Episodes", f"{state.total_episodes:,}"),
-                self._info_row("Steps", f"{state.global_steps:,}"),
-                self._info_row("Invalid Actions", f"{invalid_actions}"),
+                self._info_row("Global Steps", f"{state.global_steps:,}"),
+                self._info_row("Eps/Hour", f"{eps_per_hour:.1f}"),
+                self._info_row("Invalid", f"{invalid_actions}", color=DARK_THEME['accent_orange'] if invalid_actions > 0 else None),
             ])
             
-            # PPO Metrics with sparklines
-            policy_loss_history = getattr(state, 'policy_loss_history', [])
-            value_loss_history = getattr(state, 'value_loss_history', [])
-            entropy_history = getattr(state, 'entropy_history', [])
-            clip_range = getattr(state, 'clip_range', 0.2)
+            # PPO Metrics - simplified
             ppo_content = html.Div([
-                self._metric_with_sparkline("Policy Loss", state.policy_loss, policy_loss_history),
-                self._metric_with_sparkline("Value Loss", state.value_loss, value_loss_history),
-                self._metric_with_sparkline("Entropy", state.entropy, entropy_history),
-                self._info_row("Learning Rate", f"{state.learning_rate:.2e}"),
-                self._info_row("Clip Range", f"{clip_range:.3f}"),
+                self._info_row("Policy Loss", f"{state.policy_loss:.4f}"),
+                self._info_row("Value Loss", f"{state.value_loss:.4f}"),
+                self._info_row("Entropy", f"{state.entropy:.4f}"),
+                self._info_row("Learn Rate", f"{state.learning_rate:.2e}"),
+                self._info_row("KL Div", f"{getattr(state, 'kl_divergence', 0.0):.4f}"),
+                self._info_row("Clip Frac", f"{getattr(state, 'clip_fraction', 0.0):.2f}"),
             ])
             
             # Reward components chart
@@ -407,15 +398,32 @@ class DashboardServer:
             else:
                 reward_fig = {}
             
-            # Environment info
-            avg_spread = getattr(state, 'avg_spread', state.spread)
+            # Environment/Curriculum info with expanded details
+            avg_spread = getattr(state, 'avg_spread', getattr(state, 'spread', 0.001))
             volume_ratio = getattr(state, 'volume_ratio', 1.0)
+            halt_count = getattr(state, 'halt_count', 0)
+            is_front_side = getattr(state, 'is_front_side', False)
+            is_back_side = getattr(state, 'is_back_side', False)
+            day_activity_score = getattr(state, 'day_activity_score', 0.0)
+            reset_point_quality = getattr(state, 'reset_point_quality', 0.0)
+            intraday_move = getattr(state, 'max_intraday_move', 0.0)
+            curriculum_stage = getattr(state, 'curriculum_stage', 'unknown')
+            
+            # Determine momentum direction
+            momentum_direction = 'Front' if is_front_side else ('Back' if is_back_side else 'Mixed')
+            momentum_color = DARK_THEME['accent_green'] if is_front_side else (DARK_THEME['accent_red'] if is_back_side else DARK_THEME['text_muted'])
+            
             env_content = html.Div([
                 self._info_row("Data Quality", f"{state.data_quality:.1%}"),
                 self._info_row("Momentum Score", f"{state.momentum_score:.2f}"),
-                self._info_row("Volatility", f"{state.volatility:.2%}"),
-                self._info_row("Bid-Ask Spread", f"${avg_spread:.3f}"),
+                self._info_row("Day Activity", f"{day_activity_score:.2f}"),
+                self._info_row("Reset Quality", f"{reset_point_quality:.2f}"),
+                self._info_row("Direction", momentum_direction, color=momentum_color),
+                self._info_row("Volatility", f"{state.volatility:.1%}"),
+                self._info_row("Intraday Move", f"{intraday_move:.1%}"),
                 self._info_row("Volume Ratio", f"{volume_ratio:.1f}x"),
+                self._info_row("Spread", f"${avg_spread:.3f}"),
+                self._info_row("Halts", f"{halt_count}", color=DARK_THEME['accent_orange'] if halt_count > 0 else None),
             ])
             
             # Price chart with trades
@@ -429,12 +437,18 @@ class DashboardServer:
                    reward_fig, env_content, price_fig, footer)
             
     def _info_row(self, label: str, value: str, color: Optional[str] = None) -> html.Div:
-        """Create an info row with label and value"""
+        """Create an info row with label left-aligned and value right-aligned"""
         value_color = color or DARK_THEME['text_primary']
         return html.Div([
-            html.Span(f"{label}: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '12px'}),
-            html.Span(value, style={'color': value_color, 'fontWeight': 'bold', 'fontSize': '12px'})
-        ], style={'marginBottom': '3px'})
+            html.Span(label, style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px'}),
+            html.Span(value, style={'color': value_color, 'fontWeight': 'bold', 'fontSize': '10px'})
+        ], style={
+            'display': 'flex', 
+            'justifyContent': 'space-between', 
+            'alignItems': 'center',
+            'marginBottom': '2px',
+            'minHeight': '14px'
+        })
         
     def _metric_with_sparkline(self, label: str, value: float, history: List[float]) -> html.Div:
         """Create a metric with inline sparkline"""
