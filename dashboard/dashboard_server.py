@@ -144,7 +144,7 @@ class DashboardServer:
                     # Reward Components Card
                     html.Div([
                         html.H4("Rewards", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
-                        dcc.Graph(id='reward-components-chart', style={'height': '160px'})
+                        html.Div(id='reward-table-container')
                     ], style=self._card_style()),
                 ], style={'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '6px', 'marginBottom': '6px'}),
                 
@@ -195,7 +195,7 @@ class DashboardServer:
              Output('episode-content', 'children'),
              Output('training-content', 'children'),
              Output('ppo-metrics-content', 'children'),
-             Output('reward-components-chart', 'figure'),
+             Output('reward-table-container', 'children'),
              Output('env-content', 'children'),
              Output('price-chart', 'figure'),
              Output('performance-footer', 'children')],
@@ -315,10 +315,10 @@ class DashboardServer:
                 self._info_row("SELL", f"{state.action_distribution.get('SELL', 0)}", color=DARK_THEME['accent_red']),
                 
                 # Recent actions - most recent 3
-                html.Div("Recent:", style={'color': DARK_THEME['text_secondary'], 'fontSize': '9px', 'marginTop': '4px', 'marginBottom': '2px'}),
+                html.Div("Recent:", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px', 'marginTop': '4px', 'marginBottom': '2px'}),
                 html.Div([
                     html.Div(f"{a['action']} {a['confidence']:.0%}", 
-                            style={'color': DARK_THEME['text_muted'], 'fontSize': '9px', 'marginBottom': '1px'})
+                            style={'color': DARK_THEME['text_muted'], 'fontSize': '11px', 'marginBottom': '1px'})
                     for a in list(state.recent_actions)[-3:]
                 ])
             ])
@@ -372,31 +372,70 @@ class DashboardServer:
                 self._info_row("Clip Frac", f"{getattr(state, 'clip_fraction', 0.0):.2f}"),
             ])
             
-            # Reward components chart
+            # Reward components table
             if state.reward_components:
-                components = list(state.reward_components.keys())
-                values = list(state.reward_components.values())
-                colors = [DARK_THEME['accent_green'] if v >= 0 else DARK_THEME['accent_red'] for v in values]
+                # Calculate additional metrics for each component
+                reward_data = []
+                for component, value in state.reward_components.items():
+                    # Get component history if available
+                    component_history = getattr(state, f'{component.lower()}_history', [])
+                    count = len(component_history) if component_history else 1
+                    total = sum(component_history) if component_history else value
+                    mean_val = total / count if count > 0 else value
+                    
+                    reward_data.append({
+                        'Component': component,
+                        'Current': f"{value:.3f}",
+                        'Mean': f"{mean_val:.3f}",
+                        'Total': f"{total:.2f}",
+                        'Count': str(count)
+                    })
                 
-                reward_fig = go.Figure([go.Bar(
-                    x=components,
-                    y=values,
-                    marker_color=colors,
-                    text=[f"{v:.2f}" for v in values],
-                    textposition='auto',
-                )])
-                
-                reward_fig.update_layout(
-                    plot_bgcolor=DARK_THEME['bg_tertiary'],
-                    paper_bgcolor=DARK_THEME['bg_secondary'],
-                    font_color=DARK_THEME['text_primary'],
-                    xaxis=dict(gridcolor=DARK_THEME['border']),
-                    yaxis=dict(gridcolor=DARK_THEME['border']),
-                    margin=dict(l=40, r=40, t=40, b=40),
-                    showlegend=False
+                reward_table = dash_table.DataTable(
+                    data=reward_data,
+                    columns=[
+                        {'name': 'Component', 'id': 'Component'},
+                        {'name': 'Current', 'id': 'Current', 'type': 'numeric'},
+                        {'name': 'Mean', 'id': 'Mean', 'type': 'numeric'},
+                        {'name': 'Total', 'id': 'Total', 'type': 'numeric'},
+                        {'name': 'Count', 'id': 'Count', 'type': 'numeric'}
+                    ],
+                    style_cell={
+                        'backgroundColor': DARK_THEME['bg_tertiary'],
+                        'color': DARK_THEME['text_primary'],
+                        'border': f"1px solid {DARK_THEME['border']}",
+                        'fontSize': '11px',
+                        'padding': '4px 6px',
+                        'textAlign': 'left'
+                    },
+                    style_data_conditional=[
+                        {
+                            'if': {'column_id': 'Current', 'filter_query': '{Current} > 0'},
+                            'color': DARK_THEME['accent_green']
+                        },
+                        {
+                            'if': {'column_id': 'Current', 'filter_query': '{Current} < 0'},
+                            'color': DARK_THEME['accent_red']
+                        },
+                        {
+                            'if': {'column_id': 'Mean', 'filter_query': '{Mean} > 0'},
+                            'color': DARK_THEME['accent_green']
+                        },
+                        {
+                            'if': {'column_id': 'Mean', 'filter_query': '{Mean} < 0'},
+                            'color': DARK_THEME['accent_red']
+                        }
+                    ],
+                    style_header={
+                        'backgroundColor': DARK_THEME['bg_secondary'],
+                        'color': DARK_THEME['text_secondary'],
+                        'fontWeight': 'bold',
+                        'fontSize': '10px'
+                    },
+                    page_size=10
                 )
             else:
-                reward_fig = {}
+                reward_table = html.Div("No reward data", style={'color': DARK_THEME['text_muted'], 'textAlign': 'center', 'padding': '20px'})
             
             # Environment/Curriculum info with expanded details
             avg_spread = getattr(state, 'avg_spread', getattr(state, 'spread', 0.001))
@@ -434,20 +473,20 @@ class DashboardServer:
             
             return (header_info, session_time_str, market_info, position_info, portfolio_info,
                    trades_table, actions_content, episode_content, training_content, ppo_content,
-                   reward_fig, env_content, price_fig, footer)
+                   reward_table, env_content, price_fig, footer)
             
     def _info_row(self, label: str, value: str, color: Optional[str] = None) -> html.Div:
         """Create an info row with label left-aligned and value right-aligned"""
         value_color = color or DARK_THEME['text_primary']
         return html.Div([
-            html.Span(label, style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px'}),
-            html.Span(value, style={'color': value_color, 'fontWeight': 'bold', 'fontSize': '10px'})
+            html.Span(label, style={'color': DARK_THEME['text_secondary'], 'fontSize': '12px'}),
+            html.Span(value, style={'color': value_color, 'fontWeight': 'bold', 'fontSize': '12px'})
         ], style={
             'display': 'flex', 
             'justifyContent': 'space-between', 
             'alignItems': 'center',
             'marginBottom': '2px',
-            'minHeight': '14px'
+            'minHeight': '16px'
         })
         
     def _metric_with_sparkline(self, label: str, value: float, history: List[float]) -> html.Div:
