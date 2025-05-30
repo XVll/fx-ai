@@ -986,19 +986,38 @@ class TradingEnvironment(gym.Env):
             
         # Update dashboard with candle data every 10 steps to avoid too frequent updates
         if self.current_step % 10 == 0 and self.market_simulator:
-            # Get ALL 1-minute bars for the full trading day
+            # Get ALL 1-minute bars for the CURRENT trading day only (not warmup)
             if hasattr(self.market_simulator, 'combined_bars_1m') and self.market_simulator.combined_bars_1m is not None:
+                # Filter to only include current day data (4 AM to 8 PM ET)
+                current_date = self.current_session_date.date()
+                
+                # Create time boundaries in ET (NY time)
+                market_open_et = pd.Timestamp(f"{current_date} 04:00:00", tz='America/New_York')
+                market_close_et = pd.Timestamp(f"{current_date} 20:00:00", tz='America/New_York')
+                
                 # Convert the entire day's 1m bars to list format for dashboard
                 candle_list = []
                 for timestamp, row in self.market_simulator.combined_bars_1m.iterrows():
-                    candle_list.append({
-                        'timestamp': timestamp.isoformat(),
-                        'open': float(row['open']),
-                        'high': float(row['high']),
-                        'low': float(row['low']),
-                        'close': float(row['close']),
-                        'volume': float(row.get('volume', 0))
-                    })
+                    # Convert timestamp to ET for comparison
+                    ts = pd.Timestamp(timestamp)
+                    if ts.tz is None:
+                        # If no timezone, assume UTC
+                        ts_et = ts.tz_localize('UTC').tz_convert('America/New_York')
+                    else:
+                        # Already has timezone, just convert
+                        ts_et = ts.tz_convert('America/New_York')
+                    
+                    # Only include bars within the current trading day
+                    if market_open_et <= ts_et <= market_close_et:
+                        # Store timestamp in ET (NY time) for display, remove timezone
+                        candle_list.append({
+                            'timestamp': ts_et.replace(tzinfo=None).isoformat(),  # Remove tz for consistency
+                            'open': float(row['open']),
+                            'high': float(row['high']),
+                            'low': float(row['low']),
+                            'close': float(row['close']),
+                            'volume': float(row.get('volume', 0))
+                        })
                 
                 if candle_list:
                     from dashboard.shared_state import dashboard_state

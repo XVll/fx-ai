@@ -70,9 +70,16 @@ class TradingEventStream:
     
     def emit(self, event_type: EventType, data: Dict[str, Any], metadata: Optional[Dict[str, Any]] = None):
         """Emit an event to all subscribers"""
+        # Use timestamp from data if available, otherwise use current time
+        timestamp = data.get('timestamp', datetime.now())
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        elif not isinstance(timestamp, datetime):
+            timestamp = datetime.now()
+            
         event = TradingEvent(
             event_type=event_type,
-            timestamp=datetime.now(),
+            timestamp=timestamp,
             data=data,
             metadata=metadata or {}
         )

@@ -646,7 +646,8 @@ class DashboardServer:
                 # Add trade markers
                 if trades_data:
                     for trade in trades_data[-10:]:  # Last 10 trades
-                        trade_time = trade.get('timestamp')
+                        # Use raw timestamp for chart plotting
+                        trade_time = trade.get('timestamp_raw', trade.get('timestamp'))
                         trade_price = trade.get('fill_price', 0)
                         
                         if trade_time and trade_price > 0:
@@ -705,13 +706,27 @@ class DashboardServer:
             height=300
         )
         
-        # Update x-axis to show time nicely
+        # Update x-axis to show time nicely in NY time
         fig.update_xaxes(
             tickformat='%H:%M',
             tickmode='auto',
             nticks=16,  # Show more ticks for full day
             type='date'
         )
+        
+        # If we have data, set the x-axis range to show full trading day
+        if candle_data and len(candle_data) > 0:
+            # Get the date from the first candle
+            first_candle = candle_data[0]
+            if 'timestamp' in first_candle:
+                # Parse the date
+                first_ts = pd.to_datetime(first_candle['timestamp'])
+                date_str = first_ts.strftime('%Y-%m-%d')
+                
+                # Set range from 4 AM to 8 PM for that date
+                fig.update_xaxes(
+                    range=[f'{date_str} 04:00:00', f'{date_str} 20:00:00']
+                )
         
         return fig
         
