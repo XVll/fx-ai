@@ -222,9 +222,11 @@ class DashboardServer:
             
             # Market info
             spread = state.ask_price - state.bid_price
+            ny_time = getattr(state, 'ny_time', datetime.now().strftime('%H:%M:%S'))
+            trading_hours = getattr(state, 'trading_hours', 'MARKET')
             market_info = html.Div([
-                self._info_row("NY Time", state.ny_time),
-                self._info_row("Session", state.trading_hours, color=DARK_THEME['accent_orange']),
+                self._info_row("NY Time", ny_time),
+                self._info_row("Session", trading_hours, color=DARK_THEME['accent_orange']),
                 self._info_row("Price", f"${state.current_price:.2f}", color=DARK_THEME['accent_blue']),
                 self._info_row("Bid/Ask", f"${state.bid_price:.2f} / ${state.ask_price:.2f}"),
                 self._info_row("Spread", f"${spread:.3f}"),
@@ -233,13 +235,14 @@ class DashboardServer:
             
             # Position info
             if state.position_side != "FLAT":
-                pnl_color = DARK_THEME['accent_green'] if state.position_pnl >= 0 else DARK_THEME['accent_red']
+                position_pnl = getattr(state, 'position_pnl_dollar', 0.0)
+                pnl_color = DARK_THEME['accent_green'] if position_pnl >= 0 else DARK_THEME['accent_red']
                 position_info = html.Div([
                     self._info_row("Side", state.position_side, color=DARK_THEME['accent_blue']),
-                    self._info_row("Quantity", f"{state.position_quantity:,}"),
-                    self._info_row("Avg Entry", f"${state.position_avg_price:.3f}"),
-                    self._info_row("P&L", f"${state.position_pnl:.2f}", color=pnl_color),
-                    self._info_row("P&L %", f"{state.position_pnl_pct:.2f}%", color=pnl_color),
+                    self._info_row("Quantity", f"{state.position_qty:,}"),
+                    self._info_row("Avg Entry", f"${state.avg_entry_price:.3f}"),
+                    self._info_row("P&L", f"${position_pnl:.2f}", color=pnl_color),
+                    self._info_row("P&L %", f"{state.position_pnl_percent:.2f}%", color=pnl_color),
                 ])
             else:
                 position_info = html.Div([
@@ -250,7 +253,7 @@ class DashboardServer:
             session_pnl_color = DARK_THEME['accent_green'] if state.session_pnl >= 0 else DARK_THEME['accent_red']
             portfolio_info = html.Div([
                 self._info_row("Total Equity", f"${state.total_equity:.2f}"),
-                self._info_row("Cash", f"${state.cash:.2f}"),
+                self._info_row("Cash", f"${state.cash_balance:.2f}"),
                 self._info_row("Session P&L", f"${state.session_pnl:.2f}", color=session_pnl_color),
                 self._info_row("Realized P&L", f"${state.realized_pnl:.2f}"),
                 self._info_row("Max Drawdown", f"{state.max_drawdown:.2%}", color=DARK_THEME['accent_orange']),
@@ -309,15 +312,15 @@ class DashboardServer:
                 html.Div([
                     html.Div([
                         html.Span("HOLD: ", style={'color': DARK_THEME['text_secondary']}),
-                        html.Span(f"{state.action_counts.get('HOLD', 0)}", style={'color': DARK_THEME['accent_blue']})
+                        html.Span(f"{state.action_distribution.get('HOLD', 0)}", style={'color': DARK_THEME['accent_blue']})
                     ], style={'flex': '1'}),
                     html.Div([
                         html.Span("BUY: ", style={'color': DARK_THEME['text_secondary']}),
-                        html.Span(f"{state.action_counts.get('BUY', 0)}", style={'color': DARK_THEME['accent_green']})
+                        html.Span(f"{state.action_distribution.get('BUY', 0)}", style={'color': DARK_THEME['accent_green']})
                     ], style={'flex': '1'}),
                     html.Div([
                         html.Span("SELL: ", style={'color': DARK_THEME['text_secondary']}),
-                        html.Span(f"{state.action_counts.get('SELL', 0)}", style={'color': DARK_THEME['accent_red']})
+                        html.Span(f"{state.action_distribution.get('SELL', 0)}", style={'color': DARK_THEME['accent_red']})
                     ], style={'flex': '1'}),
                 ], style={'display': 'flex', 'marginBottom': '15px'}),
                 html.Div("Recent Actions:", style={'color': DARK_THEME['text_secondary'], 'marginBottom': '10px'}),
@@ -331,7 +334,7 @@ class DashboardServer:
             # Episode info
             progress = (state.current_step / state.max_steps * 100) if state.max_steps > 0 else 0
             episode_content = html.Div([
-                self._info_row("Episode", f"{state.episode}"),
+                self._info_row("Episode", f"{state.episode_number}"),
                 self._info_row("Step", f"{state.current_step:,} / {state.max_steps:,}"),
                 self._info_row("Progress", f"{progress:.1f}%"),
                 self._info_row("Cumulative Reward", f"{state.cumulative_reward:.2f}"),
@@ -355,21 +358,26 @@ class DashboardServer:
             ])
             
             # Training progress
+            invalid_actions = getattr(state, 'invalid_actions', 0)
             training_content = html.Div([
-                self._info_row("Mode", state.training_mode, color=DARK_THEME['accent_purple']),
-                self._info_row("Stage", state.training_stage),
+                self._info_row("Mode", state.mode, color=DARK_THEME['accent_purple']),
+                self._info_row("Stage", state.stage),
                 self._info_row("Episodes", f"{state.total_episodes:,}"),
-                self._info_row("Steps", f"{state.total_steps:,}"),
-                self._info_row("Invalid Actions", f"{state.invalid_actions}"),
+                self._info_row("Steps", f"{state.global_steps:,}"),
+                self._info_row("Invalid Actions", f"{invalid_actions}"),
             ])
             
             # PPO Metrics with sparklines
+            policy_loss_history = getattr(state, 'policy_loss_history', [])
+            value_loss_history = getattr(state, 'value_loss_history', [])
+            entropy_history = getattr(state, 'entropy_history', [])
+            clip_range = getattr(state, 'clip_range', 0.2)
             ppo_content = html.Div([
-                self._metric_with_sparkline("Policy Loss", state.policy_loss, state.policy_loss_history),
-                self._metric_with_sparkline("Value Loss", state.value_loss, state.value_loss_history),
-                self._metric_with_sparkline("Entropy", state.entropy, state.entropy_history),
+                self._metric_with_sparkline("Policy Loss", state.policy_loss, policy_loss_history),
+                self._metric_with_sparkline("Value Loss", state.value_loss, value_loss_history),
+                self._metric_with_sparkline("Entropy", state.entropy, entropy_history),
                 self._info_row("Learning Rate", f"{state.learning_rate:.2e}"),
-                self._info_row("Clip Range", f"{state.clip_range:.3f}"),
+                self._info_row("Clip Range", f"{clip_range:.3f}"),
             ])
             
             # Reward components chart
@@ -399,12 +407,14 @@ class DashboardServer:
                 reward_fig = {}
             
             # Environment info
+            avg_spread = getattr(state, 'avg_spread', state.spread)
+            volume_ratio = getattr(state, 'volume_ratio', 1.0)
             env_content = html.Div([
                 self._info_row("Data Quality", f"{state.data_quality:.1%}"),
                 self._info_row("Momentum Score", f"{state.momentum_score:.2f}"),
                 self._info_row("Volatility", f"{state.volatility:.2%}"),
-                self._info_row("Bid-Ask Spread", f"${state.avg_spread:.3f}"),
-                self._info_row("Volume Ratio", f"{state.volume_ratio:.1f}x"),
+                self._info_row("Bid-Ask Spread", f"${avg_spread:.3f}"),
+                self._info_row("Volume Ratio", f"{volume_ratio:.1f}x"),
             ])
             
             # Price chart with trades
@@ -485,9 +495,10 @@ class DashboardServer:
                 ), row=1, col=1)
             
             # Volume bars
-            if state.volume_history:
-                vol_times = [v['time'] for v in state.volume_history[-200:]]
-                volumes = [v['volume'] for v in state.volume_history[-200:]]
+            volume_history = getattr(state, 'volume_history', [])
+            if volume_history:
+                vol_times = [v['time'] for v in volume_history[-200:]]
+                volumes = [v['volume'] for v in volume_history[-200:]]
                 
                 fig.add_trace(go.Bar(
                     x=vol_times, y=volumes,
