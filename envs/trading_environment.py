@@ -130,6 +130,7 @@ class TradingEnvironment(gym.Env):
 
         # Episode state
         self.current_step: int = 0
+        self.max_steps: int = config.env.max_steps
         self.invalid_action_count_episode: int = 0
         self.episode_total_reward: float = 0.0
         self.initial_capital_for_session: float = self.config.env.initial_capital  # Initialize with config value
@@ -715,9 +716,16 @@ class TradingEnvironment(gym.Env):
             if market_state_at_decision:
                 current_time = market_state_at_decision['timestamp']
                 elapsed_seconds = self.current_step  # Each step is 1 second
-                self.logger.info(f"📈 Rollout progress: Step {self.current_step}/4096 ({self.current_step/40.96:.1f}%) | "
-                               f"Episode {self.episode_number} | Sim time: {current_time.strftime('%H:%M:%S')} | "
-                               f"Elapsed: {elapsed_seconds//60}m {elapsed_seconds%60}s")
+                # For episode progress, use max_steps if set, otherwise show unbounded progress
+                if self.max_steps:
+                    progress_pct = (self.current_step / self.max_steps * 100)
+                    self.logger.info(f"📈 Episode progress: Step {self.current_step}/{self.max_steps} ({progress_pct:.1f}%) | "
+                                   f"Episode {self.episode_number} | Sim time: {current_time.strftime('%H:%M:%S')} | "
+                                   f"Elapsed: {elapsed_seconds//60}m {elapsed_seconds%60}s")
+                else:
+                    self.logger.info(f"📈 Episode progress: Step {self.current_step} | "
+                                   f"Episode {self.episode_number} | Sim time: {current_time.strftime('%H:%M:%S')} | "
+                                   f"Elapsed: {elapsed_seconds//60}m {elapsed_seconds%60}s")
         if market_state_at_decision is None:
             self.logger.error("Market simulator returned invalid state")
             return self._last_observation, 0.0, True, False, {"error": "Market state unavailable"}
@@ -864,6 +872,11 @@ class TradingEnvironment(gym.Env):
             terminated = True
             termination_reason = TerminationReasonEnum.INVALID_ACTION_LIMIT_REACHED
 
+        # Max steps reached
+        elif self.max_steps is not None and self.max_steps > 0 and self.current_step >= self.max_steps:
+            terminated = True
+            termination_reason = TerminationReasonEnum.MAX_STEPS_REACHED
+            
         # Episode time limit reached
         elif next_sim_time and next_sim_time >= self.episode_end_time_utc:
             terminated = True
