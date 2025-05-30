@@ -99,7 +99,7 @@ class TradingEnvironment(gym.Env):
             self.max_invalid_actions_per_episode: int = 1000
         
         # Debug log to ensure it's set correctly
-        self.logger.debug(f"max_invalid_actions_per_episode set to: {self.max_invalid_actions_per_episode}")
+        # self.logger.debug(f"max_invalid_actions_per_episode set to: {self.max_invalid_actions_per_episode}")
         self.bankruptcy_threshold_factor: float = 0.1
         self.max_session_loss_percentage: float = 1.0 - env_cfg.early_stop_loss_threshold
         self.default_position_value = config.simulation.default_position_value
@@ -544,19 +544,34 @@ class TradingEnvironment(gym.Env):
 
         # Reset simulators
         current_sim_time = initial_market_state.timestamp
+        # self.logger.debug(f"DEBUG: About to reset execution manager")
         self.execution_manager.reset(np_random_seed_source=self.np_random)
+        # self.logger.debug(f"DEBUG: Execution manager reset completed")
+        
+        # self.logger.debug(f"DEBUG: About to reset portfolio manager at time {current_sim_time}")
         self.portfolio_manager.reset(session_start=current_sim_time)
+        # self.logger.debug(f"DEBUG: Portfolio manager reset completed")
+        
+        # self.logger.debug(f"DEBUG: Getting initial capital from portfolio manager")
         self.initial_capital_for_session = self.portfolio_manager.initial_capital
+        # self.logger.debug(f"DEBUG: Set initial capital to {self.initial_capital_for_session}")
         # Ensure initial_capital_for_session is not None
         if self.initial_capital_for_session is None:
+            # self.logger.debug(f"DEBUG: Initial capital was None, using config value")
             self.initial_capital_for_session = self.config.env.initial_capital
+        # self.logger.debug(f"DEBUG: Setting episode peak equity to {self.initial_capital_for_session}")
         self.episode_peak_equity = self.initial_capital_for_session
+        # self.logger.debug(f"DEBUG: Episode peak equity set")
 
         if hasattr(self.reward_calculator, 'reset'):
+            # self.logger.debug(f"DEBUG: About to reset reward calculator")
             self.reward_calculator.reset()
+            # self.logger.debug(f"DEBUG: Reward calculator reset completed")
 
         # Get initial observation using pre-calculated features
+        # self.logger.debug(f"DEBUG: About to get initial observation")
         self._last_observation = self._get_observation()
+        # self.logger.debug(f"DEBUG: Got initial observation: {self._last_observation is not None}")
         if self._last_observation is None:
             self.logger.error("Failed to get initial observation")
             return self._get_dummy_observation(), {"error": "Initial observation failed"}
@@ -607,22 +622,34 @@ class TradingEnvironment(gym.Env):
         """
         try:
             # Get current time from market simulator
+            # self.logger.debug(f"DEBUG: Getting current market data in _get_observation")
             market_state = self.market_simulator.get_current_market_data()
             if market_state is None:
+                # self.logger.debug(f"DEBUG: market_state is None")
                 return None
                 
             current_sim_time = market_state['timestamp']
+            # self.logger.debug(f"DEBUG: Current sim time: {current_sim_time}")
             
             # Get pre-calculated features from MarketSimulator - O(1) lookup!
+            # self.logger.debug(f"DEBUG: About to get current features")
             features = self.market_simulator.get_current_features()
+            # self.logger.debug(f"DEBUG: Got features: {features is not None}")
             if features is None:
                 self.logger.warning(f"No features available at {current_sim_time}")
                 return None
 
             # Get portfolio observation
+            # self.logger.debug(f"DEBUG: About to get portfolio state")
             current_portfolio_state = self.portfolio_manager.get_portfolio_state(current_sim_time)
+            # self.logger.debug(f"DEBUG: Got portfolio state")
+            
+            # self.logger.debug(f"DEBUG: About to get portfolio observation")
             portfolio_obs_component = self.portfolio_manager.get_portfolio_observation()
+            # self.logger.debug(f"DEBUG: Got portfolio observation component")
+            
             portfolio_features_array = portfolio_obs_component['features']
+            # self.logger.debug(f"DEBUG: Got portfolio features array with shape {portfolio_features_array.shape if hasattr(portfolio_features_array, 'shape') else 'unknown'}")
 
             # Construct observation dict
             obs = {
@@ -633,19 +660,23 @@ class TradingEnvironment(gym.Env):
             }
 
             # Handle NaN values and shape validation
+            # self.logger.debug(f"DEBUG: About to handle NaN values")
             for key, arr in obs.items():
                 if arr is not None:
                     # Replace NaN with 0
                     nan_count = np.isnan(arr).sum()
                     if nan_count > 0:
+                        # self.logger.debug(f"DEBUG: Found {nan_count} NaN values in {key}")
                         obs[key] = np.nan_to_num(arr, nan=0.0)
                 else:
                     # Use zeros if feature is missing
                     space_item = self.observation_space[key]
                     obs[key] = np.zeros(space_item.shape, dtype=space_item.dtype)
+                    # self.logger.debug(f"DEBUG: {key} was None, using zeros")
+            # self.logger.debug(f"DEBUG: NaN handling completed")
 
-
-                # Validate shape
+            # Validate shape
+            for key in obs:
                 expected_shape = self.observation_space[key].shape
                 if obs[key].shape != expected_shape:
                     self.logger.error(f"Shape mismatch for observation key '{key}'. "
@@ -678,6 +709,15 @@ class TradingEnvironment(gym.Env):
 
         # Get current market state
         market_state_at_decision = self.market_simulator.get_current_market_data()
+        
+        # Log progress every 50 steps
+        if self.current_step % 50 == 0:
+            if market_state_at_decision:
+                current_time = market_state_at_decision['timestamp']
+                elapsed_seconds = self.current_step  # Each step is 1 second
+                self.logger.info(f"📈 Rollout progress: Step {self.current_step}/4096 ({self.current_step/40.96:.1f}%) | "
+                               f"Episode {self.episode_number} | Sim time: {current_time.strftime('%H:%M:%S')} | "
+                               f"Elapsed: {elapsed_seconds//60}m {elapsed_seconds%60}s")
         if market_state_at_decision is None:
             self.logger.error("Market simulator returned invalid state")
             return self._last_observation, 0.0, True, False, {"error": "Market state unavailable"}
@@ -834,6 +874,14 @@ class TradingEnvironment(gym.Env):
         self.is_truncated = truncated
         if termination_reason:
             self.current_termination_reason = termination_reason.value
+            
+        # Log episode completion
+        if terminated or truncated:
+            episode_duration = (current_sim_time_decision - self.episode_start_time_utc).total_seconds()
+            self.logger.info(f"🏁 Episode {self.episode_number} completed | "
+                           f"Steps: {self.current_step} | Duration: {episode_duration/60:.1f}m | "
+                           f"Reason: {termination_reason.value if termination_reason else 'truncated'} | "
+                           f"Total reward: {self.episode_total_reward:.2f}")
 
         # Calculate reward
         reward = self.reward_calculator.calculate(

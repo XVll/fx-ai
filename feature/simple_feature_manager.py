@@ -307,9 +307,15 @@ class SimpleFeatureManager:
         
         results = {}
         
+        total_features = len([f for f in self._feature_collections[category] if f.enabled])
+        feature_idx = 0
+        
         for feature in self._feature_collections[category]:
             if not feature.enabled:
                 continue
+            
+            feature_idx += 1
+            self.logger.debug(f"DEBUG: Calculating {category} feature {feature_idx}/{total_features}: {feature.name}")
             
             try:
                 value = feature.calculate(market_data)
@@ -322,6 +328,8 @@ class SimpleFeatureManager:
             except Exception as e:
                 self.logger.error(f"Error calculating feature {feature.name}: {e}")
                 results[feature.name] = 0.0
+            
+            self.logger.debug(f"DEBUG: Feature {feature.name} calculated: {results.get(feature.name, 'ERROR')}")
         
         return results
     
@@ -384,12 +392,17 @@ class SimpleFeatureManager:
             results = {}
             
             for category in ['hf', 'mf', 'lf']:
+                self.logger.debug(f"DEBUG: Extracting {category} features")
+                
+                features = None
                 if category == 'hf':
                     features = self._extract_hf_features(context)
                 elif category == 'mf':
                     features = self._extract_mf_features(context)
                 elif category == 'lf':
                     features = self._extract_lf_features(context)
+                
+                self.logger.debug(f"DEBUG: {category} features extracted, shape: {features.shape if features is not None else 'None'}")
                 
                 if features is None:
                     return None

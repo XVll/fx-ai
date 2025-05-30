@@ -238,9 +238,19 @@ class PortfolioSimulator:
         self.feature_history.clear()
 
         # Initialize feature history with initial features
+        # self.logger.debug(f"DEBUG: About to calculate initial portfolio features")
         initial_features = self._calculate_portfolio_features(session_start)
-        for _ in range(max(1, self.portfolio_seq_len)):
+        # self.logger.debug(f"DEBUG: Initial features calculated, shape: {initial_features.shape}")
+        # self.logger.debug(f"DEBUG: About to append features to history, seq_len: {self.portfolio_seq_len}")
+        append_count = max(1, self.portfolio_seq_len)
+        # self.logger.debug(f"DEBUG: Will append {append_count} times to deque with maxlen {self.feature_history.maxlen}")
+        
+        for i in range(append_count):
+            # self.logger.debug(f"DEBUG: Appending feature {i+1}/{append_count}")
             self.feature_history.append(initial_features)
+            # self.logger.debug(f"DEBUG: Successfully appended, current length: {len(self.feature_history)}")
+        
+        # self.logger.debug(f"DEBUG: Feature history initialized with {len(self.feature_history)} entries")
 
         self.logger.info(f"📊 Portfolio reset - Capital: ${self.initial_capital:,.2f}")
 
@@ -565,7 +575,9 @@ class PortfolioSimulator:
 
     def _calculate_portfolio_features(self, timestamp: datetime) -> np.ndarray:
         """Calculate portfolio features for model observation."""
+        # self.logger.debug(f"DEBUG: _calculate_portfolio_features called with timestamp {timestamp}")
         features = np.zeros(self.portfolio_feat_dim, dtype=np.float32)
+        # self.logger.debug(f"DEBUG: Created features array with shape {features.shape}")
         
         if not self.tradable_assets:
             return features

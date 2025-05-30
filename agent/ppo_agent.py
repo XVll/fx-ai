@@ -264,10 +264,25 @@ class PPOTrainer:
                 return action_tensor.cpu().numpy().item()
 
     def collect_rollout_data(self) -> Dict[str, Any]:
-        """Collect rollout data with comprehensive logging."""
+        """Collect rollout data with comprehensive logging.
+        
+        PPO (Proximal Policy Optimization) collects a fixed number of steps (rollout_steps)
+        across potentially multiple episodes before performing a training update. This is
+        different from episodic algorithms that wait for episode completion.
+        
+        Why PPO works this way:
+        1. More stable training - uses large batches of experience
+        2. Better sample efficiency - can learn from partial episodes
+        3. Consistent compute - predictable training iterations
+        
+        Episodes that complete during rollout are automatically reset to continue
+        collecting data until rollout_steps is reached.
+        """
         self._start_timer("rollout")
 
         self.logger.info(f"🎯 ROLLOUT START: Collecting {self.rollout_steps} steps")
+        self.logger.info(f"   ℹ️  PPO collects data across multiple episodes before training")
+        self.logger.info(f"   ℹ️  Episodes will reset automatically when they complete")
         self.buffer.clear()
         
         # Update dashboard that we're in rollout phase
@@ -453,6 +468,13 @@ class PPOTrainer:
                 current_episode_reward = 0.0
                 current_episode_length = 0
                 episode_start_time = time.time()
+                
+                # Log that we're starting a new episode within the same rollout
+                if collected_steps < self.rollout_steps:
+                    remaining_steps = self.rollout_steps - collected_steps
+                    self.logger.info(f"🔄 Starting new episode within rollout | "
+                                   f"Steps collected: {collected_steps}/{self.rollout_steps} | "
+                                   f"Remaining: {remaining_steps}")
 
                 # Start new episode tracking
                 self.metrics.start_episode()
@@ -573,7 +595,7 @@ class PPOTrainer:
         """PPO policy update with detailed logging."""
         self._start_timer("update")
 
-        self.logger.info(f"🔄 UPDATE START: PPO epoch {self.global_update_counter + 1}")
+        self.logger.info(f"🔄 UPDATE START: Update #{self.global_update_counter + 1}")
 
         # Start update timing
         self.metrics.start_update()
@@ -629,6 +651,10 @@ class PPOTrainer:
         num_updates_in_epoch = 0
         total_batches = (num_samples + self.batch_size - 1) // self.batch_size
 
+        # Log update details
+        self.logger.info(f"   📊 Processing {num_samples} samples in {total_batches} batches")
+        self.logger.info(f"   🔁 Running {self.ppo_epochs} PPO epochs with batch size {self.batch_size}")
+
         # PPO-specific metrics tracking
         total_clipfrac = 0
         total_approx_kl = 0
@@ -638,9 +664,19 @@ class PPOTrainer:
         for epoch in range(self.ppo_epochs):
             np.random.shuffle(indices)
             
+            # Log epoch start
+            self.logger.info(f"📚 PPO Epoch {epoch + 1}/{self.ppo_epochs} starting...")
+            
             current_batch = 0
+            epoch_start_time = time.time()
+            
             for start_idx in range(0, num_samples, self.batch_size):
                 current_batch += 1
+                
+                # Log batch progress periodically (every 10 batches or for small batch counts)
+                if current_batch % 10 == 0 or total_batches < 20:
+                    batch_progress = (current_batch / total_batches) * 100
+                    self.logger.info(f"   📦 Batch {current_batch}/{total_batches} ({batch_progress:.1f}%)")
                 
                 # Update dashboard with epoch/batch progress
                 if hasattr(self.metrics, "metrics_manager"):
@@ -747,6 +783,13 @@ class PPOTrainer:
                 total_critic_loss += critic_loss.item()
                 total_entropy_loss += entropy.mean().item()
                 num_updates_in_epoch += 1
+            
+            # Log epoch completion
+            epoch_duration = time.time() - epoch_start_time
+            batches_per_second = total_batches / epoch_duration if epoch_duration > 0 else 0
+            self.logger.info(f"   ✅ Epoch {epoch + 1}/{self.ppo_epochs} complete | "
+                           f"Time: {epoch_duration:.1f}s | "
+                           f"Batches/s: {batches_per_second:.1f}")
 
         self.global_update_counter += 1
 

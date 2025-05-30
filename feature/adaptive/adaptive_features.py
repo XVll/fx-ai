@@ -41,15 +41,19 @@ class VolatilityAdjustedMomentumFeature(BaseFeature):
                 change = (prices[i] - prices[i-1]) / prices[i-1]
                 price_changes.append(change)
                 
-        if len(price_changes) < 5:
+        if len(price_changes) < 2:  # Need at least 2 points for std with ddof=1
             return 0.0
             
-        current_volatility = np.std(price_changes[-10:]) if len(price_changes) >= 10 else np.std(price_changes)
+        # Use ddof=0 for small samples to avoid division by zero
+        if len(price_changes) >= 10:
+            current_volatility = np.std(price_changes[-10:], ddof=0)
+        else:
+            current_volatility = np.std(price_changes, ddof=0)
         
         # Adjust momentum by volatility
         if current_volatility > 0:
             adjusted_momentum = recent_momentum / current_volatility
-            return max(-3.0, min(3.0, adjusted_momentum))  # ±3 sigma max
+            return max(-3.0, min(3.0, float(adjusted_momentum)))  # ±3 sigma max
             
         return 0.0
     

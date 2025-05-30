@@ -242,7 +242,7 @@ class TrainingConfig(BaseModel):
     max_grad_norm: float = 0.5
     
     # Rollout settings
-    rollout_steps: int = Field(default=4096, description="Steps per rollout")
+    rollout_steps: int = Field(default=256, description="Steps per rollout")
     
     # Learning rate schedule
     use_lr_annealing: bool = True
