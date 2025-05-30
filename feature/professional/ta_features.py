@@ -2,8 +2,8 @@
 
 import pandas as pd
 import numpy as np
-import ta
-from typing import Dict, Any, List
+from ta import trend, momentum, volume, volatility
+from typing import Dict, Any
 from ..feature_base import BaseFeature
 
 
@@ -23,8 +23,8 @@ class ProfessionalEMASystemFeature(BaseFeature):
                 return 0.0
             
             # Use ta library for EMAs - optimized and tested
-            df['ema9'] = ta.trend.EMAIndicator(df['close'], window=9).ema_indicator()
-            df['ema20'] = ta.trend.EMAIndicator(df['close'], window=20).ema_indicator()
+            df['ema9'] = trend.EMAIndicator(df['close'], window=9).ema_indicator()
+            df['ema20'] = trend.EMAIndicator(df['close'], window=20).ema_indicator()
             
             # Remove NaN values
             df = df.dropna()
@@ -163,16 +163,16 @@ class ProfessionalMomentumQualityFeature(BaseFeature):
             
             # Use ta library for professional momentum indicators
             # RSI for momentum strength
-            df['rsi'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
+            df['rsi'] = momentum.RSIIndicator(df['close'], window=14).rsi()
             
             # MACD for trend momentum  
-            macd = ta.trend.MACD(df['close'])
+            macd = trend.MACD(df['close'])
             df['macd'] = macd.macd()
             df['macd_signal'] = macd.macd_signal()
             df['macd_histogram'] = macd.macd_diff()
             
             # Volume indicators
-            df['volume_sma'] = ta.volume.VolumeSMAIndicator(df['close'], df['volume']).volume_sma()
+            df['volume_sma'] = volume.VolumeSMAIndicator(df['close'], df['volume']).volume_sma()
             
             # Clean data
             df = df.dropna()
@@ -243,13 +243,13 @@ class ProfessionalVolatilityRegimeFeature(BaseFeature):
             
             # Use ta library for volatility indicators
             # Bollinger Bands for volatility measurement
-            bb = ta.volatility.BollingerBands(df['close'], window=14)
+            bb = volatility.BollingerBands(df['close'], window=14)
             df['bb_high'] = bb.bollinger_hband()
             df['bb_low'] = bb.bollinger_lband()
             df['bb_width'] = (df['bb_high'] - df['bb_low']) / df['close']
             
             # Average True Range for volatility
-            df['atr'] = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close']).average_true_range()
+            df['atr'] = volatility.AverageTrueRange(df['high'], df['low'], df['close']).average_true_range()
             
             # Clean data
             df = df.dropna()

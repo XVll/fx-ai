@@ -83,13 +83,21 @@ class HFVolumeDynamicsFeature(BaseFeature):
             
             # Volume trend (increasing vs decreasing)  
             try:
-                if len(volumes) > 1 and np.std(volumes) > 1e-8:
-                    volume_trend = np.corrcoef(np.arange(len(volumes)), volumes)[0, 1]
-                    if np.isnan(volume_trend) or np.isinf(volume_trend):
-                        volume_trend = 0.0
+                if len(volumes) > 1:
+                    volumes_std = np.std(volumes)
+                    indices = np.arange(len(volumes))
+                    indices_std = np.std(indices)
+                    
+                    # Only calculate correlation if both arrays have meaningful variation
+                    if volumes_std > 1e-8 and indices_std > 1e-8:
+                        volume_trend = np.corrcoef(indices, volumes)[0, 1]
+                        if np.isnan(volume_trend) or np.isinf(volume_trend):
+                            volume_trend = 0.0
+                    else:
+                        volume_trend = 0.0  # No variation, no trend
                 else:
                     volume_trend = 0.0
-            except:
+            except Exception as e:
                 volume_trend = 0.0
             
             # Volume acceleration (recent vs earlier)
@@ -269,13 +277,20 @@ class MFVolumePriceDivergenceFeature(BaseFeature):
             
             # Calculate correlation between price and volume
             try:
-                if len(closes) > 1 and np.std(closes) > 1e-8 and np.std(volumes) > 1e-8:
-                    price_volume_corr = np.corrcoef(closes, volumes)[0, 1]
-                    if np.isnan(price_volume_corr) or np.isinf(price_volume_corr):
-                        price_volume_corr = 0.0
+                if len(closes) > 1 and len(closes) == len(volumes):
+                    closes_std = np.std(closes)
+                    volumes_std = np.std(volumes)
+                    
+                    # Only calculate correlation if both arrays have meaningful variation
+                    if closes_std > 1e-8 and volumes_std > 1e-8:
+                        price_volume_corr = np.corrcoef(closes, volumes)[0, 1]
+                        if np.isnan(price_volume_corr) or np.isinf(price_volume_corr):
+                            price_volume_corr = 0.0
+                    else:
+                        price_volume_corr = 0.0  # No variation, no correlation
                 else:
                     price_volume_corr = 0.0
-            except:
+            except Exception as e:
                 price_volume_corr = 0.0
             
             # Divergence score (positive when volume confirms price, negative when divergent)
