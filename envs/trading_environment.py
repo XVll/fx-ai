@@ -769,7 +769,7 @@ class TradingEnvironment(gym.Env):
             self.episode_fills.append(enriched_fill)
 
         # Update portfolio with current market prices
-        time_for_pf_update = fill_details_list[-1]['fill_timestamp'] if fill_details_list else current_sim_time_decision
+        time_for_pf_update = fill_details_list[-1].fill_timestamp if fill_details_list else current_sim_time_decision
         current_price = market_state_at_decision.get('current_price', 0.0)
         if current_price <= 0:
             ask = market_state_at_decision.get('best_ask_price', 0)
@@ -977,11 +977,11 @@ class TradingEnvironment(gym.Env):
         # Fill metrics
         for fill in fill_details_list:
             self.metrics_integrator.record_fill({
-                'executed_quantity': fill['executed_quantity'],
-                'executed_price': fill['executed_price'],
-                'commission': fill['commission'],
-                'fees': fill['fees'],
-                'slippage_cost_total': fill['slippage_cost_total']
+                'executed_quantity': fill.executed_quantity,
+                'executed_price': fill.executed_price,
+                'commission': fill.commission,
+                'fees': fill.fees,
+                'slippage_cost_total': fill.slippage_cost_total
             })
 
     def _handle_episode_end(self, portfolio_state: PortfolioState, info: Dict[str, Any]):
