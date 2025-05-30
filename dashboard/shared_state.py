@@ -73,6 +73,8 @@ class SharedDashboardState:
     
     # Reward components (from metrics)
     reward_components: Dict[str, float] = field(default_factory=dict)
+    episode_reward_components: Dict[str, float] = field(default_factory=dict)
+    session_reward_components: Dict[str, float] = field(default_factory=dict)
     
     # Time series data for charts
     price_history: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=3600))  # 1 hour at 1s
@@ -83,6 +85,10 @@ class SharedDashboardState:
     recent_trades: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=20))
     recent_actions: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=20))
     action_distribution: Dict[str, int] = field(default_factory=lambda: {'HOLD': 0, 'BUY': 0, 'SELL': 0})
+    
+    # Action tracking from metrics
+    episode_action_distribution: Dict[str, int] = field(default_factory=lambda: {'HOLD': 0, 'BUY': 0, 'SELL': 0})
+    session_action_distribution: Dict[str, int] = field(default_factory=lambda: {'HOLD': 0, 'BUY': 0, 'SELL': 0})
     
     # Environment info
     momentum_score: float = 0.0
@@ -220,9 +226,35 @@ class DashboardStateManager:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
                     
-            # Reward components
+            # Reward components (current step)
             if 'reward_components' in metrics:
                 self._state.reward_components = metrics['reward_components']
+                # Also update episode components (accumulate)
+                for component, value in metrics['reward_components'].items():
+                    if component not in self._state.episode_reward_components:
+                        self._state.episode_reward_components[component] = 0.0
+                    self._state.episode_reward_components[component] += value
+                    
+                    # Update session components (accumulate)
+                    if component not in self._state.session_reward_components:
+                        self._state.session_reward_components[component] = 0.0
+                    self._state.session_reward_components[component] += value
+                
+            # Action tracking from metrics (session-level from execution collector)
+            if 'execution.environment.action_hold_count' in metrics:
+                self._state.session_action_distribution['HOLD'] = int(metrics['execution.environment.action_hold_count'])
+            if 'execution.environment.action_buy_count' in metrics:
+                self._state.session_action_distribution['BUY'] = int(metrics['execution.environment.action_buy_count'])
+            if 'execution.environment.action_sell_count' in metrics:
+                self._state.session_action_distribution['SELL'] = int(metrics['execution.environment.action_sell_count'])
+                
+            # Episode action tracking (from episode events)
+            if 'episode_action_hold_count' in metrics:
+                self._state.episode_action_distribution['HOLD'] = int(metrics['episode_action_hold_count'])
+            if 'episode_action_buy_count' in metrics:
+                self._state.episode_action_distribution['BUY'] = int(metrics['episode_action_buy_count'])
+            if 'episode_action_sell_count' in metrics:
+                self._state.episode_action_distribution['SELL'] = int(metrics['episode_action_sell_count'])
                 
             # Update reward history
             if 'mean_episode_reward' in metrics:
@@ -307,6 +339,12 @@ class DashboardStateManager:
         """Reset state to defaults"""
         with self._lock:
             self._state = SharedDashboardState()
+            
+    def reset_episode(self):
+        """Reset episode-level data while preserving session data"""
+        with self._lock:
+            self._state.episode_reward_components = {}
+            self._state.episode_action_distribution = {'HOLD': 0, 'BUY': 0, 'SELL': 0}
 
 
 # Global instance

@@ -1011,7 +1011,7 @@ class TradingEnvironment(gym.Env):
         # End metrics tracking
         if self.metrics_integrator:
             self.metrics_integrator.end_episode(self.episode_total_reward, self.current_step)
-            self.metrics_integrator.record_episode_end(self.episode_total_reward)
+            self.metrics_integrator.record_episode_end(self.episode_total_reward, self.action_counts)
 
         # Episode summary logging
         pnl = info['episode_summary']['session_net_profit_equity_change']
