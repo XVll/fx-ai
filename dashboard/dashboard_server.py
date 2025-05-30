@@ -61,8 +61,8 @@ class DashboardServer:
             # Header
             html.Div([
                 html.Div([
-                    html.H1("FxAI Trading Dashboard", style={'margin': '0', 'color': DARK_THEME['text_primary']}),
-                    html.Div(id='header-info', style={'color': DARK_THEME['text_secondary']})
+                    html.H2("FxAI Trading Dashboard", style={'margin': '0', 'color': DARK_THEME['text_primary'], 'fontSize': '18px'}),
+                    html.Div(id='header-info', style={'color': DARK_THEME['text_secondary'], 'fontSize': '12px'})
                 ], style={'flex': '1'}),
                 html.Div([
                     html.Span("Session Time: ", style={'color': DARK_THEME['text_secondary']}),
@@ -72,7 +72,7 @@ class DashboardServer:
                 'display': 'flex',
                 'justifyContent': 'space-between',
                 'alignItems': 'center',
-                'padding': '20px',
+                'padding': '8px 12px',
                 'backgroundColor': DARK_THEME['bg_secondary'],
                 'borderBottom': f"1px solid {DARK_THEME['border']}"
             }),
@@ -83,93 +83,94 @@ class DashboardServer:
                 html.Div([
                     # Market Info Card
                     html.Div([
-                        html.H3("Market Info", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
+                        html.H4("Market Info", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
                         html.Div(id='market-info-content')
                     ], style=self._card_style(), className='col-6'),
                     
                     # Position Card
                     html.Div([
-                        html.H3("Position", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
+                        html.H4("Position", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
                         html.Div(id='position-content')
                     ], style=self._card_style(), className='col-6'),
-                ], style={'display': 'flex', 'gap': '20px', 'marginBottom': '20px'}),
+                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
                 
                 # Row 2: Portfolio and Recent Trades
                 html.Div([
                     # Portfolio Card
                     html.Div([
-                        html.H3("Portfolio", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
+                        html.H4("Portfolio", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
                         html.Div(id='portfolio-content')
                     ], style=self._card_style(), className='col-6'),
                     
                     # Recent Trades Card
                     html.Div([
-                        html.H3("Recent Trades", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
+                        html.H4("Recent Trades", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
                         html.Div(id='trades-table-container')
                     ], style=self._card_style(), className='col-6'),
-                ], style={'display': 'flex', 'gap': '20px', 'marginBottom': '20px'}),
+                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
                 
                 # Row 3: Actions and Episode Info
                 html.Div([
                     # Actions Card
                     html.Div([
-                        html.H3("Actions Analysis", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
+                        html.H4("Actions Analysis", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
                         html.Div(id='actions-content')
                     ], style=self._card_style(), className='col-6'),
                     
                     # Episode Info Card
                     html.Div([
-                        html.H3("Episode Info", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
+                        html.H4("Episode Info", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
                         html.Div(id='episode-content')
                     ], style=self._card_style(), className='col-6'),
-                ], style={'display': 'flex', 'gap': '20px', 'marginBottom': '20px'}),
+                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
                 
                 # Row 4: Training Progress and PPO Metrics
                 html.Div([
                     # Training Progress Card
                     html.Div([
-                        html.H3("Training Progress", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
+                        html.H4("Training Progress", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
                         html.Div(id='training-content')
                     ], style=self._card_style(), className='col-6'),
                     
                     # PPO Metrics Card
                     html.Div([
-                        html.H3("PPO Metrics", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
+                        html.H4("PPO Metrics", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
                         html.Div(id='ppo-metrics-content')
                     ], style=self._card_style(), className='col-6'),
-                ], style={'display': 'flex', 'gap': '20px', 'marginBottom': '20px'}),
+                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
                 
                 # Row 5: Reward Components and Environment Info
                 html.Div([
                     # Reward Components Card
                     html.Div([
-                        html.H3("Reward Components", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
-                        dcc.Graph(id='reward-components-chart', style={'height': '300px'})
+                        html.H4("Reward Components", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
+                        dcc.Graph(id='reward-components-chart', style={'height': '200px'})
                     ], style=self._card_style(), className='col-8'),
                     
                     # Environment Info Card
                     html.Div([
-                        html.H3("Environment", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
+                        html.H4("Environment", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
                         html.Div(id='env-content')
                     ], style=self._card_style(), className='col-4'),
-                ], style={'display': 'flex', 'gap': '20px', 'marginBottom': '20px'}),
+                ], style={'display': 'flex', 'gap': '8px', 'marginBottom': '8px'}),
                 
                 # Row 6: Full-width Chart
                 html.Div([
-                    html.H3("Price Action & Trades", style={'color': DARK_THEME['text_primary'], 'marginBottom': '15px'}),
-                    dcc.Graph(id='price-chart', style={'height': '400px'})
+                    html.H4("Price Action & Trades", style={'color': DARK_THEME['text_primary'], 'marginBottom': '6px', 'fontSize': '14px', 'fontWeight': 'bold'}),
+                    dcc.Graph(id='price-chart', style={'height': '300px'})
                 ], style=self._card_style()),
                 
-            ], style={'padding': '20px', 'backgroundColor': DARK_THEME['bg_primary']}),
+            ], style={'padding': '8px', 'backgroundColor': DARK_THEME['bg_primary']}),
             
             # Footer
             html.Div([
                 html.Div(id='performance-footer', style={'color': DARK_THEME['text_secondary']})
             ], style={
-                'padding': '10px 20px',
+                'padding': '4px 8px',
                 'backgroundColor': DARK_THEME['bg_secondary'],
                 'borderTop': f"1px solid {DARK_THEME['border']}",
-                'textAlign': 'center'
+                'textAlign': 'center',
+                'fontSize': '11px'
             }),
             
             # Auto-refresh interval
@@ -182,8 +183,8 @@ class DashboardServer:
         return {
             'backgroundColor': DARK_THEME['bg_secondary'],
             'border': f"1px solid {DARK_THEME['border']}",
-            'borderRadius': '6px',
-            'padding': '20px',
+            'borderRadius': '4px',
+            'padding': '8px 12px',
             'flex': '1'
         }
         
@@ -267,10 +268,10 @@ class DashboardServer:
                 trades_table = dash_table.DataTable(
                     data=trades_df.to_dict('records'),
                     columns=[
-                        {'name': 'Time', 'id': 'time'},
+                        {'name': 'Time', 'id': 'timestamp'},
                         {'name': 'Side', 'id': 'side'},
                         {'name': 'Qty', 'id': 'quantity'},
-                        {'name': 'Price', 'id': 'price', 'type': 'numeric', 'format': {'specifier': '$.3f'}},
+                        {'name': 'Price', 'id': 'fill_price', 'type': 'numeric', 'format': {'specifier': '$.3f'}},
                         {'name': 'P&L', 'id': 'pnl', 'type': 'numeric', 'format': {'specifier': '$.2f'}}
                     ],
                     style_cell={
@@ -308,25 +309,25 @@ class DashboardServer:
             
             # Actions analysis
             actions_content = html.Div([
-                html.Div("Action Distribution:", style={'color': DARK_THEME['text_secondary'], 'marginBottom': '10px'}),
+                html.Div("Action Distribution:", style={'color': DARK_THEME['text_secondary'], 'marginBottom': '4px', 'fontSize': '11px'}),
                 html.Div([
                     html.Div([
-                        html.Span("HOLD: ", style={'color': DARK_THEME['text_secondary']}),
-                        html.Span(f"{state.action_distribution.get('HOLD', 0)}", style={'color': DARK_THEME['accent_blue']})
+                        html.Span("HOLD: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'}),
+                        html.Span(f"{state.action_distribution.get('HOLD', 0)}", style={'color': DARK_THEME['accent_blue'], 'fontSize': '11px', 'fontWeight': 'bold'})
                     ], style={'flex': '1'}),
                     html.Div([
-                        html.Span("BUY: ", style={'color': DARK_THEME['text_secondary']}),
-                        html.Span(f"{state.action_distribution.get('BUY', 0)}", style={'color': DARK_THEME['accent_green']})
+                        html.Span("BUY: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'}),
+                        html.Span(f"{state.action_distribution.get('BUY', 0)}", style={'color': DARK_THEME['accent_green'], 'fontSize': '11px', 'fontWeight': 'bold'})
                     ], style={'flex': '1'}),
                     html.Div([
-                        html.Span("SELL: ", style={'color': DARK_THEME['text_secondary']}),
-                        html.Span(f"{state.action_distribution.get('SELL', 0)}", style={'color': DARK_THEME['accent_red']})
+                        html.Span("SELL: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'}),
+                        html.Span(f"{state.action_distribution.get('SELL', 0)}", style={'color': DARK_THEME['accent_red'], 'fontSize': '11px', 'fontWeight': 'bold'})
                     ], style={'flex': '1'}),
-                ], style={'display': 'flex', 'marginBottom': '15px'}),
-                html.Div("Recent Actions:", style={'color': DARK_THEME['text_secondary'], 'marginBottom': '10px'}),
+                ], style={'display': 'flex', 'marginBottom': '6px'}),
+                html.Div("Recent Actions:", style={'color': DARK_THEME['text_secondary'], 'marginBottom': '4px', 'fontSize': '11px'}),
                 html.Div([
-                    html.Div(f"{a['time']}: {a['action']} ({a['confidence']:.1%})", 
-                            style={'color': DARK_THEME['text_muted'], 'fontSize': '12px', 'marginBottom': '5px'})
+                    html.Div(f"{a['timestamp']}: {a['action']} ({a['confidence']:.1%})", 
+                            style={'color': DARK_THEME['text_muted'], 'fontSize': '10px', 'marginBottom': '2px'})
                     for a in list(state.recent_actions)[-5:]
                 ])
             ])
@@ -431,9 +432,9 @@ class DashboardServer:
         """Create an info row with label and value"""
         value_color = color or DARK_THEME['text_primary']
         return html.Div([
-            html.Span(f"{label}: ", style={'color': DARK_THEME['text_secondary']}),
-            html.Span(value, style={'color': value_color, 'fontWeight': 'bold'})
-        ], style={'marginBottom': '8px'})
+            html.Span(f"{label}: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '12px'}),
+            html.Span(value, style={'color': value_color, 'fontWeight': 'bold', 'fontSize': '12px'})
+        ], style={'marginBottom': '3px'})
         
     def _metric_with_sparkline(self, label: str, value: float, history: List[float]) -> html.Div:
         """Create a metric with inline sparkline"""
@@ -489,8 +490,8 @@ class DashboardServer:
             for trade in list(state.recent_trades)[-20:]:  # Last 20 trades
                 color = DARK_THEME['accent_green'] if trade['side'] == 'BUY' else DARK_THEME['accent_red']
                 fig.add_trace(go.Scatter(
-                    x=[trade['time']],
-                    y=[trade['price']],
+                    x=[trade['timestamp']],
+                    y=[trade['fill_price']],
                     mode='markers',
                     marker=dict(size=10, color=color, symbol='triangle-up' if trade['side'] == 'BUY' else 'triangle-down'),
                     name=trade['side'],

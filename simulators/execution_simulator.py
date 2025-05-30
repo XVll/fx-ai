@@ -529,10 +529,10 @@ class ExecutionSimulator:
     def _update_session_stats(self, fill: FillDetails, latency_ms: float, slippage_bps: float):
         """Update session tracking statistics."""
         self.session_fills += 1
-        self.session_volume += fill['executed_quantity']
-        self.session_turnover += fill['executed_quantity'] * fill['executed_price']
-        self.session_commission += fill['commission']
-        self.session_slippage += fill['slippage_cost_total']
+        self.session_volume += fill.executed_quantity
+        self.session_turnover += fill.executed_quantity * fill.executed_price
+        self.session_commission += fill.commission
+        self.session_slippage += fill.slippage_cost_total
         
         # Performance tracking
         self.fill_latencies.append(latency_ms)
@@ -542,14 +542,14 @@ class ExecutionSimulator:
         """Record execution metrics."""
         if self.metrics_integrator:
             self.metrics_integrator.record_execution({
-                'quantity': fill['executed_quantity'],
-                'price': fill['executed_price'],
-                'commission': fill['commission'],
-                'fees': fill['fees'],
-                'slippage_cost': fill['slippage_cost_total'],
+                'quantity': fill.executed_quantity,
+                'price': fill.executed_price,
+                'commission': fill.commission,
+                'fees': fill.fees,
+                'slippage_cost': fill.slippage_cost_total,
                 'slippage_bps': slippage_bps,
                 'latency_ms': latency_ms,
-                'side': fill['order_side'].value
+                'side': fill.order_side.value
             })
 
     def _is_market_closed(self, current_time: datetime) -> bool:

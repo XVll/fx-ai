@@ -284,10 +284,8 @@ class RewardSystem:
         is_profitable_trade = None
         if fill_details_list:
             for fill in fill_details_list:
-                if fill.get('closes_position', False):
-                    realized_pnl = fill.get('realized_pnl', 0)
-                    if realized_pnl is None:
-                        realized_pnl = 0
+                if fill.closes_position:
+                    realized_pnl = fill.realized_pnl or 0
                     is_profitable_trade = realized_pnl > 0
                     
         # Update component metrics

@@ -25,7 +25,10 @@
       "Bash(echo:*)",
       "Bash(timeout 30 poetry run python:*)",
       "Bash(timeout 60 poetry run python:*)",
-      "Bash(timeout 5 poetry run python test_new_dashboard.py)"
+      "Bash(timeout 5 poetry run python test_new_dashboard.py)",
+      "Bash(timeout:*)",
+      "Bash(poetry install:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   },
