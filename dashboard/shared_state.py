@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from collections import deque
 import numpy as np
+import pandas as pd
 from .event_stream import TradingEvent, EventType, event_stream
 
 
@@ -25,6 +26,8 @@ class SharedDashboardState:
     spread: float = 0.0
     spread_pct: float = 0.0
     volume: int = 0
+    ny_time: str = ""
+    trading_hours: str = "CLOSED"
     
     # Position data (from event stream)
     position_side: str = "FLAT"
@@ -125,6 +128,19 @@ class DashboardStateManager:
                 self._state.spread = data.get('spread', 0)
                 self._state.spread_pct = data.get('spread_pct', 0)
                 self._state.volume = data.get('volume', 0)
+                
+                # Extract market timestamp and format as NY time
+                market_timestamp = data.get('timestamp')
+                if market_timestamp:
+                    try:
+                        # Convert to datetime and format as time
+                        ts = pd.Timestamp(market_timestamp)
+                        self._state.ny_time = ts.strftime('%H:%M:%S')
+                    except:
+                        self._state.ny_time = datetime.now().strftime('%H:%M:%S')
+                
+                # Get trading session
+                self._state.trading_hours = data.get('market_session', 'MARKET')
                 
                 # Add to price history
                 self._state.price_history.append({

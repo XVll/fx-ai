@@ -1094,7 +1094,8 @@ class MarketSimulator:
             low=float(state.intraday_low),
             vwap=float(state.session_vwap),
             is_halted=state.is_halted,
-            market_session=state.market_session
+            market_session=state.market_session,
+            timestamp=state.timestamp  # Add timestamp for proper time display
         )
             
         return {
