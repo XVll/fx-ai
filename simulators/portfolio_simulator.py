@@ -272,19 +272,19 @@ class PortfolioSimulator:
         
         This is the main integration point with the execution system.
         """
-        asset_id = fill['asset_id']
+        asset_id = fill.asset_id
         if asset_id not in self.positions:
             self.logger.error(f"Received fill for unknown asset: {asset_id}")
             return
 
         position = self.positions[asset_id]
-        fill_qty = fill['executed_quantity']
-        fill_price = fill['executed_price']
+        fill_qty = fill.executed_quantity
+        fill_price = fill.executed_price
         fill_value = fill_qty * fill_price
-        order_side = fill['order_side']
-        commission = fill['commission']
-        fees = fill['fees']
-        slippage = fill['slippage_cost_total']
+        order_side = fill.order_side
+        commission = fill.commission
+        fees = fill.fees
+        slippage = fill.slippage_cost_total
 
         # Update session metrics
         self.session_commission += commission
@@ -311,7 +311,7 @@ class PortfolioSimulator:
             if trade['asset_id'] == asset_id:
                 if trade.get('entry_timestamp'):
                     entry_time = trade['entry_timestamp']
-                    fill_time = fill['fill_timestamp']
+                    fill_time = fill.fill_timestamp
                     holding_time_minutes = (fill_time - entry_time).total_seconds() / 60.0
                 break
         
@@ -340,21 +340,27 @@ class PortfolioSimulator:
             self._reduce_position(position, fill, is_buy)
 
         # Update position timestamp
-        position.last_update_timestamp = fill['fill_timestamp']
+        position.last_update_timestamp = fill.fill_timestamp
 
         # Determine if this fill closes the position
         closes_position = position.is_flat()
 
         # Create enriched fill details with additional fields for reward system
-        enriched_fill = dict(fill)  # Create a copy of the original fill
-        enriched_fill.update({
-            'closes_position': closes_position,
-            'realized_pnl': realized_pnl,
-            'holding_time_minutes': holding_time_minutes,
-            'price': fill['executed_price'],  # Alias
-            'quantity': fill['executed_quantity'],  # Alias
-            'slippage_cost': fill['slippage_cost_total']  # Alias
-        })
+        enriched_fill = FillDetails(
+            asset_id=fill.asset_id,
+            fill_timestamp=fill.fill_timestamp,
+            order_type=fill.order_type,
+            order_side=fill.order_side,
+            requested_quantity=fill.requested_quantity,
+            executed_quantity=fill.executed_quantity,
+            executed_price=fill.executed_price,
+            commission=fill.commission,
+            fees=fill.fees,
+            slippage_cost_total=fill.slippage_cost_total,
+            closes_position=closes_position,
+            realized_pnl=realized_pnl,
+            holding_time_minutes=holding_time_minutes
+        )
 
         self.logger.debug(f"📈 Fill processed: {asset_id} {order_side.value} {fill_qty:.2f}@${fill_price:.4f}")
         
@@ -362,8 +368,8 @@ class PortfolioSimulator:
 
     def _open_new_position(self, position: Position, fill: FillDetails, is_buy: bool) -> None:
         """Open a new position."""
-        fill_qty = fill['executed_quantity']
-        fill_price = fill['executed_price']
+        fill_qty = fill.executed_quantity
+        fill_price = fill.executed_price
         fill_value = fill_qty * fill_price
 
         # Set position details
@@ -371,7 +377,7 @@ class PortfolioSimulator:
         position.quantity = fill_qty
         position.avg_price = fill_price
         position.entry_value = fill_value
-        position.entry_timestamp = fill['fill_timestamp']
+        position.entry_timestamp = fill.fill_timestamp
 
         # Update cash
         if is_buy:
@@ -383,18 +389,18 @@ class PortfolioSimulator:
         trade_id = self._generate_trade_id()
         self.open_trades[trade_id] = TradeRecord(
             trade_id=trade_id,
-            asset_id=fill['asset_id'],
+            asset_id=fill.asset_id,
             side=position.side,
-            entry_timestamp=fill['fill_timestamp'],
+            entry_timestamp=fill.fill_timestamp,
             exit_timestamp=None,
             entry_quantity=fill_qty,
             exit_quantity=0.0,
             avg_entry_price=fill_price,
             avg_exit_price=None,
             realized_pnl=None,
-            total_commission=fill['commission'],
-            total_fees=fill['fees'],
-            total_slippage=fill['slippage_cost_total'],
+            total_commission=fill.commission,
+            total_fees=fill.fees,
+            total_slippage=fill.slippage_cost_total,
             holding_period_seconds=None,
             max_favorable_excursion=0.0,
             max_adverse_excursion=0.0,
@@ -408,8 +414,8 @@ class PortfolioSimulator:
 
     def _add_to_position(self, position: Position, fill: FillDetails, is_buy: bool) -> None:
         """Add to existing position (average in)."""
-        fill_qty = fill['executed_quantity']
-        fill_price = fill['executed_price']
+        fill_qty = fill.executed_quantity
+        fill_price = fill.executed_price
         fill_value = fill_qty * fill_price
 
         # Calculate new weighted average
@@ -434,15 +440,15 @@ class PortfolioSimulator:
             trade = self.open_trades[position.trade_id]
             trade['entry_quantity'] = new_total_qty
             trade['avg_entry_price'] = new_avg_price
-            trade['total_commission'] += fill['commission']
-            trade['total_fees'] += fill['fees']
-            trade['total_slippage'] += fill['slippage_cost_total']
+            trade['total_commission'] += fill.commission
+            trade['total_fees'] += fill.fees
+            trade['total_slippage'] += fill.slippage_cost_total
             trade['entry_fills'].append(fill)
 
     def _reduce_position(self, position: Position, fill: FillDetails, is_buy: bool) -> None:
         """Reduce or close position."""
-        fill_qty = fill['executed_quantity']
-        fill_price = fill['executed_price']
+        fill_qty = fill.executed_quantity
+        fill_price = fill.executed_price
         fill_value = fill_qty * fill_price
 
         # Calculate realized P&L for the portion closed
@@ -467,9 +473,9 @@ class PortfolioSimulator:
         if hasattr(position, 'trade_id') and position.trade_id in self.open_trades:
             trade = self.open_trades[position.trade_id]
             trade['exit_quantity'] += fill_qty
-            trade['total_commission'] += fill['commission']
-            trade['total_fees'] += fill['fees'] 
-            trade['total_slippage'] += fill['slippage_cost_total']
+            trade['total_commission'] += fill.commission
+            trade['total_fees'] += fill.fees
+            trade['total_slippage'] += fill.slippage_cost_total
             trade['exit_fills'].append(fill)
             
             # Update average exit price
@@ -490,7 +496,7 @@ class PortfolioSimulator:
 
             # Check if position fully closed
             if new_qty < 1e-6:
-                self._close_position(position, trade, fill['fill_timestamp'])
+                self._close_position(position, trade, fill.fill_timestamp)
             else:
                 position.quantity = new_qty
 
@@ -560,7 +566,7 @@ class PortfolioSimulator:
                 avg_price=position.avg_price,
                 current_price=current_price,
                 unrealized_pnl=unrealized_pnl,
-                realized_pnl=self.realized_pnl,
+                realized_pnl=self.session_realized_pnl,
                 market_value=position.market_value
             )
 
