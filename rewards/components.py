@@ -27,7 +27,7 @@ class RealizedPnLReward(RewardComponent):
         # Include commission and slippage
         total_costs = 0.0
         for fill in state.fill_details:
-            total_costs += fill.get('commission', 0.0) + fill.get('slippage_cost_total', 0.0)
+            total_costs += fill.commission + fill.slippage_cost_total
         
         net_pnl = pnl_change - total_costs
         
@@ -35,7 +35,7 @@ class RealizedPnLReward(RewardComponent):
             'gross_pnl': pnl_change,
             'costs': total_costs,
             'net_pnl': net_pnl,
-            'trades_closed': len([f for f in state.fill_details if f.get('closes_position', False)])
+            'trades_closed': len([f for f in state.fill_details if f.closes_position])
         }
         
         return net_pnl, diagnostics
@@ -251,8 +251,8 @@ class QuickProfitIncentive(RewardComponent):
         
         # Check if we closed a profitable position
         for fill in state.fill_details:
-            if fill.get('closes_position', False):
-                realized_pnl = fill.get('realized_pnl', 0.0)
+            if fill.closes_position:
+                realized_pnl = fill.realized_pnl or 0.0
                 # Ensure realized_pnl is not None
                 if realized_pnl is None:
                     realized_pnl = 0.0
@@ -268,8 +268,8 @@ class QuickProfitIncentive(RewardComponent):
                         incentive += realized_pnl * bonus_rate * time_factor
                         
         diagnostics = {
-            'trades_closed': len([f for f in state.fill_details if f.get('closes_position', False)]),
-            'profitable_closes': len([f for f in state.fill_details if f.get('closes_position', False) and (f.get('realized_pnl') or 0) > 0]),
+            'trades_closed': len([f for f in state.fill_details if f.closes_position]),
+            'profitable_closes': len([f for f in state.fill_details if f.closes_position and (f.realized_pnl or 0) > 0]),
             'incentive': incentive
         }
         
@@ -336,15 +336,15 @@ class MAEPenalty(RewardComponent):
         
         # Only calculate when closing a trade
         for fill in state.fill_details:
-            if fill.get('closes_position', False):
+            if fill.closes_position:
                 # Get MAE data
                 mae = abs(state.current_trade_min_unrealized_pnl or 0.0)
-                entry_price = state.current_trade_entry_price or fill.get('price', 0.0)
-                exit_price = fill.get('price', 0.0)
+                entry_price = state.current_trade_entry_price or fill.executed_price
+                exit_price = fill.executed_price
                 
                 if entry_price > 0:
                     # Calculate MAE as percentage of entry
-                    quantity = fill.get('quantity') or 0
+                    quantity = fill.executed_quantity
                     mae_pct = mae / (entry_price * quantity) if quantity > 0 else 0
                     
                     # Penalty based on excessive risk
@@ -355,13 +355,13 @@ class MAEPenalty(RewardComponent):
                         penalty = -base_penalty * (mae_pct / risk_threshold) ** 2
                         
                         # Extra penalty if trade was ultimately losing
-                        realized_pnl = fill.get('realized_pnl') or 0
+                        realized_pnl = fill.realized_pnl or 0
                         if realized_pnl < 0:
                             penalty *= self.config.get('loss_multiplier', 1.5)
                             
         diagnostics = {
             'mae': abs(state.current_trade_min_unrealized_pnl or 0.0),
-            'trades_closed': len([f for f in state.fill_details if f.get('closes_position', False)]),
+            'trades_closed': len([f for f in state.fill_details if f.closes_position]),
             'penalty': penalty
         }
         
@@ -384,10 +384,10 @@ class MFEPenalty(RewardComponent):
         
         # Only calculate when closing a trade
         for fill in state.fill_details:
-            if fill.get('closes_position', False):
+            if fill.closes_position:
                 # Get MFE data
                 mfe = state.current_trade_max_unrealized_pnl or 0.0
-                realized_pnl = fill.get('realized_pnl', 0.0)
+                realized_pnl = fill.realized_pnl or 0.0
                 
                 if mfe > 0:
                     # Calculate profit give-back
@@ -407,7 +407,7 @@ class MFEPenalty(RewardComponent):
                             
         diagnostics = {
             'mfe': state.current_trade_max_unrealized_pnl or 0.0,
-            'trades_closed': len([f for f in state.fill_details if f.get('closes_position', False)]),
+            'trades_closed': len([f for f in state.fill_details if f.closes_position]),
             'penalty': penalty
         }
         
@@ -513,11 +513,11 @@ class TimeEfficiencyComponent(RewardComponent):
         
         # Check holding time for closed positions
         for fill in state.fill_details:
-            if fill.get('closes_position', False):
-                holding_time = fill.get('holding_time_minutes', 0)
+            if fill.closes_position:
+                holding_time = fill.holding_time_minutes or 0
                 
                 # Reward quick profitable trades
-                realized_pnl = fill.get('realized_pnl') or 0
+                realized_pnl = fill.realized_pnl or 0
                 if realized_pnl > 0:
                     if holding_time < 30:  # Less than 30 minutes
                         reward += 0.5
@@ -529,7 +529,7 @@ class TimeEfficiencyComponent(RewardComponent):
                         reward -= 0.5
         
         diagnostics = {
-            'trades_closed': len([f for f in state.fill_details if f.get('closes_position', False)]),
+            'trades_closed': len([f for f in state.fill_details if f.closes_position]),
             'efficiency_reward': reward
         }
         

@@ -253,7 +253,7 @@ class TrainingConfig(BaseModel):
     
     # Continuous training
     continue_training: bool = False
-    total_updates: int = Field(default=1, description="Total training updates")
+    total_updates: int = Field(default=5, description="Total training updates")
     checkpoint_interval: int = Field(default=10, description="Updates between checkpoints")
     keep_best_n_models: int = Field(default=5, description="Number of best models to keep")
     
