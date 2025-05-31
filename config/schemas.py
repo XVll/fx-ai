@@ -158,8 +158,9 @@ class EnvConfig(BaseModel):
     feature_update_interval: int = Field(default=1, description="Steps between feature updates")
     
     # Episode settings
-    max_episode_steps: int = Field(default=2048, description="Max steps per episode")
-    max_steps: int = Field(default=2048, description="Alias for max_episode_steps")
+    max_episode_steps: int = Field(default=2048, description="Natural episode length - no penalty when reached")
+    max_training_steps: Optional[int] = Field(default=None, description="Training step limit with penalty if reached")
+    max_steps: int = Field(default=2048, description="Legacy alias - maps to max_episode_steps")
     early_stop_loss_threshold: float = Field(default=0.9, description="Stop if equity < threshold * initial")
     random_reset: bool = Field(default=True, description="Random episode start within session")
     max_episode_loss_percent: float = Field(default=0.2, description="Max loss percentage before termination")
@@ -180,10 +181,10 @@ class EnvConfig(BaseModel):
     @field_validator('max_steps', mode='before')
     @classmethod
     def sync_max_steps(cls, v, info):
-        """Keep max_steps in sync with max_episode_steps"""
-        # If max_steps is not provided, use max_episode_steps
+        """Keep max_steps in sync with max_episode_steps (legacy compatibility)"""
+        # max_steps is legacy alias for max_episode_steps
         if v is None:
-            return info.data.get('max_episode_steps', 256)
+            return info.data.get('max_episode_steps', 2048)
         return v
 
 

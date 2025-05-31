@@ -420,10 +420,12 @@ class DashboardServer:
             step_display = f"{state.current_step:,}/{state.max_steps:,}" if state.max_steps > 0 else f"{state.current_step:,}/∞"
             progress_display = f"{progress:.1f}%" if state.max_steps > 0 else "∞"
             
+            # Combine episode number with progress percentage
+            episode_with_progress = f"Episode {episode_display} ({progress_display})"
+            
             episode_content = html.Div([
-                self._info_row("Episode", str(episode_display)),
+                self._info_row("Episode", episode_with_progress),
                 self._info_row("Step", step_display),
-                self._info_row("Progress", progress_display),
                 self._info_row("Cum. Reward", f"{state.cumulative_reward:.2f}"),
                 self._info_row("Step Reward", f"{state.last_step_reward:.3f}"),
                 # Compact progress bar with numbers
@@ -493,76 +495,138 @@ class DashboardServer:
             ])
             
             # Reward components table with episode vs session stats
-            if state.reward_components:
-                # Get episode and session reward data
-                episode_rewards = getattr(state, 'episode_reward_components', {})
-                session_rewards = getattr(state, 'session_reward_components', {})
+            # Define all active reward components with their weights/scales
+            all_reward_components = {
+                'realized_pnl': {'weight': 1.0, 'scale': 1.0, 'type': 'foundational'},
+                'holding_time_penalty': {'weight': 1.0, 'scale': 0.001, 'type': 'shaping'},
+                'overtrading_penalty': {'weight': 1.0, 'scale': 0.01, 'type': 'shaping'},
+                'quick_profit_incentive': {'weight': 1.0, 'scale': 0.5, 'type': 'shaping'},
+                'drawdown_penalty': {'weight': 1.0, 'scale': 0.01, 'type': 'shaping'},
+                'terminal_penalty': {'weight': 1.0, 'scale': 1.0, 'type': 'terminal'},
+                'mark_to_market': {'weight': 0.5, 'scale': 1.0, 'type': 'foundational'},
+                'mae_penalty': {'weight': 1.0, 'scale': 0.1, 'type': 'trade'},
+                'mfe_penalty': {'weight': 1.0, 'scale': 0.05, 'type': 'trade'}
+            }
+            
+            # Get episode and session reward data
+            episode_rewards = getattr(state, 'episode_reward_components', {})
+            session_rewards = getattr(state, 'session_reward_components', {})
+            
+            # Show ALL active components, including those with zero values
+            reward_data = []
+            episode_total = 0.0  # Track episode total for validation
+            
+            for component in sorted(all_reward_components.keys()):
+                episode_value = episode_rewards.get(component, 0.0)
+                session_total = session_rewards.get(component, 0.0)
                 
-                # Use all components from either current, episode, or session
-                all_components = set(state.reward_components.keys()) | set(episode_rewards.keys()) | set(session_rewards.keys())
+                episode_total += episode_value
                 
-                reward_data = []
-                for component in sorted(all_components):
-                    episode_value = episode_rewards.get(component, 0.0)
-                    session_total = session_rewards.get(component, 0.0)
-                    
-                    # Estimate episode count for mean calculation (rough approximation)
-                    episodes_estimate = max(1, state.total_episodes)
-                    session_mean = session_total / episodes_estimate if episodes_estimate > 0 else session_total
-                    
-                    reward_data.append({
-                        'Component': component,
-                        'Episode': f"{episode_value:.3f}",
-                        'Session Total': f"{session_total:.2f}",
-                        'Session Mean': f"{session_mean:.3f}",
-                        'Count': str(episodes_estimate)
-                    })
+                # Get component metadata
+                comp_info = all_reward_components[component]
+                weight = comp_info['weight']
+                scale = comp_info['scale']
+                comp_type = comp_info['type']
                 
-                reward_table = dash_table.DataTable(
-                    data=reward_data,
-                    columns=[
-                        {'name': 'Component', 'id': 'Component'},
-                        {'name': 'Episode', 'id': 'Episode', 'type': 'numeric'},
-                        {'name': 'Sess Total', 'id': 'Session Total', 'type': 'numeric'},
-                        {'name': 'Sess Mean', 'id': 'Session Mean', 'type': 'numeric'},
-                        {'name': 'Count', 'id': 'Count', 'type': 'numeric'}
-                    ],
-                    style_cell={
-                        'backgroundColor': DARK_THEME['bg_tertiary'],
-                        'color': DARK_THEME['text_primary'],
-                        'border': f"1px solid {DARK_THEME['border']}",
-                        'fontSize': '11px',
-                        'padding': '4px 6px',
-                        'textAlign': 'left'
+                # Create component name with weight/scale info
+                if weight != 1.0 and scale != 1.0:
+                    comp_display = f"{component} (w={weight:.1f}, s={scale:.3f})"
+                elif weight != 1.0:
+                    comp_display = f"{component} (w={weight:.1f})"
+                elif scale != 1.0:
+                    comp_display = f"{component} (s={scale:.3f})"
+                else:
+                    comp_display = component
+                
+                # Estimate episode count for mean calculation
+                episodes_estimate = max(1, state.total_episodes)
+                session_mean = session_total / episodes_estimate if episodes_estimate > 0 else session_total
+                
+                reward_data.append({
+                    'Component': comp_display,
+                    'Type': comp_type,
+                    'Episode': f"{episode_value:.3f}",
+                    'Session Total': f"{session_total:.2f}",
+                    'Session Mean': f"{session_mean:.3f}",
+                    'Count': str(episodes_estimate)
+                })
+            
+            # Add a total row for validation
+            cum_reward_displayed = getattr(state, 'cumulative_reward', 0.0)
+            reward_data.append({
+                'Component': f"TOTAL (Cum: {cum_reward_displayed:.3f})",
+                'Type': 'summary',
+                'Episode': f"{episode_total:.3f}",
+                'Session Total': f"{sum(session_rewards.values()):.2f}",
+                'Session Mean': f"{sum(session_rewards.values()) / max(1, state.total_episodes):.3f}",
+                'Count': "—"
+            })
+            
+            reward_table = dash_table.DataTable(
+                data=reward_data,
+                columns=[
+                    {'name': 'Component (Weight/Scale)', 'id': 'Component'},
+                    {'name': 'Type', 'id': 'Type'},
+                    {'name': 'Episode', 'id': 'Episode', 'type': 'numeric'},
+                    {'name': 'Sess Total', 'id': 'Session Total', 'type': 'numeric'},
+                    {'name': 'Sess Mean', 'id': 'Session Mean', 'type': 'numeric'},
+                    {'name': 'Count', 'id': 'Count'}
+                ],
+                style_cell={
+                    'backgroundColor': DARK_THEME['bg_tertiary'],
+                    'color': DARK_THEME['text_primary'],
+                    'border': f"1px solid {DARK_THEME['border']}",
+                    'fontSize': '10px',
+                    'padding': '4px 6px',
+                    'textAlign': 'left'
+                },
+                style_data_conditional=[
+                    {
+                        'if': {'column_id': 'Episode', 'filter_query': '{Episode} > 0'},
+                        'color': DARK_THEME['accent_green']
                     },
-                    style_data_conditional=[
-                        {
-                            'if': {'column_id': 'Episode', 'filter_query': '{Episode} > 0'},
-                            'color': DARK_THEME['accent_green']
-                        },
-                        {
-                            'if': {'column_id': 'Episode', 'filter_query': '{Episode} < 0'},
-                            'color': DARK_THEME['accent_red']
-                        },
-                        {
-                            'if': {'column_id': 'Session Mean', 'filter_query': '{Session Mean} > 0'},
-                            'color': DARK_THEME['accent_green']
-                        },
-                        {
-                            'if': {'column_id': 'Session Mean', 'filter_query': '{Session Mean} < 0'},
-                            'color': DARK_THEME['accent_red']
-                        }
-                    ],
-                    style_header={
+                    {
+                        'if': {'column_id': 'Episode', 'filter_query': '{Episode} < 0'},
+                        'color': DARK_THEME['accent_red']
+                    },
+                    {
+                        'if': {'column_id': 'Session Mean', 'filter_query': '{Session Mean} > 0'},
+                        'color': DARK_THEME['accent_green']
+                    },
+                    {
+                        'if': {'column_id': 'Session Mean', 'filter_query': '{Session Mean} < 0'},
+                        'color': DARK_THEME['accent_red']
+                    },
+                    {
+                        'if': {'row_index': len(reward_data) - 1},  # Total row
                         'backgroundColor': DARK_THEME['bg_secondary'],
-                        'color': DARK_THEME['text_secondary'],
-                        'fontWeight': 'bold',
-                        'fontSize': '10px'
+                        'fontWeight': 'bold'
                     },
-                    page_size=10
-                )
-            else:
-                reward_table = html.Div("No reward data", style={'color': DARK_THEME['text_muted'], 'textAlign': 'center', 'padding': '20px'})
+                    {
+                        'if': {'column_id': 'Type', 'filter_query': '{Type} = foundational'},
+                        'color': DARK_THEME['accent_blue']
+                    },
+                    {
+                        'if': {'column_id': 'Type', 'filter_query': '{Type} = shaping'},
+                        'color': DARK_THEME['accent_orange']
+                    },
+                    {
+                        'if': {'column_id': 'Type', 'filter_query': '{Type} = terminal'},
+                        'color': DARK_THEME['accent_red']
+                    },
+                    {
+                        'if': {'column_id': 'Type', 'filter_query': '{Type} = trade'},
+                        'color': DARK_THEME['accent_purple']
+                    }
+                ],
+                style_header={
+                    'backgroundColor': DARK_THEME['bg_secondary'],
+                    'color': DARK_THEME['text_secondary'],
+                    'fontWeight': 'bold',
+                    'fontSize': '10px'
+                },
+                page_size=12
+            )
             
             # Environment/Curriculum info with expanded details
             avg_spread = getattr(state, 'avg_spread', getattr(state, 'spread', 0.001))
