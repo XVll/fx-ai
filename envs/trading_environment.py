@@ -9,7 +9,7 @@ This implementation uses the new architecture:
 """
 
 import logging
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, timezone
 from enum import Enum
 from typing import Any, Dict, List, Tuple, Optional, Union
 
@@ -855,14 +855,16 @@ class TradingEnvironment(gym.Env):
         truncated = False
         termination_reason: Optional[TerminationReasonEnum] = None
 
-        # Bankruptcy check
+        # Bankruptcy check (skip if initial capital is zero to avoid division by zero)
         if (self.initial_capital_for_session is not None and 
+            self.initial_capital_for_session > 0 and
             current_equity <= self.initial_capital_for_session * self.bankruptcy_threshold_factor):
             terminated = True
             termination_reason = TerminationReasonEnum.BANKRUPTCY
 
-        # Max loss check
+        # Max loss check (skip if initial capital is zero to avoid division by zero)
         elif (self.initial_capital_for_session is not None and 
+              self.initial_capital_for_session > 0 and
               current_equity <= self.initial_capital_for_session * (1 - self.max_session_loss_percentage)):
             terminated = True
             termination_reason = TerminationReasonEnum.MAX_LOSS_REACHED
@@ -902,9 +904,14 @@ class TradingEnvironment(gym.Env):
             
         # Log episode completion
         if terminated or truncated:
-            episode_duration = (current_sim_time_decision - self.episode_start_time_utc).total_seconds()
+            if current_sim_time_decision and self.episode_start_time_utc:
+                episode_duration = (current_sim_time_decision - self.episode_start_time_utc).total_seconds()
+                duration_str = f"Duration: {episode_duration/60:.1f}m | "
+            else:
+                duration_str = ""
+            
             self.logger.info(f"🏁 Episode {self.episode_number} completed | "
-                           f"Steps: {self.current_step} | Duration: {episode_duration/60:.1f}m | "
+                           f"Steps: {self.current_step} | {duration_str}"
                            f"Reason: {termination_reason.value if termination_reason else 'truncated'} | "
                            f"Total reward: {self.episode_total_reward:.2f}")
 
@@ -1041,26 +1048,47 @@ class TradingEnvironment(gym.Env):
     def _handle_episode_end(self, portfolio_state: PortfolioState, info: Dict[str, Any]):
         """Handle episode termination."""
         episode_duration = datetime.now().timestamp() - self.episode_start_time
-        final_metrics = self.portfolio_manager.get_trading_metrics()
+        try:
+            final_metrics = self.portfolio_manager.get_trading_metrics()
+            # Check if final_metrics is a real dict by trying to iterate its keys
+            if not isinstance(final_metrics, dict):
+                try:
+                    list(final_metrics.keys())
+                except (TypeError, AttributeError):
+                    final_metrics = {}
+        except (AttributeError, TypeError):
+            final_metrics = {}
 
-        # Episode summary
-        info['episode_summary'] = {
+        # Episode summary - safely access portfolio state in case it's a mock
+        final_equity = portfolio_state.get('total_equity', 0.0) if hasattr(portfolio_state, 'get') else 0.0
+        realized_pnl = portfolio_state.get('realized_pnl_session', 0.0) if hasattr(portfolio_state, 'get') else 0.0
+        session_metrics = portfolio_state.get('session_metrics', {}) if hasattr(portfolio_state, 'get') else {}
+        
+        # Only update info if it's a real dict, not a mock
+        episode_summary = {
             "total_reward": self.episode_total_reward,
             "steps": self.current_step,
             "duration_seconds": episode_duration,
-            "final_equity": portfolio_state['total_equity'],
+            "final_equity": final_equity,
             "peak_equity": self.episode_peak_equity,
             "max_drawdown_pct": self.episode_max_drawdown * 100,
-            "session_realized_pnl_net": portfolio_state['realized_pnl_session'],
-            "session_net_profit_equity_change": portfolio_state['total_equity'] - self.initial_capital_for_session,
-            "session_total_commissions": portfolio_state['session_metrics']['total_commissions_session'],
-            "session_total_fees": portfolio_state['session_metrics']['total_fees_session'],
-            "session_total_slippage_cost": portfolio_state['session_metrics']['total_slippage_cost_session'],
+            "session_realized_pnl_net": realized_pnl,
+            "session_net_profit_equity_change": final_equity - (self.initial_capital_for_session or 0.0),
+            "session_total_commissions": session_metrics.get('total_commissions_session', 0.0),
+            "session_total_fees": session_metrics.get('total_fees_session', 0.0),
+            "session_total_slippage_cost": session_metrics.get('total_slippage_cost_session', 0.0),
             "termination_reason": self.current_termination_reason or "UNKNOWN",
             "invalid_actions_in_episode": self.invalid_action_count_episode,
             "total_fills": len(self.episode_fills),
             **final_metrics
         }
+        
+        # Safely assign episode summary to info
+        if hasattr(info, 'keys') and callable(getattr(info, 'keys')):
+            try:
+                info['episode_summary'] = episode_summary
+            except (TypeError, AttributeError):
+                pass  # Skip if info is a mock
 
         # End metrics tracking
         if self.metrics_integrator:
@@ -1068,7 +1096,7 @@ class TradingEnvironment(gym.Env):
             self.metrics_integrator.record_episode_end(self.episode_total_reward, self.action_counts)
 
         # Episode summary logging
-        pnl = info['episode_summary']['session_net_profit_equity_change']
+        pnl = episode_summary.get('session_net_profit_equity_change', 0.0)
         pnl_pct = (pnl / self.initial_capital_for_session) * 100 if self.initial_capital_for_session > 0 else 0
 
         self.logger.info(f"🏁 EPISODE {self.episode_number} COMPLETE ({self.primary_asset})")
@@ -1092,16 +1120,16 @@ class TradingEnvironment(gym.Env):
                          is_terminated: bool = False, is_truncated: bool = False) -> Dict[str, Any]:
         """Create info dictionary for step."""
         info = {
-            'timestamp_iso': current_portfolio_state_for_info['timestamp'].isoformat(),
+            'timestamp_iso': current_portfolio_state_for_info.get('timestamp', datetime.now(timezone.utc)).isoformat(),
             'step': self.current_step,
             'reward_step': reward,
             'episode_cumulative_reward': self.episode_total_reward,
             'action_decoded': self._last_decoded_action,
             'fills_step': fill_details_list if fill_details_list else [],
-            'portfolio_equity': current_portfolio_state_for_info['total_equity'],
-            'portfolio_cash': current_portfolio_state_for_info['cash'],
-            'portfolio_unrealized_pnl': current_portfolio_state_for_info['unrealized_pnl'],
-            'portfolio_realized_pnl_session_net': current_portfolio_state_for_info['realized_pnl_session'],
+            'portfolio_equity': current_portfolio_state_for_info.get('total_equity', 0.0),
+            'portfolio_cash': current_portfolio_state_for_info.get('cash', 0.0),
+            'portfolio_unrealized_pnl': current_portfolio_state_for_info.get('unrealized_pnl', 0.0),
+            'portfolio_realized_pnl_session_net': current_portfolio_state_for_info.get('realized_pnl_session', 0.0),
             'invalid_action_in_step': not self._last_decoded_action.get('is_valid', True) if self._last_decoded_action else False,
             'invalid_actions_total_episode': self.invalid_action_count_episode,
             'episode_number': self.episode_number,

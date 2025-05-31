@@ -215,8 +215,10 @@ class RewardMetricsTracker:
         component_stats = {}
         for name, metrics in self.component_metrics.items():
             stats = metrics.get_statistics()
-            if self.current_episode_steps > 0:
+            if self.current_episode_steps > 0 and stats.get('triggered', False):
                 stats['trigger_rate'] = stats['count_triggered'] / self.current_episode_steps
+            else:
+                stats['trigger_rate'] = 0.0
             component_stats[name] = stats
             
         episode_summary['component_statistics'] = component_stats

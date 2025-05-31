@@ -158,8 +158,8 @@ class EnvConfig(BaseModel):
     feature_update_interval: int = Field(default=1, description="Steps between feature updates")
     
     # Episode settings
-    max_episode_steps: int = Field(default=256, description="Max steps per episode")
-    max_steps: int = Field(default=256, description="Alias for max_episode_steps")
+    max_episode_steps: int = Field(default=2048, description="Max steps per episode")
+    max_steps: int = Field(default=2048, description="Alias for max_episode_steps")
     early_stop_loss_threshold: float = Field(default=0.9, description="Stop if equity < threshold * initial")
     random_reset: bool = Field(default=True, description="Random episode start within session")
     max_episode_loss_percent: float = Field(default=0.2, description="Max loss percentage before termination")
@@ -243,7 +243,7 @@ class TrainingConfig(BaseModel):
     max_grad_norm: float = 0.5
     
     # Rollout settings
-    rollout_steps: int = Field(default=512, description="Steps per rollout")
+    rollout_steps: int = Field(default=4096, description="Steps per rollout")
     
     # Learning rate schedule
     use_lr_annealing: bool = True
