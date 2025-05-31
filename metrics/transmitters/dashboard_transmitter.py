@@ -297,6 +297,26 @@ class DashboardTransmitter(MetricTransmitter):
                 components = event_data.get('components', {})
                 dashboard_state.update_metrics({'reward_components': components})
                 
+            elif event_name == 'momentum_day_change':
+                # Update momentum day info and reset points for the new day
+                day_info = event_data.get('day_info', {})
+                reset_points = event_data.get('reset_points', [])
+                
+                # Update dashboard with momentum day tracking
+                dashboard_state.update_quality_metrics({
+                    'current_momentum_day_date': day_info.get('date', ''),
+                    'current_momentum_day_quality': day_info.get('activity_score', 0.0),
+                    'day_activity_score': day_info.get('activity_score', 0.0),
+                    'max_intraday_move': day_info.get('max_intraday_move', 0.0),
+                    'volume_ratio': day_info.get('volume_multiplier', 1.0),
+                    'is_front_side': day_info.get('is_front_side', False),
+                    'is_back_side': day_info.get('is_back_side', False),
+                    'halt_count': day_info.get('halt_count', 0)
+                })
+                
+                # Update reset points data for chart markers
+                dashboard_state.update_reset_points_data(reset_points)
+                
             elif event_name == 'episode_actions':
                 # Handle episode action counts
                 dashboard_state.update_metrics(event_data)

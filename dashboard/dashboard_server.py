@@ -442,10 +442,13 @@ class DashboardServer:
             # Combine episode number with progress percentage
             episode_with_progress = f"Episode {episode_display} ({progress_display})"
             
+            # Calculate current episode reward (sum of episode components)
+            episode_reward_total = sum(getattr(state, 'episode_reward_components', {}).values())
+            
             episode_content = html.Div([
                 self._info_row("Episode", episode_with_progress),
                 self._info_row("Step", step_display),
-                self._info_row("Cum. Reward", f"{state.cumulative_reward:.2f}"),
+                self._info_row("Episode Reward", f"{episode_reward_total:.3f}"),
                 self._info_row("Step Reward", f"{state.last_step_reward:.3f}"),
                 # Compact progress bar with numbers
                 html.Div([
@@ -580,15 +583,14 @@ class DashboardServer:
                     'Count': str(episodes_estimate)
                 })
             
-            # Add a total row for validation
-            cum_reward_displayed = getattr(state, 'cumulative_reward', 0.0)
+            # Add a total row for validation - Episode column shows sum of episode components
             reward_data.append({
-                'Component': f"TOTAL (Cum: {cum_reward_displayed:.3f})",
+                'Component': f"EPISODE TOTAL",
                 'Type': 'summary',
                 'Episode': f"{episode_total:.3f}",
                 'Session Total': f"{sum(session_rewards.values()):.2f}",
                 'Session Mean': f"{sum(session_rewards.values()) / max(1, state.total_episodes):.3f}",
-                'Count': "—"
+                'Count': f"{state.total_episodes}"
             })
             
             reward_table = dash_table.DataTable(
@@ -938,6 +940,100 @@ class DashboardServer:
                         row=1, col=1
                     )
                 
+                # Add vertical line for current trading time
+                current_timestamp = getattr(state, 'current_timestamp', None)
+                if current_timestamp:
+                    try:
+                        # Convert to pandas Timestamp and ensure timezone-naive
+                        if isinstance(current_timestamp, str):
+                            current_ts = pd.to_datetime(current_timestamp).tz_localize(None)
+                        else:
+                            current_ts = pd.to_datetime(current_timestamp)
+                            if hasattr(current_ts, 'tz') and current_ts.tz is not None:
+                                current_ts = current_ts.tz_localize(None)
+                        
+                        # Check if current timestamp is within chart range
+                        if current_ts >= df['timestamp'].min() and current_ts <= df['timestamp'].max():
+                            # Add vertical line using shape instead of add_vline for better compatibility
+                            fig.add_shape(
+                                type="line",
+                                x0=current_ts, x1=current_ts,
+                                y0=0, y1=1,
+                                yref="paper",
+                                line=dict(
+                                    color=DARK_THEME['accent_orange'],
+                                    width=2,
+                                    dash="dash"
+                                ),
+                                row=1, col=1
+                            )
+                            # Add annotation for current time
+                            fig.add_annotation(
+                                x=current_ts,
+                                y=1,
+                                yref="paper",
+                                text=f"Now: {state.ny_time}",
+                                showarrow=False,
+                                font=dict(size=10, color=DARK_THEME['accent_orange']),
+                                bgcolor="rgba(0,0,0,0.5)",
+                                bordercolor=DARK_THEME['accent_orange'],
+                                borderwidth=1,
+                                row=1, col=1
+                            )
+                    except Exception:
+                        # Skip vertical line if timestamp conversion fails
+                        pass
+                
+                # Add reset point markers
+                reset_points_data = getattr(state, 'reset_points_data', [])
+                if reset_points_data:
+                    for reset_point in reset_points_data:
+                        # Parse reset point timestamp
+                        reset_time = reset_point.get('timestamp')
+                        reset_price = reset_point.get('price', 0)
+                        activity_score = reset_point.get('activity_score', 0)
+                        combined_score = reset_point.get('combined_score', 0)
+                        
+                        if reset_time and reset_price > 0:
+                            try:
+                                reset_dt = pd.to_datetime(reset_time)
+                                # Remove timezone if present
+                                if reset_dt.tz is not None:
+                                    reset_dt = reset_dt.tz_localize(None)
+                            except:
+                                continue
+                            
+                            # Only show reset points within the chart time range
+                            if reset_dt >= df['timestamp'].min() and reset_dt <= df['timestamp'].max():
+                                # Color based on activity score - higher score = more blue/purple
+                                if activity_score >= 0.7:
+                                    marker_color = DARK_THEME['accent_purple']  # High activity
+                                    marker_size = 10
+                                elif activity_score >= 0.5:
+                                    marker_color = DARK_THEME['accent_blue']    # Medium activity
+                                    marker_size = 8
+                                else:
+                                    marker_color = DARK_THEME['text_muted']     # Low activity
+                                    marker_size = 6
+                                
+                                fig.add_trace(
+                                    go.Scatter(
+                                        x=[reset_dt],
+                                        y=[reset_price],
+                                        mode='markers',
+                                        marker=dict(
+                                            size=marker_size,
+                                            color=marker_color,
+                                            symbol='diamond',
+                                            line=dict(width=1, color=DARK_THEME['text_primary'])
+                                        ),
+                                        name='Reset Point',
+                                        showlegend=False,
+                                        hovertemplate=f"Reset Point<br>Time: {reset_dt.strftime('%H:%M')}<br>Price: ${reset_price:.3f}<br>Activity: {activity_score:.3f}<br>Combined: {combined_score:.3f}<extra></extra>"
+                                    ),
+                                    row=1, col=1
+                                )
+
                 # Add execution markers (not completed trades)
                 executions_data = list(state.recent_executions) if state.recent_executions else []
                 if executions_data:

@@ -28,6 +28,7 @@ class SharedDashboardState:
     volume: int = 0
     ny_time: str = ""
     trading_hours: str = "CLOSED"
+    current_timestamp: Optional[datetime] = None
     
     # Position data (from event stream)
     position_side: str = "FLAT"
@@ -140,6 +141,9 @@ class SharedDashboardState:
     episodes_on_current_day: int = 0
     reset_point_cycles_completed: int = 0
     total_momentum_days_used: int = 0
+    
+    # Reset points data for chart markers
+    reset_points_data: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class DashboardStateManager:
@@ -184,8 +188,11 @@ class DashboardStateManager:
                             # Assume UTC and convert to NY
                             ts_ny = ts.tz_localize('UTC').tz_convert('America/New_York')
                         self._state.ny_time = ts_ny.strftime('%H:%M:%S')
+                        # Store current timestamp for chart vertical line (timezone-naive)
+                        self._state.current_timestamp = ts_ny.tz_localize(None)
                     except:
                         self._state.ny_time = datetime.now().strftime('%H:%M:%S')
+                        self._state.current_timestamp = None
                 
                 # Get trading session
                 self._state.trading_hours = data.get('market_session', 'MARKET')
@@ -567,6 +574,11 @@ class DashboardStateManager:
         """Update the 1-minute candle data for the chart"""
         with self._lock:
             self._state.candle_data_1m = candle_data_1m
+            
+    def update_reset_points_data(self, reset_points_data: List[Dict[str, Any]]):
+        """Update the reset points data for chart markers"""
+        with self._lock:
+            self._state.reset_points_data = reset_points_data
 
 
 # Global instance
