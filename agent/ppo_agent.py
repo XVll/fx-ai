@@ -129,7 +129,7 @@ class PPOTrainer:
         self.used_momentum_days = set()
         self.current_reset_points = []
         self.used_reset_point_indices = set()
-        self.curriculum_progress = 0.0  # 0.0 = easy episodes, 1.0 = hard episodes
+        self.curriculum_progress = 0.3  # Start at moderate difficulty, 0.0 = easy episodes, 1.0 = hard episodes
         
         # Day episode tracking
         self.episodes_completed_on_current_day = 0
@@ -261,10 +261,10 @@ class PPOTrainer:
             
             # If performance is stable and positive, increase difficulty
             if std_reward < abs(mean_reward) * 0.3 and mean_reward > 0:
-                self.curriculum_progress = min(1.0, self.curriculum_progress + 0.02)
+                self.curriculum_progress = min(1.0, self.curriculum_progress + 0.05)  # Faster progression
             # If performance is poor, decrease difficulty slightly
             elif mean_reward < -1.0:
-                self.curriculum_progress = max(0.0, self.curriculum_progress - 0.01)
+                self.curriculum_progress = max(0.0, self.curriculum_progress - 0.02)
                 
             # Emit curriculum progress event
             if hasattr(self.metrics, 'metrics_manager'):
