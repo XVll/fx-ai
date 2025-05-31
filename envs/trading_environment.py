@@ -426,7 +426,7 @@ class TradingEnvironment(gym.Env):
         return {
             'symbol': best_day['symbol'],
             'date': best_day['date'],
-            'quality_score': best_day['quality_score'],
+            'quality_score': best_day['activity_score'],  # Map activity_score to quality_score
             'max_intraday_move': best_day.get('max_intraday_move', 0.0),
             'volume_multiplier': best_day.get('volume_multiplier', 1.0)
         }

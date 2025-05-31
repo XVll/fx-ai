@@ -55,6 +55,10 @@ def main():
                              help="Symbol to train on")
     train_parser.add_argument("--quick-test", action="store_true",
                              help="Use quick test configuration")
+    train_parser.add_argument("--momentum", action="store_true",
+                             help="Use momentum training configuration")
+    train_parser.add_argument("--config", type=str,
+                             help="Configuration override file")
     train_parser.add_argument("--experiment", type=str,
                              help="Experiment name")
     train_parser.add_argument("--device", type=str, choices=["cuda", "cpu", "mps"],
@@ -109,27 +113,50 @@ def main():
 
 def run_training(args, script_path):
     """Run training with the specified arguments."""
-    cmd = [sys.executable, script_path]
-
-    # Add config override if specified
-    if args.quick_test:
-        cmd.extend(["--config", "quick_test"])
-
-    # Symbol override
-    if args.symbol:
-        cmd.extend(["--symbol", args.symbol])
-
-    # Continue training flag
-    if args.continue_training:
-        cmd.append("--continue")
+    # Determine which script to use - prefer main.py for momentum training
+    if args.momentum or args.config == "momentum_training":
+        cmd = [sys.executable, "main.py"]
         
-    # Experiment name
-    if args.experiment:
-        cmd.extend(["--experiment", args.experiment])
+        # Add momentum training config
+        cmd.extend(["--config", "momentum_training"])
         
-    # Device override
-    if args.device:
-        cmd.extend(["--device", args.device])
+        # Symbol override
+        if args.symbol:
+            cmd.extend(["--symbol", args.symbol])
+            
+        # Continue training flag
+        if args.continue_training:
+            cmd.append("--continue")
+            
+        # Device override
+        if args.device:
+            cmd.extend(["--device", args.device])
+            
+    else:
+        # Use legacy scripts/run.py approach
+        cmd = [sys.executable, script_path]
+
+        # Add config override if specified
+        if args.quick_test:
+            cmd.extend(["--config", "quick_test"])
+        elif args.config:
+            cmd.extend(["--config", args.config])
+
+        # Symbol override
+        if args.symbol:
+            cmd.extend(["--symbol", args.symbol])
+
+        # Continue training flag
+        if args.continue_training:
+            cmd.append("--continue")
+            
+        # Experiment name
+        if args.experiment:
+            cmd.extend(["--experiment", args.experiment])
+            
+        # Device override
+        if args.device:
+            cmd.extend(["--device", args.device])
     
     # Run the command
     logger.info(f"Running command: {' '.join(cmd)}")

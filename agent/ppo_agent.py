@@ -39,6 +39,9 @@ class PPOTrainer:
             curriculum_strategy: str = "quality_based",
             min_quality_threshold: float = 0.3,
             episode_selection_mode: str = "momentum_days",
+            episodes_per_day: int = 10,
+            reset_point_quality_range: List[float] = None,
+            day_switching_strategy: str = "exhaustive",
     ):
         self.env = env
         self.model = model
@@ -116,12 +119,21 @@ class PPOTrainer:
         self.min_quality_threshold = min_quality_threshold
         self.episode_selection_mode = episode_selection_mode
         
+        # Day selection configuration
+        self.episodes_per_day = episodes_per_day
+        self.reset_point_quality_range = reset_point_quality_range or [0.0, 1.0]
+        self.day_switching_strategy = day_switching_strategy
+        
         # Momentum training state
         self.current_momentum_day = None
         self.used_momentum_days = set()
         self.current_reset_points = []
         self.used_reset_point_indices = set()
         self.curriculum_progress = 0.0  # 0.0 = easy episodes, 1.0 = hard episodes
+        
+        # Day episode tracking
+        self.episodes_completed_on_current_day = 0
+        self.reset_point_cycles_completed = 0
 
         self.logger.info(f"🤖 PPOTrainer initialized with metrics integration. Device: {self.device}")
 
@@ -132,7 +144,7 @@ class PPOTrainer:
             
         # Try to get a new momentum day from environment
         momentum_day_info = self.env.select_next_momentum_day(
-            exclude_dates=[day['date'] for day in self.used_momentum_days]
+            exclude_dates=list(self.used_momentum_days)
         )
         
         if momentum_day_info is None:
@@ -145,37 +157,61 @@ class PPOTrainer:
             return False
             
         self.current_momentum_day = momentum_day_info
-        self.used_momentum_days.add(momentum_day_info)
-        self.current_reset_points = momentum_day_info.get('reset_points', [])
+        self.used_momentum_days.add(momentum_day_info['date'])
         self.used_reset_point_indices.clear()
         
         self.logger.info(f"📅 Selected momentum day: {momentum_day_info['date'].strftime('%Y-%m-%d')} "
-                        f"(quality: {momentum_day_info.get('activity_score', 0):.3f}, "
-                        f"reset points: {len(self.current_reset_points)})")
+                        f"(quality: {momentum_day_info.get('quality_score', 0):.3f})")
         
-        # Emit momentum day change event
+        # Emit momentum day change event with tracking information
         if hasattr(self.metrics, 'metrics_manager'):
-            self.metrics.metrics_manager.emit_event('momentum_day_change', momentum_day_info)
+            # Enhance momentum_day_info with tracking data
+            enhanced_info = momentum_day_info.copy()
+            enhanced_info.update({
+                'day_date': momentum_day_info['date'].strftime('%Y-%m-%d'),
+                'day_quality': momentum_day_info.get('quality_score', 0.0),
+                'episodes_on_day': self.episodes_completed_on_current_day,
+                'cycles_completed': self.reset_point_cycles_completed,
+                'total_days_used': len(self.used_momentum_days)
+            })
+            self.metrics.metrics_manager.emit_event('momentum_day_change', enhanced_info)
         
         return True
 
     def _select_reset_point(self) -> int:
-        """Select next reset point based on curriculum strategy."""
-        if not self.current_reset_points:
+        """Select next reset point based on curriculum strategy and quality range filtering."""
+        # Get current reset points from environment
+        if not hasattr(self.env, 'reset_points') or not self.env.reset_points:
             return 0
             
-        available_indices = [i for i in range(len(self.current_reset_points)) 
+        reset_points = self.env.reset_points
+        
+        # Filter reset points by quality range
+        min_quality, max_quality = self.reset_point_quality_range
+        quality_filtered_indices = []
+        for i, reset_point in enumerate(reset_points):
+            quality_score = reset_point.get('activity_score', reset_point.get('quality_score', 0.5))
+            if min_quality <= quality_score <= max_quality:
+                quality_filtered_indices.append(i)
+        
+        if not quality_filtered_indices:
+            # If no reset points match quality range, use all
+            self.logger.warning(f"No reset points match quality range {self.reset_point_quality_range}, using all")
+            quality_filtered_indices = list(range(len(reset_points)))
+        
+        # Filter by used indices
+        available_indices = [i for i in quality_filtered_indices 
                             if i not in self.used_reset_point_indices]
         
         if not available_indices:
-            # Reset used indices when all are exhausted
+            # Reset used indices when all quality-filtered points are exhausted
             self.used_reset_point_indices.clear()
-            available_indices = list(range(len(self.current_reset_points)))
+            available_indices = quality_filtered_indices
             
         if self.curriculum_strategy == "quality_based":
             # Start with easier (lower activity) reset points, progress to harder ones
             sorted_indices = sorted(available_indices, 
-                                  key=lambda i: self.current_reset_points[i].get('activity_score', 0))
+                                  key=lambda i: reset_points[i].get('activity_score', 0))
             
             # Select based on curriculum progress
             progress_idx = int(self.curriculum_progress * len(sorted_indices))
@@ -190,7 +226,7 @@ class PPOTrainer:
             
         self.used_reset_point_indices.add(selected_idx)
         
-        reset_point = self.current_reset_points[selected_idx]
+        reset_point = reset_points[selected_idx]
         self.logger.debug(f"🎯 Selected reset point {selected_idx}: "
                          f"{reset_point.get('timestamp', 'unknown')} "
                          f"(activity: {reset_point.get('activity_score', 0):.3f})")
@@ -222,19 +258,72 @@ class PPOTrainer:
                     'strategy': self.curriculum_strategy
                 })
 
+    def _should_switch_day(self) -> bool:
+        """Determine if we should switch to a new day based on episodes per day configuration."""
+        if self.reset_point_cycles_completed >= self.episodes_per_day:
+            return True
+        return False
+
     def _reset_environment_with_momentum(self):
-        """Reset environment using momentum-based training."""
+        """Reset environment using momentum-based training with configurable day switching."""
         if self.episode_selection_mode == "momentum_days":
-            # Ensure we have a momentum day selected
+            # Check if we need to switch to a new momentum day
+            should_switch_day = False
+            
             if self.current_momentum_day is None:
+                should_switch_day = True
+                self.logger.info("🔄 No current momentum day, selecting new day")
+            elif self._should_switch_day():
+                should_switch_day = True
+                date_str = self.current_momentum_day['date'].strftime('%Y-%m-%d')
+                self.logger.info(f"🔄 Completed {self.episodes_completed_on_current_day} episodes "
+                               f"({self.reset_point_cycles_completed} cycles) on {date_str}, switching day")
+            
+            # Switch to new momentum day if needed
+            if should_switch_day:
                 if not self._select_next_momentum_day():
-                    # Fallback to standard reset
-                    return self.env.reset()
+                    self.logger.warning("No more momentum days available, reusing current day")
+                    if self.current_momentum_day is None:
+                        return self.env.reset()
+                else:
+                    # Set up environment with new momentum day
+                    current_day = self.current_momentum_day
+                    self.logger.info(f"📅 Switching to momentum day: {current_day['date'].strftime('%Y-%m-%d')} "
+                                   f"(quality: {current_day.get('quality_score', 0):.3f})")
                     
-            # Select reset point
+                    self.env.setup_session(
+                        symbol=current_day['symbol'], 
+                        date=current_day['date']
+                    )
+                    
+                    # Reset day tracking
+                    self.episodes_completed_on_current_day = 0
+                    self.reset_point_cycles_completed = 0
+                    self.used_reset_point_indices.clear()
+                    
+            # Select reset point and reset environment
             reset_point_idx = self._select_reset_point()
             
-            # Reset at the selected point
+            # Track episode completion
+            self.episodes_completed_on_current_day += 1
+            
+            # Check if we completed a cycle through all reset points
+            if not self.env.has_more_reset_points():
+                self.reset_point_cycles_completed += 1
+                self.used_reset_point_indices.clear()
+                self.logger.info(f"🔄 Completed cycle {self.reset_point_cycles_completed} through reset points")
+            
+            # Emit updated momentum day progress
+            if hasattr(self.metrics, 'metrics_manager') and hasattr(self, 'current_momentum_day'):
+                momentum_progress = {
+                    'day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d'),
+                    'day_quality': self.current_momentum_day.get('quality_score', 0.0),
+                    'episodes_on_day': self.episodes_completed_on_current_day,
+                    'cycles_completed': self.reset_point_cycles_completed,
+                    'total_days_used': len(self.used_momentum_days)
+                }
+                self.metrics.metrics_manager.emit_event('momentum_day_change', momentum_progress)
+            
             return self.env.reset_at_point(reset_point_idx)
         else:
             # Use standard reset

@@ -7,7 +7,12 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-# Training Tasks
+# Momentum Training Tasks (Recommended)
+momentum = "poetry run python main.py --config momentum_training --symbol MLGO"
+momentum-continue = "poetry run python main.py --config momentum_training --symbol MLGO --continue"
+momentum-quick = "poetry run python main.py --config quick_test --symbol MLGO"
+
+# Legacy Training Tasks
 init = "poetry run python scripts/run.py train --symbol MLGO"
 train = "poetry run python scripts/run.py train --continue-training --symbol MLGO"
 quick = "poetry run python scripts/run.py train --quick-test --symbol MLGO"
@@ -39,8 +44,9 @@ test-fast = "poetry run python -m pytest tests/ -x --tb=short"
 # Utility Tasks
 clean = "rm -rf outputs/* wandb/* __pycache__"
 setup = "wandb login"
-dashboard = "echo 'Dashboard will auto-launch during training at http://localhost:8050'"
-killport = "lsof -ti:8050 | xargs kill -9 || echo 'Port 8050 already free'"
+dashboard = "echo 'Dashboard will auto-launch during training at http://localhost:8051'"
+killport = "lsof -ti:8051 | xargs kill -9 || echo 'Port 8051 already free'"
+build-index = "poetry run python scripts/scan_momentum_days.py --symbol MLGO --min-quality 0.0"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"

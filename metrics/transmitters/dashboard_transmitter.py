@@ -311,6 +311,17 @@ class DashboardTransmitter(MetricTransmitter):
                 }
                 dashboard_state.update_metrics(curriculum_data)
                 
+            elif event_name == 'momentum_day_change':
+                # Handle momentum day changes
+                momentum_data = {
+                    'current_momentum_day_date': event_data.get('day_date', ''),
+                    'current_momentum_day_quality': event_data.get('day_quality', 0.0),
+                    'episodes_on_current_day': event_data.get('episodes_on_day', 0),
+                    'reset_point_cycles_completed': event_data.get('cycles_completed', 0),
+                    'total_momentum_days_used': event_data.get('total_days_used', 0)
+                }
+                dashboard_state.update_metrics(momentum_data)
+                
             # Other events can be handled as needed
                 
         except Exception as e:
