@@ -693,21 +693,44 @@ class DashboardServer:
             stage_display = stage_names.get(curriculum_stage, curriculum_stage.replace('_', ' ').title())
             curriculum_color = stage_colors.get(curriculum_stage, DARK_THEME['text_muted'])
             
-            # Calculate next stage progress
-            stage_thresholds = {
-                'stage_1_beginner': 2000,
-                'stage_2_intermediate': 5000, 
-                'stage_3_advanced': 8000,
-                'stage_4_specialization': float('inf')
-            }
-            current_threshold = stage_thresholds.get(curriculum_stage, float('inf'))
-            progress_pct = (total_episodes_curriculum / current_threshold * 100) if current_threshold != float('inf') else 100
-            progress_pct = min(100, progress_pct)
+            # Get progress percentage from curriculum system (transmitted from agent)
+            progress_pct = getattr(state, 'curriculum_progress', 0.0)
+            if progress_pct == 0.0:
+                # Fallback calculation if not received from agent
+                stage_thresholds = {
+                    'stage_1_beginner': 2000,
+                    'stage_2_intermediate': 5000, 
+                    'stage_3_advanced': 8000,
+                    'stage_4_specialization': float('inf')
+                }
+                current_threshold = stage_thresholds.get(curriculum_stage, float('inf'))
+                progress_pct = (total_episodes_curriculum / current_threshold * 100) if current_threshold != float('inf') else 100
+                progress_pct = min(100, progress_pct)
             
             # Determine momentum direction
             
-            # Add reset points info
-            reset_points_count = len(getattr(state, 'reset_points_data', []))
+            # Add reset points info (show filtered count)
+            reset_points_data = getattr(state, 'reset_points_data', [])
+            total_reset_points = len(reset_points_data)
+            
+            # Count filtered reset points using same logic as chart filtering
+            min_roc_score = getattr(state, 'min_roc_score', 0.0)
+            min_activity_score = getattr(state, 'min_activity_score', 0.0)
+            min_direction_score = getattr(state, 'min_direction_score', 0.0)
+            
+            filtered_count = 0
+            for reset_point in reset_points_data:
+                direction_score = reset_point.get('direction_score', 0.0)
+                roc_score = reset_point.get('roc_score', 0.0)
+                activity_score = reset_point.get('activity_score', 0.0)
+                
+                # Match agent logic exactly
+                meets_direction = abs(direction_score) >= min_direction_score
+                meets_roc = roc_score >= min_roc_score
+                meets_activity = abs(activity_score) >= min_activity_score
+                
+                if meets_direction and meets_roc and meets_activity:
+                    filtered_count += 1
             
             # Add day information with color coding
             day_info_color = DARK_THEME['accent_green'] if state.current_momentum_day_quality >= 0.7 else DARK_THEME['accent_blue'] if state.current_momentum_day_quality >= 0.5 else DARK_THEME['text_muted']
@@ -716,7 +739,7 @@ class DashboardServer:
                 self._info_row("Stage", stage_display, color=curriculum_color),
                 self._info_row("Progress", f"{progress_pct:.1f}%", color=curriculum_color),
                 self._info_row("Episode Len", f"{episode_length} steps"),
-                self._info_row("Reset Points", f"{reset_points_count}", color=DARK_THEME['accent_blue']),
+                self._info_row("Reset Points", f"{filtered_count}/{total_reset_points}", color=DARK_THEME['accent_blue']),
                 self._info_row("Total Episodes", f"{total_episodes_curriculum:,}"),
                 # Day information
                 html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
@@ -1009,10 +1032,27 @@ class DashboardServer:
                         # Skip vertical line if timestamp conversion fails
                         pass
                 
-                # Add reset point markers
+                # Add reset point markers (filtered by curriculum thresholds)
                 reset_points_data = getattr(state, 'reset_points_data', [])
                 if reset_points_data:
+                    # Get curriculum thresholds for filtering
+                    min_roc_score = getattr(state, 'min_roc_score', 0.0)
+                    min_activity_score = getattr(state, 'min_activity_score', 0.0)
+                    min_direction_score = getattr(state, 'min_direction_score', 0.0)
+                    
                     for reset_point in reset_points_data:
+                        # Filter reset points by curriculum thresholds (same logic as agent)
+                        direction_score = reset_point.get('direction_score', 0.0)
+                        roc_score = reset_point.get('roc_score', 0.0)
+                        activity_score = reset_point.get('activity_score', 0.0)
+                        
+                        # Only show reset points that meet curriculum criteria (match agent logic)
+                        meets_direction = abs(direction_score) >= min_direction_score
+                        meets_roc = roc_score >= min_roc_score
+                        meets_activity = abs(activity_score) >= min_activity_score
+                        
+                        if not (meets_direction and meets_roc and meets_activity):
+                            continue
                         # Parse reset point timestamp
                         reset_time = reset_point.get('timestamp')
                         reset_price = reset_point.get('price', 0)
