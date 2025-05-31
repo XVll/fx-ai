@@ -322,9 +322,6 @@ class DashboardTransmitter(MetricTransmitter):
                 dashboard_state.update_metrics(event_data)
                 
             elif event_name == 'curriculum_progress':
-                # DEBUG: Log what curriculum data we're receiving
-                print(f"DEBUG CURRICULUM: Received event_data: {event_data}")
-                
                 # Handle curriculum learning progression
                 curriculum_data = {
                     'curriculum_stage': event_data.get('stage', 'stage_1_beginner'),
@@ -335,7 +332,6 @@ class DashboardTransmitter(MetricTransmitter):
                     'min_activity_score': event_data.get('min_activity_score', 0.0),
                     'min_direction_score': event_data.get('min_direction_score', 0.0)
                 }
-                print(f"DEBUG CURRICULUM: Sending to dashboard: {curriculum_data}")
                 dashboard_state.update_metrics(curriculum_data)
                 
             elif event_name == 'momentum_day_change':

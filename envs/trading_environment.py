@@ -259,12 +259,19 @@ class TradingEnvironment(gym.Env):
                     'activity_score': row.get('activity_score', 0.5),
                     'combined_score': row.get('combined_score', 0.5),
                     'day_activity_score': row.get('day_activity_score', 0.5),
+                    # Add 3-component scores for curriculum system
+                    'direction_score': row.get('direction_score', 0.0),
+                    'roc_score': row.get('roc_score', 0.0),
                     'max_duration_hours': self._get_duration_for_activity(row.get('activity_score', 0.5)),
                     'reset_type': 'momentum',
                     'is_positive_move': row.get('is_positive_move', True),
                     'is_negative_move': row.get('is_negative_move', False),
                     'volume_ratio': row.get('volume_ratio', 1.0),
-                    'price_change': row.get('price_change', 0.0)
+                    'price_change': row.get('price_change', 0.0),
+                    # Additional fields from scanner for completeness
+                    'price': row.get('price', 0.0),
+                    'volume': row.get('volume', 0),
+                    'session': row.get('session', 'regular')
                 })
             
             # Check for early trading hour gaps and supplement with fixed points if needed

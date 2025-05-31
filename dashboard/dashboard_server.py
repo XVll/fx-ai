@@ -674,6 +674,7 @@ class DashboardServer:
             min_roc_score = getattr(state, 'min_roc_score', 0.0)
             min_activity_score = getattr(state, 'min_activity_score', 0.0)
             min_direction_score = getattr(state, 'min_direction_score', 0.0)
+            
             episode_length = getattr(state, 'curriculum_episode_length', 256)
             
             # Determine curriculum stage color
