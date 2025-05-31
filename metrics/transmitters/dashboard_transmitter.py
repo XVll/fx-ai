@@ -187,21 +187,26 @@ class DashboardTransmitter(MetricTransmitter):
                 elif 'kl_divergence' in metric_name:
                     dashboard_data['kl_divergence'] = value
                     
+            elif 'training.process' in metric_name:
+                # Training process metrics
+                if 'episode_count' in metric_name:
+                    dashboard_data['total_episodes'] = value  # Global episode count across all sessions
+                elif 'global_step' in metric_name:
+                    dashboard_data['global_steps'] = value
+                elif 'update_count' in metric_name:
+                    dashboard_data['updates'] = value
+                elif 'episodes_per_hour' in metric_name:
+                    dashboard_data['episodes_per_hour'] = value
+                elif 'steps_per_second' in metric_name:
+                    dashboard_data['steps_per_second'] = value
+                elif 'updates_per_hour' in metric_name:
+                    dashboard_data['updates_per_second'] = value / 3600  # Convert to per second
+                    
             elif 'training.episode' in metric_name:
                 if 'reward' in metric_name and 'mean' in metric_name:
                     dashboard_data['mean_episode_reward'] = value
                 elif 'length' in metric_name and 'mean' in metric_name:
                     dashboard_data['mean_episode_length'] = value
-                elif 'current_step' in metric_name:
-                    dashboard_data['current_step'] = value
-                elif 'max_steps' in metric_name:
-                    dashboard_data['max_steps'] = value
-                elif 'cumulative_reward' in metric_name:
-                    dashboard_data['cumulative_reward'] = value
-                elif 'step_reward' in metric_name:
-                    dashboard_data['last_step_reward'] = value
-                elif 'episode_number' in metric_name:
-                    dashboard_data['episode_number'] = value
                     
             elif 'trading.portfolio' in metric_name:
                 # Portfolio metrics
