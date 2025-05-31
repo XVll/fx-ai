@@ -10,33 +10,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 poetry install
 wandb login
 
-# Quick model testing (reduced steps for architecture validation)
-poetry run poe quick
+# Momentum Training (RECOMMENDED - uses smart day selection and curriculum learning)
+poetry run poe momentum                    # Start momentum training
+poetry run poe momentum-continue           # Continue momentum training from best model
+poetry run poe build-index                 # Build momentum day index (run once)
 
-# Train new model from scratch
-poetry run poe init
+# Legacy Training (standard single-day training)
+poetry run poe quick                       # Quick model testing
+poetry run poe init                        # Train new model from scratch
+poetry run poe train                       # Continue training from best model
 
-# Continue training from best model
-poetry run poe train
+# Using scripts directly
+poetry run python main.py --config momentum_training --symbol MLGO
+poetry run python main.py --config momentum_training --symbol MLGO --continue
+poetry run python scripts/run.py train --momentum --symbol MLGO --continue-training
 
 # Run backtest
-poetry run poe backtest          # Uses date 2025-04-15
-poetry run poe backtest-custom   # Uses date 2025-03-27
+poetry run poe backtest                    # Uses date 2025-04-15
+poetry run poe backtest-custom             # Uses date 2025-03-27
 
 # Scan for momentum days in data
-poetry run poe scan              # Min quality 0.5
-poetry run poe scan-high         # Min quality 0.7  
-poetry run poe scan-all          # All momentum days (0.0)
-
-# Run with custom parameters
-poetry run python scripts/run.py train --symbol MLGO --continue-training
-poetry run python scripts/run.py backtest --symbol MLGO --start-date 2025-03-27 --end-date 2025-03-27
+poetry run poe scan                        # Min quality 0.5
+poetry run poe scan-high                   # Min quality 0.7  
+poetry run poe scan-all                    # All momentum days (0.0)
 
 # Hyperparameter optimization
 poetry run python scripts/sweep.py --config default.yaml --count 20
 
 # Live dashboard (auto-launches with training)
-# Access at http://localhost:8050
+# Access at http://localhost:8051
 
 # Kill dashboard if stuck
 poetry run poe killport
@@ -65,6 +67,8 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
 
 1. **PPO Agent** (`agent/ppo_agent.py`)
    - Proximal Policy Optimization for trading decisions
+   - **Momentum-Based Training**: Automatically selects and switches between high-quality momentum days
+   - **Curriculum Learning**: Progresses from easier to harder reset points based on performance
    - Continuous training capability with automatic model versioning (v1, v2, v3...)
    - Custom callbacks for training lifecycle management
    - Automatic learning rate annealing on continuation
@@ -88,6 +92,7 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
 
 4. **Data Pipeline**
    - **DataManager** (`data/data_manager.py`) - Orchestrates data loading with intelligent caching
+   - **MomentumScanner** (`data/scanner/momentum_scanner.py`) - Identifies high-quality momentum days and reset points
    - **DatabentFileProvider** - Handles Databento market data files (.dbn.zst format)
    - **MarketSimulator** - Constructs uniform 1-second timelines (4 AM - 8 PM ET)
    - Supports tick-level data: trades, quotes (L1), order book (MBP-1), OHLCV
@@ -131,14 +136,17 @@ Uses Hydra for hierarchical configuration management:
 
 ### Key Features
 
-1. **Continuous Training**: Automatic model versioning, best model tracking, checkpoint syncing
-2. **Multi-timeframe Analysis**: Processes data from tick-level to daily
-3. **Realistic Simulation**: Bid-ask spreads, market impact, trading fees, latency
-4. **Comprehensive Features**: 100+ features covering price action, volume, order flow, market structure
-5. **Live Dashboard**: Real-time training visualization with charts, metrics, and component analysis
-6. **Model Management**: Keeps top 5 models by reward with metadata tracking
-7. **Momentum Day Scanner**: Identify high-quality momentum trading days in historical data
-8. **Test Suite**: Comprehensive testing for simulators and environment with pytest
+1. **Momentum-Based Training**: Automatically selects and rotates through high-quality momentum days (quality scores 0.33-0.99)
+2. **Curriculum Learning**: Progressive difficulty from easier to harder reset points based on performance
+3. **Smart Day Selection**: Uses momentum indices with 21 available momentum days and 630 reset points
+4. **Variable Reset Points**: Episodes start at different times (4 AM - 8 PM ET) based on momentum patterns, not fixed times
+5. **Continuous Training**: Automatic model versioning, best model tracking, checkpoint syncing
+6. **Multi-timeframe Analysis**: Processes data from tick-level to daily
+7. **Realistic Simulation**: Bid-ask spreads, market impact, trading fees, latency
+8. **Comprehensive Features**: 100+ features covering price action, volume, order flow, market structure
+9. **Live Dashboard**: Real-time training visualization with charts, metrics, and component analysis at http://localhost:8051
+10. **Model Management**: Keeps top 5 models by reward with metadata tracking
+11. **Test Suite**: Comprehensive testing for simulators and environment with pytest
 
 ### Data Flow
 

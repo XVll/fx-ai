@@ -211,8 +211,11 @@ class DashboardServer:
             minutes, seconds = divmod(remainder, 60)
             session_time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             
-            # Header info
-            header_info = f"Model: {state.model_name} | Symbol: {state.symbol}"
+            # Header info with momentum day
+            momentum_day_info = ""
+            if state.current_momentum_day_date:
+                momentum_day_info = f" | Day: {state.current_momentum_day_date} (Q: {state.current_momentum_day_quality:.2f})"
+            header_info = f"Model: {state.model_name} | Symbol: {state.symbol}{momentum_day_info}"
             
             # Market info
             spread = state.ask_price - state.bid_price
@@ -465,6 +468,16 @@ class DashboardServer:
                 self._info_row("Updates", update_display),
                 self._info_row("Global Steps", f"{state.global_steps:,}"),
             ]
+            
+            # Add momentum day information if available
+            if state.current_momentum_day_date:
+                training_children.extend([
+                    html.Hr(style={'border': '1px solid ' + DARK_THEME['border'], 'margin': '8px 0'}),
+                    self._info_row("Current Day", state.current_momentum_day_date, color=DARK_THEME['accent_blue']),
+                    self._info_row("Day Quality", f"{state.current_momentum_day_quality:.3f}"),
+                    self._info_row("Episodes on Day", f"{state.episodes_on_current_day}"),
+                    self._info_row("Cycles Complete", f"{state.reset_point_cycles_completed}"),
+                ])
             
             # Add training completion progress bar (if max_updates is available)
             if max_updates > 0:

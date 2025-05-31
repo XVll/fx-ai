@@ -125,6 +125,13 @@ class SharedDashboardState:
     curriculum_progress: float = 0.0
     curriculum_min_quality: float = 0.8
     total_episodes_for_curriculum: int = 0
+    
+    # Momentum day tracking
+    current_momentum_day_date: str = ""
+    current_momentum_day_quality: float = 0.0
+    episodes_on_current_day: int = 0
+    reset_point_cycles_completed: int = 0
+    total_momentum_days_used: int = 0
 
 
 class DashboardStateManager:
@@ -336,6 +343,13 @@ class DashboardStateManager:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
                     
+            # Momentum day tracking metrics
+            for key in ['current_momentum_day_date', 'current_momentum_day_quality',
+                       'episodes_on_current_day', 'reset_point_cycles_completed',
+                       'total_momentum_days_used']:
+                if key in metrics:
+                    setattr(self._state, key, metrics[key])
+                    
             # Reward components (current step)
             if 'reward_components' in metrics:
                 self._state.reward_components = metrics['reward_components']
@@ -450,6 +464,13 @@ class DashboardStateManager:
                 'policy_loss': self._state.policy_loss,
                 'value_loss': self._state.value_loss,
                 'entropy': self._state.entropy,
+                
+                # Momentum day tracking
+                'current_momentum_day_date': self._state.current_momentum_day_date,
+                'current_momentum_day_quality': self._state.current_momentum_day_quality,
+                'episodes_on_current_day': self._state.episodes_on_current_day,
+                'reset_point_cycles_completed': self._state.reset_point_cycles_completed,
+                'total_momentum_days_used': self._state.total_momentum_days_used,
                 
                 # Time series lengths
                 'price_history_length': len(self._state.price_history),

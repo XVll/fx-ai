@@ -259,9 +259,10 @@ class DataManager:
         """Get next momentum days from index or fallback to sequential days."""
         if self.momentum_days_cache is not None and not self.momentum_days_cache.empty:
             # Filter momentum days for symbol after current date
+            current_date_obj = pd.Timestamp(current_date).date()
             symbol_days = self.momentum_days_cache[
                 (self.momentum_days_cache['symbol'] == symbol.upper()) &
-                (self.momentum_days_cache['date'] > pd.Timestamp(current_date).date())
+                (self.momentum_days_cache['date'].dt.date > current_date_obj)
             ].sort_values('date')
             
             if not symbol_days.empty:
@@ -297,6 +298,9 @@ class DataManager:
         if self.momentum_days_cache is None or self.momentum_days_cache.empty:
             return pd.DataFrame()
             
+        if symbol is None:
+            return pd.DataFrame()
+            
         return self.momentum_days_cache[
             (self.momentum_days_cache['symbol'] == symbol.upper()) &
             (self.momentum_days_cache['activity_score'] >= min_quality)
@@ -305,6 +309,9 @@ class DataManager:
     def get_reset_points(self, symbol: str, date: datetime) -> pd.DataFrame:
         """Get reset points for a symbol on a specific date."""
         if self.reset_points_cache is None or self.reset_points_cache.empty:
+            return pd.DataFrame()
+            
+        if symbol is None:
             return pd.DataFrame()
             
         date_obj = pd.Timestamp(date).date()

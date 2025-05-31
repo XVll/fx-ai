@@ -25,6 +25,7 @@ from utils.model_manager import ModelManager
 # Import components
 from data.data_manager import DataManager
 from data.provider.data_bento.databento_file_provider import DatabentoFileProvider
+from data.scanner.momentum_scanner import MomentumScanner
 from envs.trading_environment import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from ai.transformer import MultiBranchTransformer
@@ -176,8 +177,18 @@ def create_data_components(config: Config, log: logging.Logger):
     """Create data-related components with proper config passing"""
     # Data Manager with DataConfig
     data_provider = create_data_provider(config.data)
+    
+    # Create momentum scanner for momentum-based training
+    momentum_scanner = MomentumScanner(
+        data_dir=str(Path(config.data.data_dir) / "mlgo"),
+        output_dir="outputs/momentum_index",
+        direction_filter='both',
+        logger=log
+    )
+    
     data_manager = DataManager(
         provider=data_provider,
+        momentum_scanner=momentum_scanner,
         logger=log
     )
     
@@ -384,30 +395,9 @@ def train(config: Config):
         )
         current_components['env'] = env
         
-        # Setup environment session
-        # Get available momentum days from data manager
-        try:
-            momentum_days = data_manager.get_momentum_days(
-                symbol=config.env.symbol,
-                min_quality=0.5  # Use configurable threshold in future
-            )
-            if not momentum_days.empty:
-                # Use the first available momentum day
-                first_day = momentum_days.iloc[0]
-                session_date = first_day['date']
-                logger.info(f"🎯 Selected momentum day: {session_date} (quality: {first_day['activity_score']:.3f})")
-            else:
-                # Fallback to latest available date in the data
-                logger.warning("No momentum days found, using latest available date")
-                session_date = datetime(2025, 4, 29)  # Last available data date
-        except Exception as e:
-            logger.warning(f"Failed to get momentum days: {e}, using fallback date")
-            session_date = datetime(2025, 4, 29)  # Last available data date
-            
-        env.setup_session(
-            symbol=config.env.symbol,
-            date=session_date
-        )
+        # For momentum-based training, don't pre-setup environment session
+        # The PPO agent will handle day selection and environment setup
+        logger.info("🎯 Momentum-based training enabled - PPO agent will manage day selection")
         
         # Metrics components
         metrics_manager, metrics_integrator = create_metrics_components(config, logger)
@@ -465,16 +455,19 @@ def train(config: Config):
             "rollout_steps": config.training.rollout_steps
         }
         
-        # Add momentum-based training parameters
-        if hasattr(config.env, 'use_momentum_training') and config.env.use_momentum_training:
+        # Enable momentum-based training with curriculum learning
+        training_params.update({
+            "curriculum_strategy": "quality_based",
+            "min_quality_threshold": 0.3,
+            "episode_selection_mode": "momentum_days"
+        })
+        
+        # Add day selection configuration if available
+        if hasattr(config, 'day_selection'):
             training_params.update({
-                "curriculum_strategy": getattr(config.env, 'curriculum_strategy', 'quality_based'),
-                "min_quality_threshold": getattr(config.env, 'min_quality_threshold', 0.3),
-                "episode_selection_mode": "momentum_days"
-            })
-        else:
-            training_params.update({
-                "episode_selection_mode": "standard"
+                "episodes_per_day": config.day_selection.episodes_per_day,
+                "reset_point_quality_range": config.day_selection.reset_point_quality_range,
+                "day_switching_strategy": config.day_selection.day_switching_strategy
             })
         
         # Create trainer
@@ -494,6 +487,27 @@ def train(config: Config):
         if training_interrupted:
             logger.warning("Training interrupted before starting")
             return {"interrupted": True}
+        
+        # Initialize momentum-based training by selecting first momentum day
+        logger.info("🎯 Initializing momentum-based training...")
+        
+        # Set the primary asset first so momentum methods work
+        env.primary_asset = config.env.symbol
+        
+        if not trainer._select_next_momentum_day():
+            logger.error("Failed to select initial momentum day, falling back to latest available")
+            # Fallback to setting up environment with a fixed day
+            session_date = datetime(2025, 4, 29)
+            env.setup_session(symbol=config.env.symbol, date=session_date)
+        else:
+            # Set up environment with the selected momentum day
+            current_day = trainer.current_momentum_day
+            env.setup_session(
+                symbol=current_day['symbol'], 
+                date=current_day['date']
+            )
+            logger.info(f"✅ Initial momentum day set: {current_day['date'].strftime('%Y-%m-%d')} "
+                       f"(quality: {current_day.get('quality_score', 0):.3f})")
         
         # Start training metrics
         if metrics_integrator:

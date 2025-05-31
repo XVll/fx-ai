@@ -547,12 +547,12 @@ class ExecutionSimulator:
     def _record_execution_metrics(self, fill: FillDetails, latency_ms: float, slippage_bps: float):
         """Record execution metrics."""
         if self.metrics_integrator:
-            self.metrics_integrator.record_execution({
-                'quantity': fill.executed_quantity,
-                'price': fill.executed_price,
+            self.metrics_integrator.record_fill({
+                'executed_quantity': fill.executed_quantity,
+                'executed_price': fill.executed_price,
                 'commission': fill.commission,
                 'fees': fill.fees,
-                'slippage_cost': fill.slippage_cost_total,
+                'slippage_cost_total': fill.slippage_cost_total,
                 'slippage_bps': slippage_bps,
                 'latency_ms': latency_ms,
                 'side': fill.order_side.value
