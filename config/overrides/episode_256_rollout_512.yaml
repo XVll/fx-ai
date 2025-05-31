@@ -1,6 +1,0 @@
-# Configuration for 256-step episodes and 512-step rollouts
-env:
-  max_episode_steps: 256  # Episodes reset every 256 steps
-  
-training:
-  rollout_steps: 512  # Collect rollouts every 512 steps

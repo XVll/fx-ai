@@ -435,6 +435,42 @@ def train(config: Config):
                 logger.info(f"✅ Model loaded: step={training_state.get('global_step', 0)}")
             else:
                 logger.info("🆕 No previous model found. Starting fresh.")
+        else:
+            # Starting fresh training - save initial model
+            logger.info("🆕 Starting fresh training - saving initial model")
+            initial_metrics = {
+                "mean_reward": 0.0,
+                "episode_count": 0,
+                "update_iter": 0,
+                "timestamp": time.time(),
+                "initial_model": True,
+                "symbol": config.env.symbol
+            }
+            
+            # Create a temporary checkpoint to save as initial model
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.pt', delete=False) as temp_file:
+                temp_path = temp_file.name
+                
+            # Save model state to temporary file
+            import torch
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'global_step_counter': 0,
+                'global_episode_counter': 0,
+                'global_update_counter': 0,
+                'model_config': config.model.model_dump() if hasattr(config.model, 'model_dump') else {}
+            }, temp_path)
+            
+            # Save to best_models directory
+            model_manager.save_best_model(temp_path, initial_metrics, 0.0)
+            
+            # Clean up temporary file
+            import os
+            os.unlink(temp_path)
+            
+            logger.info("✅ Initial model saved to best_models directory")
         
         # Create callbacks
         callbacks = create_training_callbacks(
@@ -495,10 +531,10 @@ def train(config: Config):
         env.primary_asset = config.env.symbol
         
         if not trainer._select_next_momentum_day():
-            logger.error("Failed to select initial momentum day, falling back to latest available")
-            # Fallback to setting up environment with a fixed day
-            session_date = datetime(2025, 4, 29)
-            env.setup_session(symbol=config.env.symbol, date=session_date)
+            logger.error("Failed to select initial momentum day, falling back to config end date")
+            # Fallback to setting up environment with config end date
+            fallback_date = datetime.strptime(config.data.end_date, "%Y-%m-%d") if config.data.end_date else datetime.now()
+            env.setup_session(symbol=config.env.symbol, date=fallback_date)
         else:
             # Set up environment with the selected momentum day
             current_day = trainer.current_momentum_day

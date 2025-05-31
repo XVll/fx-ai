@@ -7,35 +7,30 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-# Momentum Training Tasks (Recommended)
-momentum = "poetry run python main.py --config momentum_training --symbol MLGO"
-momentum-continue = "poetry run python main.py --config momentum_training --symbol MLGO --continue"
-momentum-quick = "poetry run python main.py --config quick_test --symbol MLGO"
+# Training Tasks
+train = "poetry run python main.py"
+train-continue = "poetry run python main.py --continue"
+quick = "poetry run python main.py --config quick_test"
+normal = "poetry run python main.py --config normal_train"
+normal-continue = "poetry run python main.py --config normal_train --continue"
 
-# Legacy Training Tasks
-init = "poetry run python scripts/run.py train --symbol MLGO"
-train = "poetry run python scripts/run.py train --continue-training --symbol MLGO"
-quick = "poetry run python scripts/run.py train --quick-test --symbol MLGO"
-train-cuda = "poetry run python scripts/run.py train --continue-training --symbol MLGO --device cuda"
-train-mps = "poetry run python scripts/run.py train --continue-training --symbol MLGO --device mps"
+# Device-specific training
+train-cuda = "poetry run python main.py --device cuda"
+train-mps = "poetry run python main.py --device mps"
+train-cpu = "poetry run python main.py --device cpu"
 
-# Training with custom experiments
-train-experiment = "poetry run python scripts/run.py train --continue-training --symbol MLGO --experiment momentum_v1"
-
-# Backtesting Tasks (new architecture uses momentum days)
-backtest = "poetry run python scripts/run.py backtest --symbol MLGO --date 2025-04-15"
-backtest-custom = "poetry run python scripts/run.py backtest --symbol MLGO --date 2025-03-27"
+# Training with custom configs
+train-custom = "poetry run python main.py --config ${config}"
 
 # Momentum Day Scanning
-scan = "poetry run python scripts/scan_momentum_days.py --symbol MLGO --min-quality 0.5"
-scan-high = "poetry run python scripts/scan_momentum_days.py --symbol MLGO --min-quality 0.7"
-scan-all = "poetry run python scripts/scan_momentum_days.py --symbol MLGO --min-quality 0.0"
+scan = "poetry run python scripts/scan_momentum_days.py --min-quality 0.5"
+scan-high = "poetry run python scripts/scan_momentum_days.py --min-quality 0.7"
+scan-all = "poetry run python scripts/scan_momentum_days.py --min-quality 0.0"
 
 # Hyperparameter Optimization
-sweep = "poetry run python scripts/sweep.py --config default.yaml --count 20"
-sweep-quick = "poetry run python scripts/sweep.py --config default.yaml --count 5"
-sweep-long = "poetry run python scripts/sweep.py --config default.yaml --count 50"
-sweep-custom = "poetry run python scripts/sweep.py --config custom_sweep.yaml --count 10"
+sweep = "poetry run python scripts/sweep.py --count 20"
+sweep-quick = "poetry run python scripts/sweep.py --count 5"
+sweep-long = "poetry run python scripts/sweep.py --count 50"
 
 # Testing
 test = "poetry run python -m pytest tests/ -xvs"
@@ -46,7 +41,7 @@ clean = "rm -rf outputs/* wandb/* __pycache__"
 setup = "wandb login"
 dashboard = "echo 'Dashboard will auto-launch during training at http://localhost:8051'"
 killport = "lsof -ti:8051 | xargs kill -9 || echo 'Port 8051 already free'"
-build-index = "poetry run python scripts/scan_momentum_days.py --symbol MLGO --min-quality 0.0"
+build-index = "poetry run python scripts/scan_momentum_days.py --min-quality 0.0"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"

@@ -3,16 +3,22 @@ sys.path.append('.')
 
 from data.scanner.momentum_scanner import MomentumScanner
 from utils.logger import setup_rich_logging
+from config.loader import load_config
 import logging
+import pandas as pd
+
+# Load configuration
+config = load_config()
 
 # Setup logging
 setup_rich_logging(level='INFO')
 logger = logging.getLogger('build_index')
 
 # Create scanner
+data_dir = f"{config.data.data_dir}/{config.data.symbols[0].lower()}"
 scanner = MomentumScanner(
-    data_dir="dnb/mlgo",
-    output_dir="outputs/momentum_index", 
+    data_dir=data_dir,
+    output_dir=f"{config.data.index_dir}/momentum_index", 
     direction_filter='both',
     logger=logger
 )
@@ -20,7 +26,7 @@ scanner = MomentumScanner(
 print("Building momentum index...")
 
 # Scan all symbols to build and save the index
-day_df, reset_df = scanner.scan_all_symbols(symbols=['MLGO'], max_workers=1)
+day_df, reset_df = scanner.scan_all_symbols(symbols=config.data.symbols, max_workers=1)
 
 print(f"\n✅ Index built and saved!")
 print(f"Found {len(day_df)} momentum days")
@@ -44,7 +50,4 @@ print("\n📖 Testing index loading...")
 loaded_days, loaded_resets = scanner.load_index()
 print(f"Loaded {len(loaded_days)} days from saved index")
 
-# Clean up
-import os
-import pandas as pd
-os.remove('build_index.py')
+# Script completed successfully
