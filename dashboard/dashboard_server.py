@@ -137,7 +137,10 @@ class DashboardServer:
                 html.Div([
                     # Recent Trades Card
                     html.Div([
-                        html.H4("Trades", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                        html.Div([
+                            html.H4("Trades", style={'color': DARK_THEME['text_primary'], 'marginBottom': '0px', 'fontSize': '12px', 'fontWeight': 'bold', 'display': 'inline-block'}),
+                            html.Span(id='trade-counter', style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px', 'marginLeft': '8px'})
+                        ], style={'marginBottom': '4px'}),
                         html.Div(id='trades-table-container')
                     ], style=self._card_style()),
                     
@@ -191,6 +194,7 @@ class DashboardServer:
              Output('position-content', 'children'),
              Output('portfolio-content', 'children'),
              Output('trades-table-container', 'children'),
+             Output('trade-counter', 'children'),
              Output('actions-content', 'children'),
              Output('episode-content', 'children'),
              Output('training-content', 'children'),
@@ -321,6 +325,18 @@ class DashboardServer:
                 )
             else:
                 trades_table = html.Div("No trades yet", style={'color': DARK_THEME['text_muted'], 'textAlign': 'center', 'padding': '20px'})
+            
+            # Trade counter text
+            episode_trades = getattr(state, 'episode_total_trades', 0)
+            episode_wins = getattr(state, 'episode_winning_trades', 0)
+            episode_losses = getattr(state, 'episode_losing_trades', 0)
+            session_trades = getattr(state, 'session_total_trades', 0)
+            
+            if episode_trades > 0:
+                win_rate = (episode_wins / episode_trades) * 100
+                trade_counter_text = f"Episode: {episode_trades} ({episode_wins}W/{episode_losses}L - {win_rate:.0f}%) | Session: {session_trades}"
+            else:
+                trade_counter_text = f"Episode: 0 | Session: {session_trades}"
             
             # Actions table - check for proper action distributions
             episode_actions = getattr(state, 'episode_action_distribution', {'HOLD': 0, 'BUY': 0, 'SELL': 0})
@@ -698,7 +714,7 @@ class DashboardServer:
             footer = f"Steps/sec: {state.steps_per_second:.1f} | Updates/hr: {updates_per_hour:.1f} | Episodes/hr: {eps_per_hour:.1f}"
             
             return (header_info, session_time_str, market_info, position_info, portfolio_info,
-                   trades_table, actions_content, episode_content, training_content, ppo_content,
+                   trades_table, trade_counter_text, actions_content, episode_content, training_content, ppo_content,
                    reward_table, env_content, candlestick_chart, footer)
             
     def _info_row(self, label: str, value: str, color: Optional[str] = None) -> html.Div:

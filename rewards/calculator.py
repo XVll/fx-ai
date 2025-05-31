@@ -192,6 +192,37 @@ class RewardSystem:
             # Note: InvalidActionPenalty component needs to be implemented
             # components.append(InvalidActionPenalty(invalid_config, self.logger))
             self.logger.info("Invalid action penalty component not yet implemented")
+            
+        # Initialize MAE penalty
+        mae_config = {
+            'enabled': True,
+            'weight': 1.0,
+            'mae_threshold': 0.02,
+            'base_penalty': 0.1,
+            'loss_multiplier': 1.5
+        }
+        components.append(MAEPenalty(mae_config, self.logger))
+        self.logger.info("Initialized MAE penalty component")
+        
+        # Initialize MFE penalty
+        mfe_config = {
+            'enabled': True,
+            'weight': 1.0,
+            'give_back_threshold': 0.5,
+            'base_penalty': 0.05,
+            'reversal_multiplier': 2.0
+        }
+        components.append(MFEPenalty(mfe_config, self.logger))
+        self.logger.info("Initialized MFE penalty component")
+        
+        # Initialize Mark-to-Market reward
+        mtm_config = {
+            'enabled': True,
+            'weight': 0.5,
+            'max_leverage': 2.0
+        }
+        components.append(MarkToMarketReward(mtm_config, self.logger))
+        self.logger.info("Initialized Mark-to-Market reward component")
 
         return components
     

@@ -101,7 +101,8 @@ class TradingEnvironment(gym.Env):
         # Debug log to ensure it's set correctly
         # self.logger.debug(f"max_invalid_actions_per_episode set to: {self.max_invalid_actions_per_episode}")
         self.bankruptcy_threshold_factor: float = 0.1
-        self.max_session_loss_percentage: float = 1.0 - env_cfg.early_stop_loss_threshold
+        # Fixed max loss threshold - 25% loss (6.25k out of 25k)
+        self.max_session_loss_percentage: float = 0.25
         self.default_position_value = config.simulation.default_position_value
 
         # Action Space - execution simulator handles decoding now
@@ -485,6 +486,13 @@ class TradingEnvironment(gym.Env):
         # Start metrics tracking
         if self.metrics_integrator:
             self.metrics_integrator.start_episode()
+            
+        # Reset dashboard episode counters
+        try:
+            from dashboard.shared_state import dashboard_state
+            dashboard_state.reset_episode_counters()
+        except ImportError:
+            pass  # Dashboard not available
 
         # Reset market simulator with adaptive randomization
         # Adjust randomization window based on pattern type and quality

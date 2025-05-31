@@ -101,6 +101,14 @@ class SharedDashboardState:
     recent_actions: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=20))
     action_distribution: Dict[str, int] = field(default_factory=lambda: {'HOLD': 0, 'BUY': 0, 'SELL': 0})
     
+    # Trade counters
+    episode_total_trades: int = 0
+    episode_winning_trades: int = 0
+    episode_losing_trades: int = 0
+    session_total_trades: int = 0
+    session_winning_trades: int = 0
+    session_losing_trades: int = 0
+    
     # Action tracking from metrics
     episode_action_distribution: Dict[str, int] = field(default_factory=lambda: {'HOLD': 0, 'BUY': 0, 'SELL': 0})
     session_action_distribution: Dict[str, int] = field(default_factory=lambda: {'HOLD': 0, 'BUY': 0, 'SELL': 0})
@@ -227,6 +235,7 @@ class DashboardStateManager:
                     hold_time_seconds = data.get('holding_time_seconds', 0)
                     hold_time_minutes = hold_time_seconds / 60
                     
+                    pnl = data.get('pnl', 0)
                     self._state.recent_trades.append({
                         'entry_time': entry_time_str,
                         'exit_time': exit_time_str,
@@ -234,10 +243,21 @@ class DashboardStateManager:
                         'quantity': data.get('quantity'),
                         'entry_price': data.get('price'),
                         'exit_price': data.get('fill_price'),
-                        'pnl': data.get('pnl', 0),
+                        'pnl': pnl,
                         'hold_time': f"{hold_time_minutes:.1f}m",
                         'status': 'CLOSED'
                     })
+                    
+                    # Update trade counters
+                    self._state.episode_total_trades += 1
+                    self._state.session_total_trades += 1
+                    
+                    if pnl > 0:
+                        self._state.episode_winning_trades += 1
+                        self._state.session_winning_trades += 1
+                    elif pnl < 0:
+                        self._state.episode_losing_trades += 1
+                        self._state.session_losing_trades += 1
                 else:
                     # This is just an execution, store it separately
                     self._state.recent_executions.append({
@@ -421,6 +441,14 @@ class DashboardStateManager:
         
         # Notify callbacks
         self._notify_callbacks()
+    
+    def reset_episode_counters(self):
+        """Reset episode-level counters at episode start"""
+        with self._lock:
+            self._state.episode_total_trades = 0
+            self._state.episode_winning_trades = 0
+            self._state.episode_losing_trades = 0
+            self._state.episode_action_distribution = {'HOLD': 0, 'BUY': 0, 'SELL': 0}
     
     def get_state(self) -> SharedDashboardState:
         """Get current state (thread-safe copy)"""
