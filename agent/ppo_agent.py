@@ -163,8 +163,18 @@ class PPOTrainer:
         self.logger.info(f"📅 Selected momentum day: {momentum_day_info['date'].strftime('%Y-%m-%d')} "
                         f"(quality: {momentum_day_info.get('quality_score', 0):.3f})")
         
-        # Emit momentum day change event with tracking information
+        # Emit momentum day change event with tracking information and reset points
         if hasattr(self.metrics, 'metrics_manager'):
+            # Get reset points data from environment for this day
+            reset_points_data = []
+            if hasattr(self.env, 'data_manager'):
+                reset_points_df = self.env.data_manager.get_reset_points(
+                    momentum_day_info.get('symbol', 'MLGO'), 
+                    momentum_day_info['date']
+                )
+                if not reset_points_df.empty:
+                    reset_points_data = reset_points_df.to_dict('records')
+            
             # Enhance momentum_day_info with tracking data
             enhanced_info = momentum_day_info.copy()
             enhanced_info.update({
@@ -174,7 +184,12 @@ class PPOTrainer:
                 'cycles_completed': self.reset_point_cycles_completed,
                 'total_days_used': len(self.used_momentum_days)
             })
-            self.metrics.metrics_manager.emit_event('momentum_day_change', enhanced_info)
+            
+            # Emit event with both day info and reset points
+            self.metrics.metrics_manager.emit_event('momentum_day_change', {
+                'day_info': enhanced_info,
+                'reset_points': reset_points_data
+            })
         
         return True
 
@@ -313,16 +328,8 @@ class PPOTrainer:
                 self.used_reset_point_indices.clear()
                 self.logger.info(f"🔄 Completed cycle {self.reset_point_cycles_completed} through reset points")
             
-            # Emit updated momentum day progress
-            if hasattr(self.metrics, 'metrics_manager') and hasattr(self, 'current_momentum_day'):
-                momentum_progress = {
-                    'day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d'),
-                    'day_quality': self.current_momentum_day.get('quality_score', 0.0),
-                    'episodes_on_day': self.episodes_completed_on_current_day,
-                    'cycles_completed': self.reset_point_cycles_completed,
-                    'total_days_used': len(self.used_momentum_days)
-                }
-                self.metrics.metrics_manager.emit_event('momentum_day_change', momentum_progress)
+            # Note: momentum day progress tracking is done via metrics, 
+            # reset points data is only sent on actual day changes
             
             return self.env.reset_at_point(reset_point_idx)
         else:
