@@ -297,25 +297,6 @@ class DashboardTransmitter(MetricTransmitter):
                 components = event_data.get('components', {})
                 dashboard_state.update_metrics({'reward_components': components})
                 
-            elif event_name == 'momentum_day_change':
-                # Update momentum day info and reset points for the new day
-                day_info = event_data.get('day_info', {})
-                reset_points = event_data.get('reset_points', [])
-                
-                # Update dashboard with momentum day tracking
-                dashboard_state.update_quality_metrics({
-                    'current_momentum_day_date': day_info.get('date', ''),
-                    'current_momentum_day_quality': day_info.get('activity_score', 0.0),
-                    'day_activity_score': day_info.get('activity_score', 0.0),
-                    'max_intraday_move': day_info.get('max_intraday_move', 0.0),
-                    'volume_ratio': day_info.get('volume_multiplier', 1.0),
-                    'is_front_side': day_info.get('is_front_side', False),
-                    'is_back_side': day_info.get('is_back_side', False),
-                    'halt_count': day_info.get('halt_count', 0)
-                })
-                
-                # Update reset points data for chart markers
-                dashboard_state.update_reset_points_data(reset_points)
                 
             elif event_name == 'episode_actions':
                 # Handle episode action counts
@@ -325,7 +306,7 @@ class DashboardTransmitter(MetricTransmitter):
                 # Handle curriculum learning progression
                 curriculum_data = {
                     'curriculum_stage': event_data.get('stage', 'stage_1_beginner'),
-                    'curriculum_progress': event_data.get('progress', 0.0),
+                    'curriculum_progress': event_data.get('stage_progress', event_data.get('progress', 0.0)),
                     'curriculum_min_quality': event_data.get('min_quality', 0.8),
                     'total_episodes_for_curriculum': event_data.get('total_episodes', 0),
                     'min_roc_score': event_data.get('min_roc_score', 0.0),
@@ -337,6 +318,10 @@ class DashboardTransmitter(MetricTransmitter):
             elif event_name == 'momentum_day_change':
                 # Handle momentum day changes - extract from nested day_info structure
                 day_info = event_data.get('day_info', {})
+                reset_points = event_data.get('reset_points', [])
+                print(f"DEBUG MOMENTUM EVENT: day_info = {day_info}")
+                
+                # Update momentum day tracking metrics
                 momentum_data = {
                     'current_momentum_day_date': day_info.get('day_date', ''),
                     'current_momentum_day_quality': day_info.get('day_quality', 0.0),
@@ -344,7 +329,13 @@ class DashboardTransmitter(MetricTransmitter):
                     'reset_point_cycles_completed': day_info.get('cycles_completed', 0),
                     'total_momentum_days_used': day_info.get('total_days_used', 0)
                 }
+                print(f"DEBUG MOMENTUM SENDING: {momentum_data}")
                 dashboard_state.update_metrics(momentum_data)
+                
+                # Update reset points data for chart markers
+                if reset_points:
+                    dashboard_state.update_reset_points_data(reset_points)
+                    print(f"DEBUG MOMENTUM: Updated {len(reset_points)} reset points")
                 
             # Other events can be handled as needed
                 

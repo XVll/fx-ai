@@ -225,17 +225,24 @@ class PPOTrainer:
         
         curriculum_filtered_indices = []
         for i, reset_point in enumerate(reset_points):
-            direction_score = abs(reset_point.get('direction_score', 0.0))  # Use absolute value
+            direction_score = reset_point.get('direction_score', 0.0)  # Don't use abs() - direction can be negative
             roc_score = reset_point.get('roc_score', 0.0)
-            activity_score = abs(reset_point.get('activity_score', 0.0))  # Use absolute value
+            activity_score = reset_point.get('activity_score', 0.0)  # Don't use abs() - activity can be negative
             
             # Check if reset point meets curriculum thresholds
-            meets_direction = direction_score >= min_direction
+            # For direction: use abs() only for comparison (strong movement in either direction)
+            meets_direction = abs(direction_score) >= min_direction
             meets_roc = roc_score >= min_roc  
-            meets_activity = activity_score >= min_activity
+            meets_activity = abs(activity_score) >= min_activity  # abs() for activity strength
             
             if meets_direction and meets_roc and meets_activity:
                 curriculum_filtered_indices.append(i)
+                
+        if reset_points:
+            sample_count = min(3, len(reset_points))
+            for i in range(sample_count):
+                rp = reset_points[i]
+                print(f"DEBUG RESET SELECTION: Point {i} scores - dir: {rp.get('direction_score', 0):.3f}, roc: {rp.get('roc_score', 0):.3f}, act: {rp.get('activity_score', 0):.3f}")
         
         print(f"DEBUG RESET SELECTION: Curriculum filtered: {len(curriculum_filtered_indices)} out of {len(reset_points)}")
         
@@ -279,10 +286,11 @@ class PPOTrainer:
         self.used_reset_point_indices.add(selected_idx)
         
         reset_point = reset_points[selected_idx]
-        print(f"DEBUG RESET SELECTION: Selected index {selected_idx}, timestamp: {reset_point.get('timestamp')}, activity: {reset_point.get('activity_score', 0):.3f}")
+        direction_score = reset_point.get('direction_score', 0)
+        print(f"DEBUG RESET SELECTION: Selected index {selected_idx}, timestamp: {reset_point.get('timestamp')}, direction: {direction_score:.3f} (abs={abs(direction_score):.3f} >= {min_direction:.3f}), roc: {reset_point.get('roc_score', 0):.3f}, activity: {reset_point.get('activity_score', 0):.3f}")
         self.logger.debug(f"🎯 Selected reset point {selected_idx}: "
                          f"{reset_point.get('timestamp', 'unknown')} "
-                         f"(activity: {reset_point.get('activity_score', 0):.3f})")
+                         f"(direction: {reset_point.get('direction_score', 0):.3f}, roc: {reset_point.get('roc_score', 0):.3f}, activity: {reset_point.get('activity_score', 0):.3f})")
         
         return selected_idx
 
@@ -294,7 +302,7 @@ class PPOTrainer:
         elif total_episodes < 5000:
             return 'stage_2_intermediate', 0.3, 0.3, 0.3
         elif total_episodes < 8000:
-            return 'stage_3_advanced', 0.0, 0.0, 0.0
+            return 'stage_3_advanced', 0.1, 0.1, 0.1
         else:
             return 'stage_4_specialization', 0.0, 0.0, 0.0
     
@@ -303,6 +311,17 @@ class PPOTrainer:
         if hasattr(self.metrics, 'metrics_manager'):
             stage, min_roc, min_activity, min_direction = self._get_curriculum_stage_info()
             
+            # Calculate stage progress percentage
+            stage_progress = 0.0
+            if stage == 'stage_1_beginner':
+                stage_progress = min(100.0, (self.global_episode_counter / 2000) * 100)
+            elif stage == 'stage_2_intermediate':
+                stage_progress = min(100.0, ((self.global_episode_counter - 2000) / 3000) * 100)
+            elif stage == 'stage_3_advanced':
+                stage_progress = min(100.0, ((self.global_episode_counter - 5000) / 3000) * 100)
+            else:
+                stage_progress = 100.0
+                
             curriculum_data = {
                 'progress': self.curriculum_progress,
                 'strategy': self.curriculum_strategy,
@@ -310,7 +329,8 @@ class PPOTrainer:
                 'min_roc_score': min_roc,
                 'min_activity_score': min_activity,
                 'min_direction_score': min_direction,
-                'total_episodes': self.global_episode_counter
+                'total_episodes': self.global_episode_counter,
+                'stage_progress': stage_progress
             }
             self.metrics.metrics_manager.emit_event('curriculum_progress', curriculum_data)
 
