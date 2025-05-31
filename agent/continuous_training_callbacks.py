@@ -95,8 +95,12 @@ class ContinuousTrainingCallback(TrainingCallback):
             if current_reward < self.best_reward:
                 is_best = True
 
-        if is_best:
-            self.best_reward = current_reward
+        # Always save the first update as initial model
+        is_first_update = update_iter == 1
+        
+        if is_best or is_first_update:
+            if is_best:
+                self.best_reward = current_reward
 
             # Save checkpoint
             checkpoint_path = os.path.join(
@@ -120,7 +124,10 @@ class ContinuousTrainingCallback(TrainingCallback):
                 current_reward
             )
 
-            self.logger.info(f"New best model: iter {update_iter}, {self.reward_metric}={current_reward:.4f}")
+            if is_best:
+                self.logger.info(f"New best model: iter {update_iter}, {self.reward_metric}={current_reward:.4f}")
+            elif is_first_update:
+                self.logger.info(f"Initial model saved: iter {update_iter}, {self.reward_metric}={current_reward:.4f}")
 
         # Periodic sync
         if (update_iter - self.last_sync_update) >= self.checkpoint_sync_frequency:

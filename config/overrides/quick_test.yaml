@@ -1,9 +1,40 @@
-# Quick test configuration - minimal overrides only
-training:
-  rollout_steps: 512
-  total_updates: 2
-  checkpoint_interval: 5
+# Quick test configuration - minimal training for testing
+experiment_name: "quick_test"
 
+# Reduced model for faster testing
 model:
-  d_model: 256
+  d_model: 64
   n_layers: 2
+  n_heads: 4
+  hf_layers: 1
+  mf_layers: 1
+  lf_layers: 1
+
+# Quick training settings
+training:
+  rollout_steps: 256
+  total_updates: 5
+  checkpoint_interval: 2
+  batch_size: 32
+  eval_frequency: 2
+  eval_episodes: 3
+  early_stop_patience: 10
+
+# Shorter episodes for quick testing
+env:
+  max_episode_steps: 100
+  max_steps: 100
+
+# Limited data range
+data:
+  start_date: "2025-04-15"
+  end_date: "2025-04-15"
+  min_activity_score: 0.5
+
+# Dashboard disabled for CI/testing
+dashboard:
+  enabled: false
+
+# Wandb disabled for quick tests
+wandb:
+  enabled: false
