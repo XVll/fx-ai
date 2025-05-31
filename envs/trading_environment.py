@@ -402,13 +402,13 @@ class TradingEnvironment(gym.Env):
         
         self.logger.info("🔄 Switched to prepared session")
 
-    def get_momentum_days(self, min_quality: float = 0.5) -> pd.DataFrame:
+    def get_momentum_days(self, min_activity: float = 0.0) -> pd.DataFrame:
         """Get available momentum days for the current symbol."""
-        return self.data_manager.get_momentum_days(self.primary_asset, min_quality)
+        return self.data_manager.get_momentum_days(self.primary_asset, min_activity)
 
     def select_next_momentum_day(self, exclude_dates: Optional[List[datetime]] = None) -> Optional[Dict]:
         """Select next momentum day based on quality and curriculum."""
-        momentum_days = self.get_momentum_days(min_quality=0.5)
+        momentum_days = self.get_momentum_days(min_activity=0.0)
         
         if momentum_days.empty:
             return None
@@ -610,6 +610,9 @@ class TradingEnvironment(gym.Env):
 
         # Update dashboard with quality metrics from reset point
         self._update_dashboard_quality_metrics(reset_point)
+        
+        # Send initial chart data immediately at episode start to reduce display delay
+        self._send_initial_chart_data()
 
         return self._last_observation, initial_info
 
@@ -1023,8 +1026,8 @@ class TradingEnvironment(gym.Env):
                 'slippage_cost_total': fill.slippage_cost_total
             })
             
-        # Update dashboard with candle data every 10 steps to avoid too frequent updates
-        if self.current_step % 10 == 0 and self.market_simulator:
+        # Update dashboard with candle data every 5 steps for more responsive charts
+        if self.current_step % 5 == 0 and self.market_simulator:
             # Get ALL 1-minute bars for the CURRENT trading day only (not warmup)
             if hasattr(self.market_simulator, 'combined_bars_1m') and self.market_simulator.combined_bars_1m is not None:
                 # Filter to only include current day data (4 AM to 8 PM ET)
@@ -1181,11 +1184,15 @@ class TradingEnvironment(gym.Env):
                 'is_front_side': reset_point.get('is_front_side', False),
                 'is_back_side': reset_point.get('is_back_side', False),
                 'reset_point_quality': reset_point.get('combined_score', 0.0),
+                # 3-component scores from reset point
+                'current_direction_score': reset_point.get('direction_score', 0.0),
+                'current_roc_score': reset_point.get('roc_score', 0.0),
+                'current_activity_score': reset_point.get('activity_score', 0.0),
             }
             
             # Get day-level metrics from data manager momentum days
             if self.data_manager and self.primary_asset and self.current_session_date:
-                momentum_days = self.data_manager.get_momentum_days(self.primary_asset, min_quality=0.0)
+                momentum_days = self.data_manager.get_momentum_days(self.primary_asset, min_activity=0.0)
                 if not momentum_days.empty:
                     # Find the current day's data
                     current_day_data = momentum_days[
@@ -1308,6 +1315,51 @@ class TradingEnvironment(gym.Env):
             return total_close_pnl
         
         return None
+    
+    def _send_initial_chart_data(self):
+        """Send initial chart data to dashboard immediately to reduce display delay."""
+        try:
+            if not self.market_simulator or not hasattr(self.market_simulator, 'combined_bars_1m'):
+                return
+                
+            # Get available 1m bars, even if limited
+            combined_bars_1m = self.market_simulator.combined_bars_1m
+            if combined_bars_1m is None or combined_bars_1m.empty:
+                return
+                
+            # Filter to current day data (4 AM to 8 PM ET)
+            current_date = self.current_session_date.date()
+            market_open_et = pd.Timestamp(f"{current_date} 04:00:00", tz='America/New_York')
+            market_close_et = pd.Timestamp(f"{current_date} 20:00:00", tz='America/New_York')
+            
+            # Convert available bars to list format
+            candle_list = []
+            for timestamp, row in combined_bars_1m.iterrows():
+                ts = pd.Timestamp(timestamp)
+                if ts.tz is None:
+                    ts_et = ts.tz_localize('UTC').tz_convert('America/New_York')
+                else:
+                    ts_et = ts.tz_convert('America/New_York')
+                
+                # Only include bars within the current trading day
+                if market_open_et <= ts_et <= market_close_et:
+                    candle_list.append({
+                        'timestamp': ts_et.replace(tzinfo=None).isoformat(),
+                        'open': float(row['open']),
+                        'high': float(row['high']),
+                        'low': float(row['low']),
+                        'close': float(row['close']),
+                        'volume': float(row.get('volume', 0))
+                    })
+            
+            # Send to dashboard if we have any data
+            if candle_list:
+                from dashboard.shared_state import dashboard_state
+                dashboard_state.update_candle_data(candle_list)
+                self.logger.info(f"📊 Sent initial chart data: {len(candle_list)} candles")
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to send initial chart data: {e}")
     
     def _on_trade_completed(self, trade: Dict[str, Any]):
         """Callback for completed trades."""

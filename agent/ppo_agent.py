@@ -248,9 +248,38 @@ class PPOTrainer:
         
         return selected_idx
 
+    def _get_curriculum_stage_info(self):
+        """Get current curriculum stage information based on episode count."""
+        total_episodes = self.global_episode_counter
+        if total_episodes < 2000:  # Updated to match config thresholds
+            return 'stage_1_beginner', 0.5, 0.5, 0.5
+        elif total_episodes < 5000:
+            return 'stage_2_intermediate', 0.3, 0.3, 0.3
+        elif total_episodes < 8000:
+            return 'stage_3_advanced', 0.0, 0.0, 0.0
+        else:
+            return 'stage_4_specialization', 0.0, 0.0, 0.0
+    
+    def _emit_curriculum_progress(self):
+        """Emit curriculum progress event to dashboard."""
+        if hasattr(self.metrics, 'metrics_manager'):
+            stage, min_roc, min_activity, min_direction = self._get_curriculum_stage_info()
+            
+            self.metrics.metrics_manager.emit_event('curriculum_progress', {
+                'progress': self.curriculum_progress,
+                'strategy': self.curriculum_strategy,
+                'stage': stage,
+                'min_roc_score': min_roc,
+                'min_activity_score': min_activity,
+                'min_direction_score': min_direction,
+                'total_episodes': self.global_episode_counter
+            })
+
     def _update_curriculum_progress(self):
         """Update curriculum progress based on training performance."""
-        if len(self.recent_episode_rewards) < 10:
+        # Always emit curriculum progress, even with limited data
+        if len(self.recent_episode_rewards) < 5:
+            self._emit_curriculum_progress()
             return
             
         # Calculate recent performance stability
@@ -267,11 +296,7 @@ class PPOTrainer:
                 self.curriculum_progress = max(0.0, self.curriculum_progress - 0.02)
                 
             # Emit curriculum progress event
-            if hasattr(self.metrics, 'metrics_manager'):
-                self.metrics.metrics_manager.emit_event('curriculum_progress', {
-                    'progress': self.curriculum_progress,
-                    'strategy': self.curriculum_strategy
-                })
+            self._emit_curriculum_progress()
 
     def _should_switch_day(self) -> bool:
         """Determine if we should switch to a new day based on episodes per day configuration."""
@@ -1006,6 +1031,9 @@ class PPOTrainer:
             'time_per_episode': 0.0
         }
         self.metrics.metrics_manager.emit_event('training_update', training_data)
+        
+        # Emit initial curriculum progress
+        self._emit_curriculum_progress()
 
         best_eval_reward = -float('inf')
 

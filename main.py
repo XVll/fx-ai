@@ -178,11 +178,13 @@ def create_data_components(config: Config, log: logging.Logger):
     # Data Manager with DataConfig
     data_provider = create_data_provider(config.data)
     
-    # Create momentum scanner for momentum-based training
+    # Create momentum scanner with new configuration system
     momentum_scanner = MomentumScanner(
         data_dir=str(Path(config.data.data_dir) / "mlgo"),
-        output_dir="outputs/momentum_index",
-        direction_filter='both',
+        output_dir=f"{config.data.index_dir}/momentum_index",
+        momentum_config=config.momentum_scanning,
+        scoring_config=config.three_component_scoring,
+        session_config=config.session_volume,
         logger=log
     )
     

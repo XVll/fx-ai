@@ -1,0 +1,72 @@
+# Sniper 3-component test configuration
+experiment_name: "sniper_test"
+
+# Compact model for testing
+model:
+  d_model: 64
+  n_layers: 2
+  n_heads: 4
+
+# Quick test settings
+training:
+  rollout_steps: 2048
+  total_updates: 50
+  checkpoint_interval: 10
+  batch_size: 64
+  eval_frequency: 5
+  eval_episodes: 2
+  early_stop_patience: 25
+
+# Short episodes for quick testing
+env:
+  max_episode_steps: 128
+  max_steps: 128
+
+# Limited dataset for speed
+data:
+  start_date: "2025-04-25"
+  end_date: "2025-04-29"
+  min_activity_score: 0.0
+
+# Sniper momentum scanning
+momentum_scanning:
+  min_daily_move: 0.10
+  min_volume_multiplier: 2.0
+  max_daily_move: null
+  max_volume_multiplier: null
+  direction_filter: "both"
+
+# 3-Component scoring
+three_component_scoring:
+  direction_lookback_minutes: 10
+  roc_lookback_minutes: 5
+  activity_lookback_minutes: 15
+  reset_points_per_day: 60
+  near_zero_threshold: 0.05
+  direction_weight: 0.3
+  roc_weight: 0.4
+  activity_weight: 0.3
+
+# Session-aware volume
+session_volume:
+  use_session_specific_baselines: true
+  volume_window_days: 5
+
+# Test curriculum
+curriculum:
+  stage_1_beginner:
+    episode_range: [0, 100]
+    episode_length: 128
+    batch_size: 2048
+    offset_ratio: 1.0
+    min_roc_score: 0.3
+    min_activity_score: 0.3
+    min_direction_score: 0.3
+
+# Dashboard and logging
+dashboard:
+  enabled: true
+
+wandb:
+  enabled: false  # Disable for quick testing
+  tags: ["sniper_test", "3_component"]

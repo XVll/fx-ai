@@ -206,22 +206,12 @@ class DataConfig(BaseModel):
     start_date: Optional[str] = Field(default="2025-02-03", description="Start date YYYY-MM-DD")
     end_date: Optional[str] = Field(default="2025-04-29", description="End date YYYY-MM-DD")
     
-    # Activity filtering for day selection - curriculum-ready
-    min_activity_score: float = Field(default=0.0, description="Minimum activity score for training days")
-    max_activity_score: float = Field(default=1.0, description="Maximum activity score for training days")
-    
-    # Training order - start with high-quality days
-    training_order: Literal["random", "sequential", "activity_desc", "activity_asc"] = Field(
-        default="activity_desc", 
-        description="Order to process training days"
-    )
-    
     # Performance
     cache_enabled: bool = True
     cache_dir: str = "cache"
     preload_days: int = Field(default=2, description="Days to preload for session features")
     
-    # Momentum indices
+    # Index configuration
     index_dir: str = Field(default="indices", description="Directory for momentum indices")
     auto_build_index: bool = Field(default=True, description="Auto-build index if missing")
 
@@ -359,30 +349,97 @@ class WandbConfig(BaseModel):
     save_model: bool = True
 
 
-class ActivityScoringConfig(BaseModel):
-    """Activity-based scoring configuration"""
-    # Score calculation
-    volume_ratio_cap: float = Field(default=5.0, description="Max volume ratio for scoring")
-    price_change_cap: float = Field(default=0.10, description="Max price change for scoring (10%)")
+class MomentumScanningConfig(BaseModel):
+    """Momentum day scanning configuration"""
+    # Day selection criteria (configurable for sniper approach)
+    min_daily_move: float = Field(default=0.10, description="Minimum 10% intraday movement")
+    min_volume_multiplier: float = Field(default=2.0, description="Minimum 2x average volume")
+    max_daily_move: Optional[float] = Field(default=None, description="Remove cap - capture all volatility")
+    max_volume_multiplier: Optional[float] = Field(default=None, description="Remove cap - capture all volume spikes")
     
-    # Reset point generation
-    reset_points_per_day: int = Field(default=25, description="Number of reset points per day")
-    min_activity_threshold: float = Field(default=0.1, description="Minimum activity score to include")
-    
-    # Direction detection
+    # Direction classification
     front_side_threshold: float = Field(default=0.05, description="Min positive move for front side")
     back_side_threshold: float = Field(default=-0.05, description="Min negative move for back side")
+    direction_filter: Literal["both", "front_side", "back_side"] = Field(default="both")
+
+
+class ThreeComponentScoringConfig(BaseModel):
+    """3-component reset point scoring system for sniper trading"""
+    # Direction Score [-1, 1] - tanh(price_change / volatility_threshold)
+    direction_lookback_minutes: int = Field(default=10, description="Minutes for direction calculation")
+    direction_volatility_threshold: float = Field(default=0.02, description="Volatility threshold for direction scoring")
     
-    # Randomization windows (minutes) based on activity level
-    high_activity_window: List[int] = Field(default=[3, 5], description="Window for activity >= 0.8")
-    medium_activity_window: List[int] = Field(default=[10, 15], description="Window for 0.3-0.8")
-    low_activity_window: List[int] = Field(default=[20, 30], description="Window for < 0.3")
+    # ROC Score [-1, 1] - tanh(abs(price_change) / rolling_volatility)
+    roc_lookback_minutes: int = Field(default=5, description="Minutes for ROC calculation")
+    roc_volatility_window: int = Field(default=15, description="Rolling window for volatility calculation")
+    
+    # Activity Score [-1, 1] - tanh((volume - session_median) / session_mad)
+    activity_lookback_minutes: int = Field(default=15, description="Minutes for activity calculation")
+    session_volume_window: int = Field(default=60, description="Session volume calculation window")
+    
+    # Reset point generation
+    reset_points_per_day: int = Field(default=120, description="Target reset points per day for sniper approach")
+    min_reset_points: int = Field(default=60, description="Minimum reset points per day")
+    max_reset_points: int = Field(default=180, description="Maximum reset points per day")
+    
+    # Near-zero filtering
+    near_zero_threshold: float = Field(default=0.1, description="Skip if all scores < threshold")
+    
+    # Combined scoring weights
+    direction_weight: float = Field(default=0.3, description="Direction score weight")
+    roc_weight: float = Field(default=0.4, description="ROC score weight (prioritize volatility)")
+    activity_weight: float = Field(default=0.3, description="Activity score weight")
+
+
+class SessionVolumeConfig(BaseModel):
+    """Session-aware volume calculations"""
+    # Market sessions for volume profiling
+    premarket_start: str = Field(default="04:00", description="Pre-market start time")
+    premarket_end: str = Field(default="09:30", description="Pre-market end time")
+    regular_start: str = Field(default="09:30", description="Regular market start time")
+    regular_end: str = Field(default="16:00", description="Regular market end time")
+    postmarket_start: str = Field(default="16:00", description="Post-market start time")
+    postmarket_end: str = Field(default="20:00", description="Post-market end time")
+    
+    # Volume baseline calculation
+    volume_window_days: int = Field(default=10, description="Days for volume baseline")
+    use_session_specific_baselines: bool = Field(default=True, description="Separate volume baselines per session")
+
+
+class ProgressiveEpisodeConfig(BaseModel):
+    """Progressive episode length configuration for sniper training"""
+    # Stage-based episode lengths (steps)
+    stage_1_length: int = Field(default=256, description="Stage 1: Basic entry/exit (4.3 min)")
+    stage_2_length: int = Field(default=512, description="Stage 2: Momentum riding (8.5 min)")
+    stage_3_length: int = Field(default=768, description="Stage 3: Full cycles (12.8 min)")
+    stage_4_length: int = Field(default=1024, description="Stage 4: Complex strategies (17 min)")
+    
+    # Batch sizes for each stage (reduced for more responsive training)
+    stage_1_batch_size: int = Field(default=2048, description="Stage 1 batch size (~34 min)")
+    stage_2_batch_size: int = Field(default=4096, description="Stage 2 batch size (~68 min)")
+    stage_3_batch_size: int = Field(default=6144, description="Stage 3 batch size (~102 min)")
+    stage_4_batch_size: int = Field(default=8192, description="Stage 4 batch size (~136 min)")
+    
+    # Offset strategies
+    stage_1_offset_ratio: float = Field(default=1.0, description="Stage 1: No overlap")
+    stage_2_offset_ratio: float = Field(default=1.0, description="Stage 2: No overlap")
+    stage_3_offset_ratio: float = Field(default=0.75, description="Stage 3: 25% overlap")
+    stage_4_offset_ratio: float = Field(default=0.75, description="Stage 4: 25% overlap")
 
 
 class CurriculumStageConfig(BaseModel):
-    """Configuration for a curriculum training stage"""
+    """Configuration for a curriculum training stage with sniper approach"""
     episode_range: List[Optional[int]] = Field(description="[start, end] episode range")
-    min_activity_score: float = Field(default=0.0, description="Minimum activity score for days")
+    episode_length: int = Field(description="Episode length in steps")
+    batch_size: int = Field(description="Rollout batch size")
+    offset_ratio: float = Field(description="Episode offset ratio (1.0 = no overlap)")
+    
+    # 3-component scoring filters
+    min_roc_score: float = Field(default=0.0, description="Minimum ROC score")
+    min_activity_score: float = Field(default=0.0, description="Minimum activity score")
+    min_direction_score: float = Field(default=0.0, description="Minimum |direction| score")
+    
+    # Legacy compatibility
     direction_filter: Literal["both", "front_side", "back_side"] = Field(
         default="both", 
         description="Direction filter for training"
@@ -390,32 +447,52 @@ class CurriculumStageConfig(BaseModel):
 
 
 class CurriculumConfig(BaseModel):
-    """Curriculum learning configuration"""
+    """Sniper-focused curriculum learning configuration"""
     stage_1_beginner: CurriculumStageConfig = Field(
         default=CurriculumStageConfig(
-            episode_range=[0, 1000],
-            min_activity_score=0.7,
+            episode_range=[0, 2000],
+            episode_length=256,
+            batch_size=2048,  # Reduced from 8192 for faster updates
+            offset_ratio=1.0,
+            min_roc_score=0.5,
+            min_activity_score=0.5,
+            min_direction_score=0.5,
             direction_filter="both"
         )
     )
     stage_2_intermediate: CurriculumStageConfig = Field(
         default=CurriculumStageConfig(
-            episode_range=[1000, 3000],
+            episode_range=[2000, 5000],
+            episode_length=512,
+            batch_size=16384,
+            offset_ratio=1.0,
+            min_roc_score=0.3,
             min_activity_score=0.3,
+            min_direction_score=0.3,
             direction_filter="both"
         )
     )
     stage_3_advanced: CurriculumStageConfig = Field(
         default=CurriculumStageConfig(
-            episode_range=[3000, 5000],
+            episode_range=[5000, 8000],
+            episode_length=768,
+            batch_size=24576,
+            offset_ratio=0.75,
+            min_roc_score=0.0,
             min_activity_score=0.0,
+            min_direction_score=0.0,
             direction_filter="both"
         )
     )
     stage_4_specialization: CurriculumStageConfig = Field(
         default=CurriculumStageConfig(
-            episode_range=[5000, None],
+            episode_range=[8000, None],
+            episode_length=1024,
+            batch_size=32768,
+            offset_ratio=0.75,
+            min_roc_score=0.0,
             min_activity_score=0.0,
+            min_direction_score=0.0,
             direction_filter="both"
         )
     )
@@ -455,8 +532,11 @@ class Config(BaseModel):
     wandb: WandbConfig = Field(default_factory=WandbConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     
-    # Activity-based configurations
-    activity_scoring: ActivityScoringConfig = Field(default_factory=ActivityScoringConfig)
+    # Sniper-focused configurations
+    momentum_scanning: MomentumScanningConfig = Field(default_factory=MomentumScanningConfig)
+    three_component_scoring: ThreeComponentScoringConfig = Field(default_factory=ThreeComponentScoringConfig)
+    session_volume: SessionVolumeConfig = Field(default_factory=SessionVolumeConfig)
+    progressive_episodes: ProgressiveEpisodeConfig = Field(default_factory=ProgressiveEpisodeConfig)
     curriculum: CurriculumConfig = Field(default_factory=CurriculumConfig)
     
     # Experiment settings

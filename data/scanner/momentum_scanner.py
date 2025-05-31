@@ -1,10 +1,10 @@
-"""Momentum Scanner for identifying high-value training days and reset points."""
+"""Sniper-focused Momentum Scanner with 3-component scoring system."""
 
 import os
 import json
 import logging
 from typing import Dict, List, Tuple, Optional, Set
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -13,37 +13,25 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 from data.utils.helpers import ensure_timezone_aware
+from config.schemas import MomentumScanningConfig, ThreeComponentScoringConfig, SessionVolumeConfig
 
 
 class MomentumScanner:
-    """Scans historical data to identify momentum days and quality reset points using activity-based scoring."""
-    
-    # Momentum day thresholds
-    MIN_DAILY_MOVE = 0.10  # 10% minimum intraday movement
-    MAX_DAILY_MOVE = 0.30  # 30% maximum (beyond this might be too volatile)
-    MIN_VOLUME_MULTIPLIER = 2.0  # Minimum 2x average volume
-    
-    # Reset point parameters
-    MIN_RESET_POINTS_PER_DAY = 20  # Minimum reset points for training coverage
-    MAX_RESET_POINTS_PER_DAY = 50  # Maximum reset points per day
-    TARGET_RESET_POINTS = 30  # Target number of reset points
-    
-    # Activity scoring parameters
-    VOLUME_RATIO_WEIGHT = 0.5  # Weight for volume ratio in activity score
-    PRICE_CHANGE_WEIGHT = 0.5  # Weight for price change in activity score
-    
-    # Directional filtering
-    DIRECTION_FILTER = 'both'  # Options: 'front_side', 'back_side', 'both'
+    """Sniper-focused momentum scanner with 3-component scoring and session-aware volume profiling."""
     
     def __init__(self, data_dir: str, output_dir: str, 
-                 direction_filter: str = 'both',
+                 momentum_config: Optional[MomentumScanningConfig] = None,
+                 scoring_config: Optional[ThreeComponentScoringConfig] = None,
+                 session_config: Optional[SessionVolumeConfig] = None,
                  logger: Optional[logging.Logger] = None):
-        """Initialize the momentum scanner.
+        """Initialize the sniper momentum scanner.
         
         Args:
             data_dir: Directory containing Databento files
             output_dir: Directory to save index files
-            direction_filter: Filter for momentum direction ('front_side', 'back_side', 'both')
+            momentum_config: Momentum scanning configuration
+            scoring_config: 3-component scoring configuration
+            session_config: Session-aware volume configuration
             logger: Optional logger instance
         """
         self.data_dir = Path(data_dir)
@@ -51,14 +39,32 @@ class MomentumScanner:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         self.logger = logger or logging.getLogger(__name__)
-        self.direction_filter = direction_filter
+        
+        # Configuration with defaults
+        self.momentum_config = momentum_config or MomentumScanningConfig()
+        self.scoring_config = scoring_config or ThreeComponentScoringConfig()
+        self.session_config = session_config or SessionVolumeConfig()
         
         # Index paths
         self.day_index_path = self.output_dir / "momentum_days.parquet"
         self.reset_index_path = self.output_dir / "reset_points.parquet"
         
-        # Cache for average volumes
-        self._avg_volume_cache: Dict[str, float] = {}
+        # Session-aware volume caches
+        self._session_volume_cache: Dict[str, Dict[str, float]] = {}  # symbol -> session -> volume
+        
+        # Market session definitions
+        self._market_sessions = {
+            'premarket': (self._parse_time(self.session_config.premarket_start), 
+                         self._parse_time(self.session_config.premarket_end)),
+            'regular': (self._parse_time(self.session_config.regular_start), 
+                       self._parse_time(self.session_config.regular_end)),
+            'postmarket': (self._parse_time(self.session_config.postmarket_start), 
+                          self._parse_time(self.session_config.postmarket_end))
+        }
+    
+    def _parse_time(self, time_str: str) -> time:
+        """Parse time string to time object."""
+        return datetime.strptime(time_str, "%H:%M").time()
         
     def scan_all_symbols(self, symbols: Optional[List[str]] = None, 
                         start_date: Optional[datetime] = None,
@@ -152,8 +158,8 @@ class MomentumScanner:
             self.logger.warning(f"No 1s OHLCV data found for {symbol}")
             return day_records, reset_records
             
-        # Get average daily volume for comparison
-        avg_volume = self._get_average_volume(symbol)
+        # Get session-aware volumes for comparison
+        session_volumes = self._get_session_volumes(symbol)
         
         # Process each file (typically contains multiple days)
         for file_path in ohlcv_files:
@@ -183,7 +189,7 @@ class MomentumScanner:
                 # Group by date and analyze each day
                 for date, day_data in df.groupby(df.index.date):
                     day_record, day_reset_points = self._analyze_day(
-                        symbol, date, day_data, avg_volume
+                        symbol, date, day_data, session_volumes
                     )
                     
                     if day_record:
@@ -196,13 +202,13 @@ class MomentumScanner:
         return day_records, reset_records
     
     def _analyze_day(self, symbol: str, date: pd.Timestamp, 
-                    day_data: pd.DataFrame, avg_volume: float) -> Tuple[Optional[Dict], List[Dict]]:
-        """Analyze a single day for momentum characteristics using activity-based scoring.
+                    day_data: pd.DataFrame, session_volumes: Dict[str, float]) -> Tuple[Optional[Dict], List[Dict]]:
+        """Analyze a single day for momentum characteristics using sniper approach.
         
         Returns:
             Tuple of (day_record, reset_points) or (None, [])
         """
-        # Filter to regular trading hours (4 AM - 8 PM ET)
+        # Filter to trading hours (4 AM - 8 PM ET)
         day_data = self._filter_trading_hours(day_data)
         if len(day_data) < 100:  # Need sufficient data points
             return None, []
@@ -221,19 +227,22 @@ class MomentumScanner:
         max_intraday_move = max(max_move_up, max_move_down)
         
         # Determine momentum direction
-        is_front_side = daily_return > 0.05  # 5% positive move
-        is_back_side = daily_return < -0.05  # 5% negative move
+        is_front_side = daily_return > self.momentum_config.front_side_threshold
+        is_back_side = daily_return < self.momentum_config.back_side_threshold
         
         # Apply direction filter
-        if self.direction_filter == 'front_side' and not is_front_side:
+        if self.momentum_config.direction_filter == 'front_side' and not is_front_side:
             return None, []
-        elif self.direction_filter == 'back_side' and not is_back_side:
+        elif self.momentum_config.direction_filter == 'back_side' and not is_back_side:
             return None, []
         
-        # Check momentum criteria
+        # Calculate average session volume for comparison
+        avg_session_volume = np.mean(list(session_volumes.values()))
+        
+        # Check momentum criteria (NO CAPS - capture all volatility)
         is_momentum_day = (
-            self.MIN_DAILY_MOVE <= max_intraday_move <= self.MAX_DAILY_MOVE and
-            total_volume >= avg_volume * self.MIN_VOLUME_MULTIPLIER
+            max_intraday_move >= self.momentum_config.min_daily_move and
+            total_volume >= avg_session_volume * self.momentum_config.min_volume_multiplier
         )
         
         if not is_momentum_day:
@@ -242,11 +251,9 @@ class MomentumScanner:
         # Find halts
         halt_count = self._count_halts(symbol, date)
         
-        # Calculate activity score (simple and effective)
-        volume_ratio = min(total_volume / avg_volume, 10.0) / 10.0  # Normalize to 0-1
-        price_change = min(max_intraday_move, 0.30) / 0.30  # Normalize to 0-1
-        activity_score = (volume_ratio * self.VOLUME_RATIO_WEIGHT + 
-                         price_change * self.PRICE_CHANGE_WEIGHT)
+        # Calculate simple activity score for day ranking (no caps)
+        volume_multiplier = total_volume / avg_session_volume
+        activity_score = np.tanh(max_intraday_move * 10) * 0.5 + np.tanh(volume_multiplier / 10) * 0.5
         
         # Create day record
         day_record = {
@@ -259,7 +266,7 @@ class MomentumScanner:
             'volume': total_volume,
             'daily_return': daily_return,
             'max_intraday_move': max_intraday_move,
-            'volume_multiplier': total_volume / avg_volume,
+            'volume_multiplier': volume_multiplier,
             'halt_count': halt_count,
             'activity_score': activity_score,
             'is_front_side': is_front_side,
@@ -267,17 +274,17 @@ class MomentumScanner:
             'file_paths': [str(f) for f in self._find_day_files(symbol, date)]
         }
         
-        # Find reset points within the day
-        reset_points = self._find_reset_points(symbol, date, day_data, activity_score)
+        # Find reset points using 3-component scoring
+        reset_points = self._find_reset_points_3component(symbol, date, day_data, session_volumes)
         
         return day_record, reset_points
     
-    def _find_reset_points(self, symbol: str, date: pd.Timestamp,
-                          day_data: pd.DataFrame, day_activity_score: float) -> List[Dict]:
-        """Find reset points within a momentum day using activity-based scoring."""
+    def _find_reset_points_3component(self, symbol: str, date: pd.Timestamp,
+                                     day_data: pd.DataFrame, session_volumes: Dict[str, float]) -> List[Dict]:
+        """Find reset points using 3-component scoring (direction, ROC, activity)."""
         reset_points = []
         
-        # Resample to 1-minute bars for activity calculation
+        # Resample to 1-minute bars
         minute_bars = day_data.resample('1min').agg({
             'open': 'first',
             'high': 'max',
@@ -288,147 +295,133 @@ class MomentumScanner:
         
         if len(minute_bars) < 60:  # Need at least 1 hour of data
             return reset_points
-            
-        # Calculate rolling metrics for activity scoring
-        minute_bars['volume_sma'] = minute_bars['volume'].rolling(10).mean()
-        minute_bars['volume_ratio'] = minute_bars['volume'] / minute_bars['volume_sma']
-        minute_bars['price_change'] = minute_bars['close'].pct_change(5).abs()  # 5-minute price change
         
-        # Calculate activity score for each minute
-        minute_bars['activity_score'] = (
-            minute_bars['volume_ratio'].clip(0, 5) / 5 * self.VOLUME_RATIO_WEIGHT +
-            minute_bars['price_change'].clip(0, 0.05) / 0.05 * self.PRICE_CHANGE_WEIGHT
+        # Add session information
+        minute_bars['session'] = minute_bars.apply(lambda row: self._get_market_session(pd.Timestamp(row.name)), axis=1)
+        
+        # Calculate 3-component scores
+        minute_bars = self._calculate_3component_scores(minute_bars, session_volumes)
+        
+        # Filter near-zero points
+        threshold = self.scoring_config.near_zero_threshold
+        valid_mask = (
+            (np.abs(minute_bars['direction_score']) >= threshold) |
+            (np.abs(minute_bars['roc_score']) >= threshold) |
+            (np.abs(minute_bars['activity_score']) >= threshold)
+        )
+        minute_bars = minute_bars[valid_mask]
+        
+        if len(minute_bars) < self.scoring_config.min_reset_points:
+            self.logger.warning(f"Only {len(minute_bars)} valid reset points for {symbol} {date}")
+            return reset_points
+        
+        # Calculate combined score for weighting
+        minute_bars['combined_score'] = (
+            np.abs(minute_bars['direction_score']) * self.scoring_config.direction_weight +
+            minute_bars['roc_score'] * self.scoring_config.roc_weight +
+            minute_bars['activity_score'] * self.scoring_config.activity_weight
         )
         
-        # Add direction information
-        minute_bars['price_direction'] = minute_bars['close'].pct_change(5)
-        minute_bars['is_positive_move'] = minute_bars['price_direction'] > 0.001
-        minute_bars['is_negative_move'] = minute_bars['price_direction'] < -0.001
-        
-        # Filter out low activity periods
-        minute_bars = minute_bars[minute_bars['activity_score'] > 0.1]
-        
-        if len(minute_bars) < self.MIN_RESET_POINTS_PER_DAY:
-            # If not enough high-activity points, use all available
-            minute_bars = day_data.resample('1min').agg({
-                'open': 'first',
-                'high': 'max',
-                'low': 'min', 
-                'close': 'last',
-                'volume': 'sum'
-            }).dropna()
-            minute_bars['activity_score'] = 0.5  # Default score
-            minute_bars['is_positive_move'] = True
-            minute_bars['is_negative_move'] = False
-        
-        # Generate reset points using cumulative distribution weighted by activity
-        reset_points = self._generate_activity_weighted_reset_points(
-            minute_bars, symbol, date, day_activity_score
+        # Generate reset points using weighted sampling
+        reset_points = self._generate_3component_reset_points(
+            minute_bars, symbol, date
         )
         
         return reset_points
     
-    def _generate_activity_weighted_reset_points(self, minute_bars: pd.DataFrame,
-                                               symbol: str, date: pd.Timestamp,
-                                               day_activity_score: float) -> List[Dict]:
-        """Generate reset points using activity-weighted distribution."""
+    def _calculate_3component_scores(self, minute_bars: pd.DataFrame, 
+                                   session_volumes: Dict[str, float]) -> pd.DataFrame:
+        """Calculate direction, ROC, and activity scores."""
+        # 1. Direction Score [-1, 1]: tanh(price_change / volatility_threshold)
+        direction_window = int(self.scoring_config.direction_lookback_minutes)
+        minute_bars['price_change_direction'] = minute_bars['close'].pct_change(direction_window)
+        minute_bars['direction_score'] = np.tanh(
+            minute_bars['price_change_direction'] / self.scoring_config.direction_volatility_threshold
+        )
+        
+        # 2. ROC Score [-1, 1]: tanh(abs(price_change) / rolling_volatility)
+        roc_window = int(self.scoring_config.roc_lookback_minutes)
+        volatility_window = int(self.scoring_config.roc_volatility_window)
+        minute_bars['price_change_roc'] = minute_bars['close'].pct_change(roc_window).abs()
+        minute_bars['rolling_volatility'] = minute_bars['close'].pct_change().rolling(volatility_window).std()
+        minute_bars['roc_score'] = np.tanh(
+            minute_bars['price_change_roc'] / (minute_bars['rolling_volatility'] + 1e-8)
+        )
+        
+        # 3. Activity Score [-1, 1]: session-relative volume intensity  
+        minute_bars['session_volume_baseline'] = minute_bars['session'].map(session_volumes)
+        activity_window = int(self.scoring_config.activity_lookback_minutes)
+        minute_bars['volume_rolling'] = minute_bars['volume'].rolling(activity_window).mean()
+        
+        # Session-aware volume scoring
+        minute_bars['volume_deviation'] = (
+            (minute_bars['volume_rolling'] - minute_bars['session_volume_baseline']) /
+            (minute_bars['session_volume_baseline'] + 1e-8)
+        )
+        minute_bars['activity_score'] = np.tanh(minute_bars['volume_deviation'])
+        
+        # Fill NaN values with 0
+        for col in ['direction_score', 'roc_score', 'activity_score']:
+            minute_bars[col] = minute_bars[col].fillna(0.0)
+        
+        return minute_bars
+    
+    def _generate_3component_reset_points(self, minute_bars: pd.DataFrame,
+                                        symbol: str, date: pd.Timestamp) -> List[Dict]:
+        """Generate reset points using 3-component weighted sampling."""
         reset_points = []
         
         # Clean data
-        minute_bars = minute_bars.dropna()
+        minute_bars = minute_bars.dropna(subset=['combined_score'])
         if len(minute_bars) == 0:
             return reset_points
             
-        # Calculate cumulative activity scores
-        activity_scores = minute_bars['activity_score'].fillna(0.1).values
-        cumulative_activity = np.cumsum(activity_scores)
-        total_activity = cumulative_activity[-1]
+        # Use combined score for weighted sampling
+        combined_scores = minute_bars['combined_score'].to_numpy()
+        # Ensure all weights are positive for sampling
+        weights = combined_scores - combined_scores.min() + 0.01
+        weights = weights / weights.sum()
         
-        if total_activity == 0:
-            # Fallback to uniform distribution
-            indices = np.linspace(0, len(minute_bars) - 1, self.TARGET_RESET_POINTS, dtype=int)
+        # Sample reset points
+        target_points = min(self.scoring_config.reset_points_per_day, len(minute_bars))
+        target_points = max(target_points, self.scoring_config.min_reset_points)
+        target_points = min(target_points, self.scoring_config.max_reset_points)
+        
+        # Sample without replacement
+        if target_points >= len(minute_bars):
+            selected_indices = list(range(len(minute_bars)))
         else:
-            # Generate reset points weighted by activity
-            target_points = min(self.TARGET_RESET_POINTS, len(minute_bars))
-            reset_thresholds = np.linspace(0, total_activity, target_points + 1)[1:]
-            
-            indices = []
-            for threshold in reset_thresholds:
-                idx = np.searchsorted(cumulative_activity, threshold)
-                if idx < len(minute_bars):
-                    indices.append(idx)
-            
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_indices = []
-            for idx in indices:
-                if idx not in seen:
-                    seen.add(idx)
-                    unique_indices.append(idx)
-            indices = unique_indices
+            selected_indices = np.random.choice(
+                len(minute_bars), 
+                size=target_points, 
+                replace=False, 
+                p=weights
+            )
         
-        # Create reset points from selected indices
-        for idx in indices:
-            if idx >= len(minute_bars):
-                continue
-                
+        # Create reset points
+        for idx in selected_indices:
             row = minute_bars.iloc[idx]
             
             reset_points.append({
                 'symbol': symbol,
                 'date': date,
-                'timestamp': row.name,  # Index is timestamp
-                'activity_score': row.get('activity_score', 0.5),
-                'day_activity_score': day_activity_score,
-                'combined_score': row.get('activity_score', 0.5) * day_activity_score,
+                'timestamp': row.name,
+                'direction_score': row['direction_score'],
+                'roc_score': row['roc_score'], 
+                'activity_score': row['activity_score'],
+                'combined_score': row['combined_score'],
                 'price': row['close'],
                 'volume': row['volume'],
-                'is_positive_move': row.get('is_positive_move', True),
-                'is_negative_move': row.get('is_negative_move', False),
-                'volume_ratio': row.get('volume_ratio', 1.0),
-                'price_change': row.get('price_change', 0.0)
+                'session': row['session'],
+                'price_change_direction': row.get('price_change_direction', 0.0),
+                'price_change_roc': row.get('price_change_roc', 0.0),
+                'volume_deviation': row.get('volume_deviation', 0.0)
             })
-        
-        # Ensure minimum reset points
-        if len(reset_points) < self.MIN_RESET_POINTS_PER_DAY and len(minute_bars) > self.MIN_RESET_POINTS_PER_DAY:
-            # Add uniformly distributed points to reach minimum
-            additional_needed = self.MIN_RESET_POINTS_PER_DAY - len(reset_points)
-            used_timestamps = {p['timestamp'] for p in reset_points}
-            
-            # Find unused timestamps
-            all_timestamps = set(minute_bars.index)
-            unused_timestamps = sorted(all_timestamps - used_timestamps)
-            
-            if unused_timestamps:
-                # Select evenly spaced additional points
-                step = max(1, len(unused_timestamps) // additional_needed)
-                for i in range(0, len(unused_timestamps), step):
-                    if len(reset_points) >= self.MIN_RESET_POINTS_PER_DAY:
-                        break
-                        
-                    timestamp = unused_timestamps[i]
-                    row = minute_bars.loc[timestamp]
-                    
-                    reset_points.append({
-                        'symbol': symbol,
-                        'date': date,
-                        'timestamp': timestamp,
-                        'activity_score': 0.3,  # Lower score for filler points
-                        'day_activity_score': day_activity_score,
-                        'combined_score': 0.3 * day_activity_score,
-                        'price': row['close'],
-                        'volume': row['volume'],
-                        'is_positive_move': row.get('is_positive_move', True),
-                        'is_negative_move': row.get('is_negative_move', False),
-                        'volume_ratio': row.get('volume_ratio', 1.0),
-                        'price_change': row.get('price_change', 0.0)
-                    })
         
         # Sort by timestamp
         reset_points.sort(key=lambda x: x['timestamp'])
         
-        # Limit to maximum
-        return reset_points[:self.MAX_RESET_POINTS_PER_DAY]
+        return reset_points
     
     def _is_within_trading_hours(self, timestamp: pd.Timestamp) -> bool:
         """Check if timestamp is within trading hours (4 AM - 8 PM ET)."""
@@ -450,31 +443,78 @@ class MomentumScanner:
         mask = (df_et.index.hour >= 4) & (df_et.index.hour < 20)
         return df[mask]
     
-    def _get_average_volume(self, symbol: str) -> float:
-        """Get average daily volume for a symbol."""
-        if symbol in self._avg_volume_cache:
-            return self._avg_volume_cache[symbol]
+    def _get_session_volumes(self, symbol: str) -> Dict[str, float]:
+        """Get session-aware average volumes for a symbol."""
+        if symbol in self._session_volume_cache:
+            return self._session_volume_cache[symbol]
             
-        # Calculate from daily bars if available
-        daily_files = self._find_ohlcv_files(symbol, '1d')
-        if daily_files:
+        session_volumes = {'premarket': 500_000, 'regular': 2_000_000, 'postmarket': 300_000}  # Defaults
+        
+        # Calculate from 1-minute or 1-second data if available
+        for timeframe in ['1m', '1s']:
+            files = self._find_ohlcv_files(symbol, timeframe)
+            if not files:
+                continue
+                
             try:
-                volumes = []
-                for file_path in daily_files[-5:]:  # Last 5 files
+                all_data = []
+                for file_path in files[-self.session_config.volume_window_days:]:
                     store = db.DBNStore.from_file(file_path)
                     df = store.to_df()
                     if not df.empty and 'volume' in df.columns:
-                        volumes.extend(df['volume'].values)
+                        # Ensure proper datetime index
+                        if not isinstance(df.index, pd.DatetimeIndex):
+                            df.index = pd.to_datetime(df.index)
+                        if df.index.tz is None:
+                            df.index = df.index.tz_localize('UTC')
+                        all_data.append(df)
                         
-                if volumes:
-                    avg_vol = np.median(volumes)  # Use median to handle outliers
-                    self._avg_volume_cache[symbol] = avg_vol
-                    return avg_vol
+                if all_data:
+                    combined_df = pd.concat(all_data)
+                    session_volumes = self._calculate_session_volumes(combined_df)
+                    break
+                    
             except Exception as e:
-                self.logger.warning(f"Error calculating average volume for {symbol}: {e}")
+                self.logger.warning(f"Error calculating session volumes for {symbol}: {e}")
                 
-        # Default fallback
-        return 1_000_000
+        self._session_volume_cache[symbol] = session_volumes
+        return session_volumes
+    
+    def _calculate_session_volumes(self, df: pd.DataFrame) -> Dict[str, float]:
+        """Calculate median volumes by market session."""
+        session_volumes = {}
+        
+        # Add session column
+        df_et = df.copy()
+        df_et.index = df_et.index.tz_convert('America/New_York')
+        df_et['session'] = df_et.apply(lambda row: self._get_market_session(pd.Timestamp(row.name)), axis=1)
+        
+        # Calculate session medians
+        for session in ['premarket', 'regular', 'postmarket']:
+            session_data = df_et[df_et['session'] == session]
+            if not session_data.empty:
+                session_volumes[session] = session_data['volume'].median()
+            else:
+                # Fallback values
+                session_volumes[session] = {
+                    'premarket': 500_000,
+                    'regular': 2_000_000, 
+                    'postmarket': 300_000
+                }[session]
+                
+        return session_volumes
+    
+    def _get_market_session(self, timestamp: pd.Timestamp) -> str:
+        """Determine market session for a timestamp."""
+        if timestamp.tz is None:
+            timestamp = timestamp.tz_localize('UTC')
+        et_time = timestamp.tz_convert('America/New_York').time()
+        
+        for session, (start_time, end_time) in self._market_sessions.items():
+            if start_time <= et_time < end_time:
+                return session
+                
+        return 'closed'
     
     def _count_halts(self, symbol: str, date: pd.Timestamp) -> int:
         """Count trading halts for a symbol on a given date."""

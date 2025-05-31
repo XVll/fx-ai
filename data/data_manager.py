@@ -1,6 +1,7 @@
 # data/data_manager.py - Enhanced with 2-tier caching and momentum index support
 from typing import Dict, List, Union, Tuple, Optional, Any, Set
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 import logging
 import threading
@@ -293,7 +294,7 @@ class DataManager:
             return self.l1_cache['prev_day_data'][data_type]
         return None
         
-    def get_momentum_days(self, symbol: str, min_quality: float = 0.5) -> pd.DataFrame:
+    def get_momentum_days(self, symbol: str, min_activity: float = 0.0) -> pd.DataFrame:
         """Get available momentum days for a symbol from index."""
         if self.momentum_days_cache is None or self.momentum_days_cache.empty:
             return pd.DataFrame()
@@ -301,13 +302,18 @@ class DataManager:
         if symbol is None:
             return pd.DataFrame()
             
-        return self.momentum_days_cache[
+        # Filter by symbol and activity score
+        mask = (
             (self.momentum_days_cache['symbol'] == symbol.upper()) &
-            (self.momentum_days_cache['activity_score'] >= min_quality)
-        ].sort_values('activity_score', ascending=False)
+            (self.momentum_days_cache['activity_score'] >= min_activity)
+        )
+            
+        return self.momentum_days_cache[mask].sort_values('activity_score', ascending=False)
         
-    def get_reset_points(self, symbol: str, date: datetime) -> pd.DataFrame:
-        """Get reset points for a symbol on a specific date."""
+    def get_reset_points(self, symbol: str, date: datetime, 
+                        min_roc: float = 0.0, min_activity: float = 0.0, 
+                        min_direction: float = 0.0) -> pd.DataFrame:
+        """Get reset points for a symbol on a specific date with 3-component filtering."""
         if self.reset_points_cache is None or self.reset_points_cache.empty:
             return pd.DataFrame()
             
@@ -315,10 +321,28 @@ class DataManager:
             return pd.DataFrame()
             
         date_obj = pd.Timestamp(date).date()
-        return self.reset_points_cache[
+        mask = (
             (self.reset_points_cache['symbol'] == symbol.upper()) &
             (self.reset_points_cache['date'] == date_obj)
-        ].sort_values('combined_score', ascending=False)
+        )
+        
+        # Apply 3-component filters if available
+        if 'roc_score' in self.reset_points_cache.columns:
+            mask &= self.reset_points_cache['roc_score'] >= min_roc
+        if 'activity_score' in self.reset_points_cache.columns:
+            mask &= self.reset_points_cache['activity_score'] >= min_activity
+        if 'direction_score' in self.reset_points_cache.columns:
+            mask &= np.abs(self.reset_points_cache['direction_score']) >= min_direction
+            
+        result = self.reset_points_cache[mask]
+        
+        # Sort by combined score if available, otherwise by roc score
+        if 'combined_score' in result.columns:
+            return result.sort_values('combined_score', ascending=False)
+        elif 'roc_score' in result.columns:
+            return result.sort_values('roc_score', ascending=False)
+        else:
+            return result
 
     def _check_memory_cache(self, symbol: str, data_type: str,
                             start_time: datetime, end_time: datetime) -> Optional[pd.DataFrame]:
@@ -787,7 +811,8 @@ class DataManager:
                 return day_data['data'].copy()
         
         # Not in cache - need to load
-        if self.load_day(symbol, date):
+        day_data = self.load_day(symbol, date)
+        if day_data:
             return self.l1_cache['data'].copy()
         
         return {}

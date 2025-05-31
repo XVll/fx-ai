@@ -50,6 +50,8 @@ class TestTradingEnvironment:
         config.env = Mock(spec=EnvConfig)
         config.env.initial_capital = 100000.0
         config.env.max_steps = 1000
+        config.env.max_episode_steps = 1000
+        config.env.max_training_steps = None
         config.env.invalid_action_limit = 10
         config.env.early_stop_loss_threshold = 0.95
         config.env.reward = Mock(spec=RewardConfig)
@@ -71,7 +73,7 @@ class TestTradingEnvironment:
         momentum_days = pd.DataFrame({
             'symbol': ['MLGO', 'MLGO'],
             'date': [datetime(2025, 1, 1), datetime(2025, 1, 2)],
-            'quality_score': [0.8, 0.9],
+            'activity_score': [0.8, 0.9],
             'max_intraday_move': [0.15, 0.20],
             'volume_multiplier': [2.5, 3.0]
         })
@@ -718,11 +720,11 @@ class TestTradingEnvironment:
             assert trading_env.invalid_action_count_episode == 3  # Incremented
     
     def test_termination_max_steps(self, trading_env):
-        """Test max steps termination."""
+        """Test max training steps termination (with penalty)."""
         # Setup
         trading_env.primary_asset = 'MLGO'
         trading_env._last_observation = {'hf': np.zeros((60, 7))}
-        trading_env.max_steps = 10
+        trading_env.max_training_steps = 10
         trading_env.current_step = 9  # Next step will reach limit
         trading_env.episode_end_time_utc = datetime.now() + timedelta(hours=1)
         trading_env.initial_capital_for_session = 100000.0
@@ -952,7 +954,7 @@ class TestTradingEnvironment:
     def test_momentum_day_selection(self, trading_env, mock_data_manager):
         """Test momentum day selection functionality."""
         # Test getting momentum days
-        momentum_days = trading_env.get_momentum_days(min_quality=0.7)
+        momentum_days = trading_env.get_momentum_days(min_activity=0.0)
         assert len(momentum_days) == 2  # From mock data
         
         # Test selecting next momentum day

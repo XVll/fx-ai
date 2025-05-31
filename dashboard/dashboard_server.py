@@ -526,82 +526,88 @@ class DashboardServer:
                 self._info_row("Clip Frac", f"{getattr(state, 'clip_fraction', 0.0):.2f}"),
             ])
             
-            # Reward components table with episode vs session stats
-            # Define all active reward components with their weights/scales
+            # Reward components table - redesigned to match actions panel format
+            # Define all active reward components with their types
             all_reward_components = {
-                'realized_pnl': {'weight': 1.0, 'scale': 1.0, 'type': 'foundational'},
-                'holding_time_penalty': {'weight': 1.0, 'scale': 0.001, 'type': 'shaping'},
-                'overtrading_penalty': {'weight': 1.0, 'scale': 0.01, 'type': 'shaping'},
-                'quick_profit_incentive': {'weight': 1.0, 'scale': 0.5, 'type': 'shaping'},
-                'drawdown_penalty': {'weight': 1.0, 'scale': 0.01, 'type': 'shaping'},
-                'terminal_penalty': {'weight': 1.0, 'scale': 1.0, 'type': 'terminal'},
-                'mark_to_market': {'weight': 0.5, 'scale': 1.0, 'type': 'foundational'},
-                'mae_penalty': {'weight': 1.0, 'scale': 0.1, 'type': 'trade'},
-                'mfe_penalty': {'weight': 1.0, 'scale': 0.05, 'type': 'trade'}
+                'realized_pnl': 'foundational',
+                'holding_time_penalty': 'shaping',
+                'overtrading_penalty': 'shaping',
+                'quick_profit_incentive': 'shaping',
+                'drawdown_penalty': 'shaping',
+                'terminal_penalty': 'terminal',
+                'mark_to_market': 'foundational',
+                'mae_penalty': 'trade',
+                'mfe_penalty': 'trade'
             }
             
-            # Get episode and session reward data
+            # Color mapping for component types
+            component_type_colors = {
+                'foundational': DARK_THEME['accent_blue'],
+                'shaping': DARK_THEME['accent_orange'],
+                'terminal': DARK_THEME['accent_red'],
+                'trade': DARK_THEME['accent_purple'],
+                'summary': DARK_THEME['accent_green']
+            }
+            
+            # Get reward data and counts
             episode_rewards = getattr(state, 'episode_reward_components', {})
             session_rewards = getattr(state, 'session_reward_components', {})
+            episode_counts = getattr(state, 'episode_reward_component_counts', {})
+            session_counts = getattr(state, 'session_reward_component_counts', {})
             
             # Show ALL active components, including those with zero values
             reward_data = []
-            episode_total = 0.0  # Track episode total for validation
+            episode_total = 0.0
+            session_total = 0.0
             
             for component in sorted(all_reward_components.keys()):
                 episode_value = episode_rewards.get(component, 0.0)
-                session_total = session_rewards.get(component, 0.0)
+                session_value = session_rewards.get(component, 0.0)
+                episode_count = episode_counts.get(component, 0)
+                session_count = session_counts.get(component, 0)
                 
                 episode_total += episode_value
+                session_total += session_value
                 
-                # Get component metadata
-                comp_info = all_reward_components[component]
-                weight = comp_info['weight']
-                scale = comp_info['scale']
-                comp_type = comp_info['type']
-                
-                # Create component name with weight/scale info
-                if weight != 1.0 and scale != 1.0:
-                    comp_display = f"{component} (w={weight:.1f}, s={scale:.3f})"
-                elif weight != 1.0:
-                    comp_display = f"{component} (w={weight:.1f})"
-                elif scale != 1.0:
-                    comp_display = f"{component} (s={scale:.3f})"
-                else:
-                    comp_display = component
-                
-                # Estimate episode count for mean calculation
-                episodes_estimate = max(1, state.total_episodes)
-                session_mean = session_total / episodes_estimate if episodes_estimate > 0 else session_total
+                # Calculate percentages based on absolute values to show component activity
+                ep_abs_total = sum(abs(v) for v in episode_rewards.values()) or 1
+                sess_abs_total = sum(abs(v) for v in session_rewards.values()) or 1
+                ep_pct = abs(episode_value) / ep_abs_total * 100
+                sess_pct = abs(session_value) / sess_abs_total * 100
                 
                 reward_data.append({
-                    'Component': comp_display,
-                    'Type': comp_type,
+                    'Component': component,
+                    'Type': all_reward_components[component],
                     'Episode': f"{episode_value:.3f}",
-                    'Session Total': f"{session_total:.2f}",
-                    'Session Mean': f"{session_mean:.3f}",
-                    'Count': str(episodes_estimate)
+                    'Ep %': f"{ep_pct:.1f}%",
+                    'Session': f"{session_value:.2f}",
+                    'Sess %': f"{sess_pct:.1f}%",
+                    'Ep Count': f"{episode_count}",
+                    'Sess Count': f"{session_count}"
                 })
             
-            # Add a total row for validation - Episode column shows sum of episode components
+            # Add a total row for validation
             reward_data.append({
-                'Component': f"EPISODE TOTAL",
+                'Component': "TOTAL",
                 'Type': 'summary',
                 'Episode': f"{episode_total:.3f}",
-                'Session Total': f"{sum(session_rewards.values()):.2f}",
-                'Session Mean': f"{sum(session_rewards.values()) / max(1, state.total_episodes):.3f}",
-                'Count': f"{state.total_episodes}"
+                'Ep %': "100%",
+                'Session': f"{session_total:.2f}",
+                'Sess %': "100%",
+                'Ep Count': f"{sum(episode_counts.values())}",
+                'Sess Count': f"{sum(session_counts.values())}"
             })
             
             reward_table = dash_table.DataTable(
                 data=reward_data,
                 columns=[
-                    {'name': 'Component (Weight/Scale)', 'id': 'Component'},
-                    {'name': 'Type', 'id': 'Type'},
+                    {'name': 'Component', 'id': 'Component'},
                     {'name': 'Episode', 'id': 'Episode', 'type': 'numeric'},
-                    {'name': 'Sess Total', 'id': 'Session Total', 'type': 'numeric'},
-                    {'name': 'Sess Mean', 'id': 'Session Mean', 'type': 'numeric'},
-                    {'name': 'Count', 'id': 'Count'}
+                    {'name': 'Ep %', 'id': 'Ep %'},
+                    {'name': 'Session', 'id': 'Session', 'type': 'numeric'},
+                    {'name': 'Sess %', 'id': 'Sess %'},
+                    {'name': 'Ep Cnt', 'id': 'Ep Count'},
+                    {'name': 'S Cnt', 'id': 'Sess Count'}
                 ],
                 style_cell={
                     'backgroundColor': DARK_THEME['bg_tertiary'],
@@ -612,6 +618,12 @@ class DashboardServer:
                     'textAlign': 'left'
                 },
                 style_data_conditional=[
+                    # Color component names by type
+                    *[{
+                        'if': {'column_id': 'Component', 'filter_query': f'{{Type}} = {comp_type}'},
+                        'color': color
+                    } for comp_type, color in component_type_colors.items()],
+                    # Color episode values 
                     {
                         'if': {'column_id': 'Episode', 'filter_query': '{Episode} > 0'},
                         'color': DARK_THEME['accent_green']
@@ -620,34 +632,20 @@ class DashboardServer:
                         'if': {'column_id': 'Episode', 'filter_query': '{Episode} < 0'},
                         'color': DARK_THEME['accent_red']
                     },
+                    # Color session values
                     {
-                        'if': {'column_id': 'Session Mean', 'filter_query': '{Session Mean} > 0'},
+                        'if': {'column_id': 'Session', 'filter_query': '{Session} > 0'},
                         'color': DARK_THEME['accent_green']
                     },
                     {
-                        'if': {'column_id': 'Session Mean', 'filter_query': '{Session Mean} < 0'},
+                        'if': {'column_id': 'Session', 'filter_query': '{Session} < 0'},
                         'color': DARK_THEME['accent_red']
                     },
+                    # Highlight total row
                     {
-                        'if': {'row_index': len(reward_data) - 1},  # Total row
+                        'if': {'row_index': len(reward_data) - 1},
                         'backgroundColor': DARK_THEME['bg_secondary'],
                         'fontWeight': 'bold'
-                    },
-                    {
-                        'if': {'column_id': 'Type', 'filter_query': '{Type} = foundational'},
-                        'color': DARK_THEME['accent_blue']
-                    },
-                    {
-                        'if': {'column_id': 'Type', 'filter_query': '{Type} = shaping'},
-                        'color': DARK_THEME['accent_orange']
-                    },
-                    {
-                        'if': {'column_id': 'Type', 'filter_query': '{Type} = terminal'},
-                        'color': DARK_THEME['accent_red']
-                    },
-                    {
-                        'if': {'column_id': 'Type', 'filter_query': '{Type} = trade'},
-                        'color': DARK_THEME['accent_purple']
                     }
                 ],
                 style_header={
@@ -663,52 +661,67 @@ class DashboardServer:
             avg_spread = getattr(state, 'avg_spread', getattr(state, 'spread', 0.001))
             volume_ratio = getattr(state, 'volume_ratio', 1.0)
             halt_count = getattr(state, 'halt_count', 0)
-            is_front_side = getattr(state, 'is_front_side', False)
-            is_back_side = getattr(state, 'is_back_side', False)
-            day_activity_score = getattr(state, 'day_activity_score', 0.0)
-            reset_point_quality = getattr(state, 'reset_point_quality', 0.0)
-            intraday_move = getattr(state, 'max_intraday_move', 0.0)
-            
-            # Curriculum learning metrics
-            curriculum_stage = getattr(state, 'curriculum_stage', 'early')
-            curriculum_progress = getattr(state, 'curriculum_progress', 0.0)
-            curriculum_min_quality = getattr(state, 'curriculum_min_quality', 0.8)
+            # 3-Component Sniper Curriculum
+            curriculum_stage = getattr(state, 'curriculum_stage', 'stage_1_beginner')
             total_episodes_curriculum = getattr(state, 'total_episodes_for_curriculum', state.total_episodes)
+            
+            # 3-component scores from current reset point
+            current_direction_score = getattr(state, 'current_direction_score', 0.0)
+            current_roc_score = getattr(state, 'current_roc_score', 0.0)
+            current_activity_score = getattr(state, 'current_activity_score', 0.0)
+            
+            # Curriculum thresholds
+            min_roc_score = getattr(state, 'curriculum_min_roc', 0.0)
+            min_activity_score = getattr(state, 'curriculum_min_activity', 0.0)
+            min_direction_score = getattr(state, 'curriculum_min_direction', 0.0)
+            episode_length = getattr(state, 'curriculum_episode_length', 256)
             
             # Determine curriculum stage color
             stage_colors = {
-                'early': DARK_THEME['accent_orange'],      # Orange for beginner
-                'intermediate': DARK_THEME['accent_blue'], # Blue for intermediate
-                'advanced': DARK_THEME['accent_green'],    # Green for advanced
-                'unknown': DARK_THEME['text_muted']
+                'stage_1_beginner': DARK_THEME['accent_green'],
+                'stage_2_intermediate': DARK_THEME['accent_blue'],
+                'stage_3_advanced': DARK_THEME['accent_orange'],
+                'stage_4_specialization': DARK_THEME['accent_purple']
             }
+            stage_names = {
+                'stage_1_beginner': 'Beginner',
+                'stage_2_intermediate': 'Intermediate', 
+                'stage_3_advanced': 'Advanced',
+                'stage_4_specialization': 'Master'
+            }
+            stage_display = stage_names.get(curriculum_stage, curriculum_stage.replace('_', ' ').title())
             curriculum_color = stage_colors.get(curriculum_stage, DARK_THEME['text_muted'])
             
             # Calculate next stage progress
-            stage_thresholds = {'early': 10000, 'intermediate': 50000, 'advanced': float('inf')}
+            stage_thresholds = {
+                'stage_1_beginner': 2000,
+                'stage_2_intermediate': 5000, 
+                'stage_3_advanced': 8000,
+                'stage_4_specialization': float('inf')
+            }
             current_threshold = stage_thresholds.get(curriculum_stage, float('inf'))
             progress_pct = (total_episodes_curriculum / current_threshold * 100) if current_threshold != float('inf') else 100
             progress_pct = min(100, progress_pct)
             
             # Determine momentum direction
-            momentum_direction = 'Front' if is_front_side else ('Back' if is_back_side else 'Mixed')
-            momentum_color = DARK_THEME['accent_green'] if is_front_side else (DARK_THEME['accent_red'] if is_back_side else DARK_THEME['text_muted'])
             
             # Add reset points info
             reset_points_count = len(getattr(state, 'reset_points_data', []))
             
             env_content = html.Div([
-                self._info_row("Curriculum", curriculum_stage.title(), color=curriculum_color),
+                self._info_row("Stage", stage_display, color=curriculum_color),
                 self._info_row("Progress", f"{progress_pct:.1f}%", color=curriculum_color),
-                self._info_row("Min Quality", f"{curriculum_min_quality:.2f}"),
+                self._info_row("Episode Len", f"{episode_length} steps"),
                 self._info_row("Reset Points", f"{reset_points_count}", color=DARK_THEME['accent_blue']),
                 self._info_row("Total Episodes", f"{total_episodes_curriculum:,}"),
-                self._info_row("Data Quality", f"{state.data_quality:.1%}"),
-                self._info_row("Day Activity", f"{day_activity_score:.2f}"),
-                self._info_row("Reset Quality", f"{reset_point_quality:.2f}"),
-                self._info_row("Direction", momentum_direction, color=momentum_color),
-                self._info_row("Volatility", f"{state.volatility:.1%}"),
-                self._info_row("Intraday Move", f"{intraday_move:.1%}"),
+                # 3-Component Scores with threshold indicators
+                html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
+                self._info_row("Direction", f"{current_direction_score:.2f}", 
+                             color=DARK_THEME['accent_green'] if abs(current_direction_score) >= min_direction_score else DARK_THEME['text_muted']),
+                self._info_row("ROC", f"{current_roc_score:.2f}", 
+                             color=DARK_THEME['accent_blue'] if current_roc_score >= min_roc_score else DARK_THEME['text_muted']),
+                self._info_row("Activity", f"{current_activity_score:.2f}", 
+                             color=DARK_THEME['accent_orange'] if current_activity_score >= min_activity_score else DARK_THEME['text_muted']),
             ])
             
             # Custom candlestick chart
@@ -1007,8 +1020,12 @@ class DashboardServer:
                             except:
                                 continue
                             
-                            # Only show reset points within the chart time range
-                            if reset_dt >= df['timestamp'].min() and reset_dt <= df['timestamp'].max():
+                            # Show reset points within full trading session (4 AM to 8 PM ET)
+                            chart_date = df['timestamp'].iloc[0].date()
+                            session_start = pd.Timestamp(f"{chart_date} 04:00:00").tz_localize(None)
+                            session_end = pd.Timestamp(f"{chart_date} 20:00:00").tz_localize(None)
+                            
+                            if session_start <= reset_dt <= session_end:
                                 # Color based on activity score - higher score = more blue/purple
                                 if activity_score >= 0.7:
                                     marker_color = DARK_THEME['accent_purple']  # High activity
@@ -1020,15 +1037,15 @@ class DashboardServer:
                                     marker_color = DARK_THEME['text_muted']     # Low activity
                                     marker_size = 6
                                 
-                                # Place reset points at the bottom of the price chart with low price
-                                price_min = df['low'].min()
-                                price_range = df['high'].max() - price_min
-                                marker_y = price_min - (price_range * 0.02)  # Slightly below lowest price
+                                # Place reset points at bottom of volume chart for better visibility
+                                # Get the volume range to position markers consistently
+                                volume_max = df['volume'].max() if 'volume' in df.columns and not df['volume'].empty else 1000
+                                marker_y_volume = -volume_max * 0.1  # 10% below the volume chart
                                 
                                 fig.add_trace(
                                     go.Scatter(
                                         x=[reset_dt],
-                                        y=[marker_y],
+                                        y=[marker_y_volume],
                                         mode='markers',
                                         marker=dict(
                                             size=marker_size,
@@ -1040,7 +1057,7 @@ class DashboardServer:
                                         showlegend=False,
                                         hovertemplate=f"Reset Point<br>Time: {reset_dt.strftime('%H:%M')}<br>Price: ${reset_price:.3f}<br>Activity: {activity_score:.3f}<br>Combined: {combined_score:.3f}<extra></extra>"
                                     ),
-                                    row=1, col=1  # Place on price chart
+                                    row=2, col=1  # Place on volume chart (row 2)
                                 )
 
                 # Add execution markers (not completed trades)
@@ -1115,7 +1132,7 @@ class DashboardServer:
             type='date'
         )
         
-        # If we have data, set the x-axis range to show full trading day
+        # If we have data, set the x-axis range to show full trading day (4 AM to 8 PM)
         if candle_data and len(candle_data) > 0:
             # Get the date from the first candle
             first_candle = candle_data[0]
@@ -1124,7 +1141,7 @@ class DashboardServer:
                 first_ts = pd.to_datetime(first_candle['timestamp'])
                 date_str = first_ts.strftime('%Y-%m-%d')
                 
-                # Set range from 4 AM to 8 PM for that date
+                # Set range from 4 AM to 8 PM for that date to include all reset points
                 fig.update_xaxes(
                     range=[f'{date_str} 04:00:00', f'{date_str} 20:00:00']
                 )
