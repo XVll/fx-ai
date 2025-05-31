@@ -27,7 +27,9 @@ class RealizedPnLReward(RewardComponent):
         # Include commission and slippage
         total_costs = 0.0
         for fill in state.fill_details:
-            total_costs += fill.commission + fill.slippage_cost_total
+            commission = fill.commission if fill.commission is not None else 0.0
+            slippage = fill.slippage_cost_total if fill.slippage_cost_total is not None else 0.0
+            total_costs += commission + slippage
         
         net_pnl = pnl_change - total_costs
         
@@ -313,7 +315,7 @@ class DrawdownPenalty(RewardComponent):
                     
         diagnostics = {
             'unrealized_pnl': unrealized_pnl,
-            'drawdown_pct': abs(unrealized_pnl) / equity if equity > 0 else 0,
+            'drawdown_pct': abs(unrealized_pnl) / equity if equity > 0 and unrealized_pnl < 0 else 0,
             'penalty': penalty
         }
         

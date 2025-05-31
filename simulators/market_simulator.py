@@ -610,6 +610,9 @@ class MarketSimulator:
         df_states.loc[invalid_spread, 'best_bid'] = df_states.loc[invalid_spread, 'current_price'] - df_states.loc[invalid_spread, 'spread'] / 2
         df_states.loc[invalid_spread, 'best_ask'] = df_states.loc[invalid_spread, 'current_price'] + df_states.loc[invalid_spread, 'spread'] / 2
         
+        # Recalculate mid_price after spread corrections
+        df_states['mid_price'] = (df_states['best_bid'] + df_states['best_ask']) / 2
+        
         # Market session vectorized
         df_states['market_session'] = df_states.index.to_series().apply(self._get_market_session)
         

@@ -508,6 +508,8 @@ class DashboardStateManager:
             self._state.episode_action_distribution = {'HOLD': 0, 'BUY': 0, 'SELL': 0}
             # Clear trade markers but keep candle data
             self._state.recent_trades.clear()
+            # Clear executions for current episode only
+            self._state.recent_executions.clear()
             # Don't reset action_distribution here - it's managed by event stream
             
             logger.debug(f"Episode reset complete - New episode actions: {self._state.episode_action_distribution}")

@@ -5,6 +5,7 @@ import threading
 import webbrowser
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from enum import Enum
 
 import dash
 from dash import dcc, html, Input, Output, State, dash_table, callback_context
@@ -264,8 +265,16 @@ class DashboardServer:
             # Recent trades table (completed trades only)
             if state.recent_trades:
                 trades_df = pd.DataFrame(list(state.recent_trades)[-10:])  # Last 10 trades
+                
+                # Convert any enum values to strings for JSON serialization
+                trades_data = trades_df.to_dict('records')
+                for trade in trades_data:
+                    for key, value in trade.items():
+                        if isinstance(value, Enum):  # Check if it's an enum
+                            trade[key] = value.value
+                
                 trades_table = dash_table.DataTable(
-                    data=trades_df.to_dict('records'),
+                    data=trades_data,
                     columns=[
                         {'name': 'Entry', 'id': 'entry_time'},
                         {'name': 'Exit', 'id': 'exit_time'},
@@ -928,6 +937,10 @@ class DashboardServer:
         """Run the dashboard server"""
         if self.app is None:
             self.create_app()
+        
+        # Suppress Werkzeug INFO logs
+        werkzeug_logger = logging.getLogger('werkzeug')
+        werkzeug_logger.setLevel(logging.WARNING)
             
         self.logger.info(f"Starting dashboard server on port {self.port}")
         self.app.run(host='0.0.0.0', port=self.port, debug=False, use_reloader=False)
