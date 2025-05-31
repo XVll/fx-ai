@@ -200,10 +200,11 @@ class PPOTrainer:
             })
             
             # Emit event with both day info and reset points
-            self.metrics.metrics_manager.emit_event('momentum_day_change', {
+            momentum_event_data = {
                 'day_info': enhanced_info,
                 'reset_points': reset_points_data
-            })
+            }
+            self.metrics.metrics_manager.emit_event('momentum_day_change', momentum_event_data)
         
         return True
 
@@ -211,17 +212,35 @@ class PPOTrainer:
         """Select next reset point based on curriculum strategy and quality range filtering."""
         # Get current reset points from environment
         if not hasattr(self.env, 'reset_points') or not self.env.reset_points:
+            print("DEBUG RESET SELECTION: No reset points available")
             return 0
             
         reset_points = self.env.reset_points
+        print(f"DEBUG RESET SELECTION: Total reset points: {len(reset_points)}")
         
-        # Filter reset points by quality range
-        min_quality, max_quality = self.reset_point_quality_range
-        quality_filtered_indices = []
+        # Filter reset points by 3-component curriculum thresholds
+        stage, min_roc, min_activity, min_direction = self._get_curriculum_stage_info()
+        print(f"DEBUG RESET SELECTION: Curriculum stage: {stage}")
+        print(f"DEBUG RESET SELECTION: Thresholds - direction: {min_direction}, roc: {min_roc}, activity: {min_activity}")
+        
+        curriculum_filtered_indices = []
         for i, reset_point in enumerate(reset_points):
-            quality_score = reset_point.get('activity_score', reset_point.get('quality_score', 0.5))
-            if min_quality <= quality_score <= max_quality:
-                quality_filtered_indices.append(i)
+            direction_score = abs(reset_point.get('direction_score', 0.0))  # Use absolute value
+            roc_score = reset_point.get('roc_score', 0.0)
+            activity_score = abs(reset_point.get('activity_score', 0.0))  # Use absolute value
+            
+            # Check if reset point meets curriculum thresholds
+            meets_direction = direction_score >= min_direction
+            meets_roc = roc_score >= min_roc  
+            meets_activity = activity_score >= min_activity
+            
+            if meets_direction and meets_roc and meets_activity:
+                curriculum_filtered_indices.append(i)
+        
+        print(f"DEBUG RESET SELECTION: Curriculum filtered: {len(curriculum_filtered_indices)} out of {len(reset_points)}")
+        
+        # Use curriculum filtered indices, fallback to all if none meet criteria
+        quality_filtered_indices = curriculum_filtered_indices if curriculum_filtered_indices else list(range(len(reset_points)))
         
         if not quality_filtered_indices:
             # If no reset points match quality range, use all
@@ -232,8 +251,12 @@ class PPOTrainer:
         available_indices = [i for i in quality_filtered_indices 
                             if i not in self.used_reset_point_indices]
         
+        print(f"DEBUG RESET SELECTION: Used indices: {self.used_reset_point_indices}")
+        print(f"DEBUG RESET SELECTION: Available indices: {len(available_indices)}")
+        
         if not available_indices:
             # Reset used indices when all quality-filtered points are exhausted
+            print("DEBUG RESET SELECTION: All points used, resetting used indices")
             self.used_reset_point_indices.clear()
             available_indices = quality_filtered_indices
             
@@ -256,6 +279,7 @@ class PPOTrainer:
         self.used_reset_point_indices.add(selected_idx)
         
         reset_point = reset_points[selected_idx]
+        print(f"DEBUG RESET SELECTION: Selected index {selected_idx}, timestamp: {reset_point.get('timestamp')}, activity: {reset_point.get('activity_score', 0):.3f}")
         self.logger.debug(f"🎯 Selected reset point {selected_idx}: "
                          f"{reset_point.get('timestamp', 'unknown')} "
                          f"(activity: {reset_point.get('activity_score', 0):.3f})")
@@ -279,7 +303,7 @@ class PPOTrainer:
         if hasattr(self.metrics, 'metrics_manager'):
             stage, min_roc, min_activity, min_direction = self._get_curriculum_stage_info()
             
-            self.metrics.metrics_manager.emit_event('curriculum_progress', {
+            curriculum_data = {
                 'progress': self.curriculum_progress,
                 'strategy': self.curriculum_strategy,
                 'stage': stage,
@@ -287,7 +311,8 @@ class PPOTrainer:
                 'min_activity_score': min_activity,
                 'min_direction_score': min_direction,
                 'total_episodes': self.global_episode_counter
-            })
+            }
+            self.metrics.metrics_manager.emit_event('curriculum_progress', curriculum_data)
 
     def _update_curriculum_progress(self):
         """Update curriculum progress based on training performance."""
