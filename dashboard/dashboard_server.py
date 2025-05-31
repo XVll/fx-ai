@@ -670,10 +670,10 @@ class DashboardServer:
             current_roc_score = getattr(state, 'current_roc_score', 0.0)
             current_activity_score = getattr(state, 'current_activity_score', 0.0)
             
-            # Curriculum thresholds
-            min_roc_score = getattr(state, 'curriculum_min_roc', 0.0)
-            min_activity_score = getattr(state, 'curriculum_min_activity', 0.0)
-            min_direction_score = getattr(state, 'curriculum_min_direction', 0.0)
+            # Curriculum thresholds (match PPO agent field names)
+            min_roc_score = getattr(state, 'min_roc_score', 0.0)
+            min_activity_score = getattr(state, 'min_activity_score', 0.0)
+            min_direction_score = getattr(state, 'min_direction_score', 0.0)
             episode_length = getattr(state, 'curriculum_episode_length', 256)
             
             # Determine curriculum stage color
@@ -708,12 +708,19 @@ class DashboardServer:
             # Add reset points info
             reset_points_count = len(getattr(state, 'reset_points_data', []))
             
+            # Add day information with color coding
+            day_info_color = DARK_THEME['accent_green'] if state.current_momentum_day_quality >= 0.7 else DARK_THEME['accent_blue'] if state.current_momentum_day_quality >= 0.5 else DARK_THEME['text_muted']
+            
             env_content = html.Div([
                 self._info_row("Stage", stage_display, color=curriculum_color),
                 self._info_row("Progress", f"{progress_pct:.1f}%", color=curriculum_color),
                 self._info_row("Episode Len", f"{episode_length} steps"),
                 self._info_row("Reset Points", f"{reset_points_count}", color=DARK_THEME['accent_blue']),
                 self._info_row("Total Episodes", f"{total_episodes_curriculum:,}"),
+                # Day information
+                html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
+                self._info_row("Day", state.current_momentum_day_date or "N/A", color=day_info_color),
+                self._info_row("Day Score", f"{state.current_momentum_day_quality:.3f}" if state.current_momentum_day_quality > 0 else "N/A", color=day_info_color),
                 # 3-Component Scores with threshold indicators
                 html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
                 self._info_row("Direction", f"{current_direction_score:.2f}", 
@@ -1009,14 +1016,20 @@ class DashboardServer:
                         reset_time = reset_point.get('timestamp')
                         reset_price = reset_point.get('price', 0)
                         activity_score = reset_point.get('activity_score', 0)
+                        direction_score = reset_point.get('direction_score', 0)
+                        roc_score = reset_point.get('roc_score', 0)
                         combined_score = reset_point.get('combined_score', 0)
                         
                         if reset_time and reset_price > 0:
                             try:
                                 reset_dt = pd.to_datetime(reset_time)
-                                # Remove timezone if present
+                                # Convert UTC reset points to ET for proper chart display
                                 if reset_dt.tz is not None:
-                                    reset_dt = reset_dt.tz_localize(None)
+                                    # Convert from UTC to ET, then remove timezone for chart compatibility
+                                    reset_dt = reset_dt.tz_convert('America/New_York').tz_localize(None)
+                                else:
+                                    # If no timezone, assume UTC and convert to ET
+                                    reset_dt = reset_dt.tz_localize('UTC').tz_convert('America/New_York').tz_localize(None)
                             except:
                                 continue
                             
@@ -1055,7 +1068,7 @@ class DashboardServer:
                                         ),
                                         name='Reset Point',
                                         showlegend=False,
-                                        hovertemplate=f"Reset Point<br>Time: {reset_dt.strftime('%H:%M')}<br>Price: ${reset_price:.3f}<br>Activity: {activity_score:.3f}<br>Combined: {combined_score:.3f}<extra></extra>"
+                                        hovertemplate=f"Reset Point<br>Time: {reset_dt.strftime('%H:%M')}<br>Price: ${reset_price:.3f}<br>Activity: {activity_score:.3f}<br>Direction: {direction_score:.3f}<br>ROC: {roc_score:.3f}<br>Combined: {combined_score:.3f}<extra></extra>"
                                     ),
                                     row=2, col=1  # Place on volume chart (row 2)
                                 )

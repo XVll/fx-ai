@@ -439,8 +439,8 @@ class MomentumScanner:
         df_et = df.copy()
         df_et.index = df_et.index.tz_convert('America/New_York')
         
-        # Filter to 4 AM - 8 PM ET
-        mask = (df_et.index.hour >= 4) & (df_et.index.hour < 20)
+        # Filter to 4 AM - 8 PM ET (inclusive of 8 PM hour)
+        mask = (df_et.index.hour >= 4) & (df_et.index.hour <= 20)
         return df[mask]
     
     def _get_session_volumes(self, symbol: str) -> Dict[str, float]:

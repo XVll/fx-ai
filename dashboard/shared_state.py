@@ -139,10 +139,13 @@ class SharedDashboardState:
     current_activity_score: float = 0.0
     
     # Curriculum learning metrics
-    curriculum_stage: str = "early"
+    curriculum_stage: str = "stage_1_beginner"
     curriculum_progress: float = 0.0
     curriculum_min_quality: float = 0.8
     total_episodes_for_curriculum: int = 0
+    min_roc_score: float = 0.0
+    min_activity_score: float = 0.0
+    min_direction_score: float = 0.0
     
     # Momentum day tracking
     current_momentum_day_date: str = ""
@@ -462,7 +465,8 @@ class DashboardStateManager:
             
             # Update curriculum metrics if provided
             for key in ['curriculum_stage', 'curriculum_progress', 
-                       'curriculum_min_quality', 'total_episodes_for_curriculum']:
+                       'curriculum_min_quality', 'total_episodes_for_curriculum',
+                       'min_roc_score', 'min_activity_score', 'min_direction_score']:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
         

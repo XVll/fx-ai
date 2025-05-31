@@ -564,7 +564,7 @@ class ExecutionSimulator:
         # This should be enhanced with actual market calendar
         et_time = current_time.astimezone(timezone.utc)  # Simplified
         hour = et_time.hour
-        return hour < 4 or hour >= 20
+        return hour < 4 or hour > 20
 
     def _get_time_of_day(self, current_time: Optional[datetime]) -> float:
         """Get fraction of trading day (0.0 = open, 1.0 = close)."""
@@ -577,7 +577,7 @@ class ExecutionSimulator:
         
         if hour < 4:
             return 0.0
-        elif hour >= 20:
+        elif hour > 20:
             return 1.0
         else:
             return (hour - 4) / 16.0  # 16 hour trading day

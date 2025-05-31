@@ -322,23 +322,31 @@ class DashboardTransmitter(MetricTransmitter):
                 dashboard_state.update_metrics(event_data)
                 
             elif event_name == 'curriculum_progress':
+                # DEBUG: Log what curriculum data we're receiving
+                print(f"DEBUG CURRICULUM: Received event_data: {event_data}")
+                
                 # Handle curriculum learning progression
                 curriculum_data = {
-                    'curriculum_stage': event_data.get('stage', 'early'),
+                    'curriculum_stage': event_data.get('stage', 'stage_1_beginner'),
                     'curriculum_progress': event_data.get('progress', 0.0),
                     'curriculum_min_quality': event_data.get('min_quality', 0.8),
-                    'total_episodes_for_curriculum': event_data.get('total_episodes', 0)
+                    'total_episodes_for_curriculum': event_data.get('total_episodes', 0),
+                    'min_roc_score': event_data.get('min_roc_score', 0.0),
+                    'min_activity_score': event_data.get('min_activity_score', 0.0),
+                    'min_direction_score': event_data.get('min_direction_score', 0.0)
                 }
+                print(f"DEBUG CURRICULUM: Sending to dashboard: {curriculum_data}")
                 dashboard_state.update_metrics(curriculum_data)
                 
             elif event_name == 'momentum_day_change':
-                # Handle momentum day changes
+                # Handle momentum day changes - extract from nested day_info structure
+                day_info = event_data.get('day_info', {})
                 momentum_data = {
-                    'current_momentum_day_date': event_data.get('day_date', ''),
-                    'current_momentum_day_quality': event_data.get('day_quality', 0.0),
-                    'episodes_on_current_day': event_data.get('episodes_on_day', 0),
-                    'reset_point_cycles_completed': event_data.get('cycles_completed', 0),
-                    'total_momentum_days_used': event_data.get('total_days_used', 0)
+                    'current_momentum_day_date': day_info.get('day_date', ''),
+                    'current_momentum_day_quality': day_info.get('day_quality', 0.0),
+                    'episodes_on_current_day': day_info.get('episodes_on_day', 0),
+                    'reset_point_cycles_completed': day_info.get('cycles_completed', 0),
+                    'total_momentum_days_used': day_info.get('total_days_used', 0)
                 }
                 dashboard_state.update_metrics(momentum_data)
                 

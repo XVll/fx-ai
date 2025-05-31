@@ -165,9 +165,23 @@ class PPOTrainer:
         
         # Emit momentum day change event with tracking information and reset points
         if hasattr(self.metrics, 'metrics_manager'):
-            # Get reset points data from environment for this day
+            # Get reset points data from environment for this day (includes early fixed supplements)
             reset_points_data = []
-            if hasattr(self.env, 'data_manager'):
+            if hasattr(self.env, 'reset_points') and self.env.reset_points:
+                # Use environment's actual reset points (includes momentum + early fixed supplements)
+                for reset_point in self.env.reset_points:
+                    # Convert environment reset point format to dashboard format
+                    reset_points_data.append({
+                        'timestamp': reset_point['timestamp'],
+                        'price': reset_point.get('price', 0),  # May not be available for early fixed points
+                        'activity_score': reset_point.get('activity_score', 0.5),
+                        'direction_score': reset_point.get('direction_score', 0.0),
+                        'roc_score': reset_point.get('roc_score', 0.0),
+                        'combined_score': reset_point.get('combined_score', 0.5),
+                        'reset_type': reset_point.get('reset_type', 'momentum')
+                    })
+            elif hasattr(self.env, 'data_manager'):
+                # Fallback to data manager if environment reset points not available
                 reset_points_df = self.env.data_manager.get_reset_points(
                     momentum_day_info.get('symbol', 'MLGO'), 
                     momentum_day_info['date']
