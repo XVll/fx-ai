@@ -154,7 +154,7 @@ class DashboardServer:
                 # Row 4: Full-width Chart
                 html.Div([
                     html.H4("Price & Volume", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
-                    dcc.Graph(id='candlestick-chart', style={'height': '300px'})
+                    dcc.Graph(id='candlestick-chart', style={'height': '500px'})
                 ], style=self._card_style()),
                 
             ], style={'padding': '6px', 'backgroundColor': DARK_THEME['bg_primary']}),
@@ -954,7 +954,7 @@ class DashboardServer:
                         
                         # Check if current timestamp is within chart range
                         if current_ts >= df['timestamp'].min() and current_ts <= df['timestamp'].max():
-                            # Add vertical line using shape instead of add_vline for better compatibility
+                            # Add vertical line spanning both price and volume subplots
                             fig.add_shape(
                                 type="line",
                                 x0=current_ts, x1=current_ts,
@@ -964,21 +964,21 @@ class DashboardServer:
                                     color=DARK_THEME['accent_orange'],
                                     width=2,
                                     dash="dash"
-                                ),
-                                row=1, col=1
+                                )
                             )
-                            # Add annotation for current time
+                            # Add annotation for current time at top of price chart
+                            price_max = df['high'].max()
                             fig.add_annotation(
                                 x=current_ts,
-                                y=1,
-                                yref="paper",
+                                y=price_max,
+                                yref="y",
                                 text=f"Now: {state.ny_time}",
                                 showarrow=False,
                                 font=dict(size=10, color=DARK_THEME['accent_orange']),
-                                bgcolor="rgba(0,0,0,0.5)",
+                                bgcolor="rgba(0,0,0,0.7)",
                                 bordercolor=DARK_THEME['accent_orange'],
                                 borderwidth=1,
-                                row=1, col=1
+                                yshift=10
                             )
                     except Exception:
                         # Skip vertical line if timestamp conversion fails
@@ -1016,10 +1016,11 @@ class DashboardServer:
                                     marker_color = DARK_THEME['text_muted']     # Low activity
                                     marker_size = 6
                                 
+                                # Place reset points at the bottom of the volume chart (row 2)
                                 fig.add_trace(
                                     go.Scatter(
                                         x=[reset_dt],
-                                        y=[reset_price],
+                                        y=[0],  # Place at zero line
                                         mode='markers',
                                         marker=dict(
                                             size=marker_size,
@@ -1031,7 +1032,7 @@ class DashboardServer:
                                         showlegend=False,
                                         hovertemplate=f"Reset Point<br>Time: {reset_dt.strftime('%H:%M')}<br>Price: ${reset_price:.3f}<br>Activity: {activity_score:.3f}<br>Combined: {combined_score:.3f}<extra></extra>"
                                     ),
-                                    row=1, col=1
+                                    row=2, col=1  # Place on volume chart
                                 )
 
                 # Add execution markers (not completed trades)
@@ -1095,7 +1096,7 @@ class DashboardServer:
             margin=dict(l=60, r=40, t=20, b=40),
             showlegend=False,
             hovermode='x unified',
-            height=300
+            height=500
         )
         
         # Update x-axis to show time nicely in NY time
