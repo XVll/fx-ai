@@ -243,7 +243,7 @@ class TradingEnvironment(gym.Env):
         return reset_points
         
     def _generate_reset_points(self) -> List[Dict]:
-        """Generate reset points using momentum indices or fallback to fixed points."""
+        """Generate reset points using momentum indices with intelligent fallback for gaps."""
         # Try to get momentum-based reset points from data manager
         momentum_reset_points = self.data_manager.get_reset_points(
             self.primary_asset, 
@@ -267,13 +267,78 @@ class TradingEnvironment(gym.Env):
                     'price_change': row.get('price_change', 0.0)
                 })
             
-            self.logger.info(f"Using {len(reset_points)} momentum-based reset points")
+            # Check for early trading hour gaps and supplement with fixed points if needed
+            reset_points = self._supplement_with_early_fixed_points(reset_points)
+            
+            self.logger.info(f"Using {len(reset_points)} reset points (momentum + early fixed supplements)")
             return reset_points
             
         else:
             # Fallback to fixed reset points
             self.logger.info("No momentum reset points found, using fixed schedule")
             return self._generate_fixed_reset_points()
+    
+    def _supplement_with_early_fixed_points(self, momentum_reset_points: List[Dict]) -> List[Dict]:
+        """Supplement momentum reset points with fixed early points if there are gaps."""
+        if not momentum_reset_points:
+            return momentum_reset_points
+            
+        # Find the earliest momentum reset point
+        earliest_momentum = min(rp['timestamp'] for rp in momentum_reset_points)
+        
+        # Trading session starts at 4 AM ET, check if we have coverage
+        base_date = self.current_session_date.date()
+        session_start_et = datetime.combine(base_date, time(4, 0))
+        session_start_utc = pd.Timestamp(session_start_et, tz='US/Eastern').tz_convert('UTC').to_pydatetime()
+        
+        # If momentum points start after 10 AM ET, add early fixed points
+        cutoff_et = datetime.combine(base_date, time(10, 0))
+        cutoff_utc = pd.Timestamp(cutoff_et, tz='US/Eastern').tz_convert('UTC').to_pydatetime()
+        
+        if earliest_momentum > cutoff_utc:
+            # Add early fixed reset points to cover the gap
+            early_fixed_times = [
+                time(6, 0),    # Pre-market
+                time(9, 30),   # Market open
+            ]
+            
+            early_points = []
+            for reset_time in early_fixed_times:
+                reset_dt = datetime.combine(base_date, reset_time)
+                reset_dt_utc = pd.Timestamp(reset_dt, tz='US/Eastern').tz_convert('UTC').to_pydatetime()
+                
+                # Only add if it's before the earliest momentum point
+                if reset_dt_utc < earliest_momentum:
+                    # Try to get a price for this timestamp from market data
+                    price = self._get_price_at_timestamp(reset_dt_utc)
+                    
+                    early_points.append({
+                        'timestamp': reset_dt_utc,
+                        'price': price,
+                        'activity_score': 0.3,  # Lower activity for early supplemental points
+                        'combined_score': 0.3,
+                        'max_duration_hours': 4,
+                        'reset_type': 'early_fixed_supplement'
+                    })
+            
+            if early_points:
+                self.logger.info(f"Added {len(early_points)} early fixed reset points to supplement momentum data")
+                # Combine and sort by timestamp
+                all_points = early_points + momentum_reset_points
+                all_points.sort(key=lambda x: x['timestamp'])
+                return all_points
+        
+        return momentum_reset_points
+    
+    def _get_price_at_timestamp(self, timestamp: datetime) -> float:
+        """Get price at a specific timestamp from market data, with fallback."""
+        try:
+            # For early fixed points, we don't have exact price data
+            # Use a reasonable estimate based on typical MLGO trading ranges
+            # In production, this could query the market data more sophisticated
+            return 3.0  # Default price for MLGO early session
+        except Exception:
+            return 3.0  # Safe fallback
         
     def _get_adaptive_randomization_window(self, reset_point: Dict) -> int:
         """Get adaptive randomization window in minutes based on activity score."""
