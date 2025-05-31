@@ -14,12 +14,14 @@ config = load_config()
 setup_rich_logging(level='INFO')
 logger = logging.getLogger('build_index')
 
-# Create scanner
+# Create scanner with new configuration system
 data_dir = f"{config.data.data_dir}/{config.data.symbols[0].lower()}"
 scanner = MomentumScanner(
     data_dir=data_dir,
-    output_dir=f"{config.data.index_dir}/momentum_index", 
-    direction_filter='both',
+    output_dir=f"{config.data.index_dir}/momentum_index",
+    momentum_config=config.momentum_scanning,
+    scoring_config=config.three_component_scoring,
+    session_config=config.session_volume,
     logger=logger
 )
 

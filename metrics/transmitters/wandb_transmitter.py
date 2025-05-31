@@ -155,19 +155,22 @@ class WandBTransmitter(MetricTransmitter):
                     wandb_metrics["global_step"] = step
 
                 # Log to W&B with error handling
-                # Don't log step if it's 0 to avoid W&B warnings during initialization
-                # Also avoid logging the same step multiple times
-                if step is not None and step > 0 and step > self._last_logged_step:
-                    wandb.log(wandb_metrics, step=step)
-                    self._last_logged_step = step
+                # Always use monotonically increasing global step for W&B
+                # Use a global step counter instead of the local step to avoid backward jumps
+                if step is not None and step > 0:
+                    # Use a monotonically increasing global step based on _total_metrics_sent
+                    # This ensures W&B always sees increasing steps even if episodes reset
+                    global_step = max(self._last_logged_step + 1, step)
+                    wandb.log(wandb_metrics, step=global_step)
+                    self._last_logged_step = global_step
                     # Debug logging for step tracking
-                    if step % 100 == 0:
-                        self.logger.debug(f"W&B transmitted metrics at step {step}")
+                    if global_step % 100 == 0:
+                        self.logger.debug(f"W&B transmitted metrics at global step {global_step} (episode step {step})")
                 elif step is None or step == 0:
                     wandb.log(wandb_metrics)
                 else:
-                    # Skip logging if we've already logged this step
-                    self.logger.debug(f"Skipping W&B log for step {step} (already logged)")
+                    # Skip logging for negative steps
+                    self.logger.debug(f"Skipping W&B log for invalid step {step}")
                     return
 
                 self._total_metrics_sent += total_metrics_this_batch

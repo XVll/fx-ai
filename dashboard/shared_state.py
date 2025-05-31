@@ -90,6 +90,10 @@ class SharedDashboardState:
     episode_reward_components: Dict[str, float] = field(default_factory=dict)
     session_reward_components: Dict[str, float] = field(default_factory=dict)
     
+    # Reward component counts (how many times each triggered)
+    episode_reward_component_counts: Dict[str, int] = field(default_factory=dict)
+    session_reward_component_counts: Dict[str, int] = field(default_factory=dict)
+    
     # Time series data for charts
     price_history: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=3600))  # 1 hour at 1s
     ppo_metrics_history: Deque[Dict[str, Any]] = field(default_factory=lambda: deque(maxlen=200))
@@ -128,6 +132,11 @@ class SharedDashboardState:
     halt_count: int = 0
     max_intraday_move: float = 0.0
     avg_spread: float = 0.0
+    
+    # 3-component scores from current reset point
+    current_direction_score: float = 0.0
+    current_roc_score: float = 0.0
+    current_activity_score: float = 0.0
     
     # Curriculum learning metrics
     curriculum_stage: str = "early"
@@ -390,6 +399,16 @@ class DashboardStateManager:
                     if component not in self._state.session_reward_components:
                         self._state.session_reward_components[component] = 0.0
                     self._state.session_reward_components[component] += value
+                    
+                    # Track component counts (only if value is non-zero)
+                    if abs(value) > 1e-8:  # Small threshold to avoid counting tiny floating point errors
+                        if component not in self._state.episode_reward_component_counts:
+                            self._state.episode_reward_component_counts[component] = 0
+                        self._state.episode_reward_component_counts[component] += 1
+                        
+                        if component not in self._state.session_reward_component_counts:
+                            self._state.session_reward_component_counts[component] = 0
+                        self._state.session_reward_component_counts[component] += 1
                 
             # Action tracking from metrics (session-level from execution collector)
             action_updated = False
@@ -436,7 +455,8 @@ class DashboardStateManager:
             # Update quality metrics if provided
             for key in ['day_activity_score', 'volume_ratio', 'halt_count', 
                        'is_front_side', 'is_back_side', 'reset_point_quality',
-                       'max_intraday_move', 'avg_spread']:
+                       'max_intraday_move', 'avg_spread', 'current_direction_score',
+                       'current_roc_score', 'current_activity_score']:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
             
@@ -561,6 +581,7 @@ class DashboardStateManager:
             logger.debug(f"Resetting episode - Previous episode actions: {self._state.episode_action_distribution}")
             
             self._state.episode_reward_components = {}
+            self._state.episode_reward_component_counts = {}
             self._state.episode_action_distribution = {'HOLD': 0, 'BUY': 0, 'SELL': 0}
             # Clear trade markers but keep candle data
             self._state.recent_trades.clear()
