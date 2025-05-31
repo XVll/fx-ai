@@ -1327,7 +1327,7 @@ class TradingEnvironment(gym.Env):
                 price=trade.get('avg_entry_price', 0),
                 fill_price=trade.get('avg_exit_price', 0),
                 pnl=pnl,
-                commission=trade.get('commission', 0),
+                commission=trade.get('total_commission', 0),
                 order_id=trade.get('trade_id', ''),
                 # Additional trade-specific data
                 entry_timestamp=trade.get('entry_timestamp'),

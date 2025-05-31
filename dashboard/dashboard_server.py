@@ -694,10 +694,14 @@ class DashboardServer:
             momentum_direction = 'Front' if is_front_side else ('Back' if is_back_side else 'Mixed')
             momentum_color = DARK_THEME['accent_green'] if is_front_side else (DARK_THEME['accent_red'] if is_back_side else DARK_THEME['text_muted'])
             
+            # Add reset points info
+            reset_points_count = len(getattr(state, 'reset_points_data', []))
+            
             env_content = html.Div([
                 self._info_row("Curriculum", curriculum_stage.title(), color=curriculum_color),
                 self._info_row("Progress", f"{progress_pct:.1f}%", color=curriculum_color),
                 self._info_row("Min Quality", f"{curriculum_min_quality:.2f}"),
+                self._info_row("Reset Points", f"{reset_points_count}", color=DARK_THEME['accent_blue']),
                 self._info_row("Total Episodes", f"{total_episodes_curriculum:,}"),
                 self._info_row("Data Quality", f"{state.data_quality:.1%}"),
                 self._info_row("Day Activity", f"{day_activity_score:.2f}"),
@@ -1016,11 +1020,15 @@ class DashboardServer:
                                     marker_color = DARK_THEME['text_muted']     # Low activity
                                     marker_size = 6
                                 
-                                # Place reset points at the bottom of the volume chart (row 2)
+                                # Place reset points at the bottom of the price chart with low price
+                                price_min = df['low'].min()
+                                price_range = df['high'].max() - price_min
+                                marker_y = price_min - (price_range * 0.02)  # Slightly below lowest price
+                                
                                 fig.add_trace(
                                     go.Scatter(
                                         x=[reset_dt],
-                                        y=[0],  # Place at zero line
+                                        y=[marker_y],
                                         mode='markers',
                                         marker=dict(
                                             size=marker_size,
@@ -1032,7 +1040,7 @@ class DashboardServer:
                                         showlegend=False,
                                         hovertemplate=f"Reset Point<br>Time: {reset_dt.strftime('%H:%M')}<br>Price: ${reset_price:.3f}<br>Activity: {activity_score:.3f}<br>Combined: {combined_score:.3f}<extra></extra>"
                                     ),
-                                    row=2, col=1  # Place on volume chart
+                                    row=1, col=1  # Place on price chart
                                 )
 
                 # Add execution markers (not completed trades)
