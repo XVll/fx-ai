@@ -39,6 +39,7 @@ class WandBTransmitter(MetricTransmitter):
         self.entity = entity
         self.run_name = run_name
         self.prefix_categories = prefix_categories
+        self._finished = False  # Track if wandb.finish() has been called
 
         # Default log frequencies (in steps) - more aggressive for initial testing
         self.log_frequency = {
@@ -106,6 +107,10 @@ class WandBTransmitter(MetricTransmitter):
 
     def transmit(self, metrics: Dict[str, MetricValue], step: Optional[int] = None):
         """Transmit metrics to W&B with enhanced error handling."""
+        if self._finished:
+            # Silently skip transmission if W&B has been finished
+            return
+            
         if not self.run:
             self.logger.warning("W&B run not available, skipping transmission")
             return
@@ -311,6 +316,11 @@ class WandBTransmitter(MetricTransmitter):
 
     def finish(self):
         """Finish the W&B run with stats logging."""
+        if self._finished:
+            return  # Already finished
+            
+        self._finished = True  # Mark as finished to prevent further transmissions
+        
         if self.run:
             try:
                 # Log final stats

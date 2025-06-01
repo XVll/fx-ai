@@ -56,10 +56,13 @@ def signal_handler(signum, frame):
     console.print("Press Ctrl+C again to force exit")
     console.print("=" * 50)
     
-    # Stop dashboard immediately if running
+    # Stop metrics auto-transmission immediately if running
     if 'metrics_manager' in current_components:
         metrics_manager = current_components['metrics_manager']
         try:
+            # Stop auto-transmission first to prevent further W&B logging
+            if hasattr(metrics_manager, 'stop_auto_transmit'):
+                metrics_manager.stop_auto_transmit()
             # Close all transmitters which includes dashboard
             for transmitter in metrics_manager.transmitters:
                 if hasattr(transmitter, 'close'):
@@ -88,6 +91,19 @@ def cleanup_resources():
     
     try:
         logging.info("Starting resource cleanup...")
+        
+        # Stop metrics auto-transmission first to prevent further W&B logging
+        if 'metrics_manager' in current_components:
+            metrics_manager = current_components['metrics_manager']
+            try:
+                if hasattr(metrics_manager, 'stop_auto_transmit'):
+                    metrics_manager.stop_auto_transmit()
+                    logging.info("Stopped metrics auto-transmission")
+                # Give threads time to stop
+                import time
+                time.sleep(0.5)
+            except Exception as e:
+                logging.error(f"Error stopping auto-transmission: {e}")
         
         # Clean up in reverse order of creation
         cleanup_order = ['metrics_manager', 'trainer', 'env', 'data_manager']

@@ -724,12 +724,37 @@ class DashboardServer:
             # Add day information with color coding
             day_info_color = DARK_THEME['accent_green'] if state.current_momentum_day_quality >= 0.7 else DARK_THEME['accent_blue'] if state.current_momentum_day_quality >= 0.5 else DARK_THEME['text_muted']
             
+            # Enhanced curriculum tracking
+            episodes_to_next = getattr(state, 'episodes_to_next_stage', 0)
+            next_stage_name = getattr(state, 'next_stage_name', '')
+            episodes_per_day_config = getattr(state, 'episodes_per_day_config', 10)
+            
+            # Reset point cycle tracking
+            total_available = getattr(state, 'total_available_points', 0)
+            points_used = getattr(state, 'points_used_in_cycle', 0)
+            points_remaining = getattr(state, 'points_remaining_in_cycle', 0)
+            cycles_completed = getattr(state, 'cycles_completed', 0)
+            target_cycles = getattr(state, 'target_cycles_per_day', 10)
+            day_switch_progress = getattr(state, 'day_switch_progress_pct', 0.0)
+            
             env_content = html.Div([
+                # Curriculum Stage Progress
                 self._info_row("Stage", stage_display, color=curriculum_color),
                 self._info_row("Progress", f"{progress_pct:.1f}%", color=curriculum_color),
+                self._info_row("To Next Stage", f"{episodes_to_next:,} eps" if episodes_to_next > 0 else "Max Stage", 
+                              color=DARK_THEME['accent_orange'] if episodes_to_next > 0 else DARK_THEME['accent_green']),
                 self._info_row("Episode Len", f"{episode_length} steps"),
-                self._info_row("Reset Points", f"{filtered_count}/{total_reset_points}", color=DARK_THEME['accent_blue']),
-                self._info_row("Total Episodes", f"{total_episodes_curriculum:,}"),
+                
+                # Reset Point Cycle Tracking
+                html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
+                self._info_row("Available Points", f"{total_available}", color=DARK_THEME['accent_blue']),
+                self._info_row("Points Used", f"{points_used}/{total_available}" if total_available > 0 else "0/0", 
+                              color=DARK_THEME['accent_green'] if points_used < total_available else DARK_THEME['accent_orange']),
+                self._info_row("Cycle Progress", f"{cycles_completed}/{target_cycles}", 
+                              color=DARK_THEME['accent_blue']),
+                self._info_row("Day Switch", f"{day_switch_progress:.0f}%", 
+                              color=DARK_THEME['accent_green'] if day_switch_progress < 90 else DARK_THEME['accent_orange']),
+                
                 # Day information
                 html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
                 self._info_row("Day", state.current_momentum_day_date or "N/A", color=day_info_color),
