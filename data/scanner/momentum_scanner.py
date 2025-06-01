@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 from data.utils.helpers import ensure_timezone_aware
-from config.schemas import MomentumScanningConfig, RankBasedScoringConfig, SessionVolumeConfig, MomentumStrategiesConfig
+from config.schemas import MomentumScanningConfig, MomentumScoringConfig, SessionVolumeConfig
 
 
 class MomentumScanner:
@@ -21,19 +21,17 @@ class MomentumScanner:
     
     def __init__(self, data_dir: str, output_dir: str, 
                  momentum_config: Optional[MomentumScanningConfig] = None,
-                 scoring_config: Optional[RankBasedScoringConfig] = None,
+                 scoring_config: Optional[MomentumScoringConfig] = None,
                  session_config: Optional[SessionVolumeConfig] = None,
-                 strategies_config: Optional[MomentumStrategiesConfig] = None,
                  logger: Optional[logging.Logger] = None):
-        """Initialize the sniper momentum scanner.
+        """Initialize the momentum scanner.
         
         Args:
             data_dir: Directory containing Databento files
             output_dir: Directory to save index files
             momentum_config: Momentum scanning configuration
-            scoring_config: Rank-based scoring configuration
+            scoring_config: Momentum scoring configuration
             session_config: Session-aware volume configuration
-            strategies_config: Momentum trading strategies configuration
             logger: Optional logger instance
         """
         self.data_dir = Path(data_dir)
@@ -44,9 +42,8 @@ class MomentumScanner:
         
         # Configuration with defaults
         self.momentum_config = momentum_config or MomentumScanningConfig()
-        self.scoring_config = scoring_config or RankBasedScoringConfig()
+        self.scoring_config = scoring_config or MomentumScoringConfig()
         self.session_config = session_config or SessionVolumeConfig()
-        self.strategies_config = strategies_config or MomentumStrategiesConfig()
         
         # Index paths
         self.day_index_path = self.output_dir / "momentum_days.parquet"
@@ -145,55 +142,17 @@ class MomentumScanner:
                 
         return sorted(list(symbols))
     
-    def get_strategy_config(self, strategy_name: str):
-        """Get strategy configuration by name"""
-        strategy_map = {
-            'strong_upward_momentum': self.strategies_config.strong_upward_momentum,
-            'moderate_upward_momentum': self.strategies_config.moderate_upward_momentum,
-            'strong_downward_momentum': self.strategies_config.strong_downward_momentum,
-            'consolidation_breakouts': self.strategies_config.consolidation_breakouts,
-            'any_strong_momentum': self.strategies_config.any_strong_momentum,
-            'explosive_breakouts': self.strategies_config.explosive_breakouts
-        }
-        return strategy_map.get(strategy_name)
-    
-    def filter_reset_points_by_strategy(self, reset_points: List[Dict], strategy_name: str) -> List[Dict]:
-        """Filter reset points using strategy-based criteria"""
-        strategy_config = self.get_strategy_config(strategy_name)
-        if not strategy_config:
-            return reset_points
-            
+    def filter_reset_points_by_ranges(self, reset_points: List[Dict], 
+                                     roc_range: List[float], activity_range: List[float]) -> List[Dict]:
+        """Filter reset points using direct range criteria"""
         filtered_points = []
         for reset_point in reset_points:
-            direction_score = reset_point.get('direction_score', 0.5)
             roc_score = reset_point.get('roc_score', 0.0)
             activity_score = reset_point.get('activity_score', 0.0)
             
-            # Check ROC and activity thresholds
-            if roc_score < strategy_config.min_roc_score:
-                continue
-            if activity_score < strategy_config.min_activity_score:
-                continue
-                
-            # Check direction ranges
-            direction_match = False
-            
-            if strategy_config.direction_range:
-                # Single direction range
-                min_dir, max_dir = strategy_config.direction_range
-                if min_dir <= direction_score <= max_dir:
-                    direction_match = True
-            elif strategy_config.direction_ranges:
-                # Multiple direction ranges
-                for min_dir, max_dir in strategy_config.direction_ranges:
-                    if min_dir <= direction_score <= max_dir:
-                        direction_match = True
-                        break
-            else:
-                # No direction filter
-                direction_match = True
-                
-            if direction_match:
+            # Check if scores fall within ranges
+            if (roc_range[0] <= roc_score <= roc_range[1] and 
+                activity_range[0] <= activity_score <= activity_range[1]):
                 filtered_points.append(reset_point)
                 
         return filtered_points
@@ -282,15 +241,7 @@ class MomentumScanner:
         max_move_down = (open_price - low_price) / open_price
         max_intraday_move = max(max_move_up, max_move_down)
         
-        # Determine momentum direction
-        is_front_side = daily_return > self.momentum_config.front_side_threshold
-        is_back_side = daily_return < self.momentum_config.back_side_threshold
-        
-        # Apply direction filter
-        if self.momentum_config.direction_filter == 'front_side' and not is_front_side:
-            return None, []
-        elif self.momentum_config.direction_filter == 'back_side' and not is_back_side:
-            return None, []
+        # Remove direction-based filtering - capture all volatility
         
         # Calculate average session volume for comparison
         avg_session_volume = np.mean(list(session_volumes.values()))
@@ -325,23 +276,21 @@ class MomentumScanner:
             'volume_multiplier': volume_multiplier,
             'halt_count': halt_count,
             'activity_score': activity_score,
-            'is_front_side': is_front_side,
-            'is_back_side': is_back_side,
             'file_paths': [str(f) for f in self._find_day_files(symbol, date)]
         }
         
-        # Find reset points using 3-component scoring
-        reset_points = self._find_reset_points_3component(symbol, date, day_data, session_volumes)
+        # Find reset points using 2-component scoring (ROC + Activity)
+        reset_points = self._find_reset_points_2component(symbol, date, day_data, session_volumes)
         
         return day_record, reset_points
     
-    def _find_reset_points_3component(self, symbol: str, date: pd.Timestamp,
+    def _find_reset_points_2component(self, symbol: str, date: pd.Timestamp,
                                      day_data: pd.DataFrame, session_volumes: Dict[str, float]) -> List[Dict]:
-        """Find reset points using 3-component scoring (direction, ROC, activity)."""
+        """Find reset points using 2-component scoring (ROC + Activity) every 5 minutes."""
         reset_points = []
         
-        # Resample to 1-minute bars
-        minute_bars = day_data.resample('1min').agg({
+        # Resample to 5-minute bars for reset point generation
+        five_min_bars = day_data.resample('5min').agg({
             'open': 'first',
             'high': 'max',
             'low': 'min', 
@@ -349,161 +298,138 @@ class MomentumScanner:
             'volume': 'sum'
         }).dropna()
         
-        if len(minute_bars) < 60:  # Need at least 1 hour of data
+        if len(five_min_bars) < 12:  # Need at least 1 hour of data
             return reset_points
         
         # Add session information
-        minute_bars['session'] = minute_bars.apply(lambda row: self._get_market_session(pd.Timestamp(row.name)), axis=1)
+        five_min_bars['session'] = five_min_bars.apply(lambda row: self._get_market_session(pd.Timestamp(row.name)), axis=1)
         
-        # Calculate 3-component scores using rank-based method
-        minute_bars = self._calculate_3component_scores(minute_bars, session_volumes)
+        # Calculate 2-component scores within session context
+        five_min_bars = self._calculate_2component_scores(five_min_bars, session_volumes)
         
-        # All points are valid for rank-based scoring (0.0-1.0 range)
-        
-        if len(minute_bars) < self.scoring_config.min_reset_points:
-            self.logger.warning(f"Only {len(minute_bars)} valid reset points for {symbol} {date}")
+        if len(five_min_bars) < self.scoring_config.min_reset_points:
+            self.logger.warning(f"Only {len(five_min_bars)} valid reset points for {symbol} {date}")
             return reset_points
         
-        # Calculate combined score for weighting (rank-based: all scores are [0,1])
-        minute_bars['combined_score'] = (
-            minute_bars['direction_score'] * self.scoring_config.direction_weight +
-            minute_bars['roc_score'] * self.scoring_config.roc_weight +
-            minute_bars['activity_score'] * self.scoring_config.activity_weight
+        # Calculate combined score for weighting
+        five_min_bars['combined_score'] = (
+            five_min_bars['roc_score'] * self.scoring_config.roc_weight +
+            five_min_bars['activity_score'] * self.scoring_config.activity_weight
         )
         
-        # Generate reset points using weighted sampling
-        reset_points = self._generate_3component_reset_points(
-            minute_bars, symbol, date
+        # Generate reset points - each 5-minute bar is a potential reset point
+        reset_points = self._generate_2component_reset_points(
+            five_min_bars, symbol, date
         )
         
         return reset_points
     
-    def _calculate_3component_scores(self, minute_bars: pd.DataFrame, 
+    def _calculate_2component_scores(self, five_min_bars: pd.DataFrame, 
                                    session_volumes: Dict[str, float]) -> pd.DataFrame:
-        """Calculate direction, ROC, and activity scores using rank-based method."""
-        return self._calculate_rank_based_scores(minute_bars, session_volumes)
+        """Calculate ROC and activity scores using rolling window method."""
+        return self._calculate_rolling_scores(five_min_bars, session_volumes)
     
-    def _calculate_rank_based_scores(self, minute_bars: pd.DataFrame,
-                                   session_volumes: Dict[str, float]) -> pd.DataFrame:
-        """Calculate rank-based scores [0.0, 1.0] using rolling percentiles."""
+    def _calculate_rolling_scores(self, five_min_bars: pd.DataFrame,
+                                session_volumes: Dict[str, float]) -> pd.DataFrame:
+        """Calculate rolling window scores [0.0, 1.0] within session context."""
         
         # Configuration
-        window_size = int(self.scoring_config.ranking_window_minutes)
-        direction_window = int(self.scoring_config.direction_lookback_minutes)
-        roc_window = int(self.scoring_config.roc_lookback_minutes)
-        activity_window = int(self.scoring_config.activity_lookback_minutes)
+        window_size_periods = int(self.scoring_config.rolling_window_minutes / 5)  # Convert to 5-min periods
+        roc_periods = int(self.scoring_config.roc_lookback_minutes / 5)  # Convert to 5-min periods
+        activity_periods = int(self.scoring_config.activity_lookback_minutes / 5)  # Convert to 5-min periods
         
-        # 1. Direction Score [0.0, 1.0]: Rank-based with magnitude preservation
-        minute_bars['price_change_direction'] = minute_bars['close'].pct_change(direction_window)
+        # Group by session for session-aware calculations
+        session_scores = []
         
-        # Apply significance threshold
-        direction_significant = (
-            minute_bars['price_change_direction'].abs() >= self.scoring_config.min_direction_threshold
-        )
-        
-        # Calculate rolling rank for significant moves
-        direction_rank = minute_bars['price_change_direction'].rolling(window_size).rank(pct=True)
-        
-        # Apply neutral score for insignificant moves
-        minute_bars['direction_score'] = np.where(
-            direction_significant,
-            direction_rank,
-            0.5  # Neutral score
-        )
-        
-        # 2. ROC Score [0.0, 1.0]: Rank-based with magnitude boost
-        minute_bars['price_change_roc'] = minute_bars['close'].pct_change(roc_window).abs()
-        
-        # Calculate rolling rank
-        roc_rank = minute_bars['price_change_roc'].rolling(window_size).rank(pct=True)
-        
-        if self.scoring_config.enable_magnitude_preservation:
-            # Apply magnitude boost for truly large moves
-            magnitude_boost = np.minimum(
-                minute_bars['price_change_roc'] / self.scoring_config.roc_magnitude_boost_threshold,
-                self.scoring_config.roc_max_boost
+        for session in ['premarket', 'regular', 'postmarket']:
+            session_data = five_min_bars[five_min_bars['session'] == session].copy()
+            if len(session_data) == 0:
+                continue
+                
+            # 1. ROC Score [0.0, 1.0]: Rolling percentile within session
+            session_data['price_change_roc'] = session_data['close'].pct_change(roc_periods).abs()
+            
+            # Calculate rolling rank within session
+            if len(session_data) >= window_size_periods:
+                session_data['roc_score'] = session_data['price_change_roc'].rolling(
+                    window_size_periods, min_periods=1
+                ).rank(pct=True)
+            else:
+                # For shorter sessions, use overall rank
+                session_data['roc_score'] = session_data['price_change_roc'].rank(pct=True)
+            
+            # 2. Activity Score [0.0, 1.0]: Rolling volume percentile within session
+            session_data['volume_rolling'] = session_data['volume'].rolling(
+                activity_periods, min_periods=1
+            ).mean()
+            
+            # Get session baseline volume
+            session_baseline = session_volumes.get(session, session_volumes.get('regular', 1000))
+            
+            # Apply volume significance threshold
+            volume_significant = (
+                session_data['volume_rolling'] >= self.scoring_config.min_volume_threshold
             )
-            minute_bars['roc_score'] = np.minimum(roc_rank * magnitude_boost, 1.0)
+            
+            # Calculate rolling rank within session
+            if len(session_data) >= window_size_periods:
+                activity_rank = session_data['volume_rolling'].rolling(
+                    window_size_periods, min_periods=1
+                ).rank(pct=True)
+            else:
+                activity_rank = session_data['volume_rolling'].rank(pct=True)
+            
+            # Apply neutral score for low volume periods
+            session_data['activity_score'] = np.where(
+                volume_significant,
+                activity_rank,
+                0.5  # Neutral score
+            )
+            
+            # Store volume deviation for compatibility
+            session_data['volume_deviation'] = session_data['volume_rolling'] / session_baseline
+            
+            session_scores.append(session_data)
+        
+        # Combine all sessions
+        if session_scores:
+            result = pd.concat(session_scores).sort_index()
         else:
-            minute_bars['roc_score'] = roc_rank
-        
-        # 3. Activity Score [0.0, 1.0]: Pure rank-based volume
-        minute_bars['volume_rolling'] = minute_bars['volume'].rolling(activity_window).mean()
-        
-        # Apply volume significance threshold
-        volume_significant = (
-            minute_bars['volume_rolling'] >= self.scoring_config.min_volume_threshold
-        )
-        
-        # Calculate rolling rank for volume
-        activity_rank = minute_bars['volume_rolling'].rolling(window_size).rank(pct=True)
-        
-        # Apply neutral score for low volume periods
-        minute_bars['activity_score'] = np.where(
-            volume_significant,
-            activity_rank,
-            0.5  # Neutral score
-        )
+            result = five_min_bars.copy()
+            result['roc_score'] = 0.5
+            result['activity_score'] = 0.5
+            result['price_change_roc'] = 0.0
+            result['volume_deviation'] = 1.0
         
         # Fill NaN values with neutral score (0.5)
-        for col in ['direction_score', 'roc_score', 'activity_score']:
-            minute_bars[col] = minute_bars[col].fillna(0.5)
+        for col in ['roc_score', 'activity_score']:
+            result[col] = result[col].fillna(0.5)
         
-        # Store intermediate calculations for debugging
-        minute_bars['price_change_roc'] = minute_bars['price_change_roc']
-        minute_bars['volume_deviation'] = minute_bars['volume_rolling'] / session_volumes.get('regular', 1000)  # For compatibility
-        
-        return minute_bars
+        return result
     
     
-    def _generate_3component_reset_points(self, minute_bars: pd.DataFrame,
+    def _generate_2component_reset_points(self, five_min_bars: pd.DataFrame,
                                         symbol: str, date: pd.Timestamp) -> List[Dict]:
-        """Generate reset points using 3-component weighted sampling."""
+        """Generate reset points using 2-component scoring every 5 minutes."""
         reset_points = []
         
         # Clean data
-        minute_bars = minute_bars.dropna(subset=['combined_score'])
-        if len(minute_bars) == 0:
+        five_min_bars = five_min_bars.dropna(subset=['combined_score'])
+        if len(five_min_bars) == 0:
             return reset_points
-            
-        # Use combined score for weighted sampling
-        combined_scores = minute_bars['combined_score'].to_numpy()
-        # Ensure all weights are positive for sampling
-        weights = combined_scores - combined_scores.min() + 0.01
-        weights = weights / weights.sum()
         
-        # Sample reset points using config
-        target_points = min(self.scoring_config.reset_points_per_day, len(minute_bars))
-        target_points = max(target_points, self.scoring_config.min_reset_points)
-        target_points = min(target_points, self.scoring_config.max_reset_points)
-        
-        # Sample without replacement
-        if target_points >= len(minute_bars):
-            selected_indices = list(range(len(minute_bars)))
-        else:
-            selected_indices = np.random.choice(
-                len(minute_bars), 
-                size=target_points, 
-                replace=False, 
-                p=weights
-            )
-        
-        # Create reset points
-        for idx in selected_indices:
-            row = minute_bars.iloc[idx]
-            
+        # All 5-minute bars become reset points - no sampling needed
+        for idx, row in five_min_bars.iterrows():
             reset_points.append({
                 'symbol': symbol,
                 'date': date,
                 'timestamp': row.name,
-                'direction_score': row['direction_score'],
                 'roc_score': row['roc_score'], 
                 'activity_score': row['activity_score'],
                 'combined_score': row['combined_score'],
                 'price': row['close'],
                 'volume': row['volume'],
                 'session': row['session'],
-                'price_change_direction': row.get('price_change_direction', 0.0),
                 'price_change_roc': row.get('price_change_roc', 0.0),
                 'volume_deviation': row.get('volume_deviation', 0.0)
             })
@@ -718,7 +644,7 @@ class MomentumScanner:
     def query_momentum_days(self, symbol: str, min_activity: float = 0.5,
                            start_date: Optional[datetime] = None,
                            end_date: Optional[datetime] = None,
-                           direction: Optional[str] = None) -> pd.DataFrame:
+                           ) -> pd.DataFrame:
         """Query momentum days for a symbol.
         
         Args:
@@ -726,7 +652,6 @@ class MomentumScanner:
             min_activity: Minimum activity score
             start_date: Start date filter
             end_date: End date filter
-            direction: Filter by direction ('front_side', 'back_side', None for both)
             
         Returns:
             DataFrame of matching momentum days
@@ -742,11 +667,7 @@ class MomentumScanner:
         # Filter by activity score
         mask &= day_df['activity_score'] >= min_activity
         
-        # Filter by direction
-        if direction == 'front_side':
-            mask &= day_df['is_front_side'] == True
-        elif direction == 'back_side':
-            mask &= day_df['is_back_side'] == True
+        # Remove direction filtering
         
         # Filter by date range
         if start_date:
@@ -758,14 +679,13 @@ class MomentumScanner:
     
     def query_reset_points(self, symbol: str, date: Optional[pd.Timestamp] = None,
                           min_activity: float = 0.5,
-                          direction: Optional[str] = None) -> pd.DataFrame:
+                          ) -> pd.DataFrame:
         """Query reset points for a symbol.
         
         Args:
             symbol: Symbol to query
             date: Specific date (None for all)
             min_activity: Minimum combined activity score
-            direction: Filter by direction ('positive', 'negative', None for both)
             
         Returns:
             DataFrame of matching reset points
@@ -785,27 +705,22 @@ class MomentumScanner:
         # Filter by activity
         mask &= reset_df['combined_score'] >= min_activity
         
-        # Filter by direction
-        if direction == 'positive':
-            mask &= reset_df['is_positive_move'] == True
-        elif direction == 'negative':
-            mask &= reset_df['is_negative_move'] == True
+        # Remove direction filtering
         
         return reset_df[mask].sort_values('combined_score', ascending=False)
     
     def get_top_momentum_days(self, symbol: str, top_n: int = 10,
-                             direction: Optional[str] = None) -> pd.DataFrame:
+                             ) -> pd.DataFrame:
         """Get top N momentum days by activity score.
         
         Args:
             symbol: Symbol to query
             top_n: Number of top days to return
-            direction: Filter by direction ('front_side', 'back_side', None for both)
             
         Returns:
             DataFrame of top momentum days
         """
-        days = self.query_momentum_days(symbol, min_activity=0.0, direction=direction)
+        days = self.query_momentum_days(symbol, min_activity=0.0)
         return days.head(top_n)
     
     def get_momentum_day_summary(self) -> pd.DataFrame:
@@ -823,9 +738,7 @@ class MomentumScanner:
             'date': 'count',
             'activity_score': ['mean', 'max'],
             'max_intraday_move': ['mean', 'max'],
-            'volume_multiplier': ['mean', 'max'],
-            'is_front_side': 'sum',
-            'is_back_side': 'sum'
+            'volume_multiplier': ['mean', 'max']
         })
         
         summary.columns = ['_'.join(col).strip() for col in summary.columns.values]
@@ -836,9 +749,7 @@ class MomentumScanner:
             'max_intraday_move_mean': 'avg_move',
             'max_intraday_move_max': 'max_move',
             'volume_multiplier_mean': 'avg_volume_mult',
-            'volume_multiplier_max': 'max_volume_mult',
-            'is_front_side_sum': 'front_side_days',
-            'is_back_side_sum': 'back_side_days'
+            'volume_multiplier_max': 'max_volume_mult'
         })
         
         return summary.sort_values('total_days', ascending=False)

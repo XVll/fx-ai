@@ -259,13 +259,10 @@ class TradingEnvironment(gym.Env):
                     'activity_score': row.get('activity_score', 0.5),
                     'combined_score': row.get('combined_score', 0.5),
                     'day_activity_score': row.get('day_activity_score', 0.5),
-                    # Add 3-component scores for curriculum system
-                    'direction_score': row.get('direction_score', 0.0),
+                    # Add 2-component scores for curriculum system
                     'roc_score': row.get('roc_score', 0.0),
                     'max_duration_hours': self._get_duration_for_activity(row.get('activity_score', 0.5)),
                     'reset_type': 'momentum',
-                    'is_positive_move': row.get('is_positive_move', True),
-                    'is_negative_move': row.get('is_negative_move', False),
                     'volume_ratio': row.get('volume_ratio', 1.0),
                     'price_change': row.get('price_change', 0.0),
                     # Additional fields from scanner for completeness
@@ -354,15 +351,15 @@ class TradingEnvironment(gym.Env):
         reset_type = reset_point.get('reset_type', 'momentum')
         
         # Base window depends on activity level
-        # Higher activity = tighter randomization (more precise timing needed)
+        # With 5-minute reset points, use tighter windows for better precision
         if activity_score >= 0.8:
-            base_window = 3  # Very high activity - tight window (±3 min)
+            base_window = 2  # Very high activity - tight window (±2 min)
         elif activity_score >= 0.6:
-            base_window = 5  # High activity - moderate window (±5 min)
+            base_window = 3  # High activity - moderate window (±3 min)
         elif activity_score >= 0.4:
-            base_window = 10  # Medium activity - wider window (±10 min)
+            base_window = 6  # Medium activity - wider window (±6 min)
         else:
-            base_window = 15  # Low activity - wide window (±15 min)
+            base_window = 10  # Low activity - wide window (±10 min)
         
         # Adjust based on combined score (includes day quality)
         # Higher combined score = more important point
@@ -580,17 +577,9 @@ class TradingEnvironment(gym.Env):
         offset_minutes = random_offset_seconds // 60
         window_minutes = max_offset_minutes
         
-        # Get movement direction for logging
-        if reset_point.get('is_positive_move', False):
-            direction = "↑"
-        elif reset_point.get('is_negative_move', False):
-            direction = "↓"
-        else:
-            direction = "→"
-        
         self.logger.info(f"🎯 Episode {self.episode_number} reset: {original_time} → {randomized_time} "
                         f"({offset_minutes:+d}m/±{window_minutes}m) | Activity: {reset_point.get('activity_score', 0.5):.2f} "
-                        f"| Combined: {reset_point.get('combined_score', 0.5):.2f} | {direction} | {reset_point.get('reset_type', 'momentum')}")
+                        f"| Combined: {reset_point.get('combined_score', 0.5):.2f} | ROC: {reset_point.get('roc_score', 0.0):.2f} | {reset_point.get('reset_type', 'momentum')}")
         
         # Ensure we don't go before 4 AM or after 8 PM
         market_open = datetime.combine(self.current_session_date.date(), time(4, 0))
@@ -1269,11 +1258,8 @@ class TradingEnvironment(gym.Env):
             quality_metrics = {
                 'day_activity_score': reset_point.get('day_activity_score', 0.0),
                 'volume_ratio': reset_point.get('volume_ratio', 1.0),
-                'is_front_side': reset_point.get('is_front_side', False),
-                'is_back_side': reset_point.get('is_back_side', False),
                 'reset_point_quality': reset_point.get('combined_score', 0.0),
-                # 3-component scores from reset point
-                'current_direction_score': reset_point.get('direction_score', 0.0),
+                # 2-component scores from reset point
                 'current_roc_score': reset_point.get('roc_score', 0.0),
                 'current_activity_score': reset_point.get('activity_score', 0.0),
             }

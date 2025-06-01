@@ -133,8 +133,7 @@ class SharedDashboardState:
     max_intraday_move: float = 0.0
     avg_spread: float = 0.0
     
-    # 3-component scores from current reset point
-    current_direction_score: float = 0.0
+    # 2-component scores from current reset point
     current_roc_score: float = 0.0
     current_activity_score: float = 0.0
     
@@ -143,9 +142,8 @@ class SharedDashboardState:
     curriculum_progress: float = 0.0
     curriculum_min_quality: float = 0.8
     total_episodes_for_curriculum: int = 0
-    min_roc_score: float = 0.0
-    min_activity_score: float = 0.0
-    min_direction_score: float = 0.0
+    roc_range: List[float] = field(default_factory=lambda: [0.0, 1.0])
+    activity_range: List[float] = field(default_factory=lambda: [0.0, 1.0])
     
     # Momentum day tracking
     current_momentum_day_date: str = ""
@@ -495,7 +493,7 @@ class DashboardStateManager:
             # Update quality metrics if provided
             for key in ['day_activity_score', 'volume_ratio', 'halt_count', 
                        'is_front_side', 'is_back_side', 'reset_point_quality',
-                       'max_intraday_move', 'avg_spread', 'current_direction_score',
+                       'max_intraday_move', 'avg_spread',
                        'current_roc_score', 'current_activity_score']:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
@@ -503,7 +501,7 @@ class DashboardStateManager:
             # Update curriculum metrics if provided
             for key in ['curriculum_stage', 'curriculum_progress', 
                        'curriculum_min_quality', 'total_episodes_for_curriculum',
-                       'min_roc_score', 'min_activity_score', 'min_direction_score']:
+                       'roc_range', 'activity_range']:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
         

@@ -310,9 +310,8 @@ class DashboardTransmitter(MetricTransmitter):
                     'curriculum_progress': event_data.get('stage_progress', event_data.get('progress', 0.0)),
                     'curriculum_min_quality': event_data.get('min_quality', 0.8),
                     'total_episodes_for_curriculum': event_data.get('total_episodes', 0),
-                    'min_roc_score': event_data.get('min_roc_score', 0.0),
-                    'min_activity_score': event_data.get('min_activity_score', 0.0),
-                    'min_direction_score': event_data.get('min_direction_score', 0.0)
+                    'roc_range': event_data.get('roc_range', [0.0, 1.0]),
+                    'activity_range': event_data.get('activity_range', [0.0, 1.0])
                 }
                 dashboard_state.update_metrics(curriculum_data)
                 
