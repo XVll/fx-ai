@@ -843,7 +843,8 @@ class TradingEnvironment(gym.Env):
             action=action_name,
             confidence=1.0,  # Default confidence
             reasoning={},
-            features={}
+            features={},
+            is_invalid=not execution_result.action_decode_result.is_valid
         )
 
         # Handle fill if order was executed

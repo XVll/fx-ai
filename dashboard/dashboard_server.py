@@ -268,11 +268,13 @@ class DashboardServer:
             
             portfolio_position_info = html.Div(position_section + portfolio_section)
             
-            # Performance Metrics info (moved from portfolio)
-            # Calculate profit factor and win/loss ratio
+            # Performance Metrics info - Table format with Episode/Session columns
+            # Calculate episode metrics
             episode_wins = getattr(state, 'episode_winning_trades', 0)
             episode_losses = getattr(state, 'episode_losing_trades', 0)
             episode_total = episode_wins + episode_losses
+            
+            # Calculate session metrics  
             session_wins = getattr(state, 'session_winning_trades', 0)
             session_losses = getattr(state, 'session_losing_trades', 0)
             session_total = session_wins + session_losses
@@ -281,23 +283,91 @@ class DashboardServer:
             episode_win_loss_ratio = episode_wins / episode_losses if episode_losses > 0 else float('inf') if episode_wins > 0 else 0
             session_win_loss_ratio = session_wins / session_losses if session_losses > 0 else float('inf') if session_wins > 0 else 0
             
-            # Display win/loss ratios
-            episode_wl_display = f"{episode_win_loss_ratio:.2f}" if episode_win_loss_ratio != float('inf') else "∞" if episode_wins > 0 else "0"
-            session_wl_display = f"{session_win_loss_ratio:.2f}" if session_win_loss_ratio != float('inf') else "∞" if session_wins > 0 else "0"
+            # Format win/loss ratios
+            episode_wl_display = f"{episode_win_loss_ratio:.2f}" if episode_win_loss_ratio != float('inf') else "∞" if episode_wins > 0 else "0.00"
+            session_wl_display = f"{session_win_loss_ratio:.2f}" if session_win_loss_ratio != float('inf') else "∞" if session_wins > 0 else "0.00"
             
             # Calculate episode and session win rates
             episode_win_rate = (episode_wins / episode_total * 100) if episode_total > 0 else 0
             session_win_rate = state.win_rate * 100  # Convert to percentage
             
-            performance_metrics_info = html.Div([
-                self._info_row("Ep Win Rate", f"{episode_win_rate:.0f}%"),
-                self._info_row("Sess Win Rate", f"{session_win_rate:.0f}%"),
-                self._info_row("Drawdown", f"{state.max_drawdown:.1%}", color=DARK_THEME['accent_orange']),
-                self._info_row("Sharpe", f"{state.sharpe_ratio:.2f}"),
-                self._info_row("Ep W/L Ratio", episode_wl_display),
-                self._info_row("Sess W/L Ratio", session_wl_display),
-                self._info_row("Profit Factor", "N/A"),  # TODO: Calculate profit factor when available in state
-            ])
+            # Format profit factor (handle infinity case)
+            profit_factor = getattr(state, 'profit_factor', 0.0)
+            profit_factor_display = f"{profit_factor:.2f}" if profit_factor != float('inf') else "∞" if profit_factor > 0 else "0.00"
+            
+            # Performance data for table
+            performance_data = [
+                {
+                    'Metric': 'Win Rate %',
+                    'Episode': f"{episode_win_rate:.1f}%",
+                    'Session': f"{session_win_rate:.1f}%"
+                },
+                {
+                    'Metric': 'W/L Ratio',
+                    'Episode': episode_wl_display,
+                    'Session': session_wl_display
+                },
+                {
+                    'Metric': 'Drawdown %',
+                    'Episode': f"{state.max_drawdown:.1f}%",
+                    'Session': f"{state.max_drawdown:.1f}%"
+                },
+                {
+                    'Metric': 'Sharpe Ratio',
+                    'Episode': f"{state.sharpe_ratio:.2f}",
+                    'Session': f"{state.sharpe_ratio:.2f}"
+                },
+                {
+                    'Metric': 'Profit Factor',
+                    'Episode': profit_factor_display,
+                    'Session': profit_factor_display
+                }
+            ]
+            
+            performance_metrics_info = dash_table.DataTable(
+                data=performance_data,
+                columns=[
+                    {'name': 'Metric', 'id': 'Metric'},
+                    {'name': 'Episode', 'id': 'Episode'},
+                    {'name': 'Session', 'id': 'Session'}
+                ],
+                style_cell={
+                    'backgroundColor': DARK_THEME['bg_tertiary'],
+                    'color': DARK_THEME['text_primary'],
+                    'border': f"1px solid {DARK_THEME['border']}",
+                    'fontSize': '11px',
+                    'padding': '4px 6px',
+                    'textAlign': 'left'
+                },
+                style_data_conditional=[
+                    # Highlight win rates
+                    {
+                        'if': {'column_id': 'Episode', 'filter_query': '{Metric} = "Win Rate %"'},
+                        'color': DARK_THEME['accent_green'] if episode_win_rate >= 50 else DARK_THEME['accent_red']
+                    },
+                    {
+                        'if': {'column_id': 'Session', 'filter_query': '{Metric} = "Win Rate %"'},
+                        'color': DARK_THEME['accent_green'] if session_win_rate >= 50 else DARK_THEME['accent_red']
+                    },
+                    # Highlight drawdown
+                    {
+                        'if': {'filter_query': '{Metric} = "Drawdown %"'},
+                        'color': DARK_THEME['accent_red'] if state.max_drawdown > 10 else DARK_THEME['accent_orange']
+                    },
+                    # Highlight profit factor
+                    {
+                        'if': {'filter_query': '{Metric} = "Profit Factor"'},
+                        'color': DARK_THEME['accent_green'] if profit_factor > 1.0 else DARK_THEME['accent_red']
+                    }
+                ],
+                style_header={
+                    'backgroundColor': DARK_THEME['bg_secondary'],
+                    'color': DARK_THEME['text_secondary'],
+                    'fontWeight': 'bold',
+                    'fontSize': '10px'
+                },
+                page_size=10
+            )
             
             # Recent trades table (completed trades only)
             if state.recent_trades:
@@ -495,7 +565,7 @@ class DashboardServer:
                     ]),
                     html.Div(step_display, style={
                         'color': DARK_THEME['text_primary'], 
-                        'fontSize': '10px', 
+                        'fontSize': '11px', 
                         'textAlign': 'center',
                         'marginTop': '2px'
                     })
@@ -506,8 +576,8 @@ class DashboardServer:
             max_updates = getattr(state, 'max_updates', 0)
             update_display = f"{state.updates:,}" + (f"/{max_updates:,}" if max_updates > 0 else "")
             
-            # Calculate updates per hour
-            updates_per_hour = getattr(state, 'updates_per_hour', state.updates_per_second * 3600 if hasattr(state, 'updates_per_second') else 0.0)
+            # Calculate updates per hour (transmitter sends updates_per_second)
+            updates_per_hour = getattr(state, 'updates_per_second', 0.0) * 3600
             
             training_children = [
                 self._info_row("Mode", state.mode, color=DARK_THEME['accent_purple']),
@@ -538,22 +608,15 @@ class DashboardServer:
                 
             training_content = html.Div(training_children)
             
-            # PPO Metrics - simplified
-            batch_size = getattr(state, 'batch_size', 0)
-            total_epochs = getattr(state, 'total_epochs', 0)
-            total_batches = getattr(state, 'total_batches', 0)
-            
+            # PPO Metrics - all PPO values with sparklines
             ppo_content = html.Div([
-                self._info_row("Policy Loss", f"{state.policy_loss:.4f}"),
-                self._info_row("Value Loss", f"{state.value_loss:.4f}"),
-                self._info_row("Entropy", f"{state.entropy:.4f}"),
-                self._info_row("Learn Rate", f"{state.learning_rate:.2e}"),
-                self._info_row("KL Div", f"{getattr(state, 'kl_divergence', 0.0):.4f}"),
-                self._info_row("Clip Frac", f"{getattr(state, 'clip_fraction', 0.0):.2f}"),
-                html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
-                self._info_row("Batch Size", f"{batch_size}" if batch_size > 0 else "N/A"),
-                self._info_row("Epochs", f"{total_epochs}" if total_epochs > 0 else "N/A"),
-                self._info_row("Batches/Epoch", f"{total_batches}" if total_batches > 0 else "N/A"),
+                self._metric_with_sparkline("Policy Loss", state.policy_loss, state.policy_loss_history),
+                self._metric_with_sparkline("Value Loss", state.value_loss, state.value_loss_history),
+                self._metric_with_sparkline("Entropy", state.entropy, state.entropy_history),
+                self._metric_with_sparkline("KL Divergence", getattr(state, 'kl_divergence', 0.0), state.kl_divergence_history),
+                self._metric_with_sparkline("Clip Fraction", getattr(state, 'clip_fraction', 0.0), state.clip_fraction_history),
+                self._metric_with_sparkline("Learning Rate", state.learning_rate, state.learning_rate_history),
+                self._metric_with_sparkline("Explained Var", getattr(state, 'explained_variance', 0.0), state.explained_variance_history),
             ])
             
             # Reward components table - redesigned to match actions panel format
@@ -566,6 +629,8 @@ class DashboardServer:
                 'max_drawdown_penalty': 'shaping',
                 'profit_closing_bonus': 'shaping',
                 'clean_trade_bonus': 'shaping',
+                'trading_activity_bonus': 'shaping',
+                'inactivity_penalty': 'shaping',
                 'bankruptcy_penalty': 'terminal'
             }
             
@@ -733,7 +798,7 @@ class DashboardServer:
                 current_threshold = stage_thresholds.get(curriculum_stage, float('inf'))
                 progress_pct = (total_episodes_curriculum / current_threshold * 100) if current_threshold != float('inf') else 100
                 progress_pct = min(100, progress_pct)
-            
+                
             # Determine momentum direction
             
             # Add reset points info (show filtered count)
@@ -757,9 +822,20 @@ class DashboardServer:
             total_available = getattr(state, 'total_available_points', 0)
             points_used = getattr(state, 'points_used_in_cycle', 0)
             points_remaining = getattr(state, 'points_remaining_in_cycle', 0)
-            cycles_completed = getattr(state, 'cycles_completed', 0)
+            cycles_completed = getattr(state, 'cycles_completed', getattr(state, 'reset_point_cycles_completed', 0))
             target_cycles = getattr(state, 'target_cycles_per_day', 10)
             day_switch_progress = getattr(state, 'day_switch_progress_pct', 0.0)
+            
+            # Fallback calculation for day switch progress if not received from events
+            if day_switch_progress == 0.0 and target_cycles > 0:
+                day_switch_progress = (cycles_completed / target_cycles) * 100
+                day_switch_progress = min(100, day_switch_progress)
+            
+            # Debug: Check if we received curriculum updates
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Curriculum values - progress: {progress_pct}%, cycles: {cycles_completed}/{target_cycles}, day_switch: {day_switch_progress}%, roc_range: {roc_range}, activity_range: {activity_range}")
+            logger.debug(f"Reset point tracking - total_available: {total_available}, points_used: {points_used}, episodes_on_day: {getattr(state, 'episodes_on_current_day', 0)}")
             
             env_content = html.Div([
                 # Curriculum Stage Progress
@@ -897,7 +973,7 @@ class DashboardServer:
     def _create_progress_bar_with_text(self, title: str, progress_pct: float, text: str) -> html.Div:
         """Create a progress bar with title and text"""
         return html.Div([
-            html.Div(title, style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px', 'marginBottom': '2px'}),
+            html.Div(title, style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px', 'marginBottom': '2px'}),
             html.Div([
                 html.Div(style={
                     'backgroundColor': DARK_THEME['bg_tertiary'],
@@ -914,24 +990,35 @@ class DashboardServer:
                     })
                 ])
             ]),
-            html.Div(text, style={'color': DARK_THEME['text_primary'], 'fontSize': '11px', 'textAlign': 'center'})
+            html.Div(text, style={'color': DARK_THEME['text_primary'], 'fontSize': '12px', 'textAlign': 'center'})
         ], style={'marginTop': '8px'})
         
     def _metric_with_sparkline(self, label: str, value: float, history: List[float]) -> html.Div:
-        """Create a metric with inline sparkline"""
-        # Create mini sparkline
+        """Create a compact one-liner metric with inline sparkline"""
+        # Format value based on label type
+        if "Learning Rate" in label:
+            value_str = f"{value:.2e}"
+        elif "Clip Fraction" in label or "Explained Var" in label:
+            value_str = f"{value:.3f}"
+        else:
+            value_str = f"{value:.4f}"
+        
+        # Create mini sparkline if we have history
+        sparkline_element = None
         if len(history) > 1:
             fig = go.Figure()
             # Convert to list if it's a deque to handle slicing
             history_list = list(history) if hasattr(history, 'popleft') else history
             fig.add_trace(go.Scatter(
-                y=history_list[-20:],  # Last 20 values
+                y=history_list[-10:],  # Last 10 values
                 mode='lines',
-                line=dict(color=DARK_THEME['accent_blue'], width=1),
-                showlegend=False
+                line=dict(color=DARK_THEME['accent_blue'], width=1.5),
+                showlegend=False,
+                hoverinfo='skip'
             ))
             fig.update_layout(
-                height=30,
+                height=16,
+                width=40,
                 margin=dict(l=0, r=0, t=0, b=0),
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
@@ -939,15 +1026,24 @@ class DashboardServer:
                 yaxis=dict(visible=False)
             )
             
-            return html.Div([
-                html.Div([
-                    html.Span(f"{label}: ", style={'color': DARK_THEME['text_secondary']}),
-                    html.Span(f"{value:.4f}", style={'color': DARK_THEME['text_primary'], 'fontWeight': 'bold'})
-                ]),
-                dcc.Graph(figure=fig, style={'height': '30px'}, config={'displayModeBar': False})
-            ], style={'marginBottom': '10px'})
-        else:
-            return self._info_row(label, f"{value:.4f}")
+            sparkline_element = dcc.Graph(
+                figure=fig, 
+                style={'height': '16px', 'width': '40px', 'display': 'inline-block'}, 
+                config={'displayModeBar': False}
+            )
+        
+        # Create compact one-liner layout
+        return html.Div([
+            html.Span(f"{label}: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px'}),
+            html.Span(value_str, style={'color': DARK_THEME['text_primary'], 'fontWeight': 'bold', 'fontSize': '10px'}),
+            sparkline_element if sparkline_element else html.Span()
+        ], style={
+            'display': 'flex', 
+            'alignItems': 'center', 
+            'justifyContent': 'space-between',
+            'marginBottom': '3px',
+            'minHeight': '16px'
+        })
             
     def _create_price_chart(self, state) -> go.Figure:
         """Create candlestick chart with 1m bars using Plotly"""

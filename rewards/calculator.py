@@ -14,7 +14,9 @@ from rewards.components import (
     MaxDrawdownPenalty,
     ProfitClosingBonus,
     CleanTradeBonus,
-    BankruptcyPenalty
+    BankruptcyPenalty,
+    TradingActivityBonus,
+    InactivityPenalty
 )
 from simulators.portfolio_simulator import PortfolioState, FillDetails, PositionSideEnum
 
@@ -124,6 +126,22 @@ class RewardSystem:
             }
             components.append(CleanTradeBonus(clean_trade_config, self.logger))
             self.logger.info(f"Enabled clean trade bonus (base_multiplier: {self.config.base_multiplier}, max_mae_threshold: {self.config.max_mae_threshold}, min_gain_threshold: {self.config.min_gain_threshold})")
+        
+        # Trading activity bonus
+        if self.config.enable_trading_activity_bonus:
+            activity_config = {
+                'activity_bonus_per_trade': self.config.activity_bonus_per_trade
+            }
+            components.append(TradingActivityBonus(activity_config, self.logger))
+            self.logger.info(f"Enabled trading activity bonus (bonus per trade: {self.config.activity_bonus_per_trade})")
+        
+        # Inactivity penalty
+        if self.config.enable_inactivity_penalty:
+            inactivity_config = {
+                'hold_penalty_per_step': self.config.hold_penalty_per_step
+            }
+            components.append(InactivityPenalty(inactivity_config, self.logger))
+            self.logger.info(f"Enabled inactivity penalty (penalty per HOLD step: {self.config.hold_penalty_per_step})")
         
         # Bankruptcy penalty (always enabled - safety mechanism)
         bankruptcy_config = {

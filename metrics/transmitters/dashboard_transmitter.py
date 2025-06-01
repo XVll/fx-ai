@@ -228,6 +228,14 @@ class DashboardTransmitter(MetricTransmitter):
             elif 'trading.trades' in metric_name:
                 if 'win_rate' in metric_name:
                     dashboard_data['win_rate'] = value / 100.0  # Convert to decimal
+                elif 'profit_factor' in metric_name:
+                    dashboard_data['profit_factor'] = value
+                elif 'total_trades' in metric_name:
+                    dashboard_data['total_trades'] = value
+                elif 'avg_winning_trade' in metric_name:
+                    dashboard_data['avg_winning_trade'] = value
+                elif 'avg_losing_trade' in metric_name:
+                    dashboard_data['avg_losing_trade'] = value
                     
             elif 'trading.performance' in metric_name:
                 if 'total_pnl' in metric_name:
@@ -245,6 +253,9 @@ class DashboardTransmitter(MetricTransmitter):
                     dashboard_data['execution.environment.action_buy_count'] = value
                 elif 'action_sell_count' in metric_name:
                     dashboard_data['execution.environment.action_sell_count'] = value
+                # Invalid action tracking
+                elif 'invalid_action_rate' in metric_name:
+                    dashboard_data['invalid_action_rate'] = value
                 # Environment episode metrics
                 elif 'current_step' in metric_name:
                     dashboard_data['current_step'] = value
@@ -313,7 +324,8 @@ class DashboardTransmitter(MetricTransmitter):
                     'roc_range': event_data.get('roc_range', [0.0, 1.0]),
                     'activity_range': event_data.get('activity_range', [0.0, 1.0])
                 }
-                dashboard_state.update_metrics(curriculum_data)
+                self.logger.debug(f"Received curriculum_progress event: {curriculum_data}")
+                dashboard_state.update_quality_metrics(curriculum_data)
                 
             elif event_name == 'momentum_day_change':
                 # Handle momentum day changes - extract from nested day_info structure
@@ -326,8 +338,10 @@ class DashboardTransmitter(MetricTransmitter):
                     'current_momentum_day_quality': day_info.get('day_quality', 0.0),
                     'episodes_on_current_day': day_info.get('episodes_on_day', 0),
                     'reset_point_cycles_completed': day_info.get('cycles_completed', 0),
+                    'cycles_completed': day_info.get('cycles_completed', 0),  # Map to cycles_completed field too
                     'total_momentum_days_used': day_info.get('total_days_used', 0)
                 }
+                self.logger.debug(f"Received momentum_day_change event: {momentum_data}")
                 dashboard_state.update_metrics(momentum_data)
                 
                 # Update reset points data for chart markers
@@ -354,6 +368,7 @@ class DashboardTransmitter(MetricTransmitter):
                     'day_switch_progress_pct': event_data.get('day_switch_progress_pct', 0.0),
                     'episodes_on_current_day': event_data.get('episodes_on_current_day', 0)
                 }
+                self.logger.debug(f"Received cycle_completion event: {cycle_data}")
                 dashboard_state.update_metrics(cycle_data)
                 
             elif event_name == 'curriculum_detail':
@@ -362,8 +377,10 @@ class DashboardTransmitter(MetricTransmitter):
                     'episodes_to_next_stage': event_data.get('episodes_to_next_stage', 0),
                     'next_stage_name': event_data.get('next_stage_name', ''),
                     'episodes_per_day_config': event_data.get('episodes_per_day_config', 10),
-                    'curriculum_strategy': event_data.get('curriculum_strategy', 'quality_based')
+                    'curriculum_strategy': event_data.get('curriculum_strategy', 'quality_based'),
+                    'curriculum_episode_length': event_data.get('episode_length', 256)
                 }
+                self.logger.debug(f"Received curriculum_detail event: {curriculum_detail_data}")
                 dashboard_state.update_metrics(curriculum_detail_data)
                 
             # Other events can be handled as needed
