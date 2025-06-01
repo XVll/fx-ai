@@ -408,7 +408,6 @@ class DashboardStateManager:
             for key in ['selected_reset_point_index', 'selected_reset_point_timestamp',
                        'total_available_points', 'points_used_in_cycle', 'points_remaining_in_cycle']:
                 if key in metrics:
-                    print(f"DEBUG SHARED STATE: Updating {key} = {metrics[key]}")
                     setattr(self._state, key, metrics[key])
             
             # Cycle and day switching tracking  
@@ -421,7 +420,6 @@ class DashboardStateManager:
             for key in ['episodes_to_next_stage', 'next_stage_name', 'episodes_per_day_config',
                        'curriculum_strategy']:
                 if key in metrics:
-                    print(f"DEBUG SHARED STATE: Updating curriculum {key} = {metrics[key]}")
                     setattr(self._state, key, metrics[key])
                     
             # Reward components (current step)

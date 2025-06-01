@@ -19,6 +19,7 @@ import multiprocessing as mp
 from functools import partial
 
 from data.data_manager import DataManager
+from data.feature_cache_manager import FeatureCacheManager
 from feature.simple_feature_manager import SimpleFeatureManager
 from feature.contexts import MarketContext
 from config.schemas import ModelConfig, SimulationConfig
@@ -73,6 +74,7 @@ class MarketSimulator:
                  model_config: ModelConfig,
                  simulation_config: SimulationConfig,
                  feature_manager: Optional[SimpleFeatureManager] = None,
+                 feature_cache_manager: Optional[FeatureCacheManager] = None,
                  logger: Optional[logging.Logger] = None):
         """Initialize the market simulator
         
@@ -82,6 +84,7 @@ class MarketSimulator:
             model_config: Model configuration with feature dimensions
             simulation_config: Simulation configuration
             feature_manager: Optional feature manager (will create if not provided)
+            feature_cache_manager: Optional feature cache manager (will create if not provided)
             logger: Optional logger
         """
         self.symbol = symbol
@@ -99,6 +102,12 @@ class MarketSimulator:
             )
         else:
             self.feature_manager = feature_manager
+        
+        # Initialize feature cache manager if not provided
+        if feature_cache_manager is None:
+            self.feature_cache_manager = FeatureCacheManager(logger=self.logger)
+        else:
+            self.feature_cache_manager = feature_cache_manager
             
         # Market timezone
         self.market_tz = ZoneInfo(MARKET_HOURS["TIMEZONE"])
@@ -124,6 +133,14 @@ class MarketSimulator:
         self.combined_bars_5m = None
         self.combined_trades = None
         self.combined_quotes = None
+    
+    def __del__(self):
+        """Cleanup method to ensure feature cache is saved"""
+        try:
+            if hasattr(self, 'feature_cache_manager'):
+                self.feature_cache_manager.unload_session()
+        except Exception:
+            pass  # Ignore errors during cleanup
         
     def initialize_day(self, date: datetime) -> bool:
         """Initialize simulator for a specific trading day
@@ -139,6 +156,16 @@ class MarketSimulator:
         """
         try:
             self.logger.info(f"Initializing market simulator for {self.symbol} on {date}")
+            
+            # If we're switching to a different date, unload the previous cache session first
+            new_cache_date = pd.Timestamp(date).date()
+            if (self.current_date is not None and self.current_date != new_cache_date):
+                self.logger.info(f"Switching from {self.current_date} to {new_cache_date}, unloading cache session")
+                self.feature_cache_manager.unload_session()
+            
+            # Load feature cache session for this day
+            if not self.feature_cache_manager.load_session(self.symbol, new_cache_date, self.feature_manager):
+                self.logger.warning(f"Failed to load feature cache session for {self.symbol} on {new_cache_date}")
             
             # Check cache first
             cache_key = (self.symbol, pd.Timestamp(date).date())
@@ -1002,7 +1029,7 @@ class MarketSimulator:
         )
         
     def get_current_features(self) -> Optional[Dict[str, np.ndarray]]:
-        """Get features for current timestamp (computed on-demand for speed)"""
+        """Get features for current timestamp (computed on-demand with persistent caching)"""
         if self.df_market_state is None or self.current_index >= len(self.df_market_state):
             return None
             
@@ -1010,10 +1037,26 @@ class MarketSimulator:
         row = self.df_market_state.iloc[self.current_index]
         timestamp = row.name
         
-        # Check if features already computed for this timestamp
+        # Check if features already computed in memory for this timestamp
         if not row.get('features_computed', False):
-            # Compute features on-demand
+            # Check persistent cache first
+            cached_features = self.feature_cache_manager.get_cached_features(timestamp)
+            
+            if cached_features is not None:
+                # Load from persistent cache
+
+                # Update the DataFrame with cached features
+                self.df_market_state.at[timestamp, 'hf_features'] = cached_features.get('hf', np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)))
+                self.df_market_state.at[timestamp, 'mf_features'] = cached_features.get('mf', np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim)))
+                self.df_market_state.at[timestamp, 'lf_features'] = cached_features.get('lf', np.zeros((self.model_config.lf_seq_len, self.model_config.lf_feat_dim)))
+                self.df_market_state.at[timestamp, 'features_computed'] = True
+                
+                return cached_features
+            
+            # Compute features on-demand (cache miss)
             try:
+                self.logger.debug(f"DEBUG: Computing features on-demand for {timestamp}")
+                
                 # Build windows for this timestamp
                 self.logger.debug(f"DEBUG: Building HF window for {timestamp}")
                 hf_window = self._build_hf_window_with_warmup(timestamp)
@@ -1051,6 +1094,11 @@ class MarketSimulator:
                 features = self.feature_manager.extract_features(context)
                 self.logger.debug(f"DEBUG: Features extracted successfully")
                 
+                # Cache the newly computed features
+                if features is not None:
+                    self.feature_cache_manager.cache_features(timestamp, features)
+                    self.logger.debug(f"DEBUG: Features cached for {timestamp}")
+                
                 # Update the DataFrame with computed features
                 self.df_market_state.at[timestamp, 'hf_features'] = features.get('hf', np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)))
                 self.df_market_state.at[timestamp, 'mf_features'] = features.get('mf', np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim)))
@@ -1071,7 +1119,7 @@ class MarketSimulator:
                     # Static features have been moved to lf branch
                 }
         
-        # Features already computed - return cached values
+        # Features already computed in memory - return cached values
         return {
             'hf': row['hf_features'],
             'mf': row['mf_features'],

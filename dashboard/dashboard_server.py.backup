@@ -170,8 +170,9 @@ class DashboardServer:
                 'fontSize': '12px'
             }),
             
-            # Auto-refresh interval
-            dcc.Interval(id='interval-component', interval=1000, n_intervals=0)  # 1s refresh (was 500ms)
+            # Auto-refresh intervals with different frequencies
+            dcc.Interval(id='interval-fast', interval=1000, n_intervals=0),  # 1s for metrics
+            dcc.Interval(id='interval-charts', interval=2000, n_intervals=0)  # 2s for charts
             
         ], style={'backgroundColor': DARK_THEME['bg_primary'], 'minHeight': '100vh'})
         
@@ -187,6 +188,7 @@ class DashboardServer:
     def _setup_callbacks(self):
         """Setup all dashboard callbacks"""
         
+        # Fast metrics callback (1s refresh)
         @self.app.callback(
             [Output('header-info', 'children'),
              Output('session-time', 'children'),
@@ -201,12 +203,11 @@ class DashboardServer:
              Output('ppo-metrics-content', 'children'),
              Output('reward-table-container', 'children'),
              Output('env-content', 'children'),
-             Output('candlestick-chart', 'figure'),
              Output('performance-footer', 'children')],
-            Input('interval-component', 'n_intervals')
+            Input('interval-fast', 'n_intervals')
         )
-        def update_dashboard(n):
-            """Main update callback"""
+        def update_dashboard_metrics(n):
+            """Fast metrics update callback (1s refresh)"""
             state = dashboard_state.get_state()
             
             # Calculate session time
@@ -220,6 +221,175 @@ class DashboardServer:
             if state.current_momentum_day_date:
                 momentum_day_info = f" | Day: {state.current_momentum_day_date} (Q: {state.current_momentum_day_quality:.2f})"
             header_info = f"Model: {state.model_name} | Symbol: {state.symbol}{momentum_day_info}"
+            
+            # Market info
+            spread = state.ask_price - state.bid_price
+            ny_time = getattr(state, 'ny_time', datetime.now().strftime('%H:%M:%S'))
+            trading_hours = getattr(state, 'trading_hours', 'MARKET')
+            market_info = html.Div([
+                self._info_row("Time", ny_time),
+                self._info_row("Session", trading_hours, color=DARK_THEME['accent_orange']),
+                self._info_row("Price", f"${state.current_price:.2f}", color=DARK_THEME['accent_blue']),
+                self._info_row("Bid", f"${state.bid_price:.2f}"),
+                self._info_row("Ask", f"${state.ask_price:.2f}"),
+                self._info_row("Spread", f"${spread:.3f}"),
+                self._info_row("Volume", f"{state.volume:,}"),
+            ])
+            
+            # Position info
+            position_direction = state.position_side if isinstance(state.position_side, str) else (state.position_side.value if state.position_side else "FLAT")
+            position_color = (DARK_THEME['accent_green'] if position_direction == "LONG" 
+                            else DARK_THEME['accent_red'] if position_direction == "SHORT" 
+                            else DARK_THEME['text_secondary'])
+            
+            # Calculate market value from position qty and current price
+            market_value = state.position_qty * state.current_price if state.position_qty > 0 else 0.0
+            
+            position_info = html.Div([
+                self._info_row("Position", position_direction, color=position_color),
+                self._info_row("Qty", f"{state.position_qty:,}"),
+                self._info_row("Avg Price", f"${state.avg_entry_price:.2f}"),
+                self._info_row("Market Val", f"${market_value:.2f}"),
+            ])
+            
+            # Portfolio info
+            session_pnl_color = DARK_THEME['accent_green'] if state.session_pnl >= 0 else DARK_THEME['accent_red']
+            unrealized_pnl_color = DARK_THEME['accent_green'] if state.unrealized_pnl >= 0 else DARK_THEME['accent_red']
+            portfolio_info = html.Div([
+                self._info_row("Cash", f"${state.cash_balance:.2f}"),
+                self._info_row("Equity", f"${state.total_equity:.2f}"),
+                self._info_row("Session P&L", f"${state.session_pnl:.2f}", color=session_pnl_color),
+                self._info_row("Unrealized P&L", f"${state.unrealized_pnl:.2f}", color=unrealized_pnl_color),
+            ])
+            
+            # Recent trades table (completed trades only)
+            if state.recent_trades:
+                trades_df = pd.DataFrame(list(state.recent_trades)[-10:])  # Last 10 trades
+                
+                # Convert any enum values to strings for JSON serialization
+                trades_data = trades_df.to_dict('records')
+                for trade in trades_data:
+                    for key, value in trade.items():
+                        if hasattr(value, 'value'):  # Check if it's an enum
+                            trade[key] = value.value
+                
+                trades_table = dash_table.DataTable(
+                    data=trades_data,
+                    columns=[
+                        {'name': 'Entry', 'id': 'entry_time'},
+                        {'name': 'Exit', 'id': 'exit_time'},
+                        {'name': 'Side', 'id': 'side'},
+                        {'name': 'Qty', 'id': 'quantity'},
+                        {'name': 'Entry $', 'id': 'entry_price', 'type': 'numeric', 'format': {'specifier': '$.3f'}},
+                        {'name': 'Exit $', 'id': 'exit_price', 'type': 'numeric', 'format': {'specifier': '$.3f'}},
+                        {'name': 'P&L', 'id': 'pnl', 'type': 'numeric', 'format': {'specifier': '$.2f'}},
+                        {'name': 'Hold', 'id': 'hold_time'},
+                        {'name': 'Status', 'id': 'status'}
+                    ],
+                    style_cell={
+                        'backgroundColor': DARK_THEME['bg_tertiary'],
+                        'color': DARK_THEME['text_primary'],
+                        'border': f"1px solid {DARK_THEME['border']}"
+                    },
+                    style_data_conditional=[
+                        {
+                            'if': {'column_id': 'pnl', 'filter_query': '{pnl} > 0'},
+                            'color': DARK_THEME['accent_green']
+                        },
+                        {
+                            'if': {'column_id': 'pnl', 'filter_query': '{pnl} < 0'},
+                            'color': DARK_THEME['accent_red']
+                        }
+                    ],
+                    page_size=10,
+                    style_table={'overflowX': 'auto', 'fontSize': '11px'}
+                )
+            else:
+                trades_table = html.Div("No trades yet", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'})
+            
+            # Trade counter
+            trade_counter_text = f"Trades: {getattr(state, 'session_total_trades', 0)}"
+            
+            # Actions content - recent 5 actions
+            recent_actions = state.recent_actions[-5:] if state.recent_actions else []
+            actions_rows = []
+            for i, action in enumerate(recent_actions):
+                actions_rows.append(html.Div([
+                    html.Span(action['action'], style={'color': DARK_THEME['accent_blue'], 'fontWeight': 'bold'}),
+                    html.Span(f"${action['price']:.2f}", style={'color': DARK_THEME['text_primary']}),
+                    html.Span(f"{action['size']:,}", style={'color': DARK_THEME['text_secondary']})
+                ], style={'display': 'flex', 'justifyContent': 'space-between', 'fontSize': '11px', 'marginBottom': '2px'}))
+            
+            actions_content = html.Div(actions_rows) if actions_rows else html.Div("No recent actions", 
+                                                                                   style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'})
+            
+            # Episode content
+            episode_content = html.Div([
+                self._info_row("Episode", f"{state.episode_number}"),
+                self._info_row("Step", f"{state.current_step}/{state.max_steps}"),
+                self._info_row("Reward", f"{state.cumulative_reward:.2f}"),
+                self._info_row("Last Step", f"{state.last_step_reward:.3f}"),
+            ])
+            
+            # Training content  
+            training_content = html.Div([
+                self._info_row("Mode", state.mode),
+                self._info_row("Stage", state.stage),
+                self._info_row("Updates", f"{state.updates}"),
+                self._info_row("Episodes", f"{state.total_episodes}"),
+            ])
+            
+            # PPO metrics content
+            ppo_content = html.Div([
+                self._info_row("Policy Loss", f"{state.policy_loss:.4f}"),
+                self._info_row("Value Loss", f"{state.value_loss:.4f}"),
+                self._info_row("Entropy", f"{state.entropy:.4f}"),
+                self._info_row("Clip Frac", f"{state.clip_fraction:.3f}"),
+            ])
+            
+            # Reward table - simplified
+            if state.reward_components:
+                reward_rows = []
+                for component, value in list(state.reward_components.items())[:10]:
+                    color = DARK_THEME['accent_green'] if value >= 0 else DARK_THEME['accent_red']
+                    reward_rows.append(html.Div([
+                        html.Span(component, style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'}),
+                        html.Span(f"{value:.3f}", style={'color': color, 'fontSize': '11px', 'fontWeight': 'bold'})
+                    ], style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '2px'}))
+                reward_table = html.Div(reward_rows)
+            else:
+                reward_table = html.Div("No reward data", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'})
+            
+            # Environment content
+            env_content = html.Div([
+                self._info_row("Momentum", f"{state.momentum_score:.3f}"),
+                self._info_row("Volatility", f"{state.volatility:.3f}"),
+                self._info_row("Quality", f"{state.data_quality:.3f}"),
+                self._info_row("Activity", f"{state.current_activity_score:.3f}"),
+            ])
+            
+            # Performance footer with eps/Hour moved here
+            eps_per_hour = getattr(state, 'episodes_per_hour', 0.0)
+            updates_per_hour = state.updates_per_second * 3600
+            footer = f"Steps/sec: {state.steps_per_second:.1f} | Updates/hr: {updates_per_hour:.1f} | Episodes/hr: {eps_per_hour:.1f}"
+            
+            return (header_info, session_time_str, market_info, position_info, portfolio_info,
+                   trades_table, trade_counter_text, actions_content, episode_content, training_content, ppo_content,
+                   reward_table, env_content, footer)
+            
+        # Chart callback (2s refresh)
+        @self.app.callback(
+            Output('candlestick-chart', 'figure'),
+            Input('interval-charts', 'n_intervals')
+        )
+        def update_charts(n):
+            """Chart update callback (2s refresh)"""
+            state = dashboard_state.get_state()
+            
+            # Only create and return the candlestick chart
+            candlestick_chart = self._create_price_chart(state)
+            
+            return candlestick_chart
             
             # Market info
             spread = state.ask_price - state.bid_price
