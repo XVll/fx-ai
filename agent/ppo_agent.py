@@ -242,21 +242,13 @@ class PPOTrainer:
         """Select next reset point based on curriculum range filtering."""
         # Get current reset points from environment
         if not hasattr(self.env, 'reset_points') or not self.env.reset_points:
-            print("DEBUG RESET SELECTION: No reset points available")
             return 0
             
         reset_points = self.env.reset_points
-        print(f"DEBUG RESET SELECTION: Total reset points: {len(reset_points)}")
-        
+
         # Filter reset points by curriculum stage ranges
         stage = self._get_curriculum_stage_info()
-        print(f"DEBUG RESET SELECTION: Curriculum stage: {stage.__class__.__name__ if stage else 'None'}")
-        print(f"DEBUG RESET SELECTION: Config available: {self.config is not None}")
-        if stage:
-            print(f"DEBUG RESET SELECTION: Stage ranges - roc: {stage.roc_range}, activity: {stage.activity_range}")
-        else:
-            print("DEBUG RESET SELECTION: ERROR - No stage config found!")
-        
+
         # Filter reset points using curriculum stage ranges
         range_filtered_indices = []
         if stage:
@@ -270,24 +262,17 @@ class PPOTrainer:
                 
                 if passes_roc and passes_activity:
                     range_filtered_indices.append(idx)
-                        
-                # Debug first few points
-                if idx < 3:
-                    print(f"DEBUG RESET SELECTION: Point {idx} - roc: {roc_score:.3f}, act: {activity_score:.3f} -> roc_pass: {passes_roc}, act_pass: {passes_activity}")
         else:
             # Fallback if no stage config - use all points
             range_filtered_indices = list(range(len(reset_points)))
         
-        print(f"DEBUG RESET SELECTION: Points passing range filter: {len(range_filtered_indices)} out of {len(reset_points)}")
-        
+
         if reset_points:
             sample_count = min(3, len(reset_points))
             for i in range(sample_count):
                 rp = reset_points[i]
-                print(f"DEBUG RESET SELECTION: Point {i} scores - roc: {rp.get('roc_score', 0):.3f}, act: {rp.get('activity_score', 0):.3f}")
-        
-        print(f"DEBUG RESET SELECTION: Final filtered: {len(range_filtered_indices)} out of {len(reset_points)}")
-        
+
+
         # Use range filtered indices
         quality_filtered_indices = range_filtered_indices
         
@@ -304,12 +289,9 @@ class PPOTrainer:
         available_indices = [i for i in quality_filtered_indices 
                             if i not in self.used_reset_point_indices]
         
-        print(f"DEBUG RESET SELECTION: Used indices: {self.used_reset_point_indices}")
-        print(f"DEBUG RESET SELECTION: Available indices: {len(available_indices)}")
-        
+
         if not available_indices:
             # Reset used indices when all quality-filtered points are exhausted
-            print("DEBUG RESET SELECTION: All points used, resetting used indices")
             self.used_reset_point_indices.clear()
             available_indices = quality_filtered_indices
             
@@ -334,8 +316,7 @@ class PPOTrainer:
         reset_point = reset_points[selected_idx]
         roc_score = reset_point.get('roc_score', 0)
         activity_score = reset_point.get('activity_score', 0)
-        print(f"DEBUG RESET SELECTION: Selected index {selected_idx}, timestamp: {reset_point.get('timestamp')}, roc: {roc_score:.3f}, activity: {activity_score:.3f}")
-        
+
         stage_name = stage.__class__.__name__ if stage else 'unknown'
         self.logger.debug(f"🎯 Selected reset point {selected_idx} with ranges ROC:{stage.roc_range if stage else 'N/A'}, Activity:{stage.activity_range if stage else 'N/A'}: "
                          f"{reset_point.get('timestamp', 'unknown')} "
@@ -347,9 +328,7 @@ class PPOTrainer:
             points_used = len(self.used_reset_point_indices)
             points_remaining = total_available - points_used
             
-            print(f"DEBUG RESET TRACKING: Emitting reset_point_selection event")
-            print(f"DEBUG RESET TRACKING: total_available: {total_available}, points_used: {points_used}, points_remaining: {points_remaining}")
-            
+
             reset_point_tracking = {
                 'selected_index': selected_idx,
                 'selected_timestamp': str(reset_point.get('timestamp', 'unknown')),
@@ -363,8 +342,7 @@ class PPOTrainer:
                 'curriculum_stage': stage_name
             }
             self.metrics.metrics_manager.emit_event('reset_point_selection', reset_point_tracking)
-            print(f"DEBUG RESET TRACKING: Event emitted with data: {reset_point_tracking}")
-        
+
         return selected_idx
 
     def _get_curriculum_stage_info(self):
@@ -423,29 +401,24 @@ class PPOTrainer:
             next_stage_name = ""
             current_stage_name = ""
             total_episodes = self.global_episode_counter
-            print(f"DEBUG CURRICULUM: Current episodes: {total_episodes}")
-            
+
             if total_episodes < 2000:
                 episodes_to_next_stage = 2000 - total_episodes
                 next_stage_name = "Intermediate"
                 current_stage_name = "Beginner"
-                print(f"DEBUG CURRICULUM: Stage 1 - {episodes_to_next_stage} episodes to {next_stage_name}")
             elif total_episodes < 5000:
                 episodes_to_next_stage = 5000 - total_episodes
                 next_stage_name = "Advanced"
                 current_stage_name = "Intermediate"
-                print(f"DEBUG CURRICULUM: Stage 2 - {episodes_to_next_stage} episodes to {next_stage_name}")
             elif total_episodes < 8000:
                 episodes_to_next_stage = 8000 - total_episodes
                 next_stage_name = "Specialization"
                 current_stage_name = "Advanced"
-                print(f"DEBUG CURRICULUM: Stage 3 - {episodes_to_next_stage} episodes to {next_stage_name}")
             else:
                 episodes_to_next_stage = 0
                 next_stage_name = "Maximum"
                 current_stage_name = "Specialization"
-                print(f"DEBUG CURRICULUM: Stage 4 - Maximum stage reached")
-                
+
             curriculum_detail = {
                 'current_stage': current_stage_name,
                 'roc_range': stage.roc_range if stage else [0.0, 1.0],
@@ -562,9 +535,7 @@ class PPOTrainer:
                     cycles_remaining = self.episodes_per_day - self.reset_point_cycles_completed
                     progress_pct = (self.reset_point_cycles_completed / self.episodes_per_day) * 100
                     
-                    print(f"DEBUG CYCLE TRACKING: Emitting cycle_completion event")
-                    print(f"DEBUG CYCLE TRACKING: cycles_completed: {self.reset_point_cycles_completed}, target: {self.episodes_per_day}, remaining: {cycles_remaining}, progress: {progress_pct:.1f}%")
-                    
+
                     cycle_tracking = {
                         'cycles_completed': self.reset_point_cycles_completed,
                         'target_cycles_per_day': self.episodes_per_day,
@@ -574,8 +545,7 @@ class PPOTrainer:
                         'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown'
                     }
                     self.metrics.metrics_manager.emit_event('cycle_completion', cycle_tracking)
-                    print(f"DEBUG CYCLE TRACKING: Event emitted with data: {cycle_tracking}")
-            
+
             # Note: momentum day progress tracking is done via metrics, 
             # reset points data is only sent on actual day changes
             

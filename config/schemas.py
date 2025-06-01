@@ -182,7 +182,7 @@ class DataConfig(BaseModel):
     preload_days: int = Field(default=2, description="Days to preload for session features")
     
     # Index configuration
-    index_dir: str = Field(default="indices", description="Directory for momentum indices")
+    index_dir: str = Field(default="cache/indices", description="Directory for momentum indices")
     auto_build_index: bool = Field(default=True, description="Auto-build index if missing")
 
 

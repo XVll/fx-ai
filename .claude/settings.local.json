@@ -56,7 +56,9 @@
       "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 poetry run pytest tests/test_market_simulator.py::TestMarketSimulatorState -v)",
       "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 rg \"trades.*table|DataTable.*data\" /Users/fx/Repositories/FxAIv2/dashboard/ -A 10 -B 5)",
       "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 rg -n \"# Recent trades table\" /Users/fx/Repositories/FxAIv2/dashboard/dashboard_server.py -A 30)",
-      "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 rg \"PositionSideEnum\" /Users/fx/Repositories/FxAIv2/simulators/ -A 3 -B 3)"
+      "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 rg \"PositionSideEnum\" /Users/fx/Repositories/FxAIv2/simulators/ -A 3 -B 3)",
+      "Bash(cp:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": []
   },
