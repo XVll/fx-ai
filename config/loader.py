@@ -98,10 +98,12 @@ class ConfigLoader:
             enabled_components.append(f"holding_penalty (coeff: {config.env.reward.holding_penalty_coefficient})")
         if config.env.reward.enable_drawdown_penalty:
             enabled_components.append(f"drawdown_penalty (coeff: {config.env.reward.drawdown_penalty_coefficient})")
-        if config.env.reward.enable_action_penalty:
-            enabled_components.append(f"action_penalty (coeff: {config.env.reward.action_penalty_coefficient})")
-        if config.env.reward.enable_quick_profit_bonus:
-            enabled_components.append(f"quick_profit_bonus (coeff: {config.env.reward.quick_profit_bonus_coefficient})")
+        if config.env.reward.enable_profit_giveback_penalty:
+            enabled_components.append(f"profit_giveback_penalty (coeff: {config.env.reward.profit_giveback_penalty_coefficient})")
+        if config.env.reward.enable_max_drawdown_penalty:
+            enabled_components.append(f"max_drawdown_penalty (coeff: {config.env.reward.max_drawdown_penalty_coefficient})")
+        if config.env.reward.enable_profit_closing_bonus:
+            enabled_components.append(f"profit_closing_bonus (coeff: {config.env.reward.profit_closing_bonus_coefficient})")
         enabled_components.append(f"bankruptcy_penalty (coeff: {config.env.reward.bankruptcy_penalty_coefficient})")
         
         self.logger.info(f"Enabled reward components: {', '.join(enabled_components)}")

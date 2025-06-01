@@ -557,9 +557,10 @@ class DashboardServer:
             all_reward_components = {
                 'pnl': 'foundational',
                 'holding_penalty': 'shaping',
-                'action_penalty': 'shaping',
-                'quick_profit_bonus': 'shaping',
                 'drawdown_penalty': 'shaping',
+                'profit_giveback_penalty': 'shaping',
+                'max_drawdown_penalty': 'shaping',
+                'profit_closing_bonus': 'shaping',
                 'bankruptcy_penalty': 'terminal'
             }
             

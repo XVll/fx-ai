@@ -1,7 +1,6 @@
 # rewards/components.py - Percentage-based reward component implementations
 
 from typing import Any, Dict, Tuple
-from collections import deque
 
 from rewards.core import RewardComponent, RewardMetadata, RewardState, RewardType
 from simulators.portfolio_simulator import PositionSideEnum
@@ -72,7 +71,7 @@ class HoldingTimePenalty(RewardComponent):
             return 0.0, {'has_position': False}
         
         # Get configuration
-        max_holding_time = self.config.get('max_holding_time_steps', 60)
+        max_holding_time = self.config.get('max_holding_time_steps', 180)
         holding_coefficient = self.config.get('holding_penalty_coefficient', 2.0)
         
         # Calculate penalty based on excessive holding time
@@ -131,96 +130,135 @@ class DrawdownPenalty(RewardComponent):
         return penalty, diagnostics
 
 
-class ActionPenalty(RewardComponent):
-    """Penalty for excessive trading actions"""
+
+
+class ProfitGivebackPenalty(RewardComponent):
+    """Penalty for giving back MFE (Maximum Favorable Excursion) profits"""
     
-    def __init__(self, config: Dict[str, Any], logger=None):
-        super().__init__(config, logger)
-        self.action_count = 0
-        self.action_history = deque(maxlen=100)  # Track last 100 actions
-        
     def _get_metadata(self) -> RewardMetadata:
         return RewardMetadata(
-            name="action_penalty",
+            name="profit_giveback_penalty",
             type=RewardType.SHAPING,
-            description="Penalty for excessive trading frequency",
+            description="Penalty for giving back maximum favorable excursion profits",
             is_penalty=True
         )
     
     def calculate(self, state: RewardState) -> Tuple[float, Dict[str, Any]]:
         penalty = 0.0
         
-        # Check if a trading action was taken (not HOLD)
-        action_type = state.decoded_action.get('type', 'hold')
-        is_trading_action = action_type not in ['hold', 'HOLD']
+        # Check if we have an open position with MFE data
+        max_unrealized_pnl = state.current_trade_max_unrealized_pnl
+        current_unrealized_pnl = state.portfolio_next.get('unrealized_pnl', 0.0)
         
-        if is_trading_action:
-            self.action_count += 1
-            self.action_history.append(state.step_count)
+        if max_unrealized_pnl is not None and max_unrealized_pnl > 0:
+            # Calculate how much profit has been given back
+            profit_giveback = max_unrealized_pnl - current_unrealized_pnl
             
-            # Calculate recent action frequency
-            recent_window = 50  # Look at last 50 steps
-            recent_actions = sum(1 for step in self.action_history 
-                               if state.step_count - step <= recent_window)
-            
-            # Penalty if too many actions in recent window
-            max_actions_in_window = 5  # Max 5 actions per 50 steps
-            if recent_actions > max_actions_in_window:
-                excess_actions = recent_actions - max_actions_in_window
-                action_coefficient = self.config.get('action_penalty_coefficient', 1.0)
-                penalty = -action_coefficient * (excess_actions / max_actions_in_window)
+            if profit_giveback > 0:
+                # Calculate giveback ratio
+                giveback_ratio = profit_giveback / max_unrealized_pnl
+                
+                # Apply penalty if significant giveback (>30%)
+                giveback_threshold = self.config.get('profit_giveback_threshold', 0.3)
+                if giveback_ratio > giveback_threshold:
+                    excess_giveback = giveback_ratio - giveback_threshold
+                    
+                    # Scale penalty by account value for percentage-based approach
+                    account_value = state.portfolio_next.get('total_equity', 25000.0)
+                    profit_percentage = profit_giveback / account_value if account_value > 0 else 0.0
+                    
+                    coefficient = self.config.get('profit_giveback_penalty_coefficient', 10.0)
+                    penalty = -profit_percentage * coefficient * excess_giveback
         
         diagnostics = {
-            'is_trading_action': is_trading_action,
-            'total_actions': self.action_count,
-            'recent_actions': len([s for s in self.action_history if state.step_count - s <= 50]),
-            'action_type': str(action_type)
+            'max_unrealized_pnl': max_unrealized_pnl or 0.0,
+            'current_unrealized_pnl': current_unrealized_pnl,
+            'profit_giveback': max_unrealized_pnl - current_unrealized_pnl if max_unrealized_pnl else 0.0,
+            'giveback_ratio': (max_unrealized_pnl - current_unrealized_pnl) / max_unrealized_pnl if max_unrealized_pnl and max_unrealized_pnl > 0 else 0.0
         }
         
         return penalty, diagnostics
 
 
-class QuickProfitBonus(RewardComponent):
-    """Bonus for taking profits quickly"""
+class MaxDrawdownPenalty(RewardComponent):
+    """Penalty for exceeding MAE (Maximum Adverse Excursion) thresholds"""
     
     def _get_metadata(self) -> RewardMetadata:
         return RewardMetadata(
-            name="quick_profit_bonus",
+            name="max_drawdown_penalty",
             type=RewardType.SHAPING,
-            description="Bonus for capturing profits quickly"
+            description="Penalty for exceeding maximum adverse excursion thresholds",
+            is_penalty=True
+        )
+    
+    def calculate(self, state: RewardState) -> Tuple[float, Dict[str, Any]]:
+        penalty = 0.0
+        
+        # Check if we have MAE data
+        min_unrealized_pnl = state.current_trade_min_unrealized_pnl
+        
+        if min_unrealized_pnl is not None and min_unrealized_pnl < 0:
+            # Calculate loss as percentage of account
+            account_value = state.portfolio_next.get('total_equity', 25000.0)
+            loss_percentage = abs(min_unrealized_pnl) / account_value if account_value > 0 else 0.0
+            
+            # Apply escalating penalty for larger MAE
+            mae_threshold = self.config.get('max_drawdown_threshold_percent', 0.01)  # 1% of account
+            
+            if loss_percentage > mae_threshold:
+                excess_loss = loss_percentage - mae_threshold
+                coefficient = self.config.get('max_drawdown_penalty_coefficient', 15.0)
+                
+                # Exponential penalty for larger losses
+                penalty = -coefficient * (excess_loss ** 1.5)
+        
+        diagnostics = {
+            'min_unrealized_pnl': min_unrealized_pnl or 0.0,
+            'loss_percentage': abs(min_unrealized_pnl) / state.portfolio_next.get('total_equity', 25000.0) * 100 if min_unrealized_pnl and min_unrealized_pnl < 0 else 0.0,
+            'mae_exceeded': min_unrealized_pnl is not None and abs(min_unrealized_pnl) / state.portfolio_next.get('total_equity', 25000.0) > self.config.get('max_drawdown_threshold_percent', 0.01) if min_unrealized_pnl else False
+        }
+        
+        return penalty, diagnostics
+
+
+class ProfitClosingBonus(RewardComponent):
+    """Bonus for closing profitable trades, scales with profit size"""
+    
+    def _get_metadata(self) -> RewardMetadata:
+        return RewardMetadata(
+            name="profit_closing_bonus",
+            type=RewardType.SHAPING,
+            description="Bonus for closing profitable trades, scales with profit size"
         )
     
     def calculate(self, state: RewardState) -> Tuple[float, Dict[str, Any]]:
         bonus = 0.0
+        profitable_closes = 0
         
-        # Check if we closed a profitable position
+        # Check if we closed profitable positions
         for fill in state.fill_details:
             if fill.closes_position:
                 realized_pnl = fill.realized_pnl or 0.0
                 
                 if realized_pnl > 0:  # Profitable trade
-                    # Check if it was quick
-                    quick_time_threshold = self.config.get('quick_profit_time_threshold', 30)
+                    profitable_closes += 1
                     
-                    if state.current_trade_duration <= quick_time_threshold:
-                        # Calculate bonus as percentage of account
-                        account_value = state.portfolio_next.get('total_equity', 25000.0)
-                        profit_percentage = realized_pnl / account_value if account_value > 0 else 0.0
-                        
-                        # Scale by coefficient and time factor
-                        quick_coefficient = self.config.get('quick_profit_bonus_coefficient', 10.0)
-                        time_factor = 1.0 - (state.current_trade_duration / quick_time_threshold)
-                        bonus += profit_percentage * quick_coefficient * time_factor
+                    # Calculate bonus as percentage of account
+                    account_value = state.portfolio_next.get('total_equity', 25000.0)
+                    profit_percentage = realized_pnl / account_value if account_value > 0 else 0.0
+                    
+                    # Scale bonus with profit size (quadratic for larger profits)
+                    coefficient = self.config.get('profit_closing_bonus_coefficient', 5.0)
+                    bonus += coefficient * (profit_percentage ** 1.2)  # Slightly superlinear
         
         diagnostics = {
             'trades_closed': len([f for f in state.fill_details if f.closes_position]),
-            'profitable_closes': len([f for f in state.fill_details 
-                                    if f.closes_position and (f.realized_pnl or 0) > 0]),
-            'trade_duration': state.current_trade_duration,
-            'bonus_awarded': bonus > 0
+            'profitable_closes': profitable_closes,
+            'total_bonus': bonus
         }
         
         return bonus, diagnostics
+
 
 
 class BankruptcyPenalty(RewardComponent):

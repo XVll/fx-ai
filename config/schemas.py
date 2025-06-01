@@ -52,7 +52,7 @@ class ModelConfig(BaseModel):
     lf_seq_len: int = 30   # Low-frequency sequence length (daily/session timeframe)
     lf_feat_dim: int = 19  # LF features - original + LULD + adaptive + session/time context (moved from misnamed "static")
     portfolio_seq_len: int = 5  # Portfolio history length
-    portfolio_feat_dim: int = 5  # Portfolio features (position, P&L, risk metrics)
+    portfolio_feat_dim: int = 10  # Portfolio features (position, P&L, risk metrics, MFE/MAE)
     
     # Action space - Single source of truth
     action_dim: List[int] = Field(default=[3, 4], description="[action_types, position_sizes]")
@@ -79,22 +79,25 @@ class RewardConfig(BaseModel):
     drawdown_penalty_coefficient: float = Field(default=5.0, description="Drawdown penalty: 1% drawdown = -coefficient penalty") 
     bankruptcy_penalty_coefficient: float = Field(default=50.0, description="Bankruptcy penalty: fixed large penalty")
     
-    # Action efficiency penalties
-    action_penalty_coefficient: float = Field(default=1.0, description="Action penalty: excessive action = -coefficient penalty")
+    # MFE/MAE based penalties
+    profit_giveback_penalty_coefficient: float = Field(default=2.0, description="Penalty for giving back MFE profits (reduced from 10.0)")
+    profit_giveback_threshold: float = Field(default=0.3, description="Threshold for profit giveback penalty (30%)")
+    max_drawdown_penalty_coefficient: float = Field(default=15.0, description="Penalty for exceeding MAE thresholds")
+    max_drawdown_threshold_percent: float = Field(default=0.01, description="MAE threshold as % of account (1%)")
     
-    # Trading pattern bonuses  
-    quick_profit_bonus_coefficient: float = Field(default=10.0, description="Quick profit bonus: quick profitable exit = +coefficient bonus")
+    # Trading behavior bonuses
+    profit_closing_bonus_coefficient: float = Field(default=50.0, description="Bonus for closing profitable trades, scales with profit")
     
     # Thresholds and limits
-    max_holding_time_steps: int = Field(default=60, description="Maximum holding time before penalties")
-    quick_profit_time_threshold: int = Field(default=30, description="Time threshold for quick profit bonus")
+    max_holding_time_steps: int = Field(default=180, description="Maximum holding time before penalties (3 minutes)")
     
     # Component enable/disable flags
     enable_pnl_reward: bool = Field(default=True, description="Enable P&L reward component")
     enable_holding_penalty: bool = Field(default=True, description="Enable holding time penalty")
-    enable_drawdown_penalty: bool = Field(default=True, description="Enable drawdown penalty")  
-    enable_action_penalty: bool = Field(default=True, description="Enable action frequency penalty")
-    enable_quick_profit_bonus: bool = Field(default=True, description="Enable quick profit bonus")
+    enable_drawdown_penalty: bool = Field(default=True, description="Enable drawdown penalty")
+    enable_profit_giveback_penalty: bool = Field(default=True, description="Enable profit giveback penalty (MFE protection)")
+    enable_max_drawdown_penalty: bool = Field(default=True, description="Enable max drawdown penalty (MAE protection)")
+    enable_profit_closing_bonus: bool = Field(default=True, description="Enable profit closing bonus")
 
 
 class EnvConfig(BaseModel):

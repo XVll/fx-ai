@@ -10,8 +10,9 @@ from rewards.components import (
     PnLReward,
     HoldingTimePenalty,
     DrawdownPenalty,
-    ActionPenalty,
-    QuickProfitBonus,
+    ProfitGivebackPenalty,
+    MaxDrawdownPenalty,
+    ProfitClosingBonus,
     BankruptcyPenalty
 )
 from simulators.portfolio_simulator import PortfolioState, FillDetails, PositionSideEnum
@@ -84,22 +85,31 @@ class RewardSystem:
             components.append(DrawdownPenalty(drawdown_config, self.logger))
             self.logger.info(f"Enabled drawdown penalty (coefficient: {self.config.drawdown_penalty_coefficient})")
         
-        # Action frequency penalty
-        if self.config.enable_action_penalty:
-            action_config = {
-                'action_penalty_coefficient': self.config.action_penalty_coefficient
+        # Profit giveback penalty (MFE protection)
+        if self.config.enable_profit_giveback_penalty:
+            profit_giveback_config = {
+                'profit_giveback_penalty_coefficient': self.config.profit_giveback_penalty_coefficient,
+                'profit_giveback_threshold': self.config.profit_giveback_threshold
             }
-            components.append(ActionPenalty(action_config, self.logger))
-            self.logger.info(f"Enabled action penalty (coefficient: {self.config.action_penalty_coefficient})")
+            components.append(ProfitGivebackPenalty(profit_giveback_config, self.logger))
+            self.logger.info(f"Enabled profit giveback penalty (coefficient: {self.config.profit_giveback_penalty_coefficient})")
         
-        # Quick profit bonus
-        if self.config.enable_quick_profit_bonus:
-            quick_config = {
-                'quick_profit_bonus_coefficient': self.config.quick_profit_bonus_coefficient,
-                'quick_profit_time_threshold': self.config.quick_profit_time_threshold
+        # Max drawdown penalty (MAE protection)
+        if self.config.enable_max_drawdown_penalty:
+            max_drawdown_config = {
+                'max_drawdown_penalty_coefficient': self.config.max_drawdown_penalty_coefficient,
+                'max_drawdown_threshold_percent': self.config.max_drawdown_threshold_percent
             }
-            components.append(QuickProfitBonus(quick_config, self.logger))
-            self.logger.info(f"Enabled quick profit bonus (coefficient: {self.config.quick_profit_bonus_coefficient})")
+            components.append(MaxDrawdownPenalty(max_drawdown_config, self.logger))
+            self.logger.info(f"Enabled max drawdown penalty (coefficient: {self.config.max_drawdown_penalty_coefficient})")
+        
+        # Profit closing bonus
+        if self.config.enable_profit_closing_bonus:
+            profit_closing_config = {
+                'profit_closing_bonus_coefficient': self.config.profit_closing_bonus_coefficient
+            }
+            components.append(ProfitClosingBonus(profit_closing_config, self.logger))
+            self.logger.info(f"Enabled profit closing bonus (coefficient: {self.config.profit_closing_bonus_coefficient})")
         
         # Bankruptcy penalty (always enabled - safety mechanism)
         bankruptcy_config = {
@@ -116,6 +126,11 @@ class RewardSystem:
         self.current_trade = None
         self.episode_total_reward = 0.0
         self.component_totals = {}
+        
+        # Reset components that have state
+        for component in self.components:
+            if hasattr(component, 'reset'):
+                component.reset()
         
     def _update_trade_tracking(self, state: RewardState):
         """Update trade tracking for MAE/MFE"""
