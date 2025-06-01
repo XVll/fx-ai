@@ -79,7 +79,7 @@ class DashboardServer:
             
             # Main content area with 4-column grid
             html.Div([
-                # Row 1: 4-column layout - Market Info, Position, Portfolio, Actions
+                # Row 1: 4-column layout - Market Info, Portfolio & Position, Performance Metrics, Actions
                 html.Div([
                     # Market Info Card
                     html.Div([
@@ -87,16 +87,16 @@ class DashboardServer:
                         html.Div(id='market-info-content')
                     ], style=self._card_style()),
                     
-                    # Position Card
+                    # Combined Portfolio & Position Card
                     html.Div([
-                        html.H4("Position", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
-                        html.Div(id='position-content')
+                        html.H4("Portfolio & Position", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                        html.Div(id='portfolio-position-content')
                     ], style=self._card_style()),
                     
-                    # Portfolio Card
+                    # Performance Metrics Card
                     html.Div([
-                        html.H4("Portfolio", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
-                        html.Div(id='portfolio-content')
+                        html.H4("Performance", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                        html.Div(id='performance-metrics-content')
                     ], style=self._card_style()),
                     
                     # Actions Card
@@ -191,8 +191,8 @@ class DashboardServer:
             [Output('header-info', 'children'),
              Output('session-time', 'children'),
              Output('market-info-content', 'children'),
-             Output('position-content', 'children'),
-             Output('portfolio-content', 'children'),
+             Output('portfolio-position-content', 'children'),
+             Output('performance-metrics-content', 'children'),
              Output('trades-table-container', 'children'),
              Output('trade-counter', 'children'),
              Output('actions-content', 'children'),
@@ -235,38 +235,68 @@ class DashboardServer:
                 self._info_row("Volume", f"{state.volume:,}"),
             ])
             
-            # Position info
+            # Combined Portfolio & Position info
             if state.position_side != "FLAT":
                 position_pnl = getattr(state, 'position_pnl_dollar', 0.0)
                 pnl_color = DARK_THEME['accent_green'] if position_pnl >= 0 else DARK_THEME['accent_red']
-                position_info = html.Div([
+                position_section = [
                     self._info_row("Side", state.position_side, color=DARK_THEME['accent_blue']),
                     self._info_row("Qty", f"{state.position_qty:,}"),
                     self._info_row("Entry", f"${state.avg_entry_price:.3f}"),
                     self._info_row("P&L $", f"${position_pnl:.2f}", color=pnl_color),
                     self._info_row("P&L %", f"{state.position_pnl_percent:.1f}%", color=pnl_color),
-                    self._info_row("Hold Time", f"{getattr(state, 'position_hold_time_minutes', 0):.0f}m"),
-                ])
+                    self._info_row("Hold Time", f"{getattr(state, 'position_hold_time_seconds', 0)//60:.0f}m"),
+                ]
             else:
-                position_info = html.Div([
+                position_section = [
                     self._info_row("Side", "FLAT", color=DARK_THEME['text_muted']),
                     self._info_row("Qty", "0"),
                     self._info_row("Entry", "-"),
                     self._info_row("P&L $", "$0.00"),
                     self._info_row("P&L %", "0.0%"),
                     self._info_row("Hold Time", "0m"),
-                ])
+                ]
             
-            # Portfolio info
             session_pnl_color = DARK_THEME['accent_green'] if state.session_pnl >= 0 else DARK_THEME['accent_red']
-            portfolio_info = html.Div([
+            portfolio_section = [
+                html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
                 self._info_row("Equity", f"${state.total_equity:.0f}"),
                 self._info_row("Cash", f"${state.cash_balance:.0f}"),
                 self._info_row("Session P&L", f"${state.session_pnl:.2f}", color=session_pnl_color),
                 self._info_row("Realized", f"${state.realized_pnl:.2f}"),
+            ]
+            
+            portfolio_position_info = html.Div(position_section + portfolio_section)
+            
+            # Performance Metrics info (moved from portfolio)
+            # Calculate profit factor and win/loss ratio
+            episode_wins = getattr(state, 'episode_winning_trades', 0)
+            episode_losses = getattr(state, 'episode_losing_trades', 0)
+            episode_total = episode_wins + episode_losses
+            session_wins = getattr(state, 'session_winning_trades', 0)
+            session_losses = getattr(state, 'session_losing_trades', 0)
+            session_total = session_wins + session_losses
+            
+            # Calculate win/loss ratios
+            episode_win_loss_ratio = episode_wins / episode_losses if episode_losses > 0 else float('inf') if episode_wins > 0 else 0
+            session_win_loss_ratio = session_wins / session_losses if session_losses > 0 else float('inf') if session_wins > 0 else 0
+            
+            # Display win/loss ratios
+            episode_wl_display = f"{episode_win_loss_ratio:.2f}" if episode_win_loss_ratio != float('inf') else "∞" if episode_wins > 0 else "0"
+            session_wl_display = f"{session_win_loss_ratio:.2f}" if session_win_loss_ratio != float('inf') else "∞" if session_wins > 0 else "0"
+            
+            # Calculate episode and session win rates
+            episode_win_rate = (episode_wins / episode_total * 100) if episode_total > 0 else 0
+            session_win_rate = state.win_rate * 100  # Convert to percentage
+            
+            performance_metrics_info = html.Div([
+                self._info_row("Ep Win Rate", f"{episode_win_rate:.0f}%"),
+                self._info_row("Sess Win Rate", f"{session_win_rate:.0f}%"),
                 self._info_row("Drawdown", f"{state.max_drawdown:.1%}", color=DARK_THEME['accent_orange']),
                 self._info_row("Sharpe", f"{state.sharpe_ratio:.2f}"),
-                self._info_row("Win Rate", f"{state.win_rate:.0%}"),
+                self._info_row("Ep W/L Ratio", episode_wl_display),
+                self._info_row("Sess W/L Ratio", session_wl_display),
+                self._info_row("Profit Factor", "N/A"),  # TODO: Calculate profit factor when available in state
             ])
             
             # Recent trades table (completed trades only)
@@ -375,15 +405,9 @@ class DashboardServer:
                     'Session %': f"{session_pct:.1f}%"
                 })
             
-            # Add invalid actions row
-            invalid_actions = getattr(state, 'invalid_actions', 0)
-            action_data.append({
-                'Action': 'INVALID',
-                'Episode': f"{invalid_actions}",
-                'Episode %': "—",
-                'Session': f"{invalid_actions}",
-                'Session %': "—"
-            })
+            # Get invalid actions from state
+            episode_invalid = getattr(state, 'episode_invalid_actions', 0)
+            session_invalid = getattr(state, 'session_invalid_actions', 0)
             
             actions_table = dash_table.DataTable(
                 data=action_data,
@@ -414,10 +438,6 @@ class DashboardServer:
                     {
                         'if': {'column_id': 'Action', 'filter_query': '{Action} = SELL'},
                         'color': DARK_THEME['accent_red']
-                    },
-                    {
-                        'if': {'column_id': 'Action', 'filter_query': '{Action} = INVALID'},
-                        'color': DARK_THEME['accent_orange']
                     }
                 ],
                 style_header={
@@ -429,7 +449,13 @@ class DashboardServer:
                 page_size=10
             )
             
-            actions_content = actions_table
+            # Add invalid actions as separate row below table
+            invalid_actions_row = html.Div([
+                html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
+                self._info_row("Invalid Actions", f"Ep: {episode_invalid} | Sess: {session_invalid}", color=DARK_THEME['accent_orange'])
+            ], style={'marginTop': '4px'})
+            
+            actions_content = html.Div([actions_table, invalid_actions_row])
             
             # Episode info - more compact
             progress = (state.current_step / state.max_steps * 100) if state.max_steps > 0 else 0
@@ -771,7 +797,7 @@ class DashboardServer:
             updates_per_hour = state.updates_per_second * 3600
             footer = f"Steps/sec: {state.steps_per_second:.1f} | Updates/hr: {updates_per_hour:.1f} | Episodes/hr: {eps_per_hour:.1f}"
             
-            return (header_info, session_time_str, market_info, position_info, portfolio_info,
+            return (header_info, session_time_str, market_info, portfolio_position_info, performance_metrics_info,
                    trades_table, trade_counter_text, actions_content, episode_content, training_content, ppo_content,
                    reward_table, env_content, candlestick_chart, footer)
             
@@ -814,7 +840,7 @@ class DashboardServer:
                     })
                 ])
             ]),
-            html.Div(text, style={'color': DARK_THEME['text_primary'], 'fontSize': '10px', 'textAlign': 'center'})
+            html.Div(text, style={'color': DARK_THEME['text_primary'], 'fontSize': '11px', 'textAlign': 'center'})
         ], style={'marginTop': '8px'})
     
     def _create_stage_progress_section(self, state) -> Optional[html.Div]:
@@ -879,7 +905,7 @@ class DashboardServer:
                     })
                 ])
             ]),
-            html.Div(text, style={'color': DARK_THEME['text_primary'], 'fontSize': '10px', 'textAlign': 'center'})
+            html.Div(text, style={'color': DARK_THEME['text_primary'], 'fontSize': '11px', 'textAlign': 'center'})
         ], style={'marginTop': '8px'})
         
     def _metric_with_sparkline(self, label: str, value: float, history: List[float]) -> html.Div:
