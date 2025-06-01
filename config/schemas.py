@@ -95,6 +95,10 @@ class RewardConfig(BaseModel):
     max_mae_threshold: float = Field(default=0.02, description="Maximum allowed MAE drawdown (2%)")
     min_gain_threshold: float = Field(default=0.01, description="Minimum gain required for clean trade bonus (1%)")
     
+    # Trading activity incentives
+    activity_bonus_per_trade: float = Field(default=0.1, description="Bonus for each trading action to encourage activity")
+    hold_penalty_per_step: float = Field(default=0.01, description="Small penalty per HOLD action to create opportunity cost")
+    
     # Thresholds and limits
     max_holding_time_steps: int = Field(default=180, description="Maximum holding time before penalties (3 minutes)")
     
@@ -106,6 +110,8 @@ class RewardConfig(BaseModel):
     enable_max_drawdown_penalty: bool = Field(default=True, description="Enable max drawdown penalty (MAE protection)")
     enable_profit_closing_bonus: bool = Field(default=True, description="Enable profit closing bonus")
     enable_clean_trade_bonus: bool = Field(default=True, description="Enable clean trade bonus")
+    enable_trading_activity_bonus: bool = Field(default=True, description="Enable trading activity bonus")
+    enable_inactivity_penalty: bool = Field(default=True, description="Enable inactivity penalty")
 
 
 class EnvConfig(BaseModel):

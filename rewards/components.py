@@ -367,6 +367,73 @@ class CleanTradeBonus(RewardComponent):
         return clean_bonus, trade_details
 
 
+class TradingActivityBonus(RewardComponent):
+    """Bonus for taking trading actions to encourage exploration"""
+    
+    def _get_metadata(self) -> RewardMetadata:
+        return RewardMetadata(
+            name="trading_activity_bonus",
+            type=RewardType.SHAPING,
+            description="Small bonus for executing BUY/SELL actions to encourage trading"
+        )
+    
+    def calculate(self, state: RewardState) -> Tuple[float, Dict[str, Any]]:
+        bonus = 0.0
+        trading_actions = 0
+        
+        # Check if any trading actions were taken this step
+        for fill in state.fill_details:
+            if fill.order_side in ['BUY', 'SELL']:
+                trading_actions += 1
+        
+        # Configuration
+        activity_bonus_per_trade = self.config.get('activity_bonus_per_trade', 0.1)
+        
+        # Give small bonus for each trading action
+        bonus = trading_actions * activity_bonus_per_trade
+        
+        diagnostics = {
+            'trading_actions_count': trading_actions,
+            'activity_bonus': bonus
+        }
+        
+        return bonus, diagnostics
+
+
+class InactivityPenalty(RewardComponent):
+    """Small penalty for HOLD actions to create opportunity cost"""
+    
+    def _get_metadata(self) -> RewardMetadata:
+        return RewardMetadata(
+            name="inactivity_penalty",
+            type=RewardType.SHAPING,
+            description="Small penalty for HOLD actions to encourage trading activity",
+            is_penalty=True
+        )
+    
+    def calculate(self, state: RewardState) -> Tuple[float, Dict[str, Any]]:
+        penalty = 0.0
+        is_hold_action = True
+        
+        # Check if any trading actions were taken this step
+        for fill in state.fill_details:
+            if fill.order_side in ['BUY', 'SELL']:
+                is_hold_action = False
+                break
+        
+        # If no trading action was taken, apply small penalty for holding
+        if is_hold_action:
+            hold_penalty_per_step = self.config.get('hold_penalty_per_step', 0.01)
+            penalty = -hold_penalty_per_step
+        
+        diagnostics = {
+            'is_hold_action': is_hold_action,
+            'hold_penalty': penalty
+        }
+        
+        return penalty, diagnostics
+
+
 class BankruptcyPenalty(RewardComponent):
     """Large penalty for bankruptcy or extreme losses"""
     
