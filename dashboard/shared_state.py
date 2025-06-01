@@ -156,6 +156,25 @@ class SharedDashboardState:
     
     # Reset points data for chart markers
     reset_points_data: List[Dict[str, Any]] = field(default_factory=list)
+    
+    # Enhanced reset point tracking
+    selected_reset_point_index: int = 0
+    selected_reset_point_timestamp: str = ""
+    total_available_points: int = 0
+    points_used_in_cycle: int = 0
+    points_remaining_in_cycle: int = 0
+    
+    # Cycle and day switching tracking
+    cycles_completed: int = 0
+    target_cycles_per_day: int = 10
+    cycles_remaining_for_day_switch: int = 10
+    day_switch_progress_pct: float = 0.0
+    
+    # Enhanced curriculum tracking
+    episodes_to_next_stage: int = 0
+    next_stage_name: str = ""
+    episodes_per_day_config: int = 10
+    curriculum_strategy: str = "quality_based"
 
 
 class DashboardStateManager:

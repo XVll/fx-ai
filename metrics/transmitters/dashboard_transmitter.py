@@ -51,7 +51,8 @@ class DashboardTransmitter(MetricTransmitter):
         self._supported_events = {
             'episode_end', 'momentum_day_change', 'curriculum_progress',
             'reward_components', 'reset_point_performance', 'trade_execution',
-            'training_update', 'ppo_metrics', 'episode_actions'
+            'training_update', 'ppo_metrics', 'episode_actions',
+            'reset_point_selection', 'cycle_completion', 'curriculum_detail'
         }
         
     def start(self, open_browser: bool = True):
@@ -336,6 +337,38 @@ class DashboardTransmitter(MetricTransmitter):
                 if reset_points:
                     dashboard_state.update_reset_points_data(reset_points)
                     print(f"DEBUG MOMENTUM: Updated {len(reset_points)} reset points")
+                    
+            elif event_name == 'reset_point_selection':
+                # Handle reset point selection tracking
+                reset_point_data = {
+                    'selected_reset_point_index': event_data.get('selected_index', 0),
+                    'selected_reset_point_timestamp': event_data.get('selected_timestamp', ''),
+                    'total_available_points': event_data.get('total_available_points', 0),
+                    'points_used_in_cycle': event_data.get('points_used_in_cycle', 0),
+                    'points_remaining_in_cycle': event_data.get('points_remaining_in_cycle', 0)
+                }
+                dashboard_state.update_metrics(reset_point_data)
+                
+            elif event_name == 'cycle_completion':
+                # Handle cycle completion tracking
+                cycle_data = {
+                    'cycles_completed': event_data.get('cycles_completed', 0),
+                    'target_cycles_per_day': event_data.get('target_cycles_per_day', 10),
+                    'cycles_remaining_for_day_switch': event_data.get('cycles_remaining_for_day_switch', 10),
+                    'day_switch_progress_pct': event_data.get('day_switch_progress_pct', 0.0),
+                    'episodes_on_current_day': event_data.get('episodes_on_current_day', 0)
+                }
+                dashboard_state.update_metrics(cycle_data)
+                
+            elif event_name == 'curriculum_detail':
+                # Handle enhanced curriculum tracking
+                curriculum_detail_data = {
+                    'episodes_to_next_stage': event_data.get('episodes_to_next_stage', 0),
+                    'next_stage_name': event_data.get('next_stage_name', ''),
+                    'episodes_per_day_config': event_data.get('episodes_per_day_config', 10),
+                    'curriculum_strategy': event_data.get('curriculum_strategy', 'quality_based')
+                }
+                dashboard_state.update_metrics(curriculum_detail_data)
                 
             # Other events can be handled as needed
                 

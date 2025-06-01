@@ -445,6 +445,22 @@ class PPOTrainer:
                          f"{reset_point.get('timestamp', 'unknown')} "
                          f"(direction: {direction_score:.3f}, roc: {roc_score:.3f}, activity: {activity_score:.3f})")
         
+        # Emit reset point selection tracking for dashboard
+        if hasattr(self.metrics, 'metrics_manager'):
+            reset_point_tracking = {
+                'selected_index': selected_idx,
+                'selected_timestamp': str(reset_point.get('timestamp', 'unknown')),
+                'total_available_points': len(quality_filtered_indices),
+                'points_used_in_cycle': len(self.used_reset_point_indices),
+                'points_remaining_in_cycle': len(quality_filtered_indices) - len(self.used_reset_point_indices),
+                'direction_score': direction_score,
+                'roc_score': roc_score,
+                'activity_score': activity_score,
+                'strategy_name': strategy_name,
+                'curriculum_stage': stage
+            }
+            self.metrics.metrics_manager.emit_event('reset_point_selection', reset_point_tracking)
+        
         return selected_idx
 
     def _get_curriculum_stage_info(self):
@@ -588,6 +604,18 @@ class PPOTrainer:
                 self.reset_point_cycles_completed += 1
                 self.used_reset_point_indices.clear()
                 self.logger.info(f"🔄 Completed cycle {self.reset_point_cycles_completed} through reset points")
+                
+                # Emit cycle completion tracking for dashboard
+                if hasattr(self.metrics, 'metrics_manager'):
+                    cycle_tracking = {
+                        'cycles_completed': self.reset_point_cycles_completed,
+                        'target_cycles_per_day': self.episodes_per_day,
+                        'cycles_remaining_for_day_switch': self.episodes_per_day - self.reset_point_cycles_completed,
+                        'episodes_on_current_day': self.episodes_completed_on_current_day,
+                        'day_switch_progress_pct': (self.reset_point_cycles_completed / self.episodes_per_day) * 100,
+                        'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown'
+                    }
+                    self.metrics.metrics_manager.emit_event('cycle_completion', cycle_tracking)
             
             # Note: momentum day progress tracking is done via metrics, 
             # reset points data is only sent on actual day changes
@@ -1270,6 +1298,36 @@ class PPOTrainer:
         
         # Emit initial curriculum progress
         self._emit_curriculum_progress()
+        
+        # Emit enhanced curriculum stage tracking for dashboard
+        if hasattr(self.metrics, 'metrics_manager'):
+            stage, strategy_name = self._get_curriculum_stage_info()
+            
+            # Calculate episodes needed for next stage
+            episodes_to_next_stage = 0
+            next_stage_name = ""
+            if self.global_episode_counter < 2000:
+                episodes_to_next_stage = 2000 - self.global_episode_counter
+                next_stage_name = "Intermediate"
+            elif self.global_episode_counter < 5000:
+                episodes_to_next_stage = 5000 - self.global_episode_counter
+                next_stage_name = "Advanced"
+            elif self.global_episode_counter < 8000:
+                episodes_to_next_stage = 8000 - self.global_episode_counter
+                next_stage_name = "Specialization"
+            else:
+                next_stage_name = "Maximum"
+                
+            curriculum_detail = {
+                'current_stage': stage,
+                'current_strategy': strategy_name,
+                'total_episodes': self.global_episode_counter,
+                'episodes_to_next_stage': episodes_to_next_stage,
+                'next_stage_name': next_stage_name,
+                'episodes_per_day_config': self.episodes_per_day,
+                'curriculum_strategy': self.curriculum_strategy
+            }
+            self.metrics.metrics_manager.emit_event('curriculum_detail', curriculum_detail)
 
         best_eval_reward = -float('inf')
 
