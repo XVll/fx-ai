@@ -311,9 +311,8 @@ class DataManager:
         return self.momentum_days_cache[mask].sort_values('activity_score', ascending=False)
         
     def get_reset_points(self, symbol: str, date: datetime, 
-                        min_roc: float = 0.0, min_activity: float = 0.0, 
-                        min_direction: float = 0.0) -> pd.DataFrame:
-        """Get reset points for a symbol on a specific date with 3-component filtering."""
+                        min_roc: float = 0.0, min_activity: float = 0.0) -> pd.DataFrame:
+        """Get reset points for a symbol on a specific date with 2-component filtering."""
         if self.reset_points_cache is None or self.reset_points_cache.empty:
             return pd.DataFrame()
             
@@ -331,8 +330,6 @@ class DataManager:
             mask &= self.reset_points_cache['roc_score'] >= min_roc
         if 'activity_score' in self.reset_points_cache.columns:
             mask &= self.reset_points_cache['activity_score'] >= min_activity
-        if 'direction_score' in self.reset_points_cache.columns:
-            mask &= np.abs(self.reset_points_cache['direction_score']) >= min_direction
             
         result = self.reset_points_cache[mask]
         

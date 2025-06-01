@@ -20,9 +20,8 @@ scanner = MomentumScanner(
     data_dir=data_dir,
     output_dir=f"{config.data.index_dir}/momentum_index",
     momentum_config=config.momentum_scanning,
-    scoring_config=config.rank_based_scoring,
+    scoring_config=config.momentum_scoring,
     session_config=config.session_volume,
-    strategies_config=config.curriculum.strategies,
     logger=logger
 )
 

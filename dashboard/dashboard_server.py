@@ -654,15 +654,13 @@ class DashboardServer:
             curriculum_stage = getattr(state, 'curriculum_stage', 'stage_1_beginner')
             total_episodes_curriculum = getattr(state, 'total_episodes_for_curriculum', state.total_episodes)
             
-            # 3-component scores from current reset point
-            current_direction_score = getattr(state, 'current_direction_score', 0.0)
+            # 2-component scores from current reset point
             current_roc_score = getattr(state, 'current_roc_score', 0.0)
             current_activity_score = getattr(state, 'current_activity_score', 0.0)
             
-            # Curriculum thresholds (match PPO agent field names)
-            min_roc_score = getattr(state, 'min_roc_score', 0.0)
-            min_activity_score = getattr(state, 'min_activity_score', 0.0)
-            min_direction_score = getattr(state, 'min_direction_score', 0.0)
+            # Curriculum ranges (match PPO agent field names)
+            roc_range = getattr(state, 'roc_range', [0.0, 1.0])
+            activity_range = getattr(state, 'activity_range', [0.0, 1.0])
             
             episode_length = getattr(state, 'curriculum_episode_length', 256)
             
@@ -702,11 +700,8 @@ class DashboardServer:
             reset_points_data = getattr(state, 'reset_points_data', [])
             total_reset_points = len(reset_points_data)
             
-            # Count filtered reset points using curriculum strategy
-            strategy_name = getattr(state, 'strategy', 'strong_upward_momentum')
-            
-            # For now, show all reset points count (strategy filtering happens in PPO agent)
-            # This matches the new strategy-based approach where filtering logic
+            # Count filtered reset points using curriculum ranges
+            # (range filtering happens in PPO agent)
             # is centralized in the momentum scanner
             filtered_count = total_reset_points  # Show all available points
             
@@ -748,14 +743,16 @@ class DashboardServer:
                 html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
                 self._info_row("Day", state.current_momentum_day_date or "N/A", color=day_info_color),
                 self._info_row("Day Score", f"{state.current_momentum_day_quality:.3f}" if state.current_momentum_day_quality > 0 else "N/A", color=day_info_color),
-                # 3-Component Scores with threshold indicators
+                # 2-Component Scores with range indicators
                 html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
-                self._info_row("Direction", f"{current_direction_score:.2f}", 
-                             color=DARK_THEME['accent_green'] if abs(current_direction_score) >= min_direction_score else DARK_THEME['text_muted']),
                 self._info_row("ROC", f"{current_roc_score:.2f}", 
-                             color=DARK_THEME['accent_blue'] if current_roc_score >= min_roc_score else DARK_THEME['text_muted']),
+                             color=DARK_THEME['accent_blue'] if roc_range[0] <= current_roc_score <= roc_range[1] else DARK_THEME['text_muted']),
                 self._info_row("Activity", f"{current_activity_score:.2f}", 
-                             color=DARK_THEME['accent_orange'] if current_activity_score >= min_activity_score else DARK_THEME['text_muted']),
+                             color=DARK_THEME['accent_orange'] if activity_range[0] <= current_activity_score <= activity_range[1] else DARK_THEME['text_muted']),
+                self._info_row("ROC Range", f"[{roc_range[0]:.1f}, {roc_range[1]:.1f}]", 
+                             color=DARK_THEME['text_muted']),
+                self._info_row("Activity Range", f"[{activity_range[0]:.1f}, {activity_range[1]:.1f}]", 
+                             color=DARK_THEME['text_muted']),
             ])
             
             # Custom candlestick chart
@@ -1046,7 +1043,6 @@ class DashboardServer:
                         reset_time = reset_point.get('timestamp')
                         reset_price = reset_point.get('price', 0)
                         activity_score = reset_point.get('activity_score', 0)
-                        direction_score = reset_point.get('direction_score', 0)
                         roc_score = reset_point.get('roc_score', 0)
                         combined_score = reset_point.get('combined_score', 0)
                         
@@ -1102,7 +1098,7 @@ class DashboardServer:
                                         ),
                                         name='Reset Point',
                                         showlegend=False,
-                                        hovertemplate=f"Reset Point<br>Time: {reset_dt.strftime('%H:%M')}<br>Price: ${reset_price:.3f}<br>Activity: {activity_score:.3f}<br>Direction: {direction_score:.3f}<br>ROC: {roc_score:.3f}<br>Combined: {combined_score:.3f}<extra></extra>"
+                                        hovertemplate=f"Reset Point<br>Time: {reset_dt.strftime('%H:%M')}<br>Price: ${reset_price:.3f}<br>Activity: {activity_score:.3f}<br>ROC: {roc_score:.3f}<br>Combined: {combined_score:.3f}<extra></extra>"
                                     ),
                                     row=2, col=1  # Place on volume chart (row 2)
                                 )

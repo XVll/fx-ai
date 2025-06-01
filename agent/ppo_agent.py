@@ -37,7 +37,7 @@ class PPOTrainer:
             device: Optional[Union[str, torch.device]] = None,
             output_dir: str = "./ppo_output",
             callbacks: Optional[List[TrainingCallback]] = None,
-            curriculum_strategy: str = "quality_based",
+            curriculum_method: str = "quality_based",
             min_quality_threshold: float = 0.3,
             episode_selection_mode: str = "momentum_days",
             episodes_per_day: int = 10,
@@ -117,7 +117,7 @@ class PPOTrainer:
         self.episode_times = []
 
         # Momentum-based training configuration
-        self.curriculum_strategy = curriculum_strategy
+        self.curriculum_method = curriculum_method
         self.min_quality_threshold = min_quality_threshold
         self.episode_selection_mode = episode_selection_mode
         
@@ -177,7 +177,6 @@ class PPOTrainer:
                         'timestamp': reset_point['timestamp'],
                         'price': reset_point.get('price', 0),  # May not be available for early fixed points
                         'activity_score': reset_point.get('activity_score', 0.5),
-                        'direction_score': reset_point.get('direction_score', 0.0),
                         'roc_score': reset_point.get('roc_score', 0.0),
                         'combined_score': reset_point.get('combined_score', 0.5),
                         'reset_type': reset_point.get('reset_type', 'momentum')
@@ -218,75 +217,29 @@ class PPOTrainer:
         if not reset_points_data:
             return reset_points_data
             
-        # Get current curriculum stage and strategy
-        stage, strategy_name = self._get_curriculum_stage_info()
-        stage_config = self._get_curriculum_stage_config(stage)
+        # Get current curriculum stage
+        stage = self._get_curriculum_stage_info()
         
-        if not stage_config:
+        if not stage:
             return reset_points_data  # Return unfiltered if no config
             
-        # Apply curriculum filtering
-        curriculum_filtered = []
+        # Apply range-based filtering
+        filtered_points = []
         for reset_point in reset_points_data:
-            direction_score = reset_point.get('direction_score', 0.5)
             roc_score = reset_point.get('roc_score', 0.0)
             activity_score = reset_point.get('activity_score', 0.0)
             
-            # Apply curriculum stage thresholds
-            passes_roc = roc_score >= stage_config.min_roc_score
-            passes_activity = activity_score >= stage_config.min_activity_score
+            # Apply range-based thresholds
+            passes_roc = stage.roc_range[0] <= roc_score <= stage.roc_range[1]
+            passes_activity = stage.activity_range[0] <= activity_score <= stage.activity_range[1]
             
             if passes_roc and passes_activity:
-                # For direction, we just need any meaningful score (not neutral 0.5)
-                if stage_config.min_direction_score > 0.5:
-                    # Higher direction threshold - filter for strong directional moves
-                    if direction_score >= stage_config.min_direction_score or direction_score <= (1.0 - stage_config.min_direction_score):
-                        curriculum_filtered.append(reset_point)
-                else:
-                    # Lower direction threshold - accept all non-neutral scores
-                    curriculum_filtered.append(reset_point)
-        
-        # Apply strategy filtering 
-        strategy_filtered = []
-        if hasattr(self.env, 'data_manager') and hasattr(self.env.data_manager, 'momentum_scanner'):
-            scanner = self.env.data_manager.momentum_scanner
-            strategy_config = scanner.get_strategy_config(strategy_name)
+                filtered_points.append(reset_point)
             
-            if strategy_config:
-                for reset_point in curriculum_filtered:
-                    direction_score = reset_point.get('direction_score', 0.5)
-                    roc_score = reset_point.get('roc_score', 0.0)
-                    activity_score = reset_point.get('activity_score', 0.0)
-                    
-                    # Apply strategy thresholds
-                    passes_strategy_roc = roc_score >= strategy_config.min_roc_score
-                    passes_strategy_activity = activity_score >= strategy_config.min_activity_score
-                    
-                    # Check direction ranges
-                    direction_match = False
-                    if strategy_config.direction_range:
-                        min_dir, max_dir = strategy_config.direction_range
-                        if min_dir <= direction_score <= max_dir:
-                            direction_match = True
-                    elif strategy_config.direction_ranges:
-                        for min_dir, max_dir in strategy_config.direction_ranges:
-                            if min_dir <= direction_score <= max_dir:
-                                direction_match = True
-                                break
-                    else:
-                        direction_match = True
-                    
-                    if passes_strategy_roc and passes_strategy_activity and direction_match:
-                        strategy_filtered.append(reset_point)
-            else:
-                strategy_filtered = curriculum_filtered
-        else:
-            strategy_filtered = curriculum_filtered
-            
-        return strategy_filtered
+        return filtered_points
 
     def _select_reset_point(self) -> int:
-        """Select next reset point based on curriculum strategy and quality range filtering."""
+        """Select next reset point based on curriculum range filtering."""
         # Get current reset points from environment
         if not hasattr(self.env, 'reset_points') or not self.env.reset_points:
             print("DEBUG RESET SELECTION: No reset points available")
@@ -295,114 +248,56 @@ class PPOTrainer:
         reset_points = self.env.reset_points
         print(f"DEBUG RESET SELECTION: Total reset points: {len(reset_points)}")
         
-        # Filter reset points by curriculum stage
-        stage, strategy_name = self._get_curriculum_stage_info()
-        stage_config = self._get_curriculum_stage_config(stage)
-        print(f"DEBUG RESET SELECTION: Curriculum stage: {stage}")
-        print(f"DEBUG RESET SELECTION: Strategy: {strategy_name}")
+        # Filter reset points by curriculum stage ranges
+        stage = self._get_curriculum_stage_info()
+        print(f"DEBUG RESET SELECTION: Curriculum stage: {stage.__class__.__name__ if stage else 'None'}")
         print(f"DEBUG RESET SELECTION: Config available: {self.config is not None}")
-        if stage_config:
-            print(f"DEBUG RESET SELECTION: Stage thresholds - roc: {stage_config.min_roc_score}, activity: {stage_config.min_activity_score}, direction: {stage_config.min_direction_score}")
+        if stage:
+            print(f"DEBUG RESET SELECTION: Stage ranges - roc: {stage.roc_range}, activity: {stage.activity_range}")
         else:
             print("DEBUG RESET SELECTION: ERROR - No stage config found!")
         
-        # Filter reset points using curriculum stage thresholds
-        curriculum_filtered_indices = []
-        if stage_config:
+        # Filter reset points using curriculum stage ranges
+        range_filtered_indices = []
+        if stage:
             for idx, reset_point in enumerate(reset_points):
-                direction_score = reset_point.get('direction_score', 0.5)
                 roc_score = reset_point.get('roc_score', 0.0)
                 activity_score = reset_point.get('activity_score', 0.0)
                 
-                # Apply curriculum stage thresholds (rank-based scores are already [0,1])
-                passes_roc = roc_score >= stage_config.min_roc_score
-                passes_activity = activity_score >= stage_config.min_activity_score
+                # Apply range-based thresholds
+                passes_roc = stage.roc_range[0] <= roc_score <= stage.roc_range[1]
+                passes_activity = stage.activity_range[0] <= activity_score <= stage.activity_range[1]
                 
                 if passes_roc and passes_activity:
-                    # For direction, we just need any meaningful score (not neutral 0.5)
-                    if stage_config.min_direction_score > 0.5:
-                        # Higher direction threshold - filter for strong directional moves
-                        if direction_score >= stage_config.min_direction_score or direction_score <= (1.0 - stage_config.min_direction_score):
-                            curriculum_filtered_indices.append(idx)
-                    else:
-                        # Lower direction threshold - accept all non-neutral scores
-                        curriculum_filtered_indices.append(idx)
+                    range_filtered_indices.append(idx)
                         
                 # Debug first few points
                 if idx < 3:
-                    print(f"DEBUG RESET SELECTION: Point {idx} - dir: {direction_score:.3f}, roc: {roc_score:.3f}, act: {activity_score:.3f} -> roc_pass: {passes_roc}, act_pass: {passes_activity}")
+                    print(f"DEBUG RESET SELECTION: Point {idx} - roc: {roc_score:.3f}, act: {activity_score:.3f} -> roc_pass: {passes_roc}, act_pass: {passes_activity}")
         else:
             # Fallback if no stage config - use all points
-            curriculum_filtered_indices = list(range(len(reset_points)))
+            range_filtered_indices = list(range(len(reset_points)))
         
-        print(f"DEBUG RESET SELECTION: Points passing curriculum filter: {len(curriculum_filtered_indices)} out of {len(reset_points)}")
+        print(f"DEBUG RESET SELECTION: Points passing range filter: {len(range_filtered_indices)} out of {len(reset_points)}")
         
-        # Apply strategy direction filtering on curriculum-filtered points
-        strategy_filtered_indices = []
-        if hasattr(self.env, 'data_manager') and hasattr(self.env.data_manager, 'momentum_scanner'):
-            scanner = self.env.data_manager.momentum_scanner
-            strategy_config = scanner.get_strategy_config(strategy_name)
-            
-            if strategy_config:
-                print(f"DEBUG RESET SELECTION: Strategy config found - direction_range: {strategy_config.direction_range}, min_roc: {strategy_config.min_roc_score}, min_activity: {strategy_config.min_activity_score}")
-                
-                for idx in curriculum_filtered_indices:
-                    reset_point = reset_points[idx]
-                    direction_score = reset_point.get('direction_score', 0.5)
-                    roc_score = reset_point.get('roc_score', 0.0)
-                    activity_score = reset_point.get('activity_score', 0.0)
-                    
-                    # Apply strategy ROC and activity thresholds
-                    passes_strategy_roc = roc_score >= strategy_config.min_roc_score
-                    passes_strategy_activity = activity_score >= strategy_config.min_activity_score
-                    
-                    # Check direction ranges
-                    direction_match = False
-                    if strategy_config.direction_range:
-                        min_dir, max_dir = strategy_config.direction_range
-                        if min_dir <= direction_score <= max_dir:
-                            direction_match = True
-                    elif strategy_config.direction_ranges:
-                        for min_dir, max_dir in strategy_config.direction_ranges:
-                            if min_dir <= direction_score <= max_dir:
-                                direction_match = True
-                                break
-                    else:
-                        direction_match = True
-                    
-                    passes_strategy = passes_strategy_roc and passes_strategy_activity and direction_match
-                    
-                    # Debug first few points
-                    if len(strategy_filtered_indices) < 3:
-                        print(f"DEBUG RESET SELECTION: Strategy Point {idx} - dir: {direction_score:.3f}, roc: {roc_score:.3f}, act: {activity_score:.3f} -> roc_pass: {passes_strategy_roc}, act_pass: {passes_strategy_activity}, dir_pass: {direction_match}, final: {passes_strategy}")
-                        
-                    if passes_strategy:
-                        strategy_filtered_indices.append(idx)
-            else:
-                print(f"DEBUG RESET SELECTION: No strategy config found for {strategy_name}")
-                strategy_filtered_indices = curriculum_filtered_indices
-        else:
-            print("DEBUG RESET SELECTION: No scanner available")
-            strategy_filtered_indices = curriculum_filtered_indices
-                
         if reset_points:
             sample_count = min(3, len(reset_points))
             for i in range(sample_count):
                 rp = reset_points[i]
-                print(f"DEBUG RESET SELECTION: Point {i} scores - dir: {rp.get('direction_score', 0):.3f}, roc: {rp.get('roc_score', 0):.3f}, act: {rp.get('activity_score', 0):.3f}")
+                print(f"DEBUG RESET SELECTION: Point {i} scores - roc: {rp.get('roc_score', 0):.3f}, act: {rp.get('activity_score', 0):.3f}")
         
-        print(f"DEBUG RESET SELECTION: Final filtered: {len(strategy_filtered_indices)} out of {len(reset_points)}")
+        print(f"DEBUG RESET SELECTION: Final filtered: {len(range_filtered_indices)} out of {len(reset_points)}")
         
-        # Use strategy filtered indices, fallback to curriculum filtered if none meet criteria
-        quality_filtered_indices = strategy_filtered_indices if strategy_filtered_indices else curriculum_filtered_indices
+        # Use range filtered indices
+        quality_filtered_indices = range_filtered_indices
         
         # Final fallback to all points if no filtering worked
         if not quality_filtered_indices:
             quality_filtered_indices = list(range(len(reset_points)))
         
         if not quality_filtered_indices:
-            # If no reset points match quality range, use all
-            self.logger.warning(f"No reset points match quality range {self.reset_point_quality_range}, using all")
+            # If no reset points match range criteria, use all
+            self.logger.warning(f"No reset points match curriculum ranges, using all")
             quality_filtered_indices = list(range(len(reset_points)))
         
         # Filter by used indices
@@ -418,7 +313,7 @@ class PPOTrainer:
             self.used_reset_point_indices.clear()
             available_indices = quality_filtered_indices
             
-        if self.curriculum_strategy == "quality_based":
+        if self.curriculum_method == "quality_based":
             # Start with easier (lower activity) reset points, progress to harder ones
             sorted_indices = sorted(available_indices, 
                                   key=lambda i: reset_points[i].get('activity_score', 0))
@@ -428,7 +323,7 @@ class PPOTrainer:
             progress_idx = min(progress_idx, len(sorted_indices) - 1)
             selected_idx = sorted_indices[progress_idx]
             
-        elif self.curriculum_strategy == "random":
+        elif self.curriculum_method == "random":
             selected_idx = np.random.choice(available_indices)
         else:
             # Sequential
@@ -437,13 +332,14 @@ class PPOTrainer:
         self.used_reset_point_indices.add(selected_idx)
         
         reset_point = reset_points[selected_idx]
-        direction_score = reset_point.get('direction_score', 0)
         roc_score = reset_point.get('roc_score', 0)
         activity_score = reset_point.get('activity_score', 0)
-        print(f"DEBUG RESET SELECTION: Selected index {selected_idx}, timestamp: {reset_point.get('timestamp')}, direction: {direction_score:.3f}, roc: {roc_score:.3f}, activity: {activity_score:.3f}")
-        self.logger.debug(f"🎯 Selected reset point {selected_idx} with strategy {strategy_name}: "
+        print(f"DEBUG RESET SELECTION: Selected index {selected_idx}, timestamp: {reset_point.get('timestamp')}, roc: {roc_score:.3f}, activity: {activity_score:.3f}")
+        
+        stage_name = stage.__class__.__name__ if stage else 'unknown'
+        self.logger.debug(f"🎯 Selected reset point {selected_idx} with ranges ROC:{stage.roc_range if stage else 'N/A'}, Activity:{stage.activity_range if stage else 'N/A'}: "
                          f"{reset_point.get('timestamp', 'unknown')} "
-                         f"(direction: {direction_score:.3f}, roc: {roc_score:.3f}, activity: {activity_score:.3f})")
+                         f"(roc: {roc_score:.3f}, activity: {activity_score:.3f})")
         
         # Emit reset point selection tracking for dashboard
         if hasattr(self.metrics, 'metrics_manager'):
@@ -460,11 +356,11 @@ class PPOTrainer:
                 'total_available_points': total_available,
                 'points_used_in_cycle': points_used,
                 'points_remaining_in_cycle': points_remaining,
-                'direction_score': direction_score,
                 'roc_score': roc_score,
                 'activity_score': activity_score,
-                'strategy_name': strategy_name,
-                'curriculum_stage': stage
+                'roc_range': stage.roc_range if stage else [0.0, 1.0],
+                'activity_range': stage.activity_range if stage else [0.0, 1.0],
+                'curriculum_stage': stage_name
             }
             self.metrics.metrics_manager.emit_event('reset_point_selection', reset_point_tracking)
             print(f"DEBUG RESET TRACKING: Event emitted with data: {reset_point_tracking}")
@@ -472,64 +368,43 @@ class PPOTrainer:
         return selected_idx
 
     def _get_curriculum_stage_info(self):
-        """Get current curriculum stage information based on episode count."""
+        """Get current curriculum stage configuration based on episode count."""
         total_episodes = self.global_episode_counter
         if total_episodes < 2000:
-            return 'stage_1_beginner', 'strong_upward_momentum'
+            return self.config.curriculum.stage_1_beginner
         elif total_episodes < 5000:
-            return 'stage_2_intermediate', 'strong_downward_momentum'
+            return self.config.curriculum.stage_2_intermediate
         elif total_episodes < 8000:
-            return 'stage_3_advanced', 'any_strong_momentum'
+            return self.config.curriculum.stage_3_advanced
         else:
-            return 'stage_4_specialization', 'consolidation_breakouts'
-    
-    def _get_curriculum_stage_config(self, stage_name: str):
-        """Get curriculum stage configuration by name."""
-        stage_configs = {
-            'stage_1_beginner': self.config.curriculum.stage_1_beginner,
-            'stage_2_intermediate': self.config.curriculum.stage_2_intermediate,
-            'stage_3_advanced': self.config.curriculum.stage_3_advanced,
-            'stage_4_specialization': self.config.curriculum.stage_4_specialization
-        }
-        return stage_configs.get(stage_name, self.config.curriculum.stage_1_beginner)
+            return self.config.curriculum.stage_4_specialization
     
     def _emit_curriculum_progress(self):
         """Emit curriculum progress event to dashboard."""
         if hasattr(self.metrics, 'metrics_manager'):
-            stage, strategy_name = self._get_curriculum_stage_info()
+            stage = self._get_curriculum_stage_info()
             
             # Calculate stage progress percentage
             stage_progress = 0.0
-            if stage == 'stage_1_beginner':
+            stage_name = 'unknown'
+            if self.global_episode_counter < 2000:
                 stage_progress = min(100.0, (self.global_episode_counter / 2000) * 100)
-            elif stage == 'stage_2_intermediate':
+                stage_name = 'stage_1_beginner'
+            elif self.global_episode_counter < 5000:
                 stage_progress = min(100.0, ((self.global_episode_counter - 2000) / 3000) * 100)
-            elif stage == 'stage_3_advanced':
+                stage_name = 'stage_2_intermediate'
+            elif self.global_episode_counter < 8000:
                 stage_progress = min(100.0, ((self.global_episode_counter - 5000) / 3000) * 100)
+                stage_name = 'stage_3_advanced'
             else:
                 stage_progress = 100.0
-                
-            # Get strategy thresholds for backward compatibility
-            min_roc_score = 0.0
-            min_activity_score = 0.0 
-            min_direction_score = 0.0
-            
-            if hasattr(self.env, 'data_manager') and hasattr(self.env.data_manager, 'momentum_scanner'):
-                strategy_config = self.env.data_manager.momentum_scanner.get_strategy_config(strategy_name)
-                if strategy_config:
-                    min_roc_score = strategy_config.min_roc_score
-                    min_activity_score = strategy_config.min_activity_score
-                    # For direction, use the middle of the range as a threshold
-                    if strategy_config.direction_range:
-                        min_direction_score = (strategy_config.direction_range[0] + strategy_config.direction_range[1]) / 2
+                stage_name = 'stage_4_specialization'
                 
             curriculum_data = {
                 'progress': self.curriculum_progress,
-                'strategy': strategy_name,
-                'stage': stage,
-                'min_roc_score': min_roc_score,
-                'min_activity_score': min_activity_score,
-                'min_direction_score': min_direction_score,
+                'stage': stage_name,
+                'roc_range': stage.roc_range if stage else [0.0, 1.0],
+                'activity_range': stage.activity_range if stage else [0.0, 1.0],
                 'total_episodes': self.global_episode_counter,
                 'stage_progress': stage_progress
             }
@@ -541,39 +416,45 @@ class PPOTrainer:
     def _emit_curriculum_detail(self):
         """Emit detailed curriculum tracking for dashboard."""
         if hasattr(self.metrics, 'metrics_manager'):
-            stage, strategy_name = self._get_curriculum_stage_info()
+            stage = self._get_curriculum_stage_info()
             
             # Calculate episodes needed for next stage
             episodes_to_next_stage = 0
             next_stage_name = ""
+            current_stage_name = ""
             total_episodes = self.global_episode_counter
             print(f"DEBUG CURRICULUM: Current episodes: {total_episodes}")
             
             if total_episodes < 2000:
                 episodes_to_next_stage = 2000 - total_episodes
                 next_stage_name = "Intermediate"
+                current_stage_name = "Beginner"
                 print(f"DEBUG CURRICULUM: Stage 1 - {episodes_to_next_stage} episodes to {next_stage_name}")
             elif total_episodes < 5000:
                 episodes_to_next_stage = 5000 - total_episodes
                 next_stage_name = "Advanced"
+                current_stage_name = "Intermediate"
                 print(f"DEBUG CURRICULUM: Stage 2 - {episodes_to_next_stage} episodes to {next_stage_name}")
             elif total_episodes < 8000:
                 episodes_to_next_stage = 8000 - total_episodes
                 next_stage_name = "Specialization"
+                current_stage_name = "Advanced"
                 print(f"DEBUG CURRICULUM: Stage 3 - {episodes_to_next_stage} episodes to {next_stage_name}")
             else:
                 episodes_to_next_stage = 0
                 next_stage_name = "Maximum"
+                current_stage_name = "Specialization"
                 print(f"DEBUG CURRICULUM: Stage 4 - Maximum stage reached")
                 
             curriculum_detail = {
-                'current_stage': stage,
-                'current_strategy': strategy_name,
+                'current_stage': current_stage_name,
+                'roc_range': stage.roc_range if stage else [0.0, 1.0],
+                'activity_range': stage.activity_range if stage else [0.0, 1.0],
                 'total_episodes': self.global_episode_counter,
                 'episodes_to_next_stage': episodes_to_next_stage,
                 'next_stage_name': next_stage_name,
                 'episodes_per_day_config': self.episodes_per_day,
-                'curriculum_strategy': self.curriculum_strategy
+                'curriculum_method': self.curriculum_method
             }
             self.metrics.metrics_manager.emit_event('curriculum_detail', curriculum_detail)
     
@@ -1386,10 +1267,10 @@ class PPOTrainer:
                 'total_available_points': 0,
                 'points_used_in_cycle': 0,
                 'points_remaining_in_cycle': 0,
-                'direction_score': 0.0,
                 'roc_score': 0.0,
                 'activity_score': 0.0,
-                'strategy_name': 'strong_upward_momentum',
+                'roc_range': [0.8, 1.0],
+                'activity_range': [0.5, 1.0],
                 'curriculum_stage': 'stage_1_beginner'
             }
             self.metrics.metrics_manager.emit_event('reset_point_selection', initial_reset_tracking)

@@ -199,9 +199,8 @@ def create_data_components(config: Config, log: logging.Logger):
         data_dir=str(Path(config.data.data_dir) / "mlgo"),
         output_dir=f"{config.data.index_dir}/momentum_index",
         momentum_config=config.momentum_scanning,
-        scoring_config=config.rank_based_scoring,
+        scoring_config=config.momentum_scoring,
         session_config=config.session_volume,
-        strategies_config=config.curriculum.strategies,
         logger=log
     )
     
@@ -512,7 +511,7 @@ def train(config: Config):
         
         # Enable momentum-based training with curriculum learning
         training_params.update({
-            "curriculum_strategy": "quality_based",
+            "curriculum_method": "quality_based",
             "min_quality_threshold": 0.3,
             "episode_selection_mode": "momentum_days"
         })

@@ -7,27 +7,21 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-# Sniper 3-Component Training
-train = "poetry run python main.py --config normal_train"
-train-continue = "poetry run python main.py  --continue"
-quick = "poetry run python main.py --config sniper_test"
-quick-continue = "poetry run python main.py --config sniper_test --continue"
+# Training
+train = "poetry run python main.py --continue"
+# Backtest
+backtest = "poetry run python main.py --config backtest --date {{date}} --symbol {{symbol}}"
 
-# Device-specific training
-train-cuda = "poetry run python main.py --device cuda"
-train-mps = "poetry run python main.py --device mps"
-train-cpu = "poetry run python main.py --device cpu"
+# Scan for momentum days in data
+scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.5"
 
-# Training with custom configs
-train-custom = "poetry run python main.py --config ${config}"
-
-# 3-Component Index Building
-scan = "poetry run python build_index.py"
+# Index building
+build-index = "poetry run python build_index.py"
 
 # Hyperparameter Optimization
-sweep = "poetry run python scripts/sweep.py --count 20"
-sweep-quick = "poetry run python scripts/sweep.py --count 5"
-sweep-long = "poetry run python scripts/sweep.py --count 50"
+sweep = "poetry run python scripts/sweep.py --config default.yaml --count 20"
+sweep-quick = "poetry run python scripts/sweep.py --config default.yaml --count 5"
+sweep-long = "poetry run python scripts/sweep.py --config default.yaml --count 50"
 
 # Testing
 test = "poetry run python -m pytest tests/ -xvs"
@@ -38,7 +32,6 @@ clean = "rm -rf outputs/* wandb/* __pycache__"
 setup = "wandb login"
 dashboard = "echo 'Dashboard will auto-launch during training at http://localhost:8051'"
 killport = "lsof -ti:8051 | xargs kill -9 || echo 'Port 8051 already free'"
-build-index = "poetry run python build_index.py"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
