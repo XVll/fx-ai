@@ -713,24 +713,13 @@ class DashboardServer:
             reset_points_data = getattr(state, 'reset_points_data', [])
             total_reset_points = len(reset_points_data)
             
-            # Count filtered reset points using same logic as chart filtering
-            min_roc_score = getattr(state, 'min_roc_score', 0.0)
-            min_activity_score = getattr(state, 'min_activity_score', 0.0)
-            min_direction_score = getattr(state, 'min_direction_score', 0.0)
+            # Count filtered reset points using curriculum strategy
+            strategy_name = getattr(state, 'strategy', 'strong_upward_momentum')
             
-            filtered_count = 0
-            for reset_point in reset_points_data:
-                direction_score = reset_point.get('direction_score', 0.0)
-                roc_score = reset_point.get('roc_score', 0.0)
-                activity_score = reset_point.get('activity_score', 0.0)
-                
-                # Match agent logic exactly
-                meets_direction = abs(direction_score) >= min_direction_score
-                meets_roc = roc_score >= min_roc_score
-                meets_activity = abs(activity_score) >= min_activity_score
-                
-                if meets_direction and meets_roc and meets_activity:
-                    filtered_count += 1
+            # For now, show all reset points count (strategy filtering happens in PPO agent)
+            # This matches the new strategy-based approach where filtering logic
+            # is centralized in the momentum scanner
+            filtered_count = total_reset_points  # Show all available points
             
             # Add day information with color coding
             day_info_color = DARK_THEME['accent_green'] if state.current_momentum_day_quality >= 0.7 else DARK_THEME['accent_blue'] if state.current_momentum_day_quality >= 0.5 else DARK_THEME['text_muted']
@@ -1032,27 +1021,13 @@ class DashboardServer:
                         # Skip vertical line if timestamp conversion fails
                         pass
                 
-                # Add reset point markers (filtered by curriculum thresholds)
+                # Add reset point markers (show all for now - strategy filtering in agent)
                 reset_points_data = getattr(state, 'reset_points_data', [])
                 if reset_points_data:
-                    # Get curriculum thresholds for filtering
-                    min_roc_score = getattr(state, 'min_roc_score', 0.0)
-                    min_activity_score = getattr(state, 'min_activity_score', 0.0)
-                    min_direction_score = getattr(state, 'min_direction_score', 0.0)
+                    # Note: Strategy-based filtering is now handled in the PPO agent
+                    # Dashboard shows all reset points for visibility
                     
                     for reset_point in reset_points_data:
-                        # Filter reset points by curriculum thresholds (same logic as agent)
-                        direction_score = reset_point.get('direction_score', 0.0)
-                        roc_score = reset_point.get('roc_score', 0.0)
-                        activity_score = reset_point.get('activity_score', 0.0)
-                        
-                        # Only show reset points that meet curriculum criteria (match agent logic)
-                        meets_direction = abs(direction_score) >= min_direction_score
-                        meets_roc = roc_score >= min_roc_score
-                        meets_activity = abs(activity_score) >= min_activity_score
-                        
-                        if not (meets_direction and meets_roc and meets_activity):
-                            continue
                         # Parse reset point timestamp
                         reset_time = reset_point.get('timestamp')
                         reset_price = reset_point.get('price', 0)
@@ -1080,15 +1055,19 @@ class DashboardServer:
                             session_end = pd.Timestamp(f"{chart_date} 20:00:00").tz_localize(None)
                             
                             if session_start <= reset_dt <= session_end:
-                                # Color based on activity score - higher score = more blue/purple
-                                if activity_score >= 0.7:
-                                    marker_color = DARK_THEME['accent_purple']  # High activity
+                                # Color based on combined score - rank-based system
+                                combined_score = reset_point.get('combined_score', 0.5)
+                                if combined_score >= 0.8:
+                                    marker_color = DARK_THEME['accent_purple']  # Very high quality
                                     marker_size = 10
-                                elif activity_score >= 0.5:
-                                    marker_color = DARK_THEME['accent_blue']    # Medium activity
+                                elif combined_score >= 0.6:
+                                    marker_color = DARK_THEME['accent_blue']    # High quality
                                     marker_size = 8
+                                elif combined_score >= 0.4:
+                                    marker_color = DARK_THEME['accent_orange']  # Medium quality
+                                    marker_size = 7
                                 else:
-                                    marker_color = DARK_THEME['text_muted']     # Low activity
+                                    marker_color = DARK_THEME['text_muted']     # Low quality
                                     marker_size = 6
                                 
                                 # Place reset points at bottom of volume chart for better visibility

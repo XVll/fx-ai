@@ -178,13 +178,14 @@ def create_data_components(config: Config, log: logging.Logger):
     # Data Manager with DataConfig
     data_provider = create_data_provider(config.data)
     
-    # Create momentum scanner with new configuration system
+    # Create momentum scanner with rank-based scoring
     momentum_scanner = MomentumScanner(
         data_dir=str(Path(config.data.data_dir) / "mlgo"),
         output_dir=f"{config.data.index_dir}/momentum_index",
         momentum_config=config.momentum_scanning,
-        scoring_config=config.three_component_scoring,
+        scoring_config=config.rank_based_scoring,
         session_config=config.session_volume,
+        strategies_config=config.curriculum.strategies,
         logger=log
     )
     
@@ -514,6 +515,7 @@ def train(config: Config):
             model=model,
             metrics_integrator=metrics_integrator,
             model_config=config.model,
+            config=config,  # Pass full config for curriculum access
             device=device,
             output_dir=str(output_dir),
             callbacks=callbacks,

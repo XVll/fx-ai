@@ -9,7 +9,7 @@ package-mode = false
 [tool.poe.tasks]
 # Sniper 3-Component Training
 train = "poetry run python main.py --config normal_train"
-train-continue = "poetry run python main.py --config normal_train --continue"
+train-continue = "poetry run python main.py  --continue"
 quick = "poetry run python main.py --config sniper_test"
 quick-continue = "poetry run python main.py --config sniper_test --continue"
 
