@@ -81,47 +81,30 @@ class ConfigLoader:
     
     def _validate_config(self, config: Config):
         """Perform additional validation beyond Pydantic"""
-        # Check action space consistency
-
+        # Validate action space
         try:
-            if hasattr(config.model, 'action_dim'):
-                action_types, position_sizes = config.model.action_dim
-                expected_actions = action_types * position_sizes
-                self.logger.info(f"Action space: {action_types} types × {position_sizes} sizes = {expected_actions} total actions")
+            action_dim = config.model.action_dim if hasattr(config.model, 'action_dim') else [3, 4]
+            action_types, position_sizes = action_dim
+            expected_actions = action_types * position_sizes
+            self.logger.info(f"Action space: {action_types} types × {position_sizes} sizes = {expected_actions} total actions")
         except Exception as e:
             self.logger.warning(f"Could not validate action space: {e}")
         
-        # Validate reward components
-        reward_dict = config.env.reward.model_dump()
+        # Validate reward components (new percentage-based system)
         enabled_components = []
-        for name, value in reward_dict.items():
-            if isinstance(value, dict) and value.get('enabled', True):
-                enabled_components.append(name)
-            elif name not in ['scale_factor', 'clip_range']:  # Skip non-component fields
-                # For simple component configs like RewardComponentConfig
-                if hasattr(config.env.reward, name):
-                    comp = getattr(config.env.reward, name)
-                    if hasattr(comp, 'enabled') and comp.enabled:
-                        enabled_components.append(name)
-
-        action_dim = config.model.action_dim if hasattr(config.model, 'action_dim') else [3, 4]
-        action_types, position_sizes = action_dim
-        expected_actions = action_types * position_sizes
+        if config.env.reward.enable_pnl_reward:
+            enabled_components.append(f"pnl (coeff: {config.env.reward.pnl_coefficient})")
+        if config.env.reward.enable_holding_penalty:
+            enabled_components.append(f"holding_penalty (coeff: {config.env.reward.holding_penalty_coefficient})")
+        if config.env.reward.enable_drawdown_penalty:
+            enabled_components.append(f"drawdown_penalty (coeff: {config.env.reward.drawdown_penalty_coefficient})")
+        if config.env.reward.enable_action_penalty:
+            enabled_components.append(f"action_penalty (coeff: {config.env.reward.action_penalty_coefficient})")
+        if config.env.reward.enable_quick_profit_bonus:
+            enabled_components.append(f"quick_profit_bonus (coeff: {config.env.reward.quick_profit_bonus_coefficient})")
+        enabled_components.append(f"bankruptcy_penalty (coeff: {config.env.reward.bankruptcy_penalty_coefficient})")
         
-        self.logger.info(f"Action space: {action_types} types × {position_sizes} sizes = {expected_actions} total actions")
-        
-        # Validate reward components
-        reward_data = config.env.reward.model_dump() if hasattr(config.env.reward, 'model_dump') else config.env.reward
-        enabled_components = [
-            name for name, comp in reward_data.items()
-            if isinstance(comp, dict) and comp.get('enabled', True)
-        ]
-
         self.logger.info(f"Enabled reward components: {', '.join(enabled_components)}")
-        
-        # Check for deprecated configs
-        if hasattr(config.env, 'reward_v2'):
-            self.logger.warning("Deprecated 'reward_v2' config found - use 'reward' instead")
     
     def _save_used_config(self, config: Config):
         """Save the complete config used for this run"""
