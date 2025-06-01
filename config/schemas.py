@@ -158,7 +158,7 @@ class EnvConfig(BaseModel):
     feature_update_interval: int = Field(default=1, description="Steps between feature updates")
     
     # Episode settings - optimized for momentum patterns
-    max_episode_steps: int = Field(default=1000, description="Natural episode length - no penalty when reached")
+    max_episode_steps: int = Field(default=256, description="Natural episode length - no penalty when reached")
     max_training_steps: Optional[int] = Field(default=None, description="Training step limit with penalty if reached")
     max_steps: int = Field(default=1000, description="Legacy alias - maps to max_episode_steps")
     early_stop_loss_threshold: float = Field(default=0.85, description="Stop if equity < threshold * initial")
@@ -234,7 +234,7 @@ class TrainingConfig(BaseModel):
     max_grad_norm: float = 0.5
     
     # Rollout settings - larger for stability
-    rollout_steps: int = Field(default=1024, description="Steps per rollout")
+    rollout_steps: int = Field(default=2048, description="Steps per rollout")
     
     # Learning rate schedule
     use_lr_annealing: bool = True
@@ -363,32 +363,6 @@ class MomentumScanningConfig(BaseModel):
     direction_filter: Literal["both", "front_side", "back_side"] = Field(default="both")
 
 
-class ThreeComponentScoringConfig(BaseModel):
-    """3-component reset point scoring system for sniper trading"""
-    # Direction Score [-1, 1] - tanh(price_change / volatility_threshold)
-    direction_lookback_minutes: int = Field(default=10, description="Minutes for direction calculation")
-    direction_volatility_threshold: float = Field(default=0.02, description="Volatility threshold for direction scoring")
-    
-    # ROC Score [-1, 1] - tanh(abs(price_change) / rolling_volatility)
-    roc_lookback_minutes: int = Field(default=5, description="Minutes for ROC calculation")
-    roc_volatility_window: int = Field(default=15, description="Rolling window for volatility calculation")
-    
-    # Activity Score [-1, 1] - tanh((volume - session_median) / session_mad)
-    activity_lookback_minutes: int = Field(default=15, description="Minutes for activity calculation")
-    session_volume_window: int = Field(default=60, description="Session volume calculation window")
-    
-    # Reset point generation
-    reset_points_per_day: int = Field(default=120, description="Target reset points per day for sniper approach")
-    min_reset_points: int = Field(default=60, description="Minimum reset points per day")
-    max_reset_points: int = Field(default=180, description="Maximum reset points per day")
-    
-    # Near-zero filtering
-    near_zero_threshold: float = Field(default=0.1, description="Skip if all scores < threshold")
-    
-    # Combined scoring weights
-    direction_weight: float = Field(default=0.3, description="Direction score weight")
-    roc_weight: float = Field(default=0.4, description="ROC score weight (prioritize volatility)")
-    activity_weight: float = Field(default=0.3, description="Activity score weight")
 
 
 class SessionVolumeConfig(BaseModel):
@@ -427,33 +401,189 @@ class ProgressiveEpisodeConfig(BaseModel):
     stage_4_offset_ratio: float = Field(default=0.75, description="Stage 4: 25% overlap")
 
 
+class MomentumStrategyConfig(BaseModel):
+    """Configuration for momentum trading strategy with rank-based scoring"""
+    name: str = Field(description="Strategy name")
+    description: str = Field(description="Strategy description")
+    
+    # Direction configuration - rank-based percentiles [0.0, 1.0]
+    direction_range: Optional[List[float]] = Field(
+        default=None, 
+        description="Single direction range [min, max] percentiles"
+    )
+    direction_ranges: Optional[List[List[float]]] = Field(
+        default=None,
+        description="Multiple direction ranges [[min1, max1], [min2, max2]] for complex strategies"
+    )
+    
+    # ROC and activity thresholds - rank-based percentiles [0.0, 1.0]
+    min_roc_score: float = Field(default=0.0, description="Minimum ROC percentile")
+    min_activity_score: float = Field(default=0.0, description="Minimum activity percentile")
+    
+    # Validation
+    @field_validator('direction_range')
+    @classmethod
+    def validate_direction_range(cls, v):
+        if v is not None:
+            if len(v) != 2 or v[0] >= v[1] or not (0 <= v[0] <= 1) or not (0 <= v[1] <= 1):
+                raise ValueError("direction_range must be [min, max] with 0 <= min < max <= 1")
+        return v
+        
+    @field_validator('direction_ranges')
+    @classmethod 
+    def validate_direction_ranges(cls, v):
+        if v is not None:
+            for range_pair in v:
+                if len(range_pair) != 2 or range_pair[0] >= range_pair[1]:
+                    raise ValueError("Each direction range must be [min, max] with min < max")
+                if not (0 <= range_pair[0] <= 1) or not (0 <= range_pair[1] <= 1):
+                    raise ValueError("Direction range values must be between 0 and 1")
+        return v
+
+
 class CurriculumStageConfig(BaseModel):
-    """Configuration for a curriculum training stage with sniper approach"""
+    """Configuration for a curriculum training stage with strategy-based approach"""
     episode_range: List[Optional[int]] = Field(description="[start, end] episode range")
     episode_length: int = Field(description="Episode length in steps")
     batch_size: int = Field(description="Rollout batch size")
     offset_ratio: float = Field(description="Episode offset ratio (1.0 = no overlap)")
     
-    # 3-component scoring filters
-    min_roc_score: float = Field(default=0.0, description="Minimum ROC score")
-    min_activity_score: float = Field(default=0.0, description="Minimum activity score")
-    min_direction_score: float = Field(default=0.0, description="Minimum |direction| score")
+    # Strategy configuration
+    strategy_name: str = Field(description="Name of momentum strategy to use")
+    
+    # Legacy 3-component scoring filters (for backwards compatibility)
+    min_roc_score: float = Field(default=0.0, description="Minimum ROC score (legacy)")
+    min_activity_score: float = Field(default=0.0, description="Minimum activity score (legacy)")
+    min_direction_score: float = Field(default=0.0, description="Minimum |direction| score (legacy)")
     
     # Legacy compatibility
     direction_filter: Literal["both", "front_side", "back_side"] = Field(
         default="both", 
-        description="Direction filter for training"
+        description="Direction filter for training (legacy)"
     )
 
 
+class MomentumStrategiesConfig(BaseModel):
+    """Collection of momentum trading strategies"""
+    
+    # Upward momentum strategies
+    strong_upward_momentum: MomentumStrategyConfig = Field(
+        default=MomentumStrategyConfig(
+            name="strong_upward_momentum",
+            description="Top 20% upward moves with good volume",
+            direction_range=[0.8, 1.0],
+            min_roc_score=0.6,
+            min_activity_score=0.7
+        )
+    )
+    
+    moderate_upward_momentum: MomentumStrategyConfig = Field(
+        default=MomentumStrategyConfig(
+            name="moderate_upward_momentum",
+            description="60th-80th percentile upward moves",
+            direction_range=[0.6, 0.8],
+            min_roc_score=0.4,
+            min_activity_score=0.5
+        )
+    )
+    
+    # Downward momentum strategies
+    strong_downward_momentum: MomentumStrategyConfig = Field(
+        default=MomentumStrategyConfig(
+            name="strong_downward_momentum",
+            description="Bottom 20% (strong downward moves)",
+            direction_range=[0.0, 0.2],
+            min_roc_score=0.7,
+            min_activity_score=0.6
+        )
+    )
+    
+    # Consolidation strategies
+    consolidation_breakouts: MomentumStrategyConfig = Field(
+        default=MomentumStrategyConfig(
+            name="consolidation_breakouts",
+            description="Sideways action with high volume (accumulation)",
+            direction_range=[0.45, 0.55],
+            min_roc_score=0.3,
+            min_activity_score=0.8
+        )
+    )
+    
+    # Multi-directional strategies
+    any_strong_momentum: MomentumStrategyConfig = Field(
+        default=MomentumStrategyConfig(
+            name="any_strong_momentum",
+            description="Strong moves in either direction",
+            direction_ranges=[[0.0, 0.2], [0.8, 1.0]],
+            min_roc_score=0.8,
+            min_activity_score=0.7
+        )
+    )
+    
+    # Specialized strategies
+    explosive_breakouts: MomentumStrategyConfig = Field(
+        default=MomentumStrategyConfig(
+            name="explosive_breakouts",
+            description="Only the strongest breakouts (top 5%)",
+            direction_range=[0.95, 1.0],
+            min_roc_score=0.9,
+            min_activity_score=0.85
+        )
+    )
+
+
+class RankBasedScoringConfig(BaseModel):
+    """Configuration for rank-based 3-component scoring system"""
+    
+    # Window configuration
+    ranking_window_minutes: int = Field(default=240, description="Rolling window for ranking (4 hours)")
+    
+    # Direction scoring
+    direction_lookback_minutes: int = Field(default=5, description="Minutes for direction calculation")
+    min_direction_threshold: float = Field(default=0.002, description="Minimum price change to be significant (0.2%)")
+    
+    # ROC scoring  
+    roc_lookback_minutes: int = Field(default=5, description="Minutes for ROC calculation")
+    roc_magnitude_boost_threshold: float = Field(default=0.01, description="Price change for 1.0x boost (1%)")
+    roc_max_boost: float = Field(default=2.0, description="Maximum ROC boost multiplier")
+    
+    # Activity scoring
+    activity_lookback_minutes: int = Field(default=10, description="Minutes for volume rolling average")
+    min_volume_threshold: int = Field(default=1000, description="Minimum volume to be significant")
+    
+    # General settings
+    neutral_score: float = Field(default=0.5, description="Score for insignificant movements")
+    enable_magnitude_preservation: bool = Field(default=True, description="Preserve absolute magnitude for extreme moves")
+    
+    # Reset point generation
+    min_reset_points: int = Field(default=60, description="Minimum reset points per day")
+    max_reset_points: int = Field(default=180, description="Maximum reset points per day")
+    reset_points_per_day: int = Field(default=120, description="Target reset points per day")
+    
+    # Combined scoring weights
+    direction_weight: float = Field(default=0.3, description="Direction score weight")
+    roc_weight: float = Field(default=0.4, description="ROC score weight (prioritize volatility)")
+    activity_weight: float = Field(default=0.3, description="Activity score weight")
+
+
 class CurriculumConfig(BaseModel):
-    """Sniper-focused curriculum learning configuration"""
+    """Strategy-based curriculum learning configuration"""
+    
+    # Available strategies
+    strategies: MomentumStrategiesConfig = Field(default_factory=MomentumStrategiesConfig)
+    
+    # Rank-based scoring configuration
+    scoring: RankBasedScoringConfig = Field(default_factory=RankBasedScoringConfig)
+    
+    # Training stages with strategy assignments
     stage_1_beginner: CurriculumStageConfig = Field(
         default=CurriculumStageConfig(
             episode_range=[0, 2000],
             episode_length=256,
-            batch_size=2048,  # Reduced from 8192 for faster updates
+            batch_size=2048,
             offset_ratio=1.0,
+            strategy_name="strong_upward_momentum",
+            # Legacy compatibility
             min_roc_score=0.5,
             min_activity_score=0.5,
             min_direction_score=0.5,
@@ -464,8 +594,10 @@ class CurriculumConfig(BaseModel):
         default=CurriculumStageConfig(
             episode_range=[2000, 5000],
             episode_length=512,
-            batch_size=16384,
+            batch_size=4096,
             offset_ratio=1.0,
+            strategy_name="strong_downward_momentum",
+            # Legacy compatibility
             min_roc_score=0.3,
             min_activity_score=0.3,
             min_direction_score=0.3,
@@ -476,11 +608,13 @@ class CurriculumConfig(BaseModel):
         default=CurriculumStageConfig(
             episode_range=[5000, 8000],
             episode_length=768,
-            batch_size=24576,
+            batch_size=6144,
             offset_ratio=0.75,
-            min_roc_score=0.0,
-            min_activity_score=0.0,
-            min_direction_score=0.0,
+            strategy_name="any_strong_momentum",
+            # Legacy compatibility
+            min_roc_score=0.1,
+            min_activity_score=0.1,
+            min_direction_score=0.1,
             direction_filter="both"
         )
     )
@@ -488,8 +622,10 @@ class CurriculumConfig(BaseModel):
         default=CurriculumStageConfig(
             episode_range=[8000, None],
             episode_length=1024,
-            batch_size=32768,
+            batch_size=8192,
             offset_ratio=0.75,
+            strategy_name="consolidation_breakouts",
+            # Legacy compatibility
             min_roc_score=0.0,
             min_activity_score=0.0,
             min_direction_score=0.0,
@@ -532,9 +668,9 @@ class Config(BaseModel):
     wandb: WandbConfig = Field(default_factory=WandbConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     
-    # Sniper-focused configurations
+    # Momentum scanning configurations
     momentum_scanning: MomentumScanningConfig = Field(default_factory=MomentumScanningConfig)
-    three_component_scoring: ThreeComponentScoringConfig = Field(default_factory=ThreeComponentScoringConfig)
+    rank_based_scoring: RankBasedScoringConfig = Field(default_factory=RankBasedScoringConfig)
     session_volume: SessionVolumeConfig = Field(default_factory=SessionVolumeConfig)
     progressive_episodes: ProgressiveEpisodeConfig = Field(default_factory=ProgressiveEpisodeConfig)
     curriculum: CurriculumConfig = Field(default_factory=CurriculumConfig)

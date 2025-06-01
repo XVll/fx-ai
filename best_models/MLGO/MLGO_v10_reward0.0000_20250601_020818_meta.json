@@ -1,0 +1,15 @@
+{
+  "version": 10,
+  "timestamp": "20250601_020818",
+  "reward": 0.0,
+  "metrics": {
+    "mean_reward": 0.0,
+    "episode_count": 0,
+    "update_iter": 0,
+    "timestamp": 1748732897.992704,
+    "initial_model": true,
+    "symbol": "MLGO"
+  },
+  "source": "/var/folders/y4/43fmm4t52fd77ng3ws5nypvh0000gn/T/tmpqihpwuun.pt",
+  "symbol": "MLGO"
+}
