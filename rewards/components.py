@@ -434,12 +434,12 @@ class TerminalPenalty(RewardComponent):
             reason = str(state.termination_reason)
             
             if 'BANKRUPTCY' in reason:
-                penalty = -self.config.get('bankruptcy_penalty', 100.0)
+                penalty = -self.config.get('bankruptcy_penalty', 5.0)
             elif 'MAX_LOSS' in reason:
-                penalty = -self.config.get('max_loss_penalty', 50.0)
+                penalty = -self.config.get('max_loss_penalty', 3.0)
             else:
                 # Generic terminal penalty
-                penalty = -self.config.get('default_penalty', 10.0)
+                penalty = -self.config.get('default_penalty', 1.0)
                 
         diagnostics = {
             'terminated': state.terminated,

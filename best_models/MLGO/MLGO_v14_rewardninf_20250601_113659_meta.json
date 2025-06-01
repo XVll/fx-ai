@@ -1,0 +1,29 @@
+{
+  "version": 14,
+  "timestamp": "20250601_113659",
+  "reward": -Infinity,
+  "metrics": {
+    "actor_loss": 0.0031814542860956864,
+    "critic_loss": 7795.058024597168,
+    "entropy": 2.341657668352127,
+    "clipfrac": 0.27431640625,
+    "approx_kl": 0.014331282448256388,
+    "value_function_explained_variance": 3.1031668186187743e-07,
+    "gradient_norm": 511.25775384902954,
+    "global_step_counter": 2048,
+    "global_episode_counter": 8,
+    "global_update_counter": 1,
+    "collected_steps": 2048,
+    "mean_reward": -691.0652210835585,
+    "std_reward": 201.22468911381458,
+    "mean_episode_length": 256.0,
+    "num_episodes_in_rollout": 8,
+    "rollout_time": 1091.7306611537933,
+    "steps_per_second": 1.875920566191276,
+    "invalid_actions": 413,
+    "update_iter": 1,
+    "timestamp": 1748767019.296294
+  },
+  "source": "outputs/momentum_training_20250601_111638/models/checkpoint_iter1_reward-inf.pt",
+  "symbol": "MLGO"
+}

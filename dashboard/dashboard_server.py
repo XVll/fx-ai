@@ -486,17 +486,9 @@ class DashboardServer:
                 self._info_row("Episodes", f"{state.total_episodes:,}"),
                 self._info_row("Updates", update_display),
                 self._info_row("Global Steps", f"{state.global_steps:,}"),
+                self._info_row("Steps/sec", f"{state.steps_per_second:.1f}"),
+                self._info_row("Eps/hour", f"{state.episodes_per_hour:.0f}"),
             ]
-            
-            # Add momentum day information if available
-            if state.current_momentum_day_date:
-                training_children.extend([
-                    html.Hr(style={'border': '1px solid ' + DARK_THEME['border'], 'margin': '8px 0'}),
-                    self._info_row("Current Day", state.current_momentum_day_date, color=DARK_THEME['accent_blue']),
-                    self._info_row("Day Quality", f"{state.current_momentum_day_quality:.3f}"),
-                    self._info_row("Episodes on Day", f"{state.episodes_on_current_day}"),
-                    self._info_row("Cycles Complete", f"{state.reset_point_cycles_completed}"),
-                ])
             
             # Add training completion progress bar (if max_updates is available)
             if max_updates > 0:

@@ -102,7 +102,7 @@ class RewardConfig(BaseModel):
         description="Penalty for drawdowns"
     )
     bankruptcy_penalty: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=10.0),
+        default=RewardComponentConfig(coefficient=5.0),
         description="Large penalty for bankruptcy"
     )
     
@@ -123,7 +123,7 @@ class RewardConfig(BaseModel):
     )
     
     # Global settings
-    scale_factor: float = Field(default=10.0, description="Global reward scaling")
+    scale_factor: float = Field(default=1.0, description="Global reward scaling")
     clip_range: List[float] = Field(default=[-10.0, 10.0], description="Reward clipping range")
 
 
@@ -471,9 +471,9 @@ class MomentumStrategiesConfig(BaseModel):
         default=MomentumStrategyConfig(
             name="strong_upward_momentum",
             description="Top 20% upward moves with good volume",
-            direction_range=[0.8, 1.0],
-            min_roc_score=0.6,
-            min_activity_score=0.7
+            direction_range=[0.0, 1.0],
+            min_roc_score=0.9,
+            min_activity_score=0.1
         )
     )
     

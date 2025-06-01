@@ -25,7 +25,6 @@ from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import (
     OrderTypeEnum, OrderSideEnum, PositionSideEnum, FillDetails
 )
-from dashboard.event_stream import event_stream, EventType
 
 
 class RejectionReason(Enum):
@@ -375,19 +374,8 @@ class ExecutionSimulator:
             if self.metrics_integrator:
                 self._record_execution_metrics(fill_details, latency_ms, slippage_bps)
 
-            # Emit trade execution event for dashboard
-            event_stream.emit_trade(
-                side=order_request.order_side.name,
-                quantity=int(fill_details.executed_quantity),
-                price=order_request.ideal_price,
-                fill_price=fill_details.executed_price,
-                pnl=0.0,  # Will be calculated by portfolio
-                commission=fill_details.commission,
-                order_id=f"{fill_details.fill_timestamp.timestamp():.0f}",
-                slippage_cost=fill_details.slippage_cost_total,
-                latency_ms=latency_ms,
-                timestamp=fill_details.fill_timestamp  # Add the actual fill timestamp
-            )
+            # NOTE: Trade execution event will be emitted by TradingEnvironment
+            # after portfolio processing with correct P&L calculation
 
             self.total_orders_filled += 1
             return fill_details
