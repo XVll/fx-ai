@@ -58,7 +58,10 @@
       "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 rg -n \"# Recent trades table\" /Users/fx/Repositories/FxAIv2/dashboard/dashboard_server.py -A 30)",
       "Bash(PYTHONPATH=/Users/fx/Repositories/FxAIv2 rg \"PositionSideEnum\" /Users/fx/Repositories/FxAIv2/simulators/ -A 3 -B 3)",
       "Bash(cp:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(if [ -d \"best_models/MLGO\" ])",
+      "Bash(then mv best_models/MLGO/* cache/model/best/)",
+      "Bash(fi)"
     ],
     "deny": []
   },

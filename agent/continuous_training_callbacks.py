@@ -3,6 +3,7 @@ import os
 import time
 import json
 import logging
+import numpy as np
 from typing import Dict, Any, Optional
 
 from agent.base_callbacks import TrainingCallback
@@ -84,7 +85,28 @@ class ContinuousTrainingCallback(TrainingCallback):
 
     def on_update_iteration_end(self, trainer, update_iter, update_metrics, rollout_stats):
         """Check for the new best model and periodic sync"""
-        current_reward = rollout_stats.get(self.reward_metric, -float('inf'))
+        # Get reward value with robust error handling
+        raw_reward = rollout_stats.get(self.reward_metric)
+        if raw_reward is None or not isinstance(raw_reward, (int, float, np.number)) or not np.isfinite(raw_reward):
+            # Log the issue for debugging
+            self.logger.warning(f"Invalid reward value for {self.reward_metric}: {raw_reward} (type: {type(raw_reward)}). "
+                              f"Available keys: {list(rollout_stats.keys())}")
+            current_reward = -float('inf')
+        else:
+            current_reward = float(raw_reward)
+        
+        # For model saving, always use the actual metric value if available
+        save_reward = current_reward
+        if current_reward == -float('inf') and self.reward_metric in rollout_stats:
+            try:
+                # Try to extract the raw value and convert it directly
+                save_reward = float(rollout_stats[self.reward_metric])
+                if np.isfinite(save_reward):
+                    self.logger.info(f"Using fallback reward extraction: {save_reward:.4f}")
+                else:
+                    save_reward = current_reward
+            except (ValueError, TypeError):
+                save_reward = current_reward
 
         # Check if this is the new best model
         is_best = False
@@ -121,7 +143,7 @@ class ContinuousTrainingCallback(TrainingCallback):
             self.model_manager.save_best_model(
                 checkpoint_path,
                 metrics,
-                current_reward
+                save_reward
             )
 
             if is_best:
@@ -154,7 +176,7 @@ class ContinuousTrainingCallback(TrainingCallback):
                 self.model_manager.save_best_model(
                     latest_checkpoint_path,
                     metrics,
-                    current_reward
+                    save_reward
                 )
 
         # Momentum day management
@@ -165,7 +187,11 @@ class ContinuousTrainingCallback(TrainingCallback):
         self.momentum_day_update_counter += 1
         
         # Track performance trend
-        current_reward = rollout_stats.get(self.reward_metric, 0)
+        raw_reward = rollout_stats.get(self.reward_metric)
+        if raw_reward is None or not isinstance(raw_reward, (int, float, np.number)) or not np.isfinite(raw_reward):
+            current_reward = 0.0  # Default to 0 for performance tracking
+        else:
+            current_reward = float(raw_reward)
         self.performance_trend.append(current_reward)
         if len(self.performance_trend) > 20:  # Keep last 20 updates
             self.performance_trend.pop(0)
@@ -227,10 +253,17 @@ class ContinuousTrainingCallback(TrainingCallback):
 
         # Save to best_models if different from best
         if self.best_model_path != final_checkpoint_path:
+            # Get final reward with validation
+            final_raw_reward = stats.get(self.reward_metric)
+            if final_raw_reward is None or not isinstance(final_raw_reward, (int, float, np.number)) or not np.isfinite(final_raw_reward):
+                final_reward = self.best_reward  # Use best reward as fallback
+            else:
+                final_reward = float(final_raw_reward)
+                
             self.model_manager.save_best_model(
                 final_checkpoint_path,
                 final_stats,
-                stats.get(self.reward_metric, self.best_reward)
+                final_reward
             )
 
         self.logger.info(f"Training session ended. Duration: {session_duration:.1f}s, "

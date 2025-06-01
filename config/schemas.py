@@ -227,7 +227,7 @@ class TrainingConfig(BaseModel):
     eval_episodes: int = Field(default=10, description="Episodes for evaluation")
     
     # Model selection metric
-    best_model_metric: str = Field(default="reward", description="Metric for model selection")
+    best_model_metric: str = Field(default="mean_reward", description="Metric for model selection")
 
 
 class SimulationConfig(BaseModel):

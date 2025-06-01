@@ -1004,6 +1004,7 @@ class PPOTrainer:
                         'total_epochs': self.ppo_epochs,
                         'current_batch': current_batch,
                         'total_batches': total_batches,
+                        'batch_size': self.batch_size,
                         'stage_status': f"Epoch {epoch + 1}/{self.ppo_epochs}, Batch {current_batch}/{total_batches}"
                     }
                     self.metrics.metrics_manager.emit_event("training_update", training_data)

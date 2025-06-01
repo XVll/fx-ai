@@ -509,6 +509,10 @@ class DashboardServer:
             training_content = html.Div(training_children)
             
             # PPO Metrics - simplified
+            batch_size = getattr(state, 'batch_size', 0)
+            total_epochs = getattr(state, 'total_epochs', 0)
+            total_batches = getattr(state, 'total_batches', 0)
+            
             ppo_content = html.Div([
                 self._info_row("Policy Loss", f"{state.policy_loss:.4f}"),
                 self._info_row("Value Loss", f"{state.value_loss:.4f}"),
@@ -516,6 +520,10 @@ class DashboardServer:
                 self._info_row("Learn Rate", f"{state.learning_rate:.2e}"),
                 self._info_row("KL Div", f"{getattr(state, 'kl_divergence', 0.0):.4f}"),
                 self._info_row("Clip Frac", f"{getattr(state, 'clip_fraction', 0.0):.2f}"),
+                html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
+                self._info_row("Batch Size", f"{batch_size}" if batch_size > 0 else "N/A"),
+                self._info_row("Epochs", f"{total_epochs}" if total_epochs > 0 else "N/A"),
+                self._info_row("Batches/Epoch", f"{total_batches}" if total_batches > 0 else "N/A"),
             ])
             
             # Reward components table - redesigned to match actions panel format

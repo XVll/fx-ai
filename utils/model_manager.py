@@ -17,33 +17,23 @@ class ModelManager:
 
     def __init__(
             self,
-            base_dir: str = "./models",
-            best_models_dir: str = "./best_models",
+            base_dir: str = "cache/model/checkpoint",
+            best_models_dir: str = "cache/model/best",
             model_prefix: str = "model",
-            max_best_models: int = 5,
-            symbol: str = None
+            max_best_models: int = 5
     ):
         self.base_dir = base_dir
         self.best_models_dir = best_models_dir
         self.model_prefix = model_prefix
         self.max_best_models = max_best_models
-        self.symbol = symbol
 
         # Create directories
         os.makedirs(self.base_dir, exist_ok=True)
         os.makedirs(self.best_models_dir, exist_ok=True)
 
-        # Symbol-specific subdirectories
-        if self.symbol:
-            self.symbol_base_dir = os.path.join(self.base_dir, self.symbol)
-            self.symbol_best_dir = os.path.join(self.best_models_dir, self.symbol)
-            os.makedirs(self.symbol_base_dir, exist_ok=True)
-            os.makedirs(self.symbol_best_dir, exist_ok=True)
-
     def get_model_version(self) -> int:
         """Get the next model version number"""
-        model_dir = self.symbol_best_dir if self.symbol else self.best_models_dir
-        pattern = os.path.join(model_dir, f"{self.model_prefix}_v*.pt")
+        pattern = os.path.join(self.best_models_dir, f"{self.model_prefix}_v*.pt")
         existing_models = glob.glob(pattern)
 
         versions = []
@@ -59,8 +49,7 @@ class ModelManager:
 
     def find_best_model(self) -> Optional[Dict[str, Any]]:
         """Find the best model for continued training"""
-        model_dir = self.symbol_best_dir if self.symbol else self.best_models_dir
-        pattern = os.path.join(model_dir, f"{self.model_prefix}_v*.pt")
+        pattern = os.path.join(self.best_models_dir, f"{self.model_prefix}_v*.pt")
         model_files = glob.glob(pattern)
 
         if not model_files:
@@ -107,8 +96,7 @@ class ModelManager:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{self.model_prefix}_v{version}_reward{reward_str}_{timestamp}.pt"
 
-        target_dir = self.symbol_best_dir if self.symbol else self.best_models_dir
-        target_path = os.path.join(target_dir, filename)
+        target_path = os.path.join(self.best_models_dir, filename)
 
         try:
             # Copy model file
@@ -120,8 +108,7 @@ class ModelManager:
                 'timestamp': timestamp,
                 'reward': target_reward,
                 'metrics': metrics,
-                'source': model_path,
-                'symbol': self.symbol
+                'source': model_path
             }
 
             metadata_path = target_path.replace('.pt', '_meta.json')
@@ -140,8 +127,7 @@ class ModelManager:
 
     def _cleanup_old_models(self):
         """Remove old models if exceeding max limit"""
-        target_dir = self.symbol_best_dir if self.symbol else self.best_models_dir
-        model_files = glob.glob(os.path.join(target_dir, f"{self.model_prefix}_v*.pt"))
+        model_files = glob.glob(os.path.join(self.best_models_dir, f"{self.model_prefix}_v*.pt"))
 
         # Sort by modification time (newest first)
         model_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
@@ -223,7 +209,7 @@ class ModelManager:
         """Save a checkpoint with full training state"""
         if checkpoint_path is None:
             checkpoint_path = os.path.join(
-                self.symbol_base_dir if self.symbol else self.base_dir,
+                self.base_dir,
                 "checkpoint.pt"
             )
 
@@ -235,8 +221,7 @@ class ModelManager:
                 'global_episode_counter': global_episode_counter,
                 'global_update_counter': global_update_counter,
                 'metadata': metadata,
-                'timestamp': datetime.now().isoformat(),
-                'symbol': self.symbol
+                'timestamp': datetime.now().isoformat()
             }
 
             # Ensure directory exists
@@ -261,7 +246,7 @@ class ModelManager:
         """Load a checkpoint with full training state"""
         if checkpoint_path is None:
             checkpoint_path = os.path.join(
-                self.symbol_base_dir if self.symbol else self.base_dir,
+                self.base_dir,
                 "checkpoint.pt"
             )
 
@@ -282,8 +267,7 @@ class ModelManager:
                 'global_episode': checkpoint.get('global_episode_counter', 0),
                 'global_update': checkpoint.get('global_update_counter', 0),
                 'metadata': checkpoint.get('metadata', {}),
-                'timestamp': checkpoint.get('timestamp', ''),
-                'symbol': checkpoint.get('symbol', self.symbol)
+                'timestamp': checkpoint.get('timestamp', '')
             }
 
             logger.info(f"Loaded checkpoint: {checkpoint_path}")
