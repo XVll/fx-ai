@@ -305,17 +305,43 @@ class FeatureCacheManager:
         if self._current_cache is None:
             return None
         
-        timestamp_key = timestamp.isoformat()
-        return self._current_cache.get(timestamp_key)
+        # Try multiple timestamp formats to handle timezone mismatches
+        timestamp_keys = [
+            timestamp.isoformat(),  # Original format
+        ]
+        
+        # Add timezone-aware variants if timestamp is timezone-naive
+        if timestamp.tz is None:
+            timestamp_keys.append(timestamp.tz_localize('UTC').isoformat())
+        
+        # Try each key format
+        for timestamp_key in timestamp_keys:
+            result = self._current_cache.get(timestamp_key)
+            if result is not None:
+                self.logger.debug(f"Cache hit for {timestamp_key}")
+                return result
+        
+        # Debug logging for cache misses
+        if self._current_cache:
+            self.logger.debug(f"Cache miss for {timestamp_keys[0]}. Available keys sample: {list(self._current_cache.keys())[:3]}")
+            
+        return None
     
     def cache_features(self, timestamp: pd.Timestamp, features: Dict[str, np.ndarray]) -> None:
         """Cache features for a timestamp"""
         if self._current_cache is None:
             return
         
-        timestamp_key = timestamp.isoformat()
+        # Ensure consistent timezone handling for storage
+        if timestamp.tz is None:
+            timestamp_key = timestamp.tz_localize('UTC').isoformat()
+            storage_timestamp = timestamp.tz_localize('UTC')
+        else:
+            timestamp_key = timestamp.isoformat()
+            storage_timestamp = timestamp
+            
         self._current_cache[timestamp_key] = features
-        self._dirty_timestamps.add(timestamp)
+        self._dirty_timestamps.add(storage_timestamp)
         
         # Auto-save every 10 cached features to avoid data loss
         if len(self._dirty_timestamps) >= 10:

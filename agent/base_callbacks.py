@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import numpy as np
 from typing import Dict, Any
 
 
@@ -74,7 +75,12 @@ class ModelCheckpointCallback(TrainingCallback):
     def on_update_iteration_end(self, trainer, update_iter, update_metrics, rollout_stats):
         """Save model checkpoint at specified frequency."""
         if update_iter % self.save_freq == 0:
-            mean_reward = rollout_stats.get("mean_reward", -float('inf'))
+            # Get reward value with robust validation
+            raw_reward = rollout_stats.get("mean_reward")
+            if raw_reward is None or not isinstance(raw_reward, (int, float, np.number)) or not np.isfinite(raw_reward):
+                mean_reward = -float('inf')
+            else:
+                mean_reward = float(raw_reward)
 
             # Only save if reward improved (if save_best_only is True)
             if not self.save_best_only or mean_reward > self.best_mean_reward:
@@ -104,7 +110,12 @@ class EarlyStoppingCallback(TrainingCallback):
 
     def on_update_iteration_end(self, trainer, update_iter, update_metrics, rollout_stats):
         """Check if training should be stopped due to no improvement."""
-        mean_reward = rollout_stats.get("mean_reward", -float('inf'))
+        # Get reward value with robust validation
+        raw_reward = rollout_stats.get("mean_reward")
+        if raw_reward is None or not isinstance(raw_reward, (int, float, np.number)) or not np.isfinite(raw_reward):
+            mean_reward = -float('inf')
+        else:
+            mean_reward = float(raw_reward)
 
         if mean_reward > self.best_mean_reward + self.min_delta:
             # Reward improved

@@ -1044,7 +1044,8 @@ class MarketSimulator:
             
             if cached_features is not None:
                 # Load from persistent cache
-
+                self.logger.debug(f"DEBUG: Loading features from persistent cache for {timestamp}")
+                
                 # Update the DataFrame with cached features
                 self.df_market_state.at[timestamp, 'hf_features'] = cached_features.get('hf', np.zeros((self.model_config.hf_seq_len, self.model_config.hf_feat_dim)))
                 self.df_market_state.at[timestamp, 'mf_features'] = cached_features.get('mf', np.zeros((self.model_config.mf_seq_len, self.model_config.mf_feat_dim)))

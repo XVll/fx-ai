@@ -21,9 +21,9 @@ poetry run poe init                        # Train new model from scratch
 poetry run poe train                       # Continue training from best model
 
 # Using scripts directly
-poetry run python main.py --config momentum_training --symbol MLGO
-poetry run python main.py --config momentum_training --symbol MLGO --continue
-poetry run python scripts/run.py train --momentum --symbol MLGO --continue-training
+poetry run python main.py --config momentum_training --symbol AAPL
+poetry run python main.py --config momentum_training --symbol AAPL --continue
+poetry run python scripts/run.py train --momentum --symbol AAPL --continue-training
 
 # Run backtest
 poetry run poe backtest                    # Uses date 2025-04-15
@@ -61,7 +61,7 @@ poetry run pytest tests/test_trading_environment.py -v
 
 ## Architecture Overview
 
-FxAIv2 is a reinforcement learning-based algorithmic trading system specializing in high-frequency momentum trading of low-float stocks (MLGO). The system uses:
+FxAIv2 is a reinforcement learning-based algorithmic trading system specializing in high-frequency momentum trading of low-float stocks. The system uses:
 
 ### Core Components
 
@@ -189,7 +189,7 @@ Databento Files → DataManager → MarketSimulator → FeatureExtractor → PPO
 
 - The system focuses on momentum/squeeze trading strategies for low-float stocks
 - Feature extraction is critical - see README.md for planned v2 feature architecture
-- Model checkpoints are saved in `best_models/MLGO/` with JSON metadata
+- Model checkpoints are saved in `cache/model/best/` with JSON metadata
 - Databento data files are stored in `dnb/mlgo/` directory structure
 - Logging configured through `utils/logger.py` using Rich handler
 - Invalid action handling is configurable with tracking and limits

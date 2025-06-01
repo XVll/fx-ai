@@ -282,13 +282,12 @@ def create_metrics_components(config: Config, log: logging.Logger):
 def create_model_components(config: Config, device: torch.device, 
                            output_dir: str, log: logging.Logger):
     """Create model and training components with proper config passing"""
-    # Model Manager with TrainingConfig
+    # Model Manager with cache directory structure
     model_manager = ModelManager(
-        base_dir=str(Path(output_dir) / "models"),
-        best_models_dir="best_models",
-        model_prefix=config.env.symbol,
-        max_best_models=config.training.keep_best_n_models,
-        symbol=config.env.symbol
+        base_dir="cache/model/checkpoint",
+        best_models_dir="cache/model/best",
+        model_prefix="model",
+        max_best_models=config.training.keep_best_n_models
     )
     
     # Model dimensions are known from config, no need to reset env here

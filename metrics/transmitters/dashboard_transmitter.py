@@ -319,8 +319,7 @@ class DashboardTransmitter(MetricTransmitter):
                 # Handle momentum day changes - extract from nested day_info structure
                 day_info = event_data.get('day_info', {})
                 reset_points = event_data.get('reset_points', [])
-                print(f"DEBUG MOMENTUM EVENT: day_info = {day_info}")
-                
+
                 # Update momentum day tracking metrics
                 momentum_data = {
                     'current_momentum_day_date': day_info.get('day_date', ''),
@@ -329,17 +328,14 @@ class DashboardTransmitter(MetricTransmitter):
                     'reset_point_cycles_completed': day_info.get('cycles_completed', 0),
                     'total_momentum_days_used': day_info.get('total_days_used', 0)
                 }
-                print(f"DEBUG MOMENTUM SENDING: {momentum_data}")
                 dashboard_state.update_metrics(momentum_data)
                 
                 # Update reset points data for chart markers
                 if reset_points:
                     dashboard_state.update_reset_points_data(reset_points)
-                    print(f"DEBUG MOMENTUM: Updated {len(reset_points)} reset points")
-                    
+
             elif event_name == 'reset_point_selection':
                 # Handle reset point selection tracking
-                print(f"DEBUG DASHBOARD TRANSMITTER: Received reset_point_selection event: {event_data}")
                 reset_point_data = {
                     'selected_reset_point_index': event_data.get('selected_index', 0),
                     'selected_reset_point_timestamp': event_data.get('selected_timestamp', ''),
@@ -347,12 +343,10 @@ class DashboardTransmitter(MetricTransmitter):
                     'points_used_in_cycle': event_data.get('points_used_in_cycle', 0),
                     'points_remaining_in_cycle': event_data.get('points_remaining_in_cycle', 0)
                 }
-                print(f"DEBUG DASHBOARD TRANSMITTER: Updating with reset point data: {reset_point_data}")
                 dashboard_state.update_metrics(reset_point_data)
                 
             elif event_name == 'cycle_completion':
                 # Handle cycle completion tracking
-                print(f"DEBUG DASHBOARD TRANSMITTER: Received cycle_completion event: {event_data}")
                 cycle_data = {
                     'cycles_completed': event_data.get('cycles_completed', 0),
                     'target_cycles_per_day': event_data.get('target_cycles_per_day', 10),
@@ -360,19 +354,16 @@ class DashboardTransmitter(MetricTransmitter):
                     'day_switch_progress_pct': event_data.get('day_switch_progress_pct', 0.0),
                     'episodes_on_current_day': event_data.get('episodes_on_current_day', 0)
                 }
-                print(f"DEBUG DASHBOARD TRANSMITTER: Updating with cycle data: {cycle_data}")
                 dashboard_state.update_metrics(cycle_data)
                 
             elif event_name == 'curriculum_detail':
                 # Handle enhanced curriculum tracking
-                print(f"DEBUG DASHBOARD TRANSMITTER: Received curriculum_detail event: {event_data}")
                 curriculum_detail_data = {
                     'episodes_to_next_stage': event_data.get('episodes_to_next_stage', 0),
                     'next_stage_name': event_data.get('next_stage_name', ''),
                     'episodes_per_day_config': event_data.get('episodes_per_day_config', 10),
                     'curriculum_strategy': event_data.get('curriculum_strategy', 'quality_based')
                 }
-                print(f"DEBUG DASHBOARD TRANSMITTER: Updating with curriculum detail data: {curriculum_detail_data}")
                 dashboard_state.update_metrics(curriculum_detail_data)
                 
             # Other events can be handled as needed
