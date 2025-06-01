@@ -59,7 +59,7 @@ class RewardSystem:
             'global_scale': self.reward_config.scale_factor,
             'clip_min': self.reward_config.clip_range[0],
             'clip_max': self.reward_config.clip_range[1],
-            'use_smoothing': True,
+            'use_smoothing': False,  # DISABLED: Smoothing causes sign inversions for losses
             'smoothing_window': 10
         }
 
