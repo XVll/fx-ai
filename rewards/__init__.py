@@ -5,8 +5,9 @@ from rewards.components import (
     PnLReward,
     HoldingTimePenalty,
     DrawdownPenalty,
-    ActionPenalty,
-    QuickProfitBonus,
+    ProfitGivebackPenalty,
+    MaxDrawdownPenalty,
+    ProfitClosingBonus,
     BankruptcyPenalty
 )
 from rewards.calculator import RewardSystem
@@ -19,8 +20,9 @@ __all__ = [
     'PnLReward',
     'HoldingTimePenalty',
     'DrawdownPenalty',
-    'ActionPenalty',
-    'QuickProfitBonus',
+    'ProfitGivebackPenalty',
+    'MaxDrawdownPenalty',
+    'ProfitClosingBonus',
     'BankruptcyPenalty',
     'RewardSystem'
 ]

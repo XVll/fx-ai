@@ -603,10 +603,8 @@ class PortfolioSimulator:
         trade['max_adverse_excursion'] = min(trade['max_adverse_excursion'], excursion)
 
     def _calculate_portfolio_features(self, timestamp: datetime) -> np.ndarray:
-        """Calculate portfolio features for model observation."""
-        # self.logger.debug(f"DEBUG: _calculate_portfolio_features called with timestamp {timestamp}")
+        """Calculate enhanced portfolio features for model observation with MFE/MAE tracking."""
         features = np.zeros(self.portfolio_feat_dim, dtype=np.float32)
-        # self.logger.debug(f"DEBUG: Created features array with shape {features.shape}")
         
         if not self.tradable_assets:
             return features
@@ -627,23 +625,75 @@ class PortfolioSimulator:
             elif position.side == PositionSideEnum.SHORT:
                 features[0] = -min(1.0, position_ratio)
 
-        # Feature 1: Normalized unrealized P&L
+        # Feature 1: Normalized unrealized P&L (-2 to 2, as % of position entry value)
         if not position.is_flat() and position.entry_value > 0:
             features[1] = np.clip(position.unrealized_pnl / position.entry_value, -2.0, 2.0)
 
-        # Feature 2: Time in position (normalized)
+        # Feature 2: Time in position (0 to 2, normalized by max holding time)
         if not position.is_flat() and position.entry_timestamp and self.max_holding_seconds:
             time_held = (timestamp - position.entry_timestamp).total_seconds()
             features[2] = np.clip(time_held / self.max_holding_seconds, 0.0, 2.0)
 
-        # Feature 3: Cash ratio
+        # Feature 3: Cash ratio (0 to 2, clipped)
         if total_equity > 0:
             features[3] = np.clip(self.cash / total_equity, 0.0, 2.0)
 
-        # Feature 4: Session P&L percentage
+        # Feature 4: Session P&L percentage (-1 to 1, as % of initial capital)
         if self.initial_capital > 0:
             session_pnl_pct = self.session_realized_pnl / self.initial_capital
             features[4] = np.clip(session_pnl_pct, -1.0, 1.0)
+
+        # Feature 5: Maximum Favorable Excursion (MFE) normalized (-2 to 2)
+        # Shows best profit achieved during current trade as % of entry value
+        if not position.is_flat() and position.entry_value > 0:
+            trade_id = getattr(position, 'trade_id', None)
+            if trade_id and trade_id in self.open_trades:
+                mfe = self.open_trades[trade_id]['max_favorable_excursion']
+                features[5] = np.clip(mfe / position.entry_value, -2.0, 2.0)
+
+        # Feature 6: Maximum Adverse Excursion (MAE) normalized (-2 to 2)  
+        # Shows worst loss during current trade as % of entry value
+        if not position.is_flat() and position.entry_value > 0:
+            trade_id = getattr(position, 'trade_id', None)
+            if trade_id and trade_id in self.open_trades:
+                mae = self.open_trades[trade_id]['max_adverse_excursion']
+                features[6] = np.clip(mae / position.entry_value, -2.0, 2.0)
+
+        # Feature 7: Profit giveback ratio (-1 to 1)
+        # Shows how much profit has been given back from peak (MFE)
+        if not position.is_flat() and position.entry_value > 0:
+            trade_id = getattr(position, 'trade_id', None)
+            if trade_id and trade_id in self.open_trades:
+                mfe = self.open_trades[trade_id]['max_favorable_excursion']
+                current_pnl = position.unrealized_pnl
+                if mfe > 0:  # Only meaningful if we had profits
+                    giveback_ratio = (mfe - current_pnl) / mfe
+                    features[7] = np.clip(giveback_ratio, -1.0, 1.0)
+
+        # Feature 8: Recovery ratio (-1 to 1)
+        # Shows recovery from worst loss (MAE)
+        if not position.is_flat() and position.entry_value > 0:
+            trade_id = getattr(position, 'trade_id', None)
+            if trade_id and trade_id in self.open_trades:
+                mae = self.open_trades[trade_id]['max_adverse_excursion']
+                current_pnl = position.unrealized_pnl
+                if mae < 0:  # Only meaningful if we had losses
+                    recovery_ratio = (current_pnl - mae) / abs(mae)
+                    features[8] = np.clip(recovery_ratio, -1.0, 1.0)
+
+        # Feature 9: Trade quality score (-1 to 1)
+        # Combined metric: positive if current P&L is closer to MFE than MAE
+        if not position.is_flat() and position.entry_value > 0:
+            trade_id = getattr(position, 'trade_id', None)
+            if trade_id and trade_id in self.open_trades:
+                mfe = self.open_trades[trade_id]['max_favorable_excursion']
+                mae = self.open_trades[trade_id]['max_adverse_excursion']
+                current_pnl = position.unrealized_pnl
+                
+                # Calculate trade quality: where are we relative to MFE/MAE range?
+                if mfe != mae:  # Avoid division by zero
+                    trade_quality = (current_pnl - mae) / (mfe - mae)
+                    features[9] = np.clip(trade_quality, -1.0, 1.0)
 
         return features
 
