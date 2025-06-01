@@ -13,6 +13,7 @@ from rewards.components import (
     ProfitGivebackPenalty,
     MaxDrawdownPenalty,
     ProfitClosingBonus,
+    CleanTradeBonus,
     BankruptcyPenalty
 )
 from simulators.portfolio_simulator import PortfolioState, FillDetails, PositionSideEnum
@@ -110,6 +111,19 @@ class RewardSystem:
             }
             components.append(ProfitClosingBonus(profit_closing_config, self.logger))
             self.logger.info(f"Enabled profit closing bonus (coefficient: {self.config.profit_closing_bonus_coefficient})")
+        
+        # Clean trade bonus
+        if self.config.enable_clean_trade_bonus:
+            clean_trade_config = {
+                'base_multiplier': self.config.base_multiplier,
+                'max_mae_threshold': self.config.max_mae_threshold,
+                'min_gain_threshold': self.config.min_gain_threshold,
+                # Keep legacy parameters for backward compatibility
+                'clean_trade_coefficient': self.config.clean_trade_coefficient,
+                'max_clean_drawdown_percent': self.config.max_clean_drawdown_percent
+            }
+            components.append(CleanTradeBonus(clean_trade_config, self.logger))
+            self.logger.info(f"Enabled clean trade bonus (base_multiplier: {self.config.base_multiplier}, max_mae_threshold: {self.config.max_mae_threshold}, min_gain_threshold: {self.config.min_gain_threshold})")
         
         # Bankruptcy penalty (always enabled - safety mechanism)
         bankruptcy_config = {

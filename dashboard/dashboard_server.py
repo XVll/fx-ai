@@ -506,6 +506,9 @@ class DashboardServer:
             max_updates = getattr(state, 'max_updates', 0)
             update_display = f"{state.updates:,}" + (f"/{max_updates:,}" if max_updates > 0 else "")
             
+            # Calculate updates per hour
+            updates_per_hour = getattr(state, 'updates_per_hour', state.updates_per_second * 3600 if hasattr(state, 'updates_per_second') else 0.0)
+            
             training_children = [
                 self._info_row("Mode", state.mode, color=DARK_THEME['accent_purple']),
                 self._info_row("Stage", state.stage),
@@ -514,6 +517,7 @@ class DashboardServer:
                 self._info_row("Global Steps", f"{state.global_steps:,}"),
                 self._info_row("Steps/sec", f"{state.steps_per_second:.1f}"),
                 self._info_row("Eps/hour", f"{state.episodes_per_hour:.0f}"),
+                self._info_row("Updates/hour", f"{updates_per_hour:.0f}"),
             ]
             
             # Add training completion progress bar (if max_updates is available)
@@ -561,6 +565,7 @@ class DashboardServer:
                 'profit_giveback_penalty': 'shaping',
                 'max_drawdown_penalty': 'shaping',
                 'profit_closing_bonus': 'shaping',
+                'clean_trade_bonus': 'shaping',
                 'bankruptcy_penalty': 'terminal'
             }
             
@@ -868,8 +873,11 @@ class DashboardServer:
             if total_epochs > 0:
                 epoch_progress = min(100, (current_epoch / total_epochs) * 100)
                 if total_batches > 0:
+                    # Calculate global batch number to fix non-linear display
+                    global_batch = (current_epoch - 1) * total_batches + current_batch if current_epoch > 0 else current_batch
+                    global_total_batches = total_epochs * total_batches
                     batch_progress = min(100, (current_batch / total_batches) * 100)
-                    text = f"Epoch {current_epoch}/{total_epochs}, Batch {current_batch}/{total_batches}"
+                    text = f"Epoch {current_epoch}/{total_epochs}, Batch {global_batch}/{global_total_batches}"
                 else:
                     text = f"Epoch {current_epoch}/{total_epochs}"
                     
