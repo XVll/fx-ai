@@ -124,7 +124,7 @@ class RewardConfig(BaseModel):
     
     # Global settings
     scale_factor: float = Field(default=1.0, description="Global reward scaling")
-    clip_range: List[float] = Field(default=[-10.0, 10.0], description="Reward clipping range")
+    clip_range: List[float] = Field(default=[-1000.0, 1000.0], description="Reward clipping range - wide range to avoid distortion")
 
 
 class EnvConfig(BaseModel):
