@@ -864,6 +864,22 @@ class TradingEnvironment(gym.Env):
             enriched_fill = self.portfolio_manager.process_fill(execution_result.fill_details)
             fill_details_list.append(enriched_fill)
             self.episode_fills.append(enriched_fill)
+            
+            # Emit enriched fill event to dashboard with correct P&L
+            from dashboard.event_stream import event_stream, EventType
+            event_stream.emit_trade(
+                side=enriched_fill.order_side.name,
+                quantity=int(enriched_fill.executed_quantity),
+                price=enriched_fill.executed_price,  # Use actual execution price
+                fill_price=enriched_fill.executed_price,
+                pnl=enriched_fill.realized_pnl or 0.0,  # Use portfolio-calculated P&L
+                commission=enriched_fill.commission,
+                order_id=f"fill_{enriched_fill.fill_timestamp.timestamp():.0f}",
+                slippage_cost=enriched_fill.slippage_cost_total,
+                timestamp=enriched_fill.fill_timestamp,
+                closes_position=enriched_fill.closes_position,
+                holding_time_minutes=enriched_fill.holding_time_minutes
+            )
 
         # Update portfolio with current market prices
         time_for_pf_update = fill_details_list[-1].fill_timestamp if fill_details_list else current_sim_time_decision

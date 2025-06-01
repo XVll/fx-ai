@@ -447,12 +447,19 @@ class PPOTrainer:
         
         # Emit reset point selection tracking for dashboard
         if hasattr(self.metrics, 'metrics_manager'):
+            total_available = len(quality_filtered_indices)
+            points_used = len(self.used_reset_point_indices)
+            points_remaining = total_available - points_used
+            
+            print(f"DEBUG RESET TRACKING: Emitting reset_point_selection event")
+            print(f"DEBUG RESET TRACKING: total_available: {total_available}, points_used: {points_used}, points_remaining: {points_remaining}")
+            
             reset_point_tracking = {
                 'selected_index': selected_idx,
                 'selected_timestamp': str(reset_point.get('timestamp', 'unknown')),
-                'total_available_points': len(quality_filtered_indices),
-                'points_used_in_cycle': len(self.used_reset_point_indices),
-                'points_remaining_in_cycle': len(quality_filtered_indices) - len(self.used_reset_point_indices),
+                'total_available_points': total_available,
+                'points_used_in_cycle': points_used,
+                'points_remaining_in_cycle': points_remaining,
                 'direction_score': direction_score,
                 'roc_score': roc_score,
                 'activity_score': activity_score,
@@ -460,6 +467,7 @@ class PPOTrainer:
                 'curriculum_stage': stage
             }
             self.metrics.metrics_manager.emit_event('reset_point_selection', reset_point_tracking)
+            print(f"DEBUG RESET TRACKING: Event emitted with data: {reset_point_tracking}")
         
         return selected_idx
 
@@ -526,6 +534,66 @@ class PPOTrainer:
                 'stage_progress': stage_progress
             }
             self.metrics.metrics_manager.emit_event('curriculum_progress', curriculum_data)
+            
+            # Also emit the detailed curriculum tracking
+            self._emit_curriculum_detail()
+    
+    def _emit_curriculum_detail(self):
+        """Emit detailed curriculum tracking for dashboard."""
+        if hasattr(self.metrics, 'metrics_manager'):
+            stage, strategy_name = self._get_curriculum_stage_info()
+            
+            # Calculate episodes needed for next stage
+            episodes_to_next_stage = 0
+            next_stage_name = ""
+            total_episodes = self.global_episode_counter
+            print(f"DEBUG CURRICULUM: Current episodes: {total_episodes}")
+            
+            if total_episodes < 2000:
+                episodes_to_next_stage = 2000 - total_episodes
+                next_stage_name = "Intermediate"
+                print(f"DEBUG CURRICULUM: Stage 1 - {episodes_to_next_stage} episodes to {next_stage_name}")
+            elif total_episodes < 5000:
+                episodes_to_next_stage = 5000 - total_episodes
+                next_stage_name = "Advanced"
+                print(f"DEBUG CURRICULUM: Stage 2 - {episodes_to_next_stage} episodes to {next_stage_name}")
+            elif total_episodes < 8000:
+                episodes_to_next_stage = 8000 - total_episodes
+                next_stage_name = "Specialization"
+                print(f"DEBUG CURRICULUM: Stage 3 - {episodes_to_next_stage} episodes to {next_stage_name}")
+            else:
+                episodes_to_next_stage = 0
+                next_stage_name = "Maximum"
+                print(f"DEBUG CURRICULUM: Stage 4 - Maximum stage reached")
+                
+            curriculum_detail = {
+                'current_stage': stage,
+                'current_strategy': strategy_name,
+                'total_episodes': self.global_episode_counter,
+                'episodes_to_next_stage': episodes_to_next_stage,
+                'next_stage_name': next_stage_name,
+                'episodes_per_day_config': self.episodes_per_day,
+                'curriculum_strategy': self.curriculum_strategy
+            }
+            self.metrics.metrics_manager.emit_event('curriculum_detail', curriculum_detail)
+    
+    def _emit_initial_curriculum_detail(self):
+        """Emit initial curriculum detail at training start."""
+        self._emit_curriculum_detail()
+        
+    def _emit_initial_cycle_tracking(self):
+        """Emit initial cycle tracking after day setup."""
+        if hasattr(self.metrics, 'metrics_manager'):
+            # Initial cycle tracking with zero values
+            cycle_tracking = {
+                'cycles_completed': self.reset_point_cycles_completed,
+                'target_cycles_per_day': self.episodes_per_day,
+                'cycles_remaining_for_day_switch': self.episodes_per_day - self.reset_point_cycles_completed,
+                'episodes_on_current_day': self.episodes_completed_on_current_day,
+                'day_switch_progress_pct': 0.0,
+                'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown'
+            }
+            self.metrics.metrics_manager.emit_event('cycle_completion', cycle_tracking)
 
     def _update_curriculum_progress(self):
         """Update curriculum progress based on training performance."""
@@ -593,6 +661,9 @@ class PPOTrainer:
                     self.reset_point_cycles_completed = 0
                     self.used_reset_point_indices.clear()
                     
+                    # Emit initial cycle tracking after day setup
+                    self._emit_initial_cycle_tracking()
+                    
             # Select reset point and reset environment
             reset_point_idx = self._select_reset_point()
             
@@ -607,15 +678,22 @@ class PPOTrainer:
                 
                 # Emit cycle completion tracking for dashboard
                 if hasattr(self.metrics, 'metrics_manager'):
+                    cycles_remaining = self.episodes_per_day - self.reset_point_cycles_completed
+                    progress_pct = (self.reset_point_cycles_completed / self.episodes_per_day) * 100
+                    
+                    print(f"DEBUG CYCLE TRACKING: Emitting cycle_completion event")
+                    print(f"DEBUG CYCLE TRACKING: cycles_completed: {self.reset_point_cycles_completed}, target: {self.episodes_per_day}, remaining: {cycles_remaining}, progress: {progress_pct:.1f}%")
+                    
                     cycle_tracking = {
                         'cycles_completed': self.reset_point_cycles_completed,
                         'target_cycles_per_day': self.episodes_per_day,
-                        'cycles_remaining_for_day_switch': self.episodes_per_day - self.reset_point_cycles_completed,
+                        'cycles_remaining_for_day_switch': cycles_remaining,
                         'episodes_on_current_day': self.episodes_completed_on_current_day,
-                        'day_switch_progress_pct': (self.reset_point_cycles_completed / self.episodes_per_day) * 100,
+                        'day_switch_progress_pct': progress_pct,
                         'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown'
                     }
                     self.metrics.metrics_manager.emit_event('cycle_completion', cycle_tracking)
+                    print(f"DEBUG CYCLE TRACKING: Event emitted with data: {cycle_tracking}")
             
             # Note: momentum day progress tracking is done via metrics, 
             # reset points data is only sent on actual day changes
@@ -1296,38 +1374,25 @@ class PPOTrainer:
         }
         self.metrics.metrics_manager.emit_event('training_update', training_data)
         
-        # Emit initial curriculum progress
+        # Emit initial curriculum progress and tracking
         self._emit_curriculum_progress()
+        self._emit_initial_curriculum_detail()
         
-        # Emit enhanced curriculum stage tracking for dashboard
+        # Emit initial reset point tracking (with default values)
         if hasattr(self.metrics, 'metrics_manager'):
-            stage, strategy_name = self._get_curriculum_stage_info()
-            
-            # Calculate episodes needed for next stage
-            episodes_to_next_stage = 0
-            next_stage_name = ""
-            if self.global_episode_counter < 2000:
-                episodes_to_next_stage = 2000 - self.global_episode_counter
-                next_stage_name = "Intermediate"
-            elif self.global_episode_counter < 5000:
-                episodes_to_next_stage = 5000 - self.global_episode_counter
-                next_stage_name = "Advanced"
-            elif self.global_episode_counter < 8000:
-                episodes_to_next_stage = 8000 - self.global_episode_counter
-                next_stage_name = "Specialization"
-            else:
-                next_stage_name = "Maximum"
-                
-            curriculum_detail = {
-                'current_stage': stage,
-                'current_strategy': strategy_name,
-                'total_episodes': self.global_episode_counter,
-                'episodes_to_next_stage': episodes_to_next_stage,
-                'next_stage_name': next_stage_name,
-                'episodes_per_day_config': self.episodes_per_day,
-                'curriculum_strategy': self.curriculum_strategy
+            initial_reset_tracking = {
+                'selected_index': 0,
+                'selected_timestamp': 'Initial Training Start',
+                'total_available_points': 0,
+                'points_used_in_cycle': 0,
+                'points_remaining_in_cycle': 0,
+                'direction_score': 0.0,
+                'roc_score': 0.0,
+                'activity_score': 0.0,
+                'strategy_name': 'strong_upward_momentum',
+                'curriculum_stage': 'stage_1_beginner'
             }
-            self.metrics.metrics_manager.emit_event('curriculum_detail', curriculum_detail)
+            self.metrics.metrics_manager.emit_event('reset_point_selection', initial_reset_tracking)
 
         best_eval_reward = -float('inf')
 

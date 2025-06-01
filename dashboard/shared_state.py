@@ -261,15 +261,11 @@ class DashboardStateManager:
                 is_completed_trade = data.get('is_completed_trade', False)
                 
                 if is_completed_trade:
-                    # This is a completed trade (entry + exit)
+                    # This is a completed trade (full round-trip from entry to exit)
                     entry_ts = data.get('entry_timestamp')
                     exit_ts = data.get('exit_timestamp')
-                    
-                    # Format timestamps
                     entry_time_str = self._format_timestamp_ny(entry_ts)
                     exit_time_str = self._format_timestamp_ny(exit_ts)
-                    
-                    # Calculate hold time in minutes
                     hold_time_seconds = data.get('holding_time_seconds', 0)
                     hold_time_minutes = hold_time_seconds / 60
                     
@@ -282,7 +278,7 @@ class DashboardStateManager:
                         'entry_price': data.get('price'),
                         'exit_price': data.get('fill_price'),
                         'pnl': pnl,
-                        'hold_time': f"{hold_time_minutes:.1f}m",
+                        'hold_time': f"{hold_time_minutes:.1f}m" if hold_time_minutes else "N/A",
                         'status': 'CLOSED'
                     })
                     
@@ -297,7 +293,7 @@ class DashboardStateManager:
                         self._state.episode_losing_trades += 1
                         self._state.session_losing_trades += 1
                 else:
-                    # This is just an execution, store it separately
+                    # This is just an execution (individual fill), store it separately
                     self._state.recent_executions.append({
                         'timestamp': trade_time_str,
                         'timestamp_raw': trade_timestamp_chart,
@@ -305,7 +301,8 @@ class DashboardStateManager:
                         'quantity': data.get('quantity'),
                         'price': data.get('price'),
                         'fill_price': data.get('fill_price'),
-                        'pnl': data.get('pnl', 0)
+                        'pnl': data.get('pnl', 0),
+                        'closes_position': data.get('closes_position', False)
                     })
                 
             elif event.event_type == EventType.POSITION_UPDATE:
@@ -316,15 +313,16 @@ class DashboardStateManager:
                 self._state.unrealized_pnl = data.get('unrealized_pnl', 0)
                 self._state.realized_pnl = data.get('realized_pnl', 0)
                 
-                # Calculate position P&L
+                # USE PORTFOLIO SIMULATOR'S CALCULATED VALUES - DO NOT RECALCULATE
+                # Get market_value from position update (which includes proper P&L calculation)
+                market_value = data.get('market_value', 0)
+                self._state.position_pnl_dollar = self._state.unrealized_pnl  # Use portfolio simulator's unrealized P&L
+                
+                # Calculate percentage only if we have valid entry value
                 if self._state.position_qty > 0 and self._state.avg_entry_price > 0:
-                    if self._state.position_side == 'LONG':
-                        self._state.position_pnl_dollar = (self._state.current_price - self._state.avg_entry_price) * self._state.position_qty
-                    elif self._state.position_side == 'SHORT':
-                        self._state.position_pnl_dollar = (self._state.avg_entry_price - self._state.current_price) * self._state.position_qty
-                    self._state.position_pnl_percent = (self._state.position_pnl_dollar / (self._state.avg_entry_price * self._state.position_qty)) * 100
+                    entry_value = self._state.avg_entry_price * self._state.position_qty
+                    self._state.position_pnl_percent = (self._state.position_pnl_dollar / entry_value) * 100 if entry_value > 0 else 0
                 else:
-                    self._state.position_pnl_dollar = 0
                     self._state.position_pnl_percent = 0
                     
             elif event.event_type == EventType.ACTION_DECISION:
@@ -406,6 +404,26 @@ class DashboardStateManager:
                        'episodes_on_current_day', 'reset_point_cycles_completed',
                        'total_momentum_days_used']:
                 if key in metrics:
+                    setattr(self._state, key, metrics[key])
+            
+            # Enhanced reset point tracking
+            for key in ['selected_reset_point_index', 'selected_reset_point_timestamp',
+                       'total_available_points', 'points_used_in_cycle', 'points_remaining_in_cycle']:
+                if key in metrics:
+                    print(f"DEBUG SHARED STATE: Updating {key} = {metrics[key]}")
+                    setattr(self._state, key, metrics[key])
+            
+            # Cycle and day switching tracking  
+            for key in ['cycles_completed', 'target_cycles_per_day', 'cycles_remaining_for_day_switch',
+                       'day_switch_progress_pct']:
+                if key in metrics:
+                    setattr(self._state, key, metrics[key])
+            
+            # Enhanced curriculum tracking
+            for key in ['episodes_to_next_stage', 'next_stage_name', 'episodes_per_day_config',
+                       'curriculum_strategy']:
+                if key in metrics:
+                    print(f"DEBUG SHARED STATE: Updating curriculum {key} = {metrics[key]}")
                     setattr(self._state, key, metrics[key])
                     
             # Reward components (current step)
