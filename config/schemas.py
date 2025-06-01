@@ -88,6 +88,13 @@ class RewardConfig(BaseModel):
     # Trading behavior bonuses
     profit_closing_bonus_coefficient: float = Field(default=50.0, description="Bonus for closing profitable trades, scales with profit")
     
+    # Clean trade bonus (exponential scaling configuration)
+    clean_trade_coefficient: float = Field(default=20.0, description="DEPRECATED: Legacy parameter, use base_multiplier instead")
+    max_clean_drawdown_percent: float = Field(default=0.01, description="DEPRECATED: Legacy parameter, use max_mae_threshold instead")
+    base_multiplier: float = Field(default=500, description="Base scaling multiplier for clean trade bonus")
+    max_mae_threshold: float = Field(default=0.02, description="Maximum allowed MAE drawdown (2%)")
+    min_gain_threshold: float = Field(default=0.01, description="Minimum gain required for clean trade bonus (1%)")
+    
     # Thresholds and limits
     max_holding_time_steps: int = Field(default=180, description="Maximum holding time before penalties (3 minutes)")
     
@@ -98,6 +105,7 @@ class RewardConfig(BaseModel):
     enable_profit_giveback_penalty: bool = Field(default=True, description="Enable profit giveback penalty (MFE protection)")
     enable_max_drawdown_penalty: bool = Field(default=True, description="Enable max drawdown penalty (MAE protection)")
     enable_profit_closing_bonus: bool = Field(default=True, description="Enable profit closing bonus")
+    enable_clean_trade_bonus: bool = Field(default=True, description="Enable clean trade bonus")
 
 
 class EnvConfig(BaseModel):

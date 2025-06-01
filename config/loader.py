@@ -104,6 +104,8 @@ class ConfigLoader:
             enabled_components.append(f"max_drawdown_penalty (coeff: {config.env.reward.max_drawdown_penalty_coefficient})")
         if config.env.reward.enable_profit_closing_bonus:
             enabled_components.append(f"profit_closing_bonus (coeff: {config.env.reward.profit_closing_bonus_coefficient})")
+        if config.env.reward.enable_clean_trade_bonus:
+            enabled_components.append(f"clean_trade_bonus (coeff: {config.env.reward.clean_trade_coefficient})")
         enabled_components.append(f"bankruptcy_penalty (coeff: {config.env.reward.bankruptcy_penalty_coefficient})")
         
         self.logger.info(f"Enabled reward components: {', '.join(enabled_components)}")
