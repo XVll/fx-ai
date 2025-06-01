@@ -1,32 +1,26 @@
-# rewards/__init__.py
+# rewards/__init__.py - Clean percentage-based reward system
 
-from rewards.core import RewardComponent, RewardAggregator
+from rewards.core import RewardComponent, RewardState, RewardType, RewardMetadata
 from rewards.components import (
-    RealizedPnLReward,
-    MarkToMarketReward,
-    DifferentialSharpeReward,
+    PnLReward,
     HoldingTimePenalty,
-    OvertradingPenalty,
-    QuickProfitIncentive,
     DrawdownPenalty,
-    MAEPenalty,
-    MFEPenalty,
-    TerminalPenalty
+    ActionPenalty,
+    QuickProfitBonus,
+    BankruptcyPenalty
 )
 from rewards.calculator import RewardSystem
 
 __all__ = [
     'RewardComponent',
-    'RewardAggregator',
-    'RealizedPnLReward',
-    'MarkToMarketReward',
-    'DifferentialSharpeReward',
+    'RewardState',
+    'RewardType', 
+    'RewardMetadata',
+    'PnLReward',
     'HoldingTimePenalty',
-    'OvertradingPenalty',
-    'QuickProfitIncentive',
     'DrawdownPenalty',
-    'MAEPenalty',
-    'MFEPenalty',
-    'TerminalPenalty',
+    'ActionPenalty',
+    'QuickProfitBonus',
+    'BankruptcyPenalty',
     'RewardSystem'
 ]

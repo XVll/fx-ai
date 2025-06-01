@@ -68,63 +68,33 @@ class ModelConfig(BaseModel):
         return v
 
 
-class RewardComponentConfig(BaseModel):
-    """Individual reward component configuration"""
-    enabled: bool = True
-    coefficient: float = 1.0
-    
-    
 class RewardConfig(BaseModel):
-    """Reward system configuration"""
-    # Core components
-    pnl: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=1.0),
-        description="Profit and loss reward"
-    )
-    holding_penalty: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=0.001),
-        description="Penalty for holding positions"
-    )
+    """Percentage-based reward system configuration - all rewards as % of account value"""
     
-    # Action efficiency
-    action_penalty: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=0.0005),
-        description="Penalty for excessive trading"
-    )
-    spread_penalty: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=0.1),
-        description="Penalty for bid-ask spread costs"
-    )
+    # Core P&L reward (most important)
+    pnl_coefficient: float = Field(default=100.0, description="P&L scaling: 1% profit = coefficient reward (default: 1% = 1.0 reward)")
     
-    # Risk management
-    drawdown_penalty: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=0.5),
-        description="Penalty for drawdowns"
-    )
-    bankruptcy_penalty: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=5.0),
-        description="Large penalty for bankruptcy"
-    )
+    # Risk management penalties
+    holding_penalty_coefficient: float = Field(default=2.0, description="Holding time penalty: max holding = -coefficient penalty")
+    drawdown_penalty_coefficient: float = Field(default=5.0, description="Drawdown penalty: 1% drawdown = -coefficient penalty") 
+    bankruptcy_penalty_coefficient: float = Field(default=50.0, description="Bankruptcy penalty: fixed large penalty")
     
-    # Pattern rewards
-    profitable_exit: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=0.2),
-        description="Bonus for profitable exits"
-    )
-    quick_profit: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=0.1),
-        description="Bonus for quick profits"
-    )
+    # Action efficiency penalties
+    action_penalty_coefficient: float = Field(default=1.0, description="Action penalty: excessive action = -coefficient penalty")
     
-    # Invalid action handling
-    invalid_action_penalty: RewardComponentConfig = Field(
-        default=RewardComponentConfig(coefficient=0.01),
-        description="Penalty for invalid actions"
-    )
+    # Trading pattern bonuses  
+    quick_profit_bonus_coefficient: float = Field(default=10.0, description="Quick profit bonus: quick profitable exit = +coefficient bonus")
     
-    # Global settings
-    scale_factor: float = Field(default=1.0, description="Global reward scaling")
-    clip_range: List[float] = Field(default=[-1000.0, 1000.0], description="Reward clipping range - wide range to avoid distortion")
+    # Thresholds and limits
+    max_holding_time_steps: int = Field(default=60, description="Maximum holding time before penalties")
+    quick_profit_time_threshold: int = Field(default=30, description="Time threshold for quick profit bonus")
+    
+    # Component enable/disable flags
+    enable_pnl_reward: bool = Field(default=True, description="Enable P&L reward component")
+    enable_holding_penalty: bool = Field(default=True, description="Enable holding time penalty")
+    enable_drawdown_penalty: bool = Field(default=True, description="Enable drawdown penalty")  
+    enable_action_penalty: bool = Field(default=True, description="Enable action frequency penalty")
+    enable_quick_profit_bonus: bool = Field(default=True, description="Enable quick profit bonus")
 
 
 class EnvConfig(BaseModel):

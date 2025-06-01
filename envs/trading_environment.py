@@ -414,11 +414,11 @@ class TradingEnvironment(gym.Env):
             trade_callback=self._on_trade_completed
         )
 
-        # Reward system V2
+        # Reward system
         self.reward_calculator = RewardSystem(
             config=self.config.env.reward,
             metrics_integrator=self.metrics_integrator,
-            logger=logging.getLogger(f"{__name__}.RewardV2")
+            logger=logging.getLogger(f"{__name__}.RewardSystem")
         )
 
         # Execution simulator

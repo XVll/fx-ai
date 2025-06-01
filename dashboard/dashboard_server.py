@@ -519,17 +519,14 @@ class DashboardServer:
             ])
             
             # Reward components table - redesigned to match actions panel format
-            # Define all active reward components with their types
+            # Define all active reward components with their types (new percentage-based system)
             all_reward_components = {
-                'realized_pnl': 'foundational',
-                'holding_time_penalty': 'shaping',
-                'overtrading_penalty': 'shaping',
-                'quick_profit_incentive': 'shaping',
+                'pnl': 'foundational',
+                'holding_penalty': 'shaping',
+                'action_penalty': 'shaping',
+                'quick_profit_bonus': 'shaping',
                 'drawdown_penalty': 'shaping',
-                'terminal_penalty': 'terminal',
-                'mark_to_market': 'foundational',
-                'mae_penalty': 'trade',
-                'mfe_penalty': 'trade'
+                'bankruptcy_penalty': 'terminal'
             }
             
             # Color mapping for component types
