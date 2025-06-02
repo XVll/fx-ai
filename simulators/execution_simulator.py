@@ -279,6 +279,7 @@ class ExecutionSimulator:
         if action_result.action_type == "BUY":
             # Calculate target buy value based on available cash
             target_value = cash * action_result.size_float
+            # Limit by max position value
             target_value = min(target_value, max_pos_value)
 
             if target_value < 10.0:  # Minimum $10 order

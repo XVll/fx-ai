@@ -57,6 +57,7 @@ class Position:
     unrealized_pnl: float = 0.0
     entry_timestamp: Optional[datetime] = None
     last_update_timestamp: Optional[datetime] = None
+    trade_id: Optional[str] = None  # Add trade_id as proper dataclass field
     
     def is_flat(self) -> bool:
         """Check if position is flat."""
@@ -228,7 +229,8 @@ class PortfolioSimulator:
                 quantity=0.0,
                 avg_price=0.0,
                 entry_value=0.0,
-                entry_timestamp=session_start
+                entry_timestamp=session_start,
+                trade_id=None  # Initialize trade_id properly
             ) for asset in self.tradable_assets
         }
 
@@ -409,8 +411,8 @@ class PortfolioSimulator:
             exit_fills=[]
         )
 
-        # Store trade_id as a custom attribute
-        setattr(position, 'trade_id', trade_id)
+        # Store trade_id as proper field
+        position.trade_id = trade_id
 
     def _add_to_position(self, position: Position, fill: FillDetails, is_buy: bool) -> None:
         """Add to existing position (average in)."""
@@ -436,7 +438,7 @@ class PortfolioSimulator:
             self.cash += fill_value
 
         # Update trade record
-        if hasattr(position, 'trade_id') and position.trade_id in self.open_trades:
+        if position.trade_id and position.trade_id in self.open_trades:
             trade = self.open_trades[position.trade_id]
             trade['entry_quantity'] = new_total_qty
             trade['avg_entry_price'] = new_avg_price
@@ -470,7 +472,7 @@ class PortfolioSimulator:
         new_qty = position.quantity - fill_qty
         
         # Update trade record
-        if hasattr(position, 'trade_id') and position.trade_id in self.open_trades:
+        if position.trade_id and position.trade_id in self.open_trades:
             trade = self.open_trades[position.trade_id]
             trade['exit_quantity'] += fill_qty
             trade['total_commission'] += fill.commission
@@ -584,7 +586,7 @@ class PortfolioSimulator:
             )
 
             # Update MFE/MAE for open trades
-            if hasattr(position, 'trade_id') and position.trade_id in self.open_trades:
+            if position.trade_id and position.trade_id in self.open_trades:
                 self._update_trade_excursions(position, current_price)
 
         # Update equity tracking
@@ -623,8 +625,17 @@ class PortfolioSimulator:
             return features
 
         # Get primary asset position (assuming single asset for now)
-        primary_asset = self.tradable_assets[0]
-        position = self.positions[primary_asset]
+        try:
+            primary_asset = self.tradable_assets[0]
+            position = self.positions.get(primary_asset)
+            if position is None:
+                return features  # No position data available
+        except (IndexError, KeyError):
+            return features  # No assets or position data
+        
+        # Validate timestamp to prevent negative time calculations
+        if timestamp is None or (position.entry_timestamp and timestamp < position.entry_timestamp):
+            return features
         
         total_equity = self.cash + sum(pos.market_value for pos in self.positions.values())
         
@@ -639,73 +650,77 @@ class PortfolioSimulator:
                 features[0] = -min(1.0, position_ratio)
 
         # Feature 1: Normalized unrealized P&L (-2 to 2, as % of position entry value)
-        if not position.is_flat() and position.entry_value > 0:
-            features[1] = np.clip(position.unrealized_pnl / position.entry_value, -2.0, 2.0)
+        if not position.is_flat() and abs(position.entry_value) > 1e-6:  # Avoid division by zero
+            features[1] = np.clip(position.unrealized_pnl / abs(position.entry_value), -2.0, 2.0)
 
         # Feature 2: Time in position (0 to 2, normalized by max holding time)
-        if not position.is_flat() and position.entry_timestamp and self.max_holding_seconds:
+        if not position.is_flat() and position.entry_timestamp and self.max_holding_seconds and self.max_holding_seconds > 0:
             time_held = (timestamp - position.entry_timestamp).total_seconds()
-            features[2] = np.clip(time_held / self.max_holding_seconds, 0.0, 2.0)
+            if time_held >= 0:  # Ensure non-negative time held
+                features[2] = np.clip(time_held / self.max_holding_seconds, 0.0, 2.0)
 
         # Feature 3: Cash ratio (0 to 2, clipped)
         if total_equity > 0:
-            features[3] = np.clip(self.cash / total_equity, 0.0, 2.0)
+            # Handle negative cash gracefully
+            cash_ratio = max(0.0, self.cash) / total_equity
+            features[3] = np.clip(cash_ratio, 0.0, 2.0)
 
         # Feature 4: Session P&L percentage (-1 to 1, as % of initial capital)
-        if self.initial_capital > 0:
+        if self.initial_capital > 1e-6:  # Add epsilon check for initial capital
             session_pnl_pct = self.session_realized_pnl / self.initial_capital
             features[4] = np.clip(session_pnl_pct, -1.0, 1.0)
 
         # Feature 5: Maximum Favorable Excursion (MFE) normalized (-2 to 2)
         # Shows best profit achieved during current trade as % of entry value
-        if not position.is_flat() and position.entry_value > 0:
-            trade_id = getattr(position, 'trade_id', None)
+        if not position.is_flat() and abs(position.entry_value) > 1e-6:
+            trade_id = position.trade_id
             if trade_id and trade_id in self.open_trades:
                 mfe = self.open_trades[trade_id]['max_favorable_excursion']
-                features[5] = np.clip(mfe / position.entry_value, -2.0, 2.0)
+                features[5] = np.clip(mfe / abs(position.entry_value), -2.0, 2.0)
 
         # Feature 6: Maximum Adverse Excursion (MAE) normalized (-2 to 2)  
         # Shows worst loss during current trade as % of entry value
-        if not position.is_flat() and position.entry_value > 0:
-            trade_id = getattr(position, 'trade_id', None)
+        if not position.is_flat() and abs(position.entry_value) > 1e-6:
+            trade_id = position.trade_id
             if trade_id and trade_id in self.open_trades:
                 mae = self.open_trades[trade_id]['max_adverse_excursion']
-                features[6] = np.clip(mae / position.entry_value, -2.0, 2.0)
+                features[6] = np.clip(mae / abs(position.entry_value), -2.0, 2.0)
 
         # Feature 7: Profit giveback ratio (-1 to 1)
         # Shows how much profit has been given back from peak (MFE)
-        if not position.is_flat() and position.entry_value > 0:
-            trade_id = getattr(position, 'trade_id', None)
+        if not position.is_flat() and abs(position.entry_value) > 1e-6:
+            trade_id = position.trade_id
             if trade_id and trade_id in self.open_trades:
                 mfe = self.open_trades[trade_id]['max_favorable_excursion']
                 current_pnl = position.unrealized_pnl
-                if mfe > 0:  # Only meaningful if we had profits
+                if abs(mfe) > 1e-6:  # Only meaningful if we had significant profits/losses
                     giveback_ratio = (mfe - current_pnl) / mfe
                     features[7] = np.clip(giveback_ratio, -1.0, 1.0)
 
         # Feature 8: Recovery ratio (-1 to 1)
         # Shows recovery from worst loss (MAE)
-        if not position.is_flat() and position.entry_value > 0:
-            trade_id = getattr(position, 'trade_id', None)
+        if not position.is_flat() and abs(position.entry_value) > 1e-6:
+            trade_id = position.trade_id
             if trade_id and trade_id in self.open_trades:
                 mae = self.open_trades[trade_id]['max_adverse_excursion']
                 current_pnl = position.unrealized_pnl
-                if mae < 0:  # Only meaningful if we had losses
+                if abs(mae) > 1e-6:  # Only meaningful if we had significant losses
                     recovery_ratio = (current_pnl - mae) / abs(mae)
                     features[8] = np.clip(recovery_ratio, -1.0, 1.0)
 
         # Feature 9: Trade quality score (-1 to 1)
         # Combined metric: positive if current P&L is closer to MFE than MAE
-        if not position.is_flat() and position.entry_value > 0:
-            trade_id = getattr(position, 'trade_id', None)
+        if not position.is_flat() and abs(position.entry_value) > 1e-6:
+            trade_id = position.trade_id
             if trade_id and trade_id in self.open_trades:
                 mfe = self.open_trades[trade_id]['max_favorable_excursion']
                 mae = self.open_trades[trade_id]['max_adverse_excursion']
                 current_pnl = position.unrealized_pnl
                 
                 # Calculate trade quality: where are we relative to MFE/MAE range?
-                if mfe != mae:  # Avoid division by zero
-                    trade_quality = (current_pnl - mae) / (mfe - mae)
+                mfe_mae_diff = mfe - mae
+                if abs(mfe_mae_diff) > 1e-6:  # Avoid division by zero/near-zero
+                    trade_quality = (current_pnl - mae) / mfe_mae_diff
                     features[9] = np.clip(trade_quality, -1.0, 1.0)
 
         return features

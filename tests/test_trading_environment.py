@@ -58,7 +58,6 @@ class TestTradingEnvironment:
         
         # Simulation config
         config.simulation = Mock(spec=SimulationConfig)
-        config.simulation.default_position_value = 10000.0
         config.simulation.min_commission_per_order = 1.0
         config.simulation.commission_per_share = 0.005
         

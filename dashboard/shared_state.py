@@ -92,6 +92,7 @@ class SharedDashboardState:
     learning_rate: float = 0.0
     kl_divergence: float = 0.0
     explained_variance: float = 0.0
+    mean_episode_reward: float = 0.0
     
     # PPO sparkline histories (last 10 values for each metric)
     policy_loss_history: Deque[float] = field(default_factory=lambda: deque(maxlen=10))
@@ -101,6 +102,7 @@ class SharedDashboardState:
     kl_divergence_history: Deque[float] = field(default_factory=lambda: deque(maxlen=10))
     learning_rate_history: Deque[float] = field(default_factory=lambda: deque(maxlen=10))
     explained_variance_history: Deque[float] = field(default_factory=lambda: deque(maxlen=10))
+    mean_episode_reward_history: Deque[float] = field(default_factory=lambda: deque(maxlen=10))
     
     # Reward components (from metrics)
     reward_components: Dict[str, float] = field(default_factory=dict)
@@ -407,11 +409,11 @@ class DashboardStateManager:
                     logger = logging.getLogger(__name__)
                     logger.debug(f"Action {action} recorded. Episode counts: {self._state.episode_action_distribution}, Session total: {self._state.action_distribution}")
                 
-                # Track invalid actions if specified in the event data
-                is_invalid = data.get('is_invalid', False)
-                if is_invalid:
-                    self._state.episode_invalid_actions += 1
-                    self._state.session_invalid_actions += 1
+                # Invalid action tracking removed - action masking prevents invalid actions
+                # is_invalid = data.get('is_invalid', False)
+                # if is_invalid:
+                #     self._state.episode_invalid_actions += 1
+                #     self._state.session_invalid_actions += 1
         
         # Notify callbacks
         self._notify_callbacks()
@@ -442,7 +444,7 @@ class DashboardStateManager:
             # PPO metrics
             ppo_updated = False
             for key in ['policy_loss', 'value_loss', 'entropy', 'clip_fraction', 
-                       'approx_kl', 'learning_rate', 'kl_divergence', 'explained_variance']:
+                       'approx_kl', 'learning_rate', 'kl_divergence', 'explained_variance', 'mean_episode_reward']:
                 if key in metrics:
                     old_value = getattr(self._state, key, 0.0)
                     new_value = metrics[key]
@@ -538,18 +540,13 @@ class DashboardStateManager:
                 self._state.session_action_distribution['SELL'] = int(metrics['execution.environment.action_sell_count'])
                 action_updated = True
                 
-            # Invalid action tracking from metrics
-            if 'invalid_action_rate' in metrics:
-                # Convert rate back to actual counts if we have step information
-                # The rate is calculated as (invalid_actions / total_steps) * 100
-                rate = metrics['invalid_action_rate']
-                # We can estimate session invalid actions from the rate and total steps
-                # But we'll need to track episode-level separately
-                total_session_actions = sum(self._state.session_action_distribution.values())
-                if total_session_actions > 0:
-                    # Estimate session invalid actions from rate
-                    self._state.session_invalid_actions = int((rate / 100.0) * total_session_actions)
-                    action_updated = True
+            # Invalid action tracking removed - action masking prevents invalid actions
+            # if 'invalid_action_rate' in metrics:
+            #     rate = metrics['invalid_action_rate']
+            #     total_session_actions = sum(self._state.session_action_distribution.values())
+            #     if total_session_actions > 0:
+            #         self._state.session_invalid_actions = int((rate / 100.0) * total_session_actions)
+            #         action_updated = True
                 
             # Episode action tracking (from episode events)
             if 'episode_action_hold_count' in metrics:
@@ -606,7 +603,7 @@ class DashboardStateManager:
             self._state.episode_winning_trades = 0
             self._state.episode_losing_trades = 0
             self._state.episode_action_distribution = {'HOLD': 0, 'BUY': 0, 'SELL': 0}
-            self._state.episode_invalid_actions = 0
+            # self._state.episode_invalid_actions = 0  # Removed - action masking prevents invalid actions
     
     def get_state(self) -> SharedDashboardState:
         """Get current state (thread-safe copy)"""
@@ -714,7 +711,7 @@ class DashboardStateManager:
             self._state.episode_reward_components = {}
             self._state.episode_reward_component_counts = {}
             self._state.episode_action_distribution = {'HOLD': 0, 'BUY': 0, 'SELL': 0}
-            self._state.episode_invalid_actions = 0
+            # self._state.episode_invalid_actions = 0  # Removed - action masking prevents invalid actions
             # Clear trade markers but keep candle data
             self._state.recent_trades.clear()
             # Clear executions for current episode only

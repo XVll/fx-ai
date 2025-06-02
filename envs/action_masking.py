@@ -30,8 +30,8 @@ class ActionMask:
         
         # Configuration parameters
         self.max_position_ratio = config.simulation.max_position_value_ratio  # Max position as % of equity
-        self.min_order_value = 100.0  # Minimum $100 order
-        self.min_shares_to_sell = 1  # Minimum 1 share to sell
+        self.min_order_value = 25.0  # Minimum $25 order (more flexible)
+        self.min_shares_to_sell = 0.1  # Minimum 0.1 shares (allow fractional for percentages)
         
         # Action space configuration (matches environment)
         self.action_types = ["HOLD", "BUY", "SELL"]  # indices 0, 1, 2
@@ -54,9 +54,16 @@ class ActionMask:
         
         # Extract portfolio info
         cash = portfolio_state.get('cash', 0.0)
-        current_shares = portfolio_state.get('shares', 0)
-        current_position_value = abs(portfolio_state.get('position_value', 0.0))
         total_equity = portfolio_state.get('total_equity', cash)
+        current_position_value = abs(portfolio_state.get('position_value', 0.0))
+        
+        # Get shares from positions (primary asset)
+        current_shares = 0
+        positions = portfolio_state.get('positions', {})
+        for asset_id, position_info in positions.items():
+            if position_info and position_info.get('quantity', 0) > 0:
+                current_shares = position_info.get('quantity', 0)
+                break  # Assume single asset trading
         
         # Extract market info
         current_price = market_state.get('current_price', 0.0)
@@ -116,9 +123,16 @@ class ActionMask:
     def _log_mask_debug(self, mask: np.ndarray, portfolio_state: Dict[str, Any], market_state: Dict[str, Any]):
         """Log detailed mask information for debugging."""
         cash = portfolio_state.get('cash', 0.0)
-        shares = portfolio_state.get('shares', 0)
         position_value = portfolio_state.get('position_value', 0.0)
         price = market_state.get('current_price', 0.0)
+        
+        # Get shares from positions
+        shares = 0
+        positions = portfolio_state.get('positions', {})
+        for asset_id, position_info in positions.items():
+            if position_info and position_info.get('quantity', 0) > 0:
+                shares = position_info.get('quantity', 0)
+                break
         
         valid_actions = []
         for i, is_valid in enumerate(mask):

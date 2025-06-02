@@ -13,6 +13,7 @@ import plotly.graph_objs as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
+from collections import deque
 
 from .shared_state import dashboard_state
 
@@ -465,9 +466,9 @@ class DashboardServer:
                     'Session %': f"{session_pct:.1f}%"
                 })
             
-            # Get invalid actions from state
-            episode_invalid = getattr(state, 'episode_invalid_actions', 0)
-            session_invalid = getattr(state, 'session_invalid_actions', 0)
+            # Invalid action tracking removed - action masking prevents invalid actions
+            # episode_invalid = getattr(state, 'episode_invalid_actions', 0)
+            # session_invalid = getattr(state, 'session_invalid_actions', 0)
             
             actions_table = dash_table.DataTable(
                 data=action_data,
@@ -509,13 +510,13 @@ class DashboardServer:
                 page_size=10
             )
             
-            # Add invalid actions as separate row below table
-            invalid_actions_row = html.Div([
-                html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
-                self._info_row("Invalid Actions", f"Ep: {episode_invalid} | Sess: {session_invalid}", color=DARK_THEME['accent_orange'])
-            ], style={'marginTop': '4px'})
+            # Invalid actions display removed - action masking prevents invalid actions
+            # invalid_actions_row = html.Div([
+            #     html.Hr(style={'margin': '4px 0', 'borderColor': DARK_THEME['border']}),
+            #     self._info_row("Invalid Actions", f"Ep: {episode_invalid} | Sess: {session_invalid}", color=DARK_THEME['accent_orange'])
+            # ], style={'marginTop': '4px'})
             
-            actions_content = html.Div([actions_table, invalid_actions_row])
+            actions_content = html.Div([actions_table])
             
             # Episode info - more compact
             progress = (state.current_step / state.max_steps * 100) if state.max_steps > 0 else 0
@@ -603,10 +604,11 @@ class DashboardServer:
                 self._metric_with_sparkline("Policy Loss", state.policy_loss, state.policy_loss_history),
                 self._metric_with_sparkline("Value Loss", state.value_loss, state.value_loss_history),
                 self._metric_with_sparkline("Entropy", state.entropy, state.entropy_history),
-                self._metric_with_sparkline("KL Divergence", getattr(state, 'kl_divergence', 0.0), state.kl_divergence_history),
+                self._metric_with_sparkline("KL Divergence", getattr(state, 'kl_divergence', getattr(state, 'approx_kl', 0.0)), getattr(state, 'kl_divergence_history', getattr(state, 'approx_kl_history', deque()))),
                 self._metric_with_sparkline("Clip Fraction", getattr(state, 'clip_fraction', 0.0), state.clip_fraction_history),
                 self._metric_with_sparkline("Learning Rate", state.learning_rate, state.learning_rate_history),
                 self._metric_with_sparkline("Explained Var", getattr(state, 'explained_variance', 0.0), state.explained_variance_history),
+                self._metric_with_sparkline("Mean Reward", getattr(state, 'mean_episode_reward', 0.0), getattr(state, 'mean_episode_reward_history', deque())),
             ])
             
             # Reward components table - redesigned to match actions panel format
@@ -993,49 +995,91 @@ class DashboardServer:
         else:
             value_str = f"{value:.4f}"
         
-        # Create mini sparkline if we have history
+        # Create mini sparkline - always show a chart area
         sparkline_element = None
-        if len(history) > 1:
-            fig = go.Figure()
-            # Convert to list if it's a deque to handle slicing
-            history_list = list(history) if hasattr(history, 'popleft') else history
-            fig.add_trace(go.Scatter(
-                y=history_list[-10:],  # Last 10 values
-                mode='lines',
-                line=dict(color=DARK_THEME['accent_blue'], width=1.5),
-                showlegend=False,
-                hoverinfo='skip'
-            ))
-            fig.update_layout(
-                height=16,
-                width=40,
-                margin=dict(l=0, r=0, t=0, b=0),
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                xaxis=dict(visible=False),
-                yaxis=dict(visible=False)
-            )
-            
-            sparkline_element = dcc.Graph(
-                figure=fig, 
-                style={'height': '16px', 'width': '40px', 'flexShrink': '0'}, 
-                config={'displayModeBar': False}
-            )
         
-        # Create compact layout with proper alignment
+        # Convert history to list and get data points
+        if history and hasattr(history, '__iter__'):
+            try:
+                history_list = list(history) if hasattr(history, 'popleft') else history
+                if len(history_list) >= 1:  # Show chart even with just 1 point
+                    # Pad with current value if we have less than 2 points
+                    if len(history_list) == 1:
+                        chart_data = [history_list[0], history_list[0]]
+                    else:
+                        chart_data = history_list[-20:]  # Last 20 values for better trend visibility
+                    
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        y=chart_data,
+                        mode='lines+markers',
+                        line=dict(color=DARK_THEME['accent_blue'], width=2),
+                        marker=dict(size=3, color=DARK_THEME['accent_blue']),
+                        showlegend=False,
+                        hoverinfo='y',
+                        hovertemplate=f'{label}: %{{y}}<extra></extra>'
+                    ))
+                    fig.update_layout(
+                        height=25,
+                        width=80,
+                        margin=dict(l=2, r=2, t=2, b=2),
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        xaxis=dict(visible=False, showgrid=False),
+                        yaxis=dict(visible=False, showgrid=False)
+                    )
+                    
+                    sparkline_element = dcc.Graph(
+                        figure=fig, 
+                        style={'height': '25px', 'width': '80px', 'flexShrink': '0'}, 
+                        config={'displayModeBar': False, 'staticPlot': False}
+                    )
+                else:
+                    # Show placeholder when no data
+                    sparkline_element = html.Div("--", style={
+                        'height': '25px', 'width': '80px', 'display': 'flex', 
+                        'alignItems': 'center', 'justifyContent': 'center',
+                        'color': DARK_THEME['text_muted'], 'fontSize': '10px',
+                        'border': f"1px dashed {DARK_THEME['border']}"
+                    })
+            except:
+                # Fallback placeholder on any error
+                sparkline_element = html.Div("--", style={
+                    'height': '25px', 'width': '80px', 'display': 'flex', 
+                    'alignItems': 'center', 'justifyContent': 'center',
+                    'color': DARK_THEME['text_muted'], 'fontSize': '10px',
+                    'border': f"1px dashed {DARK_THEME['border']}"
+                })
+        else:
+            # Show placeholder when no history data
+            sparkline_element = html.Div("--", style={
+                'height': '25px', 'width': '80px', 'display': 'flex', 
+                'alignItems': 'center', 'justifyContent': 'center',
+                'color': DARK_THEME['text_muted'], 'fontSize': '10px',
+                'border': f"1px dashed {DARK_THEME['border']}"
+            })
+        
+        # Create compact layout with right-aligned values
         return html.Div([
-            html.Div([
-                html.Span(f"{label}: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px'}),
-                html.Span(value_str, style={'color': DARK_THEME['text_primary'], 'fontWeight': 'bold', 'fontSize': '10px'})
-            ], style={'display': 'flex', 'alignItems': 'center', 'flex': '1', 'minWidth': '0'}),
-            sparkline_element if sparkline_element else html.Span()
+            # Label on the left
+            html.Span(f"{label}:", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px', 'flex': '0 0 auto'}),
+            # Spacer to push value and chart to the right
+            html.Div(style={'flex': '1'}),
+            # Value right-aligned next to chart
+            html.Span(value_str, style={
+                'color': DARK_THEME['text_primary'], 
+                'fontWeight': 'bold', 
+                'fontSize': '11px',
+                'marginRight': '8px',
+                'flex': '0 0 auto'
+            }),
+            # Chart on the far right
+            sparkline_element
         ], style={
             'display': 'flex', 
             'alignItems': 'center', 
-            'justifyContent': 'space-between',
             'marginBottom': '3px',
-            'minHeight': '16px',
-            'gap': '8px'
+            'minHeight': '25px'
         })
             
     def _create_price_chart(self, state) -> go.Figure:

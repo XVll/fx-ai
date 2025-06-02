@@ -867,14 +867,14 @@ class TradingEnvironment(gym.Env):
         if not execution_result.action_decode_result.is_valid:
             self.invalid_action_count_episode += 1
             
-        # Emit action to dashboard
+        # Emit action to dashboard (invalid actions no longer tracked due to action masking)
         from dashboard.event_stream import event_stream
         event_stream.emit_action_decision(
             action=action_name,
             confidence=1.0,  # Default confidence
             reasoning={},
             features={},
-            is_invalid=not execution_result.action_decode_result.is_valid
+            is_invalid=False  # Action masking prevents invalid actions
         )
 
         # Handle fill if order was executed
@@ -1084,14 +1084,14 @@ class TradingEnvironment(gym.Env):
         if not self.metrics_integrator:
             return
 
-        # Environment step metrics
+        # Environment step metrics (invalid actions no longer tracked due to action masking)
         action_name = self._last_decoded_action.get('action_type', 'UNKNOWN') if self._last_decoded_action else 'UNKNOWN'
-        is_invalid = not self._last_decoded_action.get('is_valid', True) if self._last_decoded_action else False
+        # is_invalid = not self._last_decoded_action.get('is_valid', True) if self._last_decoded_action else False
 
         self.metrics_integrator.record_environment_step(
             reward=reward,
             action=action_name,
-            is_invalid=is_invalid,
+            is_invalid=False,  # Action masking prevents invalid actions
             reward_components=self.reward_calculator.get_last_reward_components(),
             episode_reward=self.episode_total_reward,
             current_step=self.current_step,

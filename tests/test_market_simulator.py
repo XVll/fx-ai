@@ -53,7 +53,6 @@ def simulation_config():
         fee_per_share=0.001,
         min_commission_per_order=1.0,
         max_commission_pct_of_value=0.5,
-        default_position_value=10000.0,
         allow_shorting=False,
         max_position_value_ratio=1.0,
         market_impact_model="linear"

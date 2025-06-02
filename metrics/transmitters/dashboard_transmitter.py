@@ -174,7 +174,7 @@ class DashboardTransmitter(MetricTransmitter):
             value = metric_data['value']
             
             # Map metrics to dashboard fields
-            if 'training.ppo' in metric_name:
+            if 'training.ppo' in metric_name or 'model.model' in metric_name:
                 if 'policy_loss' in metric_name:
                     dashboard_data['policy_loss'] = value
                 elif 'value_loss' in metric_name:
@@ -185,8 +185,15 @@ class DashboardTransmitter(MetricTransmitter):
                     dashboard_data['learning_rate'] = value
                 elif 'clip_fraction' in metric_name:
                     dashboard_data['clip_fraction'] = value
-                elif 'kl_divergence' in metric_name:
+                elif 'kl_divergence' in metric_name or 'approx_kl' in metric_name:
                     dashboard_data['kl_divergence'] = value
+                elif 'mean_episode_reward' in metric_name:
+                    dashboard_data['mean_episode_reward'] = value
+                    
+            elif 'model.optimizer' in metric_name:
+                # Optimizer metrics (learning rate)
+                if 'learning_rate' in metric_name:
+                    dashboard_data['learning_rate'] = value
                     
             elif 'training.process' in metric_name:
                 # Training process metrics
@@ -253,9 +260,9 @@ class DashboardTransmitter(MetricTransmitter):
                     dashboard_data['execution.environment.action_buy_count'] = value
                 elif 'action_sell_count' in metric_name:
                     dashboard_data['execution.environment.action_sell_count'] = value
-                # Invalid action tracking
-                elif 'invalid_action_rate' in metric_name:
-                    dashboard_data['invalid_action_rate'] = value
+                # Invalid action tracking removed - action masking prevents invalid actions
+                # elif 'invalid_action_rate' in metric_name:
+                #     dashboard_data['invalid_action_rate'] = value
                 # Environment episode metrics
                 elif 'current_step' in metric_name:
                     dashboard_data['current_step'] = value
