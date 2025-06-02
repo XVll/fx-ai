@@ -37,7 +37,6 @@ def simulation_config():
         fee_per_share=0.001,
         min_commission_per_order=1.0,
         max_commission_pct_of_value=0.5,
-        default_position_value=10000.0,
         allow_shorting=False,
         max_position_value_ratio=1.0,
         market_impact_model="linear"
@@ -671,8 +670,8 @@ class TestEdgeCases:
         portfolio_state['cash'] = 1e10  # 10 billion
         portfolio_state['total_equity'] = 1e10
         
-        # Modify execution simulator's default position value
-        execution_simulator.default_position_value = 1e8  # 100 million default position
+        # Note: default_position_value was removed from the configuration
+        # Large quantities will now be determined by available cash and position sizing
         
         action_result = ActionDecodeResult(
             action_type="BUY", size_float=1.0, raw_action=[1, 3], is_valid=True

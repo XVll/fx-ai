@@ -285,7 +285,6 @@ class SimulationConfig(BaseModel):
     initial_cash: float = Field(default=25000.0, description="Initial portfolio cash")
     max_position_value_ratio: float = Field(default=1.0, description="Max position value as ratio of portfolio")
     max_position_holding_seconds: Optional[int] = Field(default=None, description="Max seconds to hold a position")
-    default_position_value: float = Field(default=10000.0, description="Default position value for sizing")
 
 
 class LoggingConfig(BaseModel):

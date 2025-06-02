@@ -9,9 +9,9 @@ from typing import Dict, Any, List, Optional
 from rewards.calculator import RewardSystem, TradeTracker
 from rewards.core import RewardComponent, RewardAggregator, RewardState, RewardType, RewardMetadata
 from rewards.components import (
-    RealizedPnLReward, MarkToMarketReward, DifferentialSharpeReward,
-    HoldingTimePenalty, OvertradingPenalty, QuickProfitIncentive,
-    DrawdownPenalty, MAEPenalty, MFEPenalty, TerminalPenalty
+    PnLReward, HoldingTimePenalty, DrawdownPenalty, 
+    ProfitGivebackPenalty, MaxDrawdownPenalty, ProfitClosingBonus,
+    CleanTradeBonus, TradingActivityBonus, InactivityPenalty, BankruptcyPenalty
 )
 from rewards.metrics import RewardMetricsTracker, ComponentMetrics
 from simulators.portfolio_simulator import PortfolioState, FillDetails, PositionSideEnum
@@ -135,8 +135,8 @@ class TestRewardComponents:
         )
     
     def test_realized_pnl_reward_positive(self):
-        """Test RealizedPnLReward with positive PnL"""
-        component = RealizedPnLReward(self.config, self.logger)
+        """Test PnLReward with positive PnL"""
+        component = PnLReward(self.config, self.logger)
         
         # Setup profitable trade
         self.portfolio_after['realized_pnl_session'] = 100.0
@@ -154,8 +154,8 @@ class TestRewardComponents:
         assert diagnostics['trades_closed'] == 1
     
     def test_realized_pnl_reward_negative(self):
-        """Test RealizedPnLReward with losing trade"""
-        component = RealizedPnLReward(self.config, self.logger)
+        """Test PnLReward with losing trade"""
+        component = PnLReward(self.config, self.logger)
         
         # Setup losing trade
         self.portfolio_before['realized_pnl_session'] = 0.0
@@ -172,8 +172,8 @@ class TestRewardComponents:
         assert diagnostics['net_pnl'] == -51.5
     
     def test_realized_pnl_reward_no_trade(self):
-        """Test RealizedPnLReward with no trades"""
-        component = RealizedPnLReward(self.config, self.logger)
+        """Test PnLReward with no trades"""
+        component = PnLReward(self.config, self.logger)
         
         reward, diagnostics = component.calculate(self.state)
         

@@ -210,7 +210,7 @@ class EnvironmentMetricsCollector(MetricCollector):
         # State tracking
         self.total_steps = 0
         self.total_episodes = 0
-        self.invalid_actions = 0
+        # self.invalid_actions = 0  # Removed - action masking prevents invalid actions
         
         # Current episode state
         self.current_step = 0
@@ -299,13 +299,14 @@ class EnvironmentMetricsCollector(MetricCollector):
             frequency="step"
         ))
 
-        self.register_metric("invalid_action_rate", MetricMetadata(
-            category=MetricCategory.ENVIRONMENT,
-            metric_type=MetricType.PERCENTAGE,
-            description="Rate of invalid actions",
-            unit="%",
-            frequency="step"
-        ))
+        # Invalid action tracking removed - action masking prevents invalid actions
+        # self.register_metric("invalid_action_rate", MetricMetadata(
+        #     category=MetricCategory.ENVIRONMENT,
+        #     metric_type=MetricType.PERCENTAGE,
+        #     description="Rate of invalid actions",
+        #     unit="%",
+        #     frequency="step"
+        # ))
 
         # Action distribution metrics
         self.register_metric("action_hold_pct", MetricMetadata(
@@ -398,10 +399,10 @@ class EnvironmentMetricsCollector(MetricCollector):
                 # Fallback to last step reward if no deque data
                 metrics[f"{self.category.value}.{self.name}.step_reward"] = MetricValue(self.last_step_reward)
 
-            # Invalid action rate
-            if self.total_steps > 0:
-                invalid_rate = (self.invalid_actions / self.total_steps) * 100
-                metrics[f"{self.category.value}.{self.name}.invalid_action_rate"] = MetricValue(invalid_rate)
+            # Invalid action tracking removed - action masking prevents invalid actions
+            # if self.total_steps > 0:
+            #     invalid_rate = (self.invalid_actions / self.total_steps) * 100
+            #     metrics[f"{self.category.value}.{self.name}.invalid_action_rate"] = MetricValue(invalid_rate)
 
             # Action distribution
             total_actions = sum(self.action_counts.values())
@@ -435,8 +436,9 @@ class EnvironmentMetricsCollector(MetricCollector):
             self.action_counts[action] += 1
             self.action_rewards[action].append(reward)
 
-        if is_invalid:
-            self.invalid_actions += 1
+        # Invalid action tracking removed - action masking prevents invalid actions
+        # if is_invalid:
+        #     self.invalid_actions += 1
 
         # Record reward components
         if reward_components:
