@@ -246,8 +246,12 @@ class DashboardStateManager:
                         if (self._state.position_side != 'FLAT' and 
                             self._state.position_entry_timestamp and 
                             self._state.current_timestamp):
-                            hold_duration = self._state.current_timestamp - self._state.position_entry_timestamp
-                            self._state.position_hold_time_seconds = int(hold_duration.total_seconds())
+                            try:
+                                hold_duration = self._state.current_timestamp - self._state.position_entry_timestamp
+                                self._state.position_hold_time_seconds = int(hold_duration.total_seconds())
+                            except TypeError:
+                                # Timezone mismatch - skip update
+                                pass
                             
                     except:
                         self._state.ny_time = datetime.now().strftime('%H:%M:%S')
@@ -344,16 +348,26 @@ class DashboardStateManager:
                 # Handle entry timestamp and hold time
                 entry_timestamp = data.get('entry_timestamp')
                 if entry_timestamp and self._state.position_side != 'FLAT':
-                    # Store entry timestamp for open positions
+                    # Store entry timestamp for open positions (ensure timezone-naive)
                     if isinstance(entry_timestamp, str):
-                        self._state.position_entry_timestamp = pd.to_datetime(entry_timestamp)
+                        entry_ts = pd.to_datetime(entry_timestamp)
                     else:
-                        self._state.position_entry_timestamp = entry_timestamp
+                        entry_ts = pd.to_datetime(entry_timestamp)
+                    
+                    # Make timezone-naive to match current_timestamp
+                    if entry_ts.tz is not None:
+                        entry_ts = entry_ts.tz_localize(None)
+                    
+                    self._state.position_entry_timestamp = entry_ts
                     
                     # Calculate hold time
                     if self._state.current_timestamp and self._state.position_entry_timestamp:
-                        hold_duration = self._state.current_timestamp - self._state.position_entry_timestamp
-                        self._state.position_hold_time_seconds = int(hold_duration.total_seconds())
+                        try:
+                            hold_duration = self._state.current_timestamp - self._state.position_entry_timestamp
+                            self._state.position_hold_time_seconds = int(hold_duration.total_seconds())
+                        except TypeError:
+                            # Timezone mismatch fallback
+                            self._state.position_hold_time_seconds = 0
                     else:
                         self._state.position_hold_time_seconds = 0
                 else:
