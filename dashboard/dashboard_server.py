@@ -1,4 +1,4 @@
-# dashboard/dashboard_server.py - Dash web server implementation
+# " dashboard/dashboard_server.py - Dash web server implementation
 
 import logging
 import threading
@@ -153,7 +153,7 @@ class DashboardServer:
                 
                 # Row 4: Full-width Chart
                 html.Div([
-                    html.H4("Price & Volume", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                    html.H4("Price & Volume (Focused View)", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                     dcc.Graph(id='candlestick-chart', style={'height': '500px'})
                 ], style=self._card_style()),
                 
@@ -245,7 +245,7 @@ class DashboardServer:
                     self._info_row("Entry", f"${state.avg_entry_price:.3f}"),
                     self._info_row("P&L $", f"${position_pnl:.2f}", color=pnl_color),
                     self._info_row("P&L %", f"{state.position_pnl_percent:.1f}%", color=pnl_color),
-                    self._info_row("Hold Time", f"{getattr(state, 'position_hold_time_seconds', 0)//60:.0f}m"),
+                    self._info_row("Hold Time", f"{getattr(state, 'position_hold_time_seconds', 0)//60:.0f}m" if getattr(state, 'position_hold_time_seconds', 0) > 0 else "0m"),
                 ]
             else:
                 position_section = [
@@ -289,7 +289,7 @@ class DashboardServer:
             
             # Calculate episode and session win rates
             episode_win_rate = (episode_wins / episode_total * 100) if episode_total > 0 else 0
-            session_win_rate = state.win_rate * 100  # Convert to percentage
+            session_win_rate = (session_wins / session_total * 100) if session_total > 0 else 0
             
             # Format profit factor (handle infinity case)
             profit_factor = getattr(state, 'profit_factor', 0.0)
@@ -309,12 +309,12 @@ class DashboardServer:
                 },
                 {
                     'Metric': 'Drawdown %',
-                    'Episode': f"{state.max_drawdown:.1f}%",
+                    'Episode': "N/A",
                     'Session': f"{state.max_drawdown:.1f}%"
                 },
                 {
                     'Metric': 'Sharpe Ratio',
-                    'Episode': f"{state.sharpe_ratio:.2f}",
+                    'Episode': "N/A",
                     'Session': f"{state.sharpe_ratio:.2f}"
                 },
                 {
@@ -1070,8 +1070,48 @@ class DashboardServer:
                 font=dict(size=14, color=DARK_THEME['text_muted'])
             )
         else:
-            # Use ALL candles for the full trading day (4 AM - 8 PM = 16 hours = 960 minutes)
-            candles = candle_data  # Use all available data
+            # Get episode and reset information to determine chart window
+            episode_start_time = getattr(state, 'episode_start_time', None)
+            current_timestamp = getattr(state, 'current_timestamp', None)
+            
+            # Determine chart window based on episode state
+            # Initialize candles with fallback to ensure it's always defined
+            candles = candle_data
+            
+            if episode_start_time and current_timestamp:
+                try:
+                    # Parse timestamps
+                    episode_start = pd.to_datetime(episode_start_time)
+                    current_time = pd.to_datetime(current_timestamp)
+                    
+                    # Remove timezone info if present for consistent handling
+                    if episode_start.tz is not None:
+                        episode_start = episode_start.tz_localize(None)
+                    if current_time.tz is not None:
+                        current_time = current_time.tz_localize(None)
+                    
+                    # Calculate time windows:
+                    # - Show 1 hour before episode start (reset point)
+                    # - Show up to 30 minutes after episode start
+                    window_start = episode_start - pd.Timedelta(hours=1)
+                    window_end = episode_start + pd.Timedelta(minutes=30)
+                    
+                    # Extend window if current time is beyond the 30-minute mark
+                    if current_time > window_end:
+                        window_end = current_time + pd.Timedelta(minutes=5)  # Small buffer
+                    
+                    # Filter candle data to the focused window
+                    candle_df = pd.DataFrame(candle_data)
+                    candle_df['timestamp'] = pd.to_datetime(candle_df['timestamp']).dt.tz_localize(None)
+                    
+                    # Filter to window
+                    mask = (candle_df['timestamp'] >= window_start) & (candle_df['timestamp'] <= window_end)
+                    filtered_candles = candle_df[mask]
+                    candles = filtered_candles.to_dict('records') if not filtered_candles.empty else candle_data
+                    
+                except Exception:
+                    # Fallback to all data if timestamp parsing fails - candles already set above
+                    pass
             
             if candles:
                 # Convert to dataframe for easier handling
@@ -1126,6 +1166,53 @@ class DashboardServer:
                         annotation_font_color=DARK_THEME['accent_blue'],
                         row=1, col=1
                     )
+                
+                # Add vertical line for episode start (reset point)
+                episode_start_time = getattr(state, 'episode_start_time', None)
+                if episode_start_time:
+                    try:
+                        # Convert to pandas Timestamp and ensure timezone-naive
+                        if isinstance(episode_start_time, str):
+                            episode_start_ts = pd.to_datetime(episode_start_time).tz_localize(None)
+                        else:
+                            episode_start_ts = pd.to_datetime(episode_start_time)
+                            if hasattr(episode_start_ts, 'tz') and episode_start_ts.tz is not None:
+                                episode_start_ts = episode_start_ts.tz_localize(None)
+                        
+                        # Check if episode start is within chart range
+                        if episode_start_ts >= df['timestamp'].min() and episode_start_ts <= df['timestamp'].max():
+                            # Add vertical line spanning both price and volume subplots
+                            fig.add_shape(
+                                type="line",
+                                x0=episode_start_ts, x1=episode_start_ts,
+                                y0=0, y1=1,
+                                yref="paper",
+                                line=dict(
+                                    color=DARK_THEME['accent_purple'],
+                                    width=3,
+                                    dash="solid"
+                                )
+                            )
+                            # Add annotation for episode start
+                            price_mid = (df['high'].max() + df['low'].min()) / 2
+                            fig.add_annotation(
+                                x=episode_start_ts,
+                                y=price_mid,
+                                yref="y",
+                                text="Reset",
+                                showarrow=True,
+                                arrowhead=2,
+                                arrowsize=1,
+                                arrowcolor=DARK_THEME['accent_purple'],
+                                font=dict(size=10, color=DARK_THEME['accent_purple']),
+                                bgcolor="rgba(0,0,0,0.7)",
+                                bordercolor=DARK_THEME['accent_purple'],
+                                borderwidth=1,
+                                xshift=-20
+                            )
+                    except Exception:
+                        # Skip episode start line if timestamp conversion fails
+                        pass
                 
                 # Add vertical line for current trading time
                 current_timestamp = getattr(state, 'current_timestamp', None)
@@ -1314,19 +1401,19 @@ class DashboardServer:
             type='date'
         )
         
-        # If we have data, set the x-axis range to show full trading day (4 AM to 8 PM)
-        if candle_data and len(candle_data) > 0:
-            # Get the date from the first candle
-            first_candle = candle_data[0]
-            if 'timestamp' in first_candle:
-                # Parse the date
-                first_ts = pd.to_datetime(first_candle['timestamp'])
-                date_str = first_ts.strftime('%Y-%m-%d')
-                
-                # Set range from 4 AM to 8 PM for that date to include all reset points
-                fig.update_xaxes(
-                    range=[f'{date_str} 04:00:00', f'{date_str} 20:00:00']
-                )
+        # Set x-axis range based on filtered candle data for focused view
+        if candles and len(candles) > 0:
+            # Use the filtered candles data range for focused view
+            df_filtered = pd.DataFrame(candles)
+            df_filtered['timestamp'] = pd.to_datetime(df_filtered['timestamp']).dt.tz_localize(None)
+            
+            # Set range based on actual filtered data with small buffer
+            start_time = df_filtered['timestamp'].min() - pd.Timedelta(minutes=5)
+            end_time = df_filtered['timestamp'].max() + pd.Timedelta(minutes=5)
+            
+            fig.update_xaxes(
+                range=[start_time, end_time]
+            )
         
         return fig
         
