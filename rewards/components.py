@@ -383,7 +383,7 @@ class TradingActivityBonus(RewardComponent):
         
         # Check if any trading actions were taken this step
         for fill in state.fill_details:
-            if fill.order_side in ['BUY', 'SELL']:
+            if fill.order_side.value in ['BUY', 'SELL']:
                 trading_actions += 1
         
         # Configuration

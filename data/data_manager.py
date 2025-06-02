@@ -312,7 +312,14 @@ class DataManager:
         
     def get_reset_points(self, symbol: str, date: datetime, 
                         min_roc: float = 0.0, min_activity: float = 0.0) -> pd.DataFrame:
-        """Get reset points for a symbol on a specific date with 2-component filtering."""
+        """Get reset points for a symbol on a specific date with 2-component filtering.
+        
+        Args:
+            symbol: Symbol to filter for
+            date: Date to filter for
+            min_roc: Minimum absolute ROC score (directional momentum magnitude)
+            min_activity: Minimum activity score [0.0, 1.0]
+        """
         if self.reset_points_cache is None or self.reset_points_cache.empty:
             return pd.DataFrame()
             
@@ -325,19 +332,19 @@ class DataManager:
             (self.reset_points_cache['date'] == date_obj)
         )
         
-        # Apply 3-component filters if available
+        # Apply 3-component filters if available (use absolute ROC for directional momentum)
         if 'roc_score' in self.reset_points_cache.columns:
-            mask &= self.reset_points_cache['roc_score'] >= min_roc
+            mask &= self.reset_points_cache['roc_score'].abs() >= min_roc
         if 'activity_score' in self.reset_points_cache.columns:
             mask &= self.reset_points_cache['activity_score'] >= min_activity
             
         result = self.reset_points_cache[mask]
         
-        # Sort by combined score if available, otherwise by roc score
+        # Sort by combined score if available, otherwise by absolute roc score
         if 'combined_score' in result.columns:
             return result.sort_values('combined_score', ascending=False)
         elif 'roc_score' in result.columns:
-            return result.sort_values('roc_score', ascending=False)
+            return result.reindex(result['roc_score'].abs().sort_values(ascending=False).index)
         else:
             return result
 

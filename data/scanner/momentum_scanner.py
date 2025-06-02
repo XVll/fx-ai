@@ -314,9 +314,11 @@ class MomentumScanner:
             self.logger.warning(f"Only {len(five_min_bars)} valid reset points for {symbol} {date}")
             return reset_points
         
-        # Calculate combined score for weighting
+        # Calculate combined score for weighting (scale ROC to be more significant)
+        # Since ROC is typically small (0-0.3 range), scale it up to balance with activity
+        roc_scaled = five_min_bars['roc_score'].abs() * 10.0
         five_min_bars['combined_score'] = (
-            five_min_bars['roc_score'] * self.scoring_config.roc_weight +
+            roc_scaled * self.scoring_config.roc_weight +
             five_min_bars['activity_score'] * self.scoring_config.activity_weight
         )
         
@@ -329,12 +331,12 @@ class MomentumScanner:
     
     def _calculate_2component_scores(self, five_min_bars: pd.DataFrame, 
                                    session_volumes: Dict[str, float]) -> pd.DataFrame:
-        """Calculate ROC and activity scores using rolling window method."""
+        """Calculate ROC [-1.0, 1.0] and activity [0.0, 1.0] scores using rolling window method."""
         return self._calculate_rolling_scores(five_min_bars, session_volumes)
     
     def _calculate_rolling_scores(self, five_min_bars: pd.DataFrame,
                                 session_volumes: Dict[str, float]) -> pd.DataFrame:
-        """Calculate rolling window scores [0.0, 1.0] within session context."""
+        """Calculate rolling window scores: ROC [-1.0, 1.0], Activity [0.0, 1.0]."""
         
         # Configuration
         window_size_periods = int(self.scoring_config.rolling_window_minutes / 5)  # Convert to 5-min periods
@@ -349,19 +351,13 @@ class MomentumScanner:
             if len(session_data) == 0:
                 continue
                 
-            # 1. ROC Score [0.0, 1.0]: Rolling percentile within session
-            session_data['price_change_roc'] = session_data['close'].pct_change(roc_periods).abs()
+            # 1. ROC Score [-1.0, 1.0]: Directional rate of change
+            session_data['price_change_roc'] = session_data['close'].pct_change(roc_periods)
             
-            # Calculate rolling rank within session
-            if len(session_data) >= window_size_periods:
-                session_data['roc_score'] = session_data['price_change_roc'].rolling(
-                    window_size_periods, min_periods=1
-                ).rank(pct=True)
-            else:
-                # For shorter sessions, use overall rank
-                session_data['roc_score'] = session_data['price_change_roc'].rank(pct=True)
+            # Clip to [-1.0, 1.0] range to represent actual percentage change
+            session_data['roc_score'] = np.clip(session_data['price_change_roc'], -1.0, 1.0)
             
-            # 2. Activity Score [0.0, 1.0]: Rolling volume percentile within session
+            # 2. Activity Score [0.0, 1.0]: Improved volume normalization
             session_data['volume_rolling'] = session_data['volume'].rolling(
                 activity_periods, min_periods=1
             ).mean()
@@ -369,28 +365,27 @@ class MomentumScanner:
             # Get session baseline volume
             session_baseline = session_volumes.get(session, session_volumes.get('regular', 1000))
             
+            # Better normalization using tanh for smooth [0.0, 1.0] mapping
+            volume_ratio = session_data['volume_rolling'] / session_baseline
+            
             # Apply volume significance threshold
             volume_significant = (
                 session_data['volume_rolling'] >= self.scoring_config.min_volume_threshold
             )
             
-            # Calculate rolling rank within session
-            if len(session_data) >= window_size_periods:
-                activity_rank = session_data['volume_rolling'].rolling(
-                    window_size_periods, min_periods=1
-                ).rank(pct=True)
-            else:
-                activity_rank = session_data['volume_rolling'].rank(pct=True)
+            # Use tanh normalization for better distribution in [0.0, 1.0]
+            # tanh(x) maps to [-1, 1], so (tanh(x) + 1) / 2 maps to [0, 1]
+            normalized_volume = (np.tanh(volume_ratio - 1) + 1) / 2
             
             # Apply neutral score for low volume periods
             session_data['activity_score'] = np.where(
                 volume_significant,
-                activity_rank,
+                normalized_volume,
                 0.5  # Neutral score
             )
             
             # Store volume deviation for compatibility
-            session_data['volume_deviation'] = session_data['volume_rolling'] / session_baseline
+            session_data['volume_deviation'] = volume_ratio
             
             session_scores.append(session_data)
         
@@ -399,14 +394,14 @@ class MomentumScanner:
             result = pd.concat(session_scores).sort_index()
         else:
             result = five_min_bars.copy()
-            result['roc_score'] = 0.5
-            result['activity_score'] = 0.5
+            result['roc_score'] = 0.0  # Neutral directional score
+            result['activity_score'] = 0.5  # Neutral activity score
             result['price_change_roc'] = 0.0
             result['volume_deviation'] = 1.0
         
-        # Fill NaN values with neutral score (0.5)
-        for col in ['roc_score', 'activity_score']:
-            result[col] = result[col].fillna(0.5)
+        # Fill NaN values with neutral scores
+        result['roc_score'] = result['roc_score'].fillna(0.0)  # Neutral for directional
+        result['activity_score'] = result['activity_score'].fillna(0.5)  # Neutral for activity
         
         return result
     
