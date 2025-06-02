@@ -410,7 +410,7 @@ class MomentumScoringConfig(BaseModel):
     """Configuration for momentum scoring system - simplified without direction"""
     
     # Window configuration - default to 60 minutes
-    rolling_window_minutes: int = Field(default=15, description="Rolling window for calculations (60 min default)")
+    rolling_window_minutes: int = Field(default=120, description="Rolling window for calculations (60 min default)")
     
     # Reset point generation every 5 minutes
     reset_point_interval_minutes: int = Field(default=5, description="Generate reset points every 5 minutes")
