@@ -210,23 +210,23 @@ class TrainingConfig(BaseModel):
     seed: int = Field(default=42, description="Random seed")
     
     # PPO hyperparameters - optimized for momentum trading
-    learning_rate: float = 3e-4
+    learning_rate: float = 1.5e-4
     batch_size: int = 64
-    n_epochs: int = 10
+    n_epochs: int = 8
     gamma: float = 0.99
     gae_lambda: float = 0.95
-    clip_epsilon: float = 0.2
+    clip_epsilon: float = 0.15
     value_coef: float = 0.5
     entropy_coef: float = 0.01
-    max_grad_norm: float = 0.5
+    max_grad_norm: float = 0.3
     
     # Rollout settings - larger for stability
     rollout_steps: int = Field(default=2048, description="Steps per rollout")
     
     # Learning rate schedule
     use_lr_annealing: bool = True
-    lr_annealing_factor: float = 0.5
-    lr_annealing_patience: int = 100
+    lr_annealing_factor: float = 0.7
+    lr_annealing_patience: int = 50
     min_learning_rate: float = 1e-6
     
     # Continuous training - production ready
