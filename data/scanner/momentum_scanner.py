@@ -12,6 +12,9 @@ import databento as db
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
 from data.utils.helpers import ensure_timezone_aware
 from config.schemas import MomentumScanningConfig, MomentumScoringConfig, SessionVolumeConfig
 
@@ -753,3 +756,49 @@ class MomentumScanner:
         })
         
         return summary.sort_values('total_days', ascending=False)
+
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Scan momentum days in Databento files')
+    parser.add_argument('--min-quality', type=float, default=0.5, 
+                       help='Minimum quality score (default: 0.5)')
+    parser.add_argument('--symbols', nargs='+', default=['AAPL'], 
+                       help='Symbols to scan (default: AAPL)')
+    parser.add_argument('--rebuild', action='store_true',
+                       help='Force rebuild existing indices')
+    
+    args = parser.parse_args()
+    
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
+    # Initialize scanner with default paths
+    data_dir = "dnb/mlgo"
+    output_dir = "cache/indices/momentum_index"
+    scanner = MomentumScanner(data_dir=data_dir, output_dir=output_dir)
+    
+    try:
+        # Scan symbols
+        logger.info(f"Scanning momentum days for symbols: {args.symbols}")
+        day_df, reset_df = scanner.scan_all_symbols(symbols=args.symbols)
+        
+        # Show results
+        logger.info(f"Loading momentum days with min quality {args.min_quality}...")
+        
+        for symbol in args.symbols:
+            days = scanner.query_momentum_days(symbol, min_activity=args.min_quality)
+            reset_points = scanner.query_reset_points(symbol, min_activity=args.min_quality)
+            
+            logger.info(f"\n{symbol} Results:")
+            logger.info(f"  Momentum days: {len(days)}")
+            logger.info(f"  Reset points: {len(reset_points)}")
+            
+            if len(days) > 0:
+                logger.info(f"  Quality range: {days['activity_score'].min():.3f} - {days['activity_score'].max():.3f}")
+            
+    except Exception as e:
+        logger.error(f"Error during scanning: {e}")
+        raise
