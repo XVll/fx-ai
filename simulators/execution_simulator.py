@@ -133,7 +133,6 @@ class ExecutionSimulator:
         self.max_commission_pct = simulation_config.max_commission_pct_of_value
         
         # Trading limits from schema
-        self.default_position_value = simulation_config.default_position_value
         self.allow_shorting = simulation_config.allow_shorting
         
         # Session tracking
@@ -278,10 +277,9 @@ class ExecutionSimulator:
             decision_timestamp = pd.Timestamp(decision_timestamp).to_pydatetime()
 
         if action_result.action_type == "BUY":
-            # Calculate target buy value
-            target_value = self.default_position_value * action_result.size_float
-            available_cash = min(cash, target_value)
-            target_value = min(available_cash, max_pos_value)
+            # Calculate target buy value based on available cash
+            target_value = cash * action_result.size_float
+            target_value = min(target_value, max_pos_value)
 
             if target_value < 10.0:  # Minimum $10 order
                 action_result.is_valid = False

@@ -20,6 +20,7 @@ from gymnasium import spaces
 
 from config.schemas import Config
 from data.data_manager import DataManager
+from envs.action_masking import ActionMask
 from rewards.calculator import RewardSystem
 from simulators.execution_simulator import ExecutionSimulator
 from simulators.market_simulator import MarketSimulator
@@ -103,7 +104,6 @@ class TradingEnvironment(gym.Env):
         self.bankruptcy_threshold_factor: float = 0.1
         # Fixed max loss threshold - 25% loss (6.25k out of 25k)
         self.max_session_loss_percentage: float = 0.25
-        self.default_position_value = config.simulation.default_position_value
 
         # Action Space - execution simulator handles decoding now
         self.action_space = spaces.MultiDiscrete([3, 4])  # [action_types, position_sizes]
@@ -128,6 +128,7 @@ class TradingEnvironment(gym.Env):
         self.execution_manager: Optional[ExecutionSimulator] = None
         self.portfolio_manager: Optional[PortfolioSimulator] = None
         self.reward_calculator: Optional[RewardSystem] = None
+        self.action_mask: Optional[ActionMask] = None
 
         # Episode state
         self.current_step: int = 0
@@ -425,6 +426,12 @@ class TradingEnvironment(gym.Env):
             np_random=self.np_random,
             market_simulator=self.market_simulator,
             metrics_integrator=self.metrics_integrator
+        )
+
+        # Action masking system
+        self.action_mask = ActionMask(
+            config=self.config,
+            logger=logging.getLogger(f"{__name__}.ActionMask")
         )
 
         self.logger.info("✅ All simulators initialized")
@@ -818,6 +825,29 @@ class TradingEnvironment(gym.Env):
 
         # Get portfolio state before action
         self._last_portfolio_state_before_action = self.portfolio_manager.get_portfolio_state(current_sim_time_decision)
+
+        # Apply action masking to validate action before execution
+        if self.action_mask:
+            # Convert raw action to linear index for validation
+            if hasattr(action, '__len__') and len(action) >= 2:
+                action_type_idx = int(action[0]) % 3
+                size_idx = int(action[1]) % 4
+                linear_action_idx = action_type_idx * 4 + size_idx
+                
+                # Check if action is valid
+                is_valid = self.action_mask.is_action_valid(
+                    linear_action_idx, 
+                    self._last_portfolio_state_before_action, 
+                    market_state_at_decision
+                )
+                
+                if not is_valid:
+                    self.logger.debug(
+                        f"Invalid action masked: {self.action_mask.get_action_description(linear_action_idx)} "
+                        f"Valid actions: {self.action_mask.get_valid_actions(self._last_portfolio_state_before_action, market_state_at_decision)}"
+                    )
+                    # Force to HOLD action (always valid)
+                    action = [0, 0]  # HOLD with 25% size (ignored anyway)
 
         # Execute action through ExecutionSimulator (handles decode -> validate -> execute)
         execution_result = self.execution_manager.execute_action(
@@ -1487,6 +1517,49 @@ class TradingEnvironment(gym.Env):
             print(f"Step {info_dict.get('step', 'N/A')}: "
                   f"Reward {info_dict.get('reward_step', 0.0):.4f}, "
                   f"Equity ${info_dict.get('portfolio_equity', 0.0):.2f}")
+
+    def get_action_mask(self) -> Optional[np.ndarray]:
+        """
+        Get current action mask for the agent.
+        
+        Returns:
+            Boolean array of shape (12,) where True = valid action, or None if masking disabled
+        """
+        if not self.action_mask or not self.portfolio_manager or not self.market_simulator:
+            return None
+            
+        # Get current states
+        current_time = self.market_simulator.get_current_time()
+        portfolio_state = self.portfolio_manager.get_portfolio_state(current_time)
+        market_state = self.market_simulator.get_current_market_data()
+        
+        if not portfolio_state or not market_state:
+            return None
+            
+        return self.action_mask.get_action_mask(portfolio_state, market_state)
+    
+    def mask_action_probabilities(self, action_probs: np.ndarray) -> np.ndarray:
+        """
+        Apply action masking to action probabilities.
+        
+        Args:
+            action_probs: Raw action probabilities from policy network
+            
+        Returns:
+            Masked and renormalized action probabilities
+        """
+        if not self.action_mask or not self.portfolio_manager or not self.market_simulator:
+            return action_probs
+            
+        # Get current states
+        current_time = self.market_simulator.get_current_time()
+        portfolio_state = self.portfolio_manager.get_portfolio_state(current_time)
+        market_state = self.market_simulator.get_current_market_data()
+        
+        if not portfolio_state or not market_state:
+            return action_probs
+            
+        return self.action_mask.mask_action_probabilities(action_probs, portfolio_state, market_state)
 
     def close(self):
         """Close environment and cleanup resources."""
