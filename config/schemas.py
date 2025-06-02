@@ -407,24 +407,16 @@ class CurriculumStageConfig(BaseModel):
 
 
 class MomentumScoringConfig(BaseModel):
-    """Configuration for momentum scoring system - simplified without direction"""
-    
-    # Window configuration - default to 60 minutes
-    rolling_window_minutes: int = Field(default=120, description="Rolling window for calculations (60 min default)")
-    
-    # Reset point generation every 5 minutes
-    reset_point_interval_minutes: int = Field(default=5, description="Generate reset points every 5 minutes")
+    """Configuration for momentum scoring system - directional ROC and activity scores"""
     
     # ROC scoring  
     roc_lookback_minutes: int = Field(default=5, description="Minutes for ROC calculation")
     
     # Activity scoring
     activity_lookback_minutes: int = Field(default=10, description="Minutes for volume rolling average")
-    min_volume_threshold: int = Field(default=1000, description="Minimum volume to be significant")
     
     # Reset point generation
     min_reset_points: int = Field(default=60, description="Minimum reset points per day")
-    max_reset_points: int = Field(default=288, description="Maximum reset points per day (5min intervals = 288)")
     
     # Weights for combined scoring
     roc_weight: float = Field(default=0.6, description="ROC score weight")
@@ -444,8 +436,8 @@ class CurriculumConfig(BaseModel):
             episode_length=256,
             batch_size=2048,
             offset_ratio=1.0,
-            roc_range=[0.8, 1.0],
-            activity_range=[0.5, 1.0]
+            roc_range=[0.05, 1.0],
+            activity_range=[0.0, 1.0]
         )
     )
     stage_2_intermediate: CurriculumStageConfig = Field(
