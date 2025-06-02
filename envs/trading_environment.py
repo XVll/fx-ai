@@ -1446,6 +1446,13 @@ class TradingEnvironment(gym.Env):
             elif pnl < 0:
                 self.win_loss_counts['losses'] += 1
                 
+            # Record trade in metrics system for profit factor calculation
+            if self.metrics_integrator:
+                try:
+                    self.metrics_integrator.record_trade(trade)
+                except Exception as e:
+                    self.logger.warning(f"Error recording trade in metrics: {e}")
+                
             # Emit completed trade to dashboard
             from dashboard.event_stream import event_stream
             event_stream.emit_trade(

@@ -308,16 +308,6 @@ class DashboardServer:
                     'Session': session_wl_display
                 },
                 {
-                    'Metric': 'Drawdown %',
-                    'Episode': "N/A",
-                    'Session': f"{state.max_drawdown:.1f}%"
-                },
-                {
-                    'Metric': 'Sharpe Ratio',
-                    'Episode': "N/A",
-                    'Session': f"{state.sharpe_ratio:.2f}"
-                },
-                {
                     'Metric': 'Profit Factor',
                     'Episode': profit_factor_display,
                     'Session': profit_factor_display
@@ -1028,21 +1018,24 @@ class DashboardServer:
             
             sparkline_element = dcc.Graph(
                 figure=fig, 
-                style={'height': '16px', 'width': '40px', 'display': 'inline-block'}, 
+                style={'height': '16px', 'width': '40px', 'flexShrink': '0'}, 
                 config={'displayModeBar': False}
             )
         
-        # Create compact one-liner layout
+        # Create compact layout with proper alignment
         return html.Div([
-            html.Span(f"{label}: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px'}),
-            html.Span(value_str, style={'color': DARK_THEME['text_primary'], 'fontWeight': 'bold', 'fontSize': '10px'}),
+            html.Div([
+                html.Span(f"{label}: ", style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px'}),
+                html.Span(value_str, style={'color': DARK_THEME['text_primary'], 'fontWeight': 'bold', 'fontSize': '10px'})
+            ], style={'display': 'flex', 'alignItems': 'center', 'flex': '1', 'minWidth': '0'}),
             sparkline_element if sparkline_element else html.Span()
         ], style={
             'display': 'flex', 
             'alignItems': 'center', 
             'justifyContent': 'space-between',
             'marginBottom': '3px',
-            'minHeight': '16px'
+            'minHeight': '16px',
+            'gap': '8px'
         })
             
     def _create_price_chart(self, state) -> go.Figure:
@@ -1060,6 +1053,9 @@ class DashboardServer:
             subplot_titles=(None, None)
         )
         
+        # Initialize candles to ensure it's always defined
+        candles = candle_data
+        
         if not candle_data:
             # Return empty figure with message
             fig.add_annotation(
@@ -1075,9 +1071,6 @@ class DashboardServer:
             current_timestamp = getattr(state, 'current_timestamp', None)
             
             # Determine chart window based on episode state
-            # Initialize candles with fallback to ensure it's always defined
-            candles = candle_data
-            
             if episode_start_time and current_timestamp:
                 try:
                     # Parse timestamps

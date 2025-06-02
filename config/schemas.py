@@ -86,17 +86,17 @@ class RewardConfig(BaseModel):
     max_drawdown_threshold_percent: float = Field(default=0.01, description="MAE threshold as % of account (1%)")
     
     # Trading behavior bonuses
-    profit_closing_bonus_coefficient: float = Field(default=50.0, description="Bonus for closing profitable trades, scales with profit")
+    profit_closing_bonus_coefficient: float = Field(default=100.0, description="Bonus for closing profitable trades, scales with profit")
     
     # Clean trade bonus (exponential scaling configuration)
     clean_trade_coefficient: float = Field(default=20.0, description="DEPRECATED: Legacy parameter, use base_multiplier instead")
     max_clean_drawdown_percent: float = Field(default=0.01, description="DEPRECATED: Legacy parameter, use max_mae_threshold instead")
-    base_multiplier: float = Field(default=500, description="Base scaling multiplier for clean trade bonus")
+    base_multiplier: float = Field(default=5000, description="Base scaling multiplier for clean trade bonus")
     max_mae_threshold: float = Field(default=0.02, description="Maximum allowed MAE drawdown (2%)")
     min_gain_threshold: float = Field(default=0.01, description="Minimum gain required for clean trade bonus (1%)")
     
     # Trading activity incentives
-    activity_bonus_per_trade: float = Field(default=0.1, description="Bonus for each trading action to encourage activity")
+    activity_bonus_per_trade: float = Field(default=0.025, description="Bonus for each trading action to encourage activity")
     hold_penalty_per_step: float = Field(default=0.01, description="Small penalty per HOLD action to create opportunity cost")
     
     # Thresholds and limits
