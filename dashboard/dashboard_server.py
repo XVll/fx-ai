@@ -599,16 +599,65 @@ class DashboardServer:
                 
             training_content = html.Div(training_children)
             
-            # PPO Metrics - all PPO values with sparklines
+            # PPO Metrics - all PPO values with sparklines, tooltips, and health indicators
+            # Debug: Log available state attributes to identify correct names
+            import logging
+            logger = logging.getLogger(__name__)
+            available_attrs = [attr for attr in dir(state) if not attr.startswith('_')]
+            ppo_related = [attr for attr in available_attrs if any(keyword in attr.lower() for keyword in ['kl', 'lr', 'learning', 'reward', 'clip', 'entropy', 'loss', 'variance'])]
+            logger.debug(f"Available PPO-related state attributes: {ppo_related}")
+            
+            # Get KL Divergence with multiple fallbacks
+            kl_value = getattr(state, 'kl_divergence', getattr(state, 'approx_kl', getattr(state, 'kl_div', 0.0)))
+            kl_history = getattr(state, 'kl_divergence_history', getattr(state, 'approx_kl_history', getattr(state, 'kl_div_history', deque())))
+            logger.debug(f"KL Divergence: value={kl_value}, history_len={len(kl_history) if kl_history else 0}")
+            
+            # Get Learning Rate with multiple fallbacks
+            lr_value = getattr(state, 'learning_rate', getattr(state, 'lr', getattr(state, 'current_lr', 0.0)))
+            lr_history = getattr(state, 'learning_rate_history', getattr(state, 'lr_history', getattr(state, 'current_lr_history', deque())))
+            logger.debug(f"Learning Rate: value={lr_value}, history_len={len(lr_history) if lr_history else 0}")
+            
+            # Get Mean Reward with multiple fallbacks
+            mean_reward_value = getattr(state, 'mean_episode_reward', getattr(state, 'mean_reward', getattr(state, 'avg_reward', getattr(state, 'episode_reward_mean', 0.0))))
+            mean_reward_history = getattr(state, 'mean_episode_reward_history', getattr(state, 'mean_reward_history', getattr(state, 'avg_reward_history', deque())))
+            logger.debug(f"Mean Reward: value={mean_reward_value}, history_len={len(mean_reward_history) if mean_reward_history else 0}")
+            
+            # Debug: Show which metrics are working vs not working
+            working_metrics = []
+            broken_metrics = []
+            for name, value, history in [
+                ("Policy Loss", state.policy_loss, state.policy_loss_history),
+                ("Value Loss", state.value_loss, state.value_loss_history),
+                ("Entropy", state.entropy, state.entropy_history),
+                ("KL Divergence", kl_value, kl_history),
+                ("Clip Fraction", getattr(state, 'clip_fraction', 0.0), getattr(state, 'clip_fraction_history', deque())),
+                ("Learning Rate", lr_value, lr_history),
+                ("Mean Reward", mean_reward_value, mean_reward_history)
+            ]:
+                if value != 0.0 and len(history) > 0:
+                    working_metrics.append(name)
+                else:
+                    broken_metrics.append(f"{name}(val={value}, hist={len(history)})")
+            
+            logger.debug(f"Working metrics: {working_metrics}")
+            logger.debug(f"Broken metrics: {broken_metrics}")
+            
+            ppo_metrics_data = [
+                ("Policy Loss", state.policy_loss, state.policy_loss_history),
+                ("Value Loss", state.value_loss, state.value_loss_history),
+                ("Entropy", state.entropy, state.entropy_history),
+                ("KL Divergence", kl_value, kl_history),
+                ("Clip Fraction", getattr(state, 'clip_fraction', getattr(state, 'clipfrac', 0.0)), getattr(state, 'clip_fraction_history', getattr(state, 'clipfrac_history', deque()))),
+                ("Learning Rate", lr_value, lr_history),
+                ("Explained Var", getattr(state, 'explained_variance', getattr(state, 'explained_var', 0.0)), getattr(state, 'explained_variance_history', getattr(state, 'explained_var_history', deque()))),
+                ("Mean Reward", mean_reward_value, mean_reward_history),
+            ]
+            
             ppo_content = html.Div([
-                self._metric_with_sparkline("Policy Loss", state.policy_loss, state.policy_loss_history),
-                self._metric_with_sparkline("Value Loss", state.value_loss, state.value_loss_history),
-                self._metric_with_sparkline("Entropy", state.entropy, state.entropy_history),
-                self._metric_with_sparkline("KL Divergence", getattr(state, 'kl_divergence', getattr(state, 'approx_kl', 0.0)), getattr(state, 'kl_divergence_history', getattr(state, 'approx_kl_history', deque()))),
-                self._metric_with_sparkline("Clip Fraction", getattr(state, 'clip_fraction', 0.0), state.clip_fraction_history),
-                self._metric_with_sparkline("Learning Rate", state.learning_rate, state.learning_rate_history),
-                self._metric_with_sparkline("Explained Var", getattr(state, 'explained_variance', 0.0), state.explained_variance_history),
-                self._metric_with_sparkline("Mean Reward", getattr(state, 'mean_episode_reward', 0.0), getattr(state, 'mean_episode_reward_history', deque())),
+                self._metric_with_sparkline(
+                    label, value, history, 
+                    *self._get_ppo_metric_guidance(label, value, list(history) if history else [])
+                ) for label, value, history in ppo_metrics_data
             ])
             
             # Reward components table - redesigned to match actions panel format
@@ -985,8 +1034,8 @@ class DashboardServer:
             html.Div(text, style={'color': DARK_THEME['text_primary'], 'fontSize': '12px', 'textAlign': 'center'})
         ], style={'marginTop': '8px'})
         
-    def _metric_with_sparkline(self, label: str, value: float, history: List[float]) -> html.Div:
-        """Create a compact one-liner metric with inline sparkline"""
+    def _metric_with_sparkline(self, label: str, value: float, history: List[float], tooltip: str = None, health_status: str = "good") -> html.Div:
+        """Create a compact one-liner metric with inline sparkline, tooltip, and health indicator"""
         # Format value based on label type
         if "Learning Rate" in label:
             value_str = f"{value:.2e}"
@@ -994,6 +1043,14 @@ class DashboardServer:
             value_str = f"{value:.3f}"
         else:
             value_str = f"{value:.4f}"
+        
+        # Determine health status color
+        health_colors = {
+            "good": DARK_THEME['accent_green'],
+            "warning": DARK_THEME['accent_orange'], 
+            "bad": DARK_THEME['accent_red']
+        }
+        health_color = health_colors.get(health_status, DARK_THEME['text_primary'])
         
         # Create mini sparkline - always show a chart area
         sparkline_element = None
@@ -1051,18 +1108,27 @@ class DashboardServer:
                     'border': f"1px dashed {DARK_THEME['border']}"
                 })
         else:
-            # Show placeholder when no history data
-            sparkline_element = html.Div("--", style={
+            # Show placeholder when no history data - indicate missing data
+            sparkline_element = html.Div("NO DATA", style={
                 'height': '25px', 'width': '80px', 'display': 'flex', 
                 'alignItems': 'center', 'justifyContent': 'center',
-                'color': DARK_THEME['text_muted'], 'fontSize': '10px',
-                'border': f"1px dashed {DARK_THEME['border']}"
+                'color': DARK_THEME['accent_red'], 'fontSize': '8px',
+                'border': f"1px dashed {DARK_THEME['accent_red']}",
+                'fontWeight': 'bold'
             })
         
         # Create compact layout with right-aligned values
         return html.Div([
-            # Label on the left
-            html.Span(f"{label}:", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px', 'flex': '0 0 auto'}),
+            # Label on the left with health indicator
+            html.Div([
+                html.Span("●", style={
+                    'color': health_color, 
+                    'fontSize': '12px', 
+                    'marginRight': '4px',
+                    'fontWeight': 'bold'
+                }),
+                html.Span(f"{label}:", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px'})
+            ], style={'display': 'flex', 'alignItems': 'center', 'flex': '0 0 auto'}),
             # Spacer to push value and chart to the right
             html.Div(style={'flex': '1'}),
             # Value right-aligned next to chart
@@ -1080,7 +1146,112 @@ class DashboardServer:
             'alignItems': 'center', 
             'marginBottom': '3px',
             'minHeight': '25px'
-        })
+        }, title=tooltip or f"{label}: {value_str}")
+    
+    def _get_ppo_metric_guidance(self, label: str, value: float, history: List[float]) -> tuple[str, str]:
+        """Get health status and tooltip for PPO metrics"""
+        # Calculate trend direction from history
+        trend = "stable"
+        if history and len(history) >= 2:
+            recent_avg = sum(history[-3:]) / len(history[-3:]) if len(history) >= 3 else history[-1]
+            older_avg = sum(history[-6:-3]) / 3 if len(history) >= 6 else recent_avg
+            if recent_avg > older_avg * 1.05:
+                trend = "increasing"
+            elif recent_avg < older_avg * 0.95:
+                trend = "decreasing"
+        
+        if label == "Policy Loss":
+            if abs(value) < 0.01:
+                health = "good"
+                tooltip = f"Policy Loss: {value:.4f} - GOOD: Small loss indicates stable policy. Continue current settings."
+            elif abs(value) < 0.05:
+                health = "warning" 
+                tooltip = f"Policy Loss: {value:.4f} - OK: Moderate loss. Monitor for stability. Consider slight LR reduction if trend={trend}."
+            else:
+                health = "bad"
+                tooltip = f"Policy Loss: {value:.4f} - HIGH: Large loss indicates unstable policy. REDUCE learning rate significantly."
+                
+        elif label == "Value Loss":
+            if value < 0.5:
+                health = "good"
+                tooltip = f"Value Loss: {value:.4f} - GOOD: Low critic loss, good value prediction. Current settings working well."
+            elif value < 1.0:
+                health = "warning"
+                tooltip = f"Value Loss: {value:.4f} - OK: Moderate critic loss. Watch for convergence. Trend: {trend}."
+            else:
+                health = "bad"
+                tooltip = f"Value Loss: {value:.4f} - HIGH: Poor value estimation. Check reward scaling or reduce learning rate."
+                
+        elif label == "Entropy":
+            if 1.5 <= value <= 2.5:
+                health = "good"
+                tooltip = f"Entropy: {value:.4f} - GOOD: Healthy exploration level. Policy is exploring appropriately."
+            elif 1.0 <= value < 1.5 or 2.5 < value <= 3.0:
+                health = "warning"
+                tooltip = f"Entropy: {value:.4f} - {'LOW' if value < 1.5 else 'HIGH'}: {'Policy converging, reduce entropy coef if needed' if value < 1.5 else 'High exploration, consider reducing entropy coef'}."
+            else:
+                health = "bad"
+                tooltip = f"Entropy: {value:.4f} - {'VERY LOW' if value < 1.0 else 'VERY HIGH'}: {'Policy too deterministic, increase entropy coef' if value < 1.0 else 'Policy too random, decrease entropy coef significantly'}."
+                
+        elif label == "KL Divergence":
+            if value < 0.01:
+                health = "good"
+                tooltip = f"KL Divergence: {value:.4f} - GOOD: Stable policy updates. Changes are conservative and safe."
+            elif value < 0.1:
+                health = "warning"
+                tooltip = f"KL Divergence: {value:.4f} - ELEVATED: Moderate policy changes. Monitor for stability."
+            else:
+                health = "bad"
+                tooltip = f"KL Divergence: {value:.4f} - HIGH: Large policy changes. REDUCE learning rate immediately to prevent instability."
+                
+        elif label == "Clip Fraction":
+            if value < 0.1:
+                health = "good"
+                tooltip = f"Clip Fraction: {value:.3f} - GOOD: Few clipped updates. Policy changes are appropriate size."
+            elif value < 0.3:
+                health = "warning"
+                tooltip = f"Clip Fraction: {value:.3f} - ELEVATED: Some clipping occurring. Consider reducing learning rate slightly."
+            else:
+                health = "bad"
+                tooltip = f"Clip Fraction: {value:.3f} - HIGH: Many updates clipped (target <30%). REDUCE learning rate significantly."
+                
+        elif label == "Learning Rate":
+            if 1e-5 <= value <= 5e-4:
+                health = "good"
+                tooltip = f"Learning Rate: {value:.2e} - GOOD: Appropriate range for PPO. Should work well for most cases."
+            elif 5e-4 < value <= 1e-3:
+                health = "warning"
+                tooltip = f"Learning Rate: {value:.2e} - HIGH: Consider reducing if seeing high clip rates or KL divergence."
+            else:
+                health = "bad" if value > 1e-3 else "warning"
+                tooltip = f"Learning Rate: {value:.2e} - {'VERY HIGH' if value > 1e-3 else 'LOW'}: {'Reduce to prevent instability' if value > 1e-3 else 'May slow learning, consider increasing if stable'}."
+                
+        elif label == "Explained Var":
+            if value > 0.7:
+                health = "good"
+                tooltip = f"Explained Variance: {value:.3f} - GOOD: Critic predicting values well (>70%). Value function is effective."
+            elif value > 0.4:
+                health = "warning"
+                tooltip = f"Explained Variance: {value:.3f} - OK: Moderate value prediction. May improve with more training."
+            else:
+                health = "bad"
+                tooltip = f"Explained Variance: {value:.3f} - LOW: Poor value prediction (<40%). Check reward signal or network architecture."
+                
+        elif label == "Mean Reward":
+            if value > 0:
+                health = "good"
+                tooltip = f"Mean Reward: {value:.4f} - GOOD: Positive average return. Policy is learning profitable strategies."
+            elif value > -1:
+                health = "warning"
+                tooltip = f"Mean Reward: {value:.4f} - LOW: Small negative returns. Monitor progress, may need more training."
+            else:
+                health = "bad"
+                tooltip = f"Mean Reward: {value:.4f} - POOR: Large negative returns. Check reward function or reset training."
+        else:
+            health = "good"
+            tooltip = f"{label}: {value:.4f}"
+            
+        return health, tooltip
             
     def _create_price_chart(self, state) -> go.Figure:
         """Create candlestick chart with 1m bars using Plotly"""
