@@ -206,12 +206,12 @@ class DataConfig(BaseModel):
 class TrainingConfig(BaseModel):
     """Training configuration"""
     # Basic settings
-    device: str = Field(default="mps", description="Training device")
+    device: str = Field(default="cuda", description="Training device")
     seed: int = Field(default=42, description="Random seed")
     
     # PPO hyperparameters - optimized for momentum trading
     learning_rate: float = 3e-4
-    batch_size: int = 128
+    batch_size: int = 64
     n_epochs: int = 10
     gamma: float = 0.99
     gae_lambda: float = 0.95
@@ -410,7 +410,7 @@ class MomentumScoringConfig(BaseModel):
     """Configuration for momentum scoring system - simplified without direction"""
     
     # Window configuration - default to 60 minutes
-    rolling_window_minutes: int = Field(default=60, description="Rolling window for calculations (60 min default)")
+    rolling_window_minutes: int = Field(default=15, description="Rolling window for calculations (60 min default)")
     
     # Reset point generation every 5 minutes
     reset_point_interval_minutes: int = Field(default=5, description="Generate reset points every 5 minutes")
