@@ -483,7 +483,7 @@ class TradeMetricsCollector(MetricCollector):
                 # Profit factor
                 gross_profit = sum(winning_pnls) if winning_pnls else 0
                 gross_loss = abs(sum(losing_pnls)) if losing_pnls else 0
-                profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf') if gross_profit > 0 else 0
+                profit_factor = gross_profit / gross_loss if gross_loss > 0 else (float('inf') if gross_profit > 0 else 0)
                 metrics[f"{self.category.value}.{self.name}.profit_factor"] = MetricValue(profit_factor)
                 
             # Calculate average holding time

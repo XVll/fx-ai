@@ -510,6 +510,18 @@ class PortfolioSimulator:
         position.market_value = 0.0
         position.unrealized_pnl = 0.0
 
+        # Emit position update event to notify dashboard of FLAT position
+        event_stream.emit_position_update(
+            side=position.side.name,  # "FLAT"
+            quantity=0,
+            avg_price=0.0,
+            current_price=0.0,
+            unrealized_pnl=0.0,
+            realized_pnl=self.session_realized_pnl,
+            market_value=0.0,
+            entry_timestamp=None
+        )
+
         # Complete trade record
         trade['exit_timestamp'] = exit_time
         trade['holding_period_seconds'] = (exit_time - trade['entry_timestamp']).total_seconds()
@@ -567,7 +579,8 @@ class PortfolioSimulator:
                 current_price=current_price,
                 unrealized_pnl=unrealized_pnl,
                 realized_pnl=self.session_realized_pnl,
-                market_value=position.market_value
+                market_value=position.market_value,
+                entry_timestamp=position.entry_timestamp
             )
 
             # Update MFE/MAE for open trades
@@ -832,7 +845,7 @@ class PortfolioSimulator:
             'turnover': self.session_turnover,
             'avg_holding_time_seconds': avg_holding_time,
             'max_drawdown': self.max_drawdown * 100,  # As percentage
-            'profit_factor': abs(avg_win / avg_loss) if avg_loss < 0 else 0
+            'profit_factor': abs(avg_win / avg_loss) if avg_loss < 0 else (float('inf') if avg_win > 0 else 0)
         }
 
     def get_current_position(self, asset_id: str) -> Optional[Position]:

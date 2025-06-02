@@ -36,6 +36,8 @@ class SharedDashboardState:
     avg_entry_price: float = 0.0
     position_pnl_dollar: float = 0.0
     position_pnl_percent: float = 0.0
+    position_hold_time_seconds: int = 0
+    position_entry_timestamp: Optional[datetime] = None
     
     # Portfolio data (from metrics)
     total_equity: float = 100000.0
@@ -239,6 +241,14 @@ class DashboardStateManager:
                         self._state.ny_time = ts_ny.strftime('%H:%M:%S')
                         # Store current timestamp for chart vertical line (timezone-naive)
                         self._state.current_timestamp = ts_ny.tz_localize(None)
+                        
+                        # Update hold time if we have an open position
+                        if (self._state.position_side != 'FLAT' and 
+                            self._state.position_entry_timestamp and 
+                            self._state.current_timestamp):
+                            hold_duration = self._state.current_timestamp - self._state.position_entry_timestamp
+                            self._state.position_hold_time_seconds = int(hold_duration.total_seconds())
+                            
                     except:
                         self._state.ny_time = datetime.now().strftime('%H:%M:%S')
                         self._state.current_timestamp = None
@@ -330,6 +340,26 @@ class DashboardStateManager:
                 self._state.avg_entry_price = data.get('avg_price', 0)
                 self._state.unrealized_pnl = data.get('unrealized_pnl', 0)
                 self._state.realized_pnl = data.get('realized_pnl', 0)
+                
+                # Handle entry timestamp and hold time
+                entry_timestamp = data.get('entry_timestamp')
+                if entry_timestamp and self._state.position_side != 'FLAT':
+                    # Store entry timestamp for open positions
+                    if isinstance(entry_timestamp, str):
+                        self._state.position_entry_timestamp = pd.to_datetime(entry_timestamp)
+                    else:
+                        self._state.position_entry_timestamp = entry_timestamp
+                    
+                    # Calculate hold time
+                    if self._state.current_timestamp and self._state.position_entry_timestamp:
+                        hold_duration = self._state.current_timestamp - self._state.position_entry_timestamp
+                        self._state.position_hold_time_seconds = int(hold_duration.total_seconds())
+                    else:
+                        self._state.position_hold_time_seconds = 0
+                else:
+                    # Reset for FLAT positions
+                    self._state.position_entry_timestamp = None
+                    self._state.position_hold_time_seconds = 0
                 
                 # USE PORTFOLIO SIMULATOR'S CALCULATED VALUES - DO NOT RECALCULATE
                 # Get market_value from position update (which includes proper P&L calculation)
