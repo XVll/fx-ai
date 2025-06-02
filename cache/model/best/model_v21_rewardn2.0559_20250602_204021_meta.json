@@ -1,0 +1,28 @@
+{
+  "version": 21,
+  "timestamp": "20250602_204021",
+  "reward": -2.055920719639926,
+  "metrics": {
+    "actor_loss": 0.008560631141881459,
+    "critic_loss": 0.12358524893061258,
+    "entropy": 1.9825963407754899,
+    "clipfrac": 0.49873046875,
+    "approx_kl": 0.09777790163061581,
+    "value_function_explained_variance": 0.48027507718652485,
+    "gradient_norm": 1.7217612832784652,
+    "global_step_counter": 2048,
+    "global_episode_counter": 8,
+    "global_update_counter": 1,
+    "collected_steps": 2048,
+    "mean_reward": -2.055920719639926,
+    "std_reward": 2.618283729576536,
+    "mean_episode_length": 256.0,
+    "num_episodes_in_rollout": 8,
+    "rollout_time": 280.23707270622253,
+    "steps_per_second": 7.308098033649369,
+    "invalid_actions": 688,
+    "update_iter": 1,
+    "timestamp": 1748886021.483541
+  },
+  "source": "outputs/momentum_training_20250602_203317/models/checkpoint_iter1_mean_reward-2.0559.pt"
+}
