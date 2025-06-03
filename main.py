@@ -286,10 +286,36 @@ def get_curriculum_symbols(config):
 
 def create_metrics_components(config: Config, log: logging.Logger, model: torch.nn.Module = None):
     """Create metrics and dashboard components with feature attribution support"""
-    # Dashboard can work without W&B - only return None if both are disabled
+    # Always create metrics system - training requires it
     if not config.wandb.enabled and not config.dashboard.enabled:
-        logging.warning("Both W&B and dashboard disabled - no metrics will be tracked")
-        return None, None
+        logging.warning("Both W&B and dashboard disabled - creating minimal metrics system")
+        # Create minimal metrics system for training compatibility
+        feature_names = get_feature_names_from_config()
+        curriculum_symbols = get_curriculum_symbols(config)
+        primary_symbol = curriculum_symbols[0] if curriculum_symbols else "curriculum"
+        
+        metrics_config = MetricsConfig(
+            wandb_project="disabled",
+            wandb_entity=None,
+            wandb_run_name="minimal",
+            wandb_tags=["minimal"],
+            symbol=primary_symbol,
+            initial_capital=config.env.initial_capital,
+            enable_dashboard=False,
+            dashboard_port=8050,  # Default port even if disabled
+            transmit_interval=1.0
+        )
+        
+        additional_config = {
+            'feature_names': feature_names,
+            'enable_feature_attribution': False,  # Disable for speed
+            'model_config': config.model
+        }
+        metrics_manager, metrics_integrator = metrics_config.create_metrics_system(
+            model=model,
+            additional_config=additional_config
+        )
+        return metrics_manager, metrics_integrator
     
     # Only log about W&B if it's enabled
     if config.wandb.enabled:
@@ -647,13 +673,12 @@ def train(config: Config):
         if metrics_integrator:
             metrics_integrator.start_training()
         
-        # Main training loop
-        logger.info(f"🚀 Starting training for {config.training.total_updates} updates")
-        logger.info(f"   ({config.training.total_updates * config.training.rollout_steps:,} steps)")
+        # Main training loop - curriculum-driven
+        logger.info(f"🚀 Starting curriculum-driven training")
+        logger.info(f"   Training will complete when all curriculum stages are finished")
         
         try:
             training_stats = trainer.train(
-                total_training_steps=config.training.total_updates * config.training.rollout_steps,
                 eval_freq_steps=config.training.eval_frequency * config.training.rollout_steps
             )
             

@@ -1,8 +1,9 @@
 """Feature Attribution Analysis Package
 
-Provides comprehensive gradient-based feature importance analysis using Captum.
+Provides comprehensive feature importance analysis using SHAP.
 """
 
-from .captum_feature_analyzer import CaptumFeatureAnalyzer, AttributionMethod, AttributionConfig
+from .shap_analyzer import ShapFeatureAnalyzer
+from .simple_attribution import SimpleFeatureAttribution
 
-__all__ = ['CaptumFeatureAnalyzer', 'AttributionMethod', 'AttributionConfig']
+__all__ = ['ShapFeatureAnalyzer', 'SimpleFeatureAttribution']

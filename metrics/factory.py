@@ -37,9 +37,9 @@ class MetricsFactory:
         )
     
     @staticmethod
-    def create_dashboard_transmitter(port: int = 8050, update_interval: float = 0.1) -> DashboardTransmitter:
+    def create_dashboard_transmitter(port: int = 8050, update_interval: float = 0.1, metrics_integrator=None) -> DashboardTransmitter:
         """Create a dashboard transmitter"""
-        return DashboardTransmitter(port=port, update_interval=update_interval)
+        return DashboardTransmitter(port=port, update_interval=update_interval, metrics_integrator=metrics_integrator)
 
     @staticmethod
     def create_model_collectors(model: Optional[nn.Module] = None,
@@ -123,10 +123,7 @@ class MetricsFactory:
             wandb_transmitter = MetricsFactory.create_wandb_transmitter(wandb_config)
             manager.add_transmitter(wandb_transmitter)
             
-        # Add dashboard transmitter if enabled
-        if enable_dashboard:
-            dashboard_transmitter = MetricsFactory.create_dashboard_transmitter(port=dashboard_port)
-            manager.add_transmitter(dashboard_transmitter)
+        # We'll add the dashboard transmitter after creating the integrator
 
         # Add all collectors
         collectors = []
@@ -164,6 +161,16 @@ class MetricsFactory:
         # Register all collectors
         for collector in collectors:
             manager.register_collector(collector)
+
+        # Add dashboard transmitter if enabled (after manager is set up)
+        if enable_dashboard:
+            # Create integrator to pass to dashboard
+            integrator = MetricsIntegrator(manager)
+            dashboard_transmitter = MetricsFactory.create_dashboard_transmitter(
+                port=dashboard_port, 
+                metrics_integrator=integrator
+            )
+            manager.add_transmitter(dashboard_transmitter)
 
         return manager
 

@@ -1,0 +1,14 @@
+{
+  "version": 111,
+  "timestamp": "20250604_005944",
+  "reward": 0.0,
+  "metrics": {
+    "mean_reward": 0.0,
+    "episode_count": 0,
+    "update_iter": 0,
+    "timestamp": 1748987984.136482,
+    "initial_model": true,
+    "symbol": "curriculum"
+  },
+  "source": "/var/folders/y4/43fmm4t52fd77ng3ws5nypvh0000gn/T/tmp5_rcm7i3.pt"
+}

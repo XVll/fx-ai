@@ -8,14 +8,13 @@ package-mode = false
 
 [tool.poe.tasks]
 # Momentum Training (RECOMMENDED)
-momentum = "poetry run python main.py --config momentum_training"
-momentum-continue = "poetry run python main.py --config momentum_training --continue"
+train = "poetry run python main.py --config momentum_training"
+train-continue = "poetry run python main.py --config momentum_training --continue"
 build-index = "poetry run python build_index.py"
 
 # Legacy Training (standard single-day training)
 quick = "poetry run python main.py --config quick_test"
 init = "poetry run python main.py"
-train = "poetry run python main.py --continue"
 
 # Backtest
 backtest = "poetry run python main.py --config backtest"
@@ -65,7 +64,8 @@ setuptools = "==80.8.0"
 dash = "^3.0.4"
 plotly = "^6.1.1"
 tqdm = "^4.67.1"
-captum = "^0.7.0"
+shap = "^0.46.0"
+seaborn = "^0.13.0"
 optuna = "^4.1.0"
 optuna-dashboard = "^0.18.0"
 joblib = "^1.4.2"

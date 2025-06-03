@@ -14,10 +14,13 @@ studies:
     storage: sqlite:///optuna_studies.db
     load_if_exists: true
     
+    # NEW: Base config reference system
+    base_config: momentum_training
+    
     sampler:
       type: TPESampler
-      n_startup_trials: 15      # More random exploration for foundation
-      multivariate: true        # Enable interaction discovery
+      n_startup_trials: 15
+      multivariate: true
       seed: 42
       consider_prior: true
       prior_weight: 1.0
@@ -31,6 +34,7 @@ studies:
       interval_steps: 3
       n_min_trials: 5
     
+    # ONLY the parameters we're optimizing
     parameters:
       # Tier 1: Critical training parameters (4 params)
       - name: training.learning_rate
@@ -67,7 +71,12 @@ studies:
         low: 0.05
         high: 0.25
       
-      # Tier 3: Essential reward baseline (1 param)
+      # Tier 3: Sample collection efficiency (1 param)
+      - name: training.rollout_steps
+        type: categorical
+        choices: [1024, 2048, 4096]
+      
+      # Tier 4: Essential reward baseline (1 param)
       - name: env.reward.pnl_coefficient
         type: float
         low: 80.0
@@ -78,112 +87,28 @@ studies:
     n_jobs: 1
     catch_exceptions: true
     
-    training_config:
+    # ONLY trial-specific overrides (inherits everything else from momentum_training)
+    trial_overrides:
       mode: train
       experiment_name: optuna_foundation
-      config: momentum_training
       
       training:
-        total_updates: 15         # ~5 cycles for fast foundation testing
         checkpoint_interval: 5
-        eval_frequency: 5
-        eval_episodes: 3
-        rollout_steps: 2048
-        continue_training: false
-        
-        # Fixed foundation defaults for non-optimized params
-        n_epochs: 8
-        clip_epsilon: 0.2
-        gae_lambda: 0.95
-        value_coef: 0.5
-        max_grad_norm: 0.3
-        use_lr_annealing: true
-        lr_annealing_factor: 0.7
-        lr_annealing_patience: 50
-        min_learning_rate: 1.0e-06
-      
-      model:
-        # Fixed model defaults for non-optimized params
-        d_fused: 512
-        n_heads: 8
-        d_ff: 2048
-        hf_layers: 3
-        mf_layers: 3
-        lf_layers: 2
-        portfolio_layers: 2
-        hf_heads: 8
-        mf_heads: 8
-        lf_heads: 4
-        portfolio_heads: 4
-        continuous_action: false
+        eval_frequency: 2        # Evaluate more frequently for short trials  
+        eval_episodes: 5         # More evaluation episodes
+        continue_training: false # Always start fresh
+        n_epochs: 4              # Fewer epochs for speed
       
       env:
-        symbol: MLGO              # Single symbol for foundation
-        max_episode_steps: 256
-        training_mode: true
-        feature_update_interval: 1
-        max_training_steps: null
-        max_steps: 1000
-        early_stop_loss_threshold: 0.85
-        random_reset: true
-        max_episode_loss_percent: 0.15
-        bankruptcy_threshold_factor: 0.01
-        render_mode: none
+        max_episode_steps: 512   # Longer episodes for meaningful trading
         
-        # Fixed environment defaults
-        initial_capital: 25000.0
-        max_position_size: 1.0
-        leverage: 1.0
-        commission_rate: 0.001
-        slippage_rate: 0.0005
-        min_transaction_amount: 100.0
-        max_drawdown: 0.3
-        stop_loss_pct: 0.15
-        daily_loss_limit: 0.25
-        
-        # Fixed reward defaults (except pnl_coefficient which is optimized)
-        reward:
-          holding_penalty_coefficient: 2.0
-          drawdown_penalty_coefficient: 5.0
-          bankruptcy_penalty_coefficient: 50.0
-          profit_giveback_penalty_coefficient: 2.0
-          profit_giveback_threshold: 0.3
-          max_drawdown_penalty_coefficient: 15.0
-          max_drawdown_threshold_percent: 0.01
-          profit_closing_bonus_coefficient: 100.0
-          clean_trade_coefficient: 20.0
-          max_clean_drawdown_percent: 0.01
-          base_multiplier: 5000
-          max_mae_threshold: 0.02
-          min_gain_threshold: 0.01
-          activity_bonus_per_trade: 0.025
-          hold_penalty_per_step: 0.01
-          max_holding_time_steps: 180
-          enable_pnl_reward: true
-          enable_holding_penalty: true
-          enable_drawdown_penalty: true
-          enable_profit_giveback_penalty: true
-          enable_max_drawdown_penalty: true
-          enable_profit_closing_bonus: true
-          enable_clean_trade_bonus: true
-          enable_trading_activity_bonus: true
-          enable_inactivity_penalty: true
-      
-      # Foundation phase curriculum: Single symbol, single stage
       curriculum:
         stage_1_beginner:
-          enabled: true
-          symbols: ["MLGO"]
-          date_range: ["2025-02-21", "2025-02-21"]
-          day_score_range: [0.7, 1.0]
-          roc_range: [0.05, 1.0]
-          activity_range: [0.0, 1.0]
-          max_updates: null
-          max_episodes: null
-          max_cycles: 3
-
+          max_cycles: 5          # More cycles per trial for meaningful training
+          max_updates: 5         # Quick stage for faster optimization
+        
         stage_2_intermediate:
-          enabled: false
+          enabled: false         # Single stage for foundation
         
         stage_3_advanced:
           enabled: false
@@ -191,74 +116,24 @@ studies:
         stage_4_specialization:
           enabled: false
       
-      data:
-        provider: databento
-        data_dir: dnb
-        symbols: ["MLGO"]
-        load_trades: true
-        load_quotes: true
-        load_order_book: true
-        load_ohlcv: true
-        start_date: '2025-02-03'
-        end_date: '2025-04-29'
-        cache_enabled: true
-        cache_dir: cache
-        preload_days: 2
-        index_dir: cache/indices
-        auto_build_index: true
-      
-      simulation:
-        execution_delay_ms: 100
-        partial_fill_probability: 0.0
-        allow_shorting: false
-        mean_latency_ms: 100.0
-        latency_std_dev_ms: 20.0
-        base_slippage_bps: 10.0
-        size_impact_slippage_bps_per_unit: 0.2
-        max_total_slippage_bps: 100.0
-        commission_per_share: 0.005
-        fee_per_share: 0.001
-        min_commission_per_order: 1.0
-        max_commission_pct_of_value: 0.5
-        market_impact_model: linear
-        market_impact_coefficient: 0.0001
-        spread_model: historical
-        fixed_spread_bps: 10.0
-        random_start_prob: 0.95
-        warmup_steps: 60
-        initial_cash: 25000.0
-        max_position_value_ratio: 1.0
-        max_position_holding_seconds: null
-      
       wandb:
-        enabled: true
+        enabled: false           # Disable W&B for faster trials  
         project: fx-ai-optuna-foundation
-        entity: null
-        name: null
         tags: [optuna, phase1, foundation]
         notes: "Phase 1: Foundation hyperparameter optimization"
-        log_frequency:
-          training: 1
-          episode: 1
-          rollout: 1
-          evaluation: 1
-        save_code: true
         save_model: false        # Don't save models during optimization
       
       dashboard:
         enabled: false           # Disable during optimization
       
       logging:
-        level: INFO
-        console_enabled: true
-        console_format: simple
-        file_enabled: false
-        log_rewards: true
+        level: INFO              # Show more info for debugging
+        file_enabled: false      # Reduce I/O during trials
         log_actions: false
         log_features: false
-        log_portfolio: true
+        console_enabled: true    # Enable console logging for debugging
     
-    episodes_per_trial: 1500     # ~15 updates × 8 episodes per update × 12.5 rollouts
+    episodes_per_trial: 1000     # Estimated episodes for 10 updates
     eval_frequency: 5
     eval_episodes: 3
     save_checkpoints: false      # Don't save checkpoints during foundation

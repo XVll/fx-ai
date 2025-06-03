@@ -38,21 +38,21 @@ def load_best_parameters(study_name: str) -> Dict[str, Any]:
 
 
 def update_config_with_params(config_path: Path, best_params: Dict[str, Any], param_mapping: Dict[str, str]) -> None:
-    """Update configuration file with best parameters."""
+    """Update configuration file with best parameters using new base config + trial_overrides system."""
     
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     
     updated_count = 0
     
-    # Update parameters in training_config
+    # NEW: Update parameters in trial_overrides (not training_config)
     for optuna_param, config_path_str in param_mapping.items():
         if optuna_param in best_params:
             value = best_params[optuna_param]
             
-            # Navigate nested config structure
+            # Navigate nested config structure within trial_overrides
             config_parts = config_path_str.split('.')
-            current = config['studies'][0]['training_config']
+            current = config['studies'][0]['trial_overrides']
             
             # Navigate to parent
             for part in config_parts[:-1]:
@@ -149,71 +149,8 @@ def transfer_phase2_to_phase3():
     config_path = Path("config/optuna/phase3_finetune.yaml")
     update_config_with_params(config_path, all_best_params, param_mapping)
     
-    # Update refinement parameter ranges based on best values
-    update_refinement_ranges(config_path, all_best_params)
+    print("✅ Phase 3 uses base config inheritance - no refinement ranges needed")
 
-
-def update_refinement_ranges(config_path: Path, best_params: Dict[str, Any]) -> None:
-    """Update refinement parameter ranges based on best values from previous phases."""
-    
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    parameters = config['studies'][0]['parameters']
-    
-    # Update learning rate refinement range (±20%)
-    if "training.learning_rate" in best_params:
-        best_lr = best_params["training.learning_rate"]
-        for param in parameters:
-            if param['name'] == 'training.learning_rate_refinement':
-                param['low'] = best_lr * 0.8
-                param['high'] = best_lr * 1.2
-                print(f"   Updated learning_rate refinement range: [{param['low']:.6f}, {param['high']:.6f}]")
-                break
-    
-    # Update d_model adjacent choices
-    if "model.d_model" in best_params:
-        best_d_model = best_params["model.d_model"]
-        adjacent_choices = []
-        
-        if best_d_model == 64:
-            adjacent_choices = [64, 128]
-        elif best_d_model == 128:
-            adjacent_choices = [64, 128, 256]
-        elif best_d_model == 256:
-            adjacent_choices = [128, 256]
-        
-        for param in parameters:
-            if param['name'] == 'model.d_model_adjacent':
-                param['choices'] = adjacent_choices
-                print(f"   Updated d_model adjacent choices: {adjacent_choices}")
-                break
-    
-    # Update PnL coefficient refinement range (±15%)
-    if "env.reward.pnl_coefficient" in best_params:
-        best_pnl = best_params["env.reward.pnl_coefficient"]
-        for param in parameters:
-            if param['name'] == 'env.reward.pnl_coefficient_refinement':
-                param['low'] = best_pnl * 0.85
-                param['high'] = best_pnl * 1.15
-                print(f"   Updated pnl_coefficient refinement range: [{param['low']:.1f}, {param['high']:.1f}]")
-                break
-    
-    # Update holding penalty refinement range (±25%)
-    if "env.reward.holding_penalty_coefficient" in best_params:
-        best_holding = best_params["env.reward.holding_penalty_coefficient"]
-        for param in parameters:
-            if param['name'] == 'env.reward.holding_penalty_coefficient_refinement':
-                param['low'] = best_holding * 0.75
-                param['high'] = best_holding * 1.25
-                print(f"   Updated holding_penalty refinement range: [{param['low']:.2f}, {param['high']:.2f}]")
-                break
-    
-    # Write updated config
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False, sort_keys=False, indent=2)
-    
-    print("✅ Updated refinement parameter ranges")
 
 
 def show_phase_status():

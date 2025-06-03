@@ -138,11 +138,20 @@ class StudyConfig(BaseModel):
     n_jobs: int = Field(1, description="Number of parallel jobs")
     catch_exceptions: bool = Field(True, description="Catch and log exceptions")
     
-    # Training settings
+    # NEW: Base config reference system
+    base_config: Optional[str] = Field(None, description="Base config name to inherit from")
+    trial_overrides: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Trial-specific config overrides"
+    )
+    
+    # LEGACY: Full training config (for backward compatibility)
     training_config: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Base training configuration"
+        description="Complete training configuration (legacy)"
     )
+    
+    # Trial settings
     episodes_per_trial: int = Field(1000, description="Episodes per trial")
     eval_frequency: int = Field(100, description="Evaluation frequency")
     eval_episodes: int = Field(10, description="Episodes for evaluation")

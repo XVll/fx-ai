@@ -507,6 +507,7 @@ class PPOTrainer:
         # No more stages - training complete
         self.logger.info("🎉 All curriculum stages completed!")
         # Set a flag to indicate training should stop
+        self.stop_training = True
         if hasattr(self, 'callbacks'):
             for callback in self.callbacks:
                 if hasattr(callback, 'on_curriculum_complete'):
@@ -1088,12 +1089,12 @@ class PPOTrainer:
         self.metrics.start_update()
         
         # Run periodic feature attribution analysis
-        if self.global_update_counter % 10 == 0:  # Every 10 updates
+        if self.global_update_counter % 1 == 0:  # Every 1 update (testing WandB native plots)
             self.logger.info(f"🔍 Attempting attribution analysis at update {self.global_update_counter}")
             try:
-                attribution_results = self.metrics.run_periodic_shap_analysis()  # Method name kept for compatibility
+                attribution_results = self.metrics.run_periodic_shap_analysis()  # Now uses fast gradient attribution
                 if attribution_results:
-                    self.logger.info("🔍 Captum attribution analysis completed - feature importance updated")
+                    self.logger.info("🔍 Gradient attribution analysis completed - feature importance updated")
                     self.logger.info(f"🔍 Attribution results keys: {list(attribution_results.keys()) if attribution_results else 'None'}")
                 else:
                     self.logger.warning("🔍 Attribution analysis returned None - check conditions or errors")
@@ -1392,11 +1393,18 @@ class PPOTrainer:
 
         return update_metrics
 
-    def train(self, total_training_steps: int, eval_freq_steps: Optional[int] = None):
-        """Main training loop with comprehensive stage logging."""
-        self.logger.info(f"🚀 TRAINING START: {total_training_steps:,} steps planned")
+    def train(self, eval_freq_steps: Optional[int] = None):
+        """Main training loop with curriculum-driven stopping."""
+        self.logger.info(f"🚀 TRAINING START: Curriculum-driven training")
         self.logger.info(f"   🎯 Rollout size: {self.rollout_steps} | Batch size: {self.batch_size}")
         self.logger.info(f"   🔄 PPO epochs: {self.ppo_epochs} | Learning rate: {self.lr}")
+        
+        # Log curriculum plan
+        stage = self._get_current_curriculum_stage()
+        if stage:
+            self.logger.info(f"   📚 Starting curriculum stage with max_updates: {stage.max_updates}, max_cycles: {stage.max_cycles}")
+        else:
+            self.logger.warning("   ⚠️ No active curriculum stage found!")
 
         # Start training metrics
         self.metrics.start_training()
@@ -1444,7 +1452,7 @@ class PPOTrainer:
 
         best_eval_reward = -float('inf')
 
-        while self.global_step_counter < total_training_steps and not self.stop_training:
+        while not self.stop_training:
             # Check for training interruption
             if hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted:
                 self.logger.warning("Training interrupted during training loop")
@@ -1472,12 +1480,27 @@ class PPOTrainer:
             for callback in self.callbacks:
                 callback.on_update_iteration_end(self, self.global_update_counter, update_metrics, rollout_info)
 
-            # Progress logging
-            progress = (self.global_step_counter / total_training_steps) * 100
-            remaining_steps = total_training_steps - self.global_step_counter
+            # Curriculum-driven progress logging
             elapsed_time = time.time() - self.training_start_time
             steps_per_hour = (self.global_step_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
-            eta_hours = remaining_steps / steps_per_hour if steps_per_hour > 0 else 0
+            
+            # Calculate curriculum stage progress
+            stage = self._get_current_curriculum_stage()
+            stage_progress = 0.0
+            stage_name = "No Active Stage"
+            
+            if stage:
+                stage_name = f"Stage {self.current_stage_idx + 1}"
+                
+                # Calculate progress based on stage limits
+                if stage.max_updates is not None:
+                    updates_in_stage = self.global_update_counter - self.stage_start_update
+                    stage_progress = min(100.0, (updates_in_stage / stage.max_updates) * 100)
+                elif stage.max_episodes is not None:
+                    episodes_in_stage = self.global_episode_counter - self.stage_start_episode
+                    stage_progress = min(100.0, (episodes_in_stage / stage.max_episodes) * 100)
+                elif stage.max_cycles is not None:
+                    stage_progress = min(100.0, (self.stage_cycles_completed / stage.max_cycles) * 100)
 
             # Always update dashboard with training progress (not just every 5 updates)
             if hasattr(self.metrics, "metrics_manager"):
@@ -1487,9 +1510,9 @@ class PPOTrainer:
                     'updates': self.global_update_counter,
                     'global_steps': self.global_step_counter,
                     'total_episodes': self.global_episode_counter,
-                    'overall_progress': progress,
-                    'stage_progress': progress,
-                    'stage_status': f"Update {self.global_update_counter}/{total_training_steps // self.rollout_steps}",
+                    'overall_progress': stage_progress,
+                    'stage_progress': stage_progress,
+                    'stage_status': f"{stage_name} - Update {self.global_update_counter}",
                     'steps_per_second': steps_per_hour / 3600 if steps_per_hour > 0 else 0,
                     'time_per_update': update_metrics.get('update_time', 0) if 'update_metrics' in locals() else 0,
                     'time_per_episode': rollout_info.get('rollout_time', 0) / max(1, rollout_info.get('num_episodes_in_rollout', 1)) if 'rollout_info' in locals() else 0
@@ -1502,8 +1525,8 @@ class PPOTrainer:
                 recent_mean = np.mean(recent_rewards) if recent_rewards else 0
                 recent_std = np.std(recent_rewards) if len(recent_rewards) > 1 else 0
                 
-                self.logger.info(f"📈 PROGRESS: {progress:.1f}% | Steps: {self.global_step_counter:,}/{total_training_steps:,}")
-                self.logger.info(f"   ⏱️  Rate: {steps_per_hour:.0f} steps/hr | ETA: {eta_hours:.1f}h")
+                self.logger.info(f"📈 PROGRESS: {stage_name} ({stage_progress:.1f}%)")
+                self.logger.info(f"   ⏱️  Rate: {steps_per_hour:.0f} steps/hr | Steps: {self.global_step_counter:,}")
                 self.logger.info(f"   🏆 Episodes: {self.global_episode_counter} | Updates: {self.global_update_counter}")
                 self.logger.info(f"   📊 Recent Performance: μ={recent_mean:.3f} σ={recent_std:.3f}")
                 
@@ -1513,8 +1536,7 @@ class PPOTrainer:
 
             # Evaluation
             eval_freq_updates = max(1, eval_freq_steps // self.rollout_steps) if eval_freq_steps else 0
-            if eval_freq_steps and (self.global_update_counter % eval_freq_updates == 0
-                                    or self.global_step_counter >= total_training_steps):
+            if eval_freq_steps and self.global_update_counter % eval_freq_updates == 0:
 
                 eval_stats = self.evaluate(n_episodes=10)
 
@@ -1625,7 +1647,7 @@ class PPOTrainer:
         # Comprehensive evaluation summary
         self.logger.info(f"🔍 EVALUATION COMPLETE:")
         self.logger.info(f"   ⏱️  Duration: {eval_duration:.1f}s")
-        self.logger.info(f"   💰 Rewards: μ={eval_results['mean_reward']:.3f} σ={eval_results['std_reward']:.3f}")
+        self.logger.info(f"   💰 evaluation_mean_reward={eval_results['mean_reward']:.3f} evaluation_std_reward={eval_results['std_reward']:.3f}")
         self.logger.info(f"   📊 Range: [{eval_results['min_reward']:.3f}, {eval_results['max_reward']:.3f}]")
         self.logger.info(f"   📏 Avg Length: {eval_results['mean_length']:.1f} steps")
 
