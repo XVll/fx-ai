@@ -932,11 +932,11 @@ class PPOTrainer:
         # Run periodic feature attribution analysis
         if self.global_update_counter % 10 == 0:  # Every 10 updates
             try:
-                shap_results = self.metrics.run_periodic_shap_analysis()
-                if shap_results:
-                    self.logger.info("🔍 SHAP analysis completed - feature importance updated")
+                attribution_results = self.metrics.run_periodic_shap_analysis()  # Method name kept for compatibility
+                if attribution_results:
+                    self.logger.info("🔍 Captum attribution analysis completed - feature importance updated")
             except Exception as e:
-                self.logger.debug(f"SHAP analysis failed: {e}")
+                self.logger.debug(f"Feature attribution analysis failed: {e}")
         
         # Update dashboard that we're in update phase
         if hasattr(self.metrics, "metrics_manager"):
