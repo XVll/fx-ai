@@ -309,6 +309,29 @@ class DataManager:
         )
             
         return self.momentum_days_cache[mask].sort_values('activity_score', ascending=False)
+    
+    def get_all_momentum_days(self) -> List[Dict[str, Any]]:
+        """Get all momentum days as a list of dictionaries.
+        
+        Returns:
+            List of momentum day dictionaries with keys: symbol, date, quality_score, etc.
+        """
+        if self.momentum_days_cache is None or self.momentum_days_cache.empty:
+            return []
+            
+        # Convert DataFrame to list of dicts
+        momentum_days = []
+        for _, row in self.momentum_days_cache.iterrows():
+            momentum_days.append({
+                'symbol': row['symbol'],
+                'date': row['date'],
+                'quality_score': row.get('activity_score', 0.0),  # Map activity_score to quality_score
+                'max_intraday_move': row.get('max_intraday_move', 0.0),
+                'volume_multiplier': row.get('volume_multiplier', 1.0),
+                'metadata': row.to_dict()
+            })
+            
+        return momentum_days
         
     def get_reset_points(self, symbol: str, date: datetime, 
                         min_roc: float = 0.0, min_activity: float = 0.0) -> pd.DataFrame:

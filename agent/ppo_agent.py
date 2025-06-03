@@ -133,9 +133,18 @@ class PPOTrainer:
         self.used_reset_point_indices = set()
         self.curriculum_progress = 0.3  # Start at moderate difficulty, 0.0 = easy episodes, 1.0 = hard episodes
         
+        # Curriculum stage tracking
+        self.current_stage_idx = 0  # Current curriculum stage
+        self.stage_start_update = 0  # Update count when stage started
+        self.stage_start_episode = 0  # Episode count when stage started
+        self.stage_cycles_completed = 0  # Cycles completed in current stage
+        
         # Day episode tracking
         self.episodes_completed_on_current_day = 0
         self.reset_point_cycles_completed = 0
+        
+        # Training control
+        self.stop_training = False
 
         self.logger.info(f"🤖 PPOTrainer initialized with metrics integration. Device: {self.device}")
 
@@ -144,19 +153,37 @@ class PPOTrainer:
         if self.episode_selection_mode != "momentum_days":
             return False
             
-        # Try to get a new momentum day from environment
-        momentum_day_info = self.env.select_next_momentum_day(
-            exclude_dates=list(self.used_momentum_days)
-        )
-        
-        if momentum_day_info is None:
-            self.logger.warning("No more momentum days available, resetting used days")
-            self.used_momentum_days.clear()
-            momentum_day_info = self.env.select_next_momentum_day()
-            
-        if momentum_day_info is None:
-            self.logger.error("No momentum days available in environment")
+        # Get current stage config
+        stage = self._get_current_curriculum_stage()
+        if not stage or not stage.enabled:
+            self.logger.warning("No active curriculum stage")
             return False
+            
+        # Get momentum days filtered by stage criteria
+        filtered_days = self._get_stage_filtered_momentum_days(stage)
+        
+        if not filtered_days:
+            self.logger.warning(f"No momentum days match stage criteria")
+            return False
+            
+        # Select from filtered days excluding already used ones
+        available_days = [d for d in filtered_days if d['date'] not in self.used_momentum_days]
+        
+        if not available_days:
+            self.logger.info("All stage-filtered days used, resetting")
+            self.used_momentum_days.clear()
+            available_days = filtered_days
+            
+        # Select based on curriculum method
+        if self.curriculum_method == "quality_based":
+            # Sort by quality score and select based on curriculum progress
+            available_days.sort(key=lambda d: d.get('quality_score', 0), reverse=True)
+            idx = int(self.curriculum_progress * (len(available_days) - 1))
+            momentum_day_info = available_days[idx]
+        else:
+            # Random selection
+            import random
+            momentum_day_info = random.choice(available_days)
             
         self.current_momentum_day = momentum_day_info
         self.used_momentum_days.add(momentum_day_info['date'])
@@ -294,6 +321,8 @@ class PPOTrainer:
             # Reset used indices when all quality-filtered points are exhausted
             self.used_reset_point_indices.clear()
             available_indices = quality_filtered_indices
+            self.stage_cycles_completed += 1
+            self._check_stage_completion()
             
         if self.curriculum_method == "quality_based":
             # Start with easier (lower activity) reset points, progress to harder ones
@@ -345,17 +374,139 @@ class PPOTrainer:
 
         return selected_idx
 
+    def _get_current_curriculum_stage(self):
+        """Get current active curriculum stage."""
+        stages = [
+            self.config.curriculum.stage_1_beginner,
+            self.config.curriculum.stage_2_intermediate,
+            self.config.curriculum.stage_3_advanced,
+            self.config.curriculum.stage_4_specialization
+        ]
+        
+        # Return current stage if valid
+        if 0 <= self.current_stage_idx < len(stages):
+            stage = stages[self.current_stage_idx]
+            if stage.enabled:
+                return stage
+                
+        # Find next enabled stage
+        for i in range(self.current_stage_idx + 1, len(stages)):
+            if stages[i].enabled:
+                self.current_stage_idx = i
+                self._on_stage_change()
+                return stages[i]
+                
+        # No enabled stages found
+        return None
+    
     def _get_curriculum_stage_info(self):
-        """Get current curriculum stage configuration based on episode count."""
-        total_episodes = self.global_episode_counter
-        if total_episodes < 2000:
-            return self.config.curriculum.stage_1_beginner
-        elif total_episodes < 5000:
-            return self.config.curriculum.stage_2_intermediate
-        elif total_episodes < 8000:
-            return self.config.curriculum.stage_3_advanced
-        else:
-            return self.config.curriculum.stage_4_specialization
+        """Legacy method for backward compatibility."""
+        return self._get_current_curriculum_stage()
+    
+    def _get_stage_filtered_momentum_days(self, stage):
+        """Get momentum days filtered by stage criteria."""
+        if not hasattr(self.env, 'data_manager'):
+            return []
+            
+        all_momentum_days = self.env.data_manager.get_all_momentum_days()
+        if not all_momentum_days:
+            return []
+            
+        filtered_days = []
+        for day_info in all_momentum_days:
+            # Filter by symbol
+            if stage.symbols and day_info.get('symbol') not in stage.symbols:
+                continue
+                
+            # Filter by date range
+            if stage.date_range[0] is not None:
+                from datetime import datetime
+                start_date = datetime.strptime(stage.date_range[0], '%Y-%m-%d').date()
+                if day_info['date'] < start_date:
+                    continue
+                    
+            if stage.date_range[1] is not None:
+                from datetime import datetime
+                end_date = datetime.strptime(stage.date_range[1], '%Y-%m-%d').date()
+                if day_info['date'] > end_date:
+                    continue
+                    
+            # Filter by day score
+            day_score = day_info.get('quality_score', 0)
+            if not (stage.day_score_range[0] <= day_score <= stage.day_score_range[1]):
+                continue
+                
+            filtered_days.append(day_info)
+            
+        return filtered_days
+    
+    def _on_stage_change(self):
+        """Called when curriculum stage changes."""
+        self.stage_start_update = self.global_update_counter
+        self.stage_start_episode = self.global_episode_counter  
+        self.stage_cycles_completed = 0
+        self.used_momentum_days.clear()
+        self.used_reset_point_indices.clear()
+        
+        stage = self._get_current_curriculum_stage()
+        if stage:
+            self.logger.info(f"📚 Curriculum stage changed to {self.current_stage_idx + 1}")
+            self.logger.info(f"   Day score range: {stage.day_score_range}")
+            self.logger.info(f"   ROC range: {stage.roc_range}")
+            self.logger.info(f"   Activity range: {stage.activity_range}")
+    
+    def _check_stage_completion(self):
+        """Check if current stage should be completed."""
+        stage = self._get_current_curriculum_stage()
+        if not stage:
+            return
+            
+        # Check max_updates condition
+        if stage.max_updates is not None:
+            updates_in_stage = self.global_update_counter - self.stage_start_update
+            if updates_in_stage >= stage.max_updates:
+                self.logger.info(f"Stage completed: max_updates ({stage.max_updates}) reached")
+                self._advance_to_next_stage()
+                return
+                
+        # Check max_episodes condition  
+        if stage.max_episodes is not None:
+            episodes_in_stage = self.global_episode_counter - self.stage_start_episode
+            if episodes_in_stage >= stage.max_episodes:
+                self.logger.info(f"Stage completed: max_episodes ({stage.max_episodes}) reached")
+                self._advance_to_next_stage()
+                return
+                
+        # Check max_cycles condition
+        if stage.max_cycles is not None:
+            if self.stage_cycles_completed >= stage.max_cycles:
+                self.logger.info(f"Stage completed: max_cycles ({stage.max_cycles}) reached")
+                self._advance_to_next_stage()
+                return
+    
+    def _advance_to_next_stage(self):
+        """Advance to next enabled curriculum stage."""
+        stages = [
+            self.config.curriculum.stage_1_beginner,
+            self.config.curriculum.stage_2_intermediate,
+            self.config.curriculum.stage_3_advanced,
+            self.config.curriculum.stage_4_specialization
+        ]
+        
+        # Find next enabled stage
+        for i in range(self.current_stage_idx + 1, len(stages)):
+            if stages[i].enabled:
+                self.current_stage_idx = i
+                self._on_stage_change()
+                return
+                
+        # No more stages - training complete
+        self.logger.info("🎉 All curriculum stages completed!")
+        # Set a flag to indicate training should stop
+        if hasattr(self, 'callbacks'):
+            for callback in self.callbacks:
+                if hasattr(callback, 'on_curriculum_complete'):
+                    callback.on_curriculum_complete(self)
     
     def _emit_curriculum_progress(self):
         """Emit curriculum progress event to dashboard."""
@@ -764,6 +915,9 @@ class PPOTrainer:
                 if len(self.recent_episode_rewards) > 10:  # Keep only last 10 episodes
                     self.recent_episode_rewards.pop(0)
                     
+                # Check stage completion by episodes
+                self._check_stage_completion()
+                    
                 # Track episode timing
                 self.episode_times.append(episode_duration)
                 if len(self.episode_times) > 20:  # Keep last 20 episodes
@@ -1140,6 +1294,9 @@ class PPOTrainer:
                            f"Batches/s: {batches_per_second:.1f}")
 
         self.global_update_counter += 1
+        
+        # Check if curriculum stage should be completed
+        self._check_stage_completion()
 
         # Calculate averages
         avg_actor_loss = total_actor_loss / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
@@ -1283,7 +1440,7 @@ class PPOTrainer:
 
         best_eval_reward = -float('inf')
 
-        while self.global_step_counter < total_training_steps:
+        while self.global_step_counter < total_training_steps and not self.stop_training:
             # Check for training interruption
             if hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted:
                 self.logger.warning("Training interrupted during training loop")

@@ -117,7 +117,7 @@ class RewardConfig(BaseModel):
 class EnvConfig(BaseModel):
     """Trading environment configuration"""
     # Symbol settings
-    symbol: str = Field(default="MLGO", description="Trading symbol")
+    symbol: str = Field(default="", description="Trading symbol")
     
     # Capital and risk - optimized for momentum trading
     initial_capital: float = Field(default=25000.0, description="Starting capital")
@@ -181,7 +181,7 @@ class DataConfig(BaseModel):
     
     # Databento specific
     data_dir: str = Field(default="dnb", description="Data directory")
-    symbols: List[str] = Field(default=["MLGO"], description="Symbols to load")
+    symbols: List[str] = Field(default_factory=list, description="Symbols to load")
     
     # Data types to load
     load_trades: bool = True
@@ -189,9 +189,9 @@ class DataConfig(BaseModel):
     load_order_book: bool = True
     load_ohlcv: bool = True
     
-    # Date range - full momentum dataset
-    start_date: Optional[str] = Field(default="2025-02-03", description="Start date YYYY-MM-DD")
-    end_date: Optional[str] = Field(default="2025-04-29", description="End date YYYY-MM-DD")
+    # Date range
+    start_date: Optional[str] = Field(default=None, description="Start date YYYY-MM-DD")
+    end_date: Optional[str] = Field(default=None, description="End date YYYY-MM-DD")
     
     # Performance
     cache_enabled: bool = True
@@ -385,21 +385,36 @@ class ProgressiveEpisodeConfig(BaseModel):
 
 
 class CurriculumStageConfig(BaseModel):
-    """Configuration for a curriculum training stage with direct range-based approach"""
-    episode_range: List[Optional[int]] = Field(description="[start, end] episode range")
-    episode_length: int = Field(description="Episode length in steps")
-    batch_size: int = Field(description="Rollout batch size")
-    offset_ratio: float = Field(description="Episode offset ratio (1.0 = no overlap)")
+    """Configuration for a curriculum training stage with symbol/day selection"""
+    enabled: bool = Field(default=True, description="Whether this stage is enabled")
     
-    # Direct range configuration
+    # Symbol and date selection
+    symbols: List[str] = Field(default_factory=list, description="List of symbols to train on (empty = all)")
+    date_range: List[Optional[str]] = Field(default=[None, None], description="Date range [start, end] in YYYY-MM-DD format")
+    day_score_range: List[float] = Field(default=[0.0, 1.0], description="Day quality score range [min, max]")
+    
+    # Direct range configuration for reset point selection
     roc_range: List[float] = Field(default=[0.0, 1.0], description="ROC score range [min, max]")
     activity_range: List[float] = Field(default=[0.0, 1.0], description="Activity score range [min, max]")
     
-    @field_validator('roc_range', 'activity_range')
+    # Switch conditions - if any is set, switch when first condition is met
+    max_updates: Optional[int] = Field(default=None, description="Max updates before switching")
+    max_episodes: Optional[int] = Field(default=None, description="Max episodes before switching")
+    max_cycles: Optional[int] = Field(default=None, description="Max cycles (full passes through reset points)")
+    
+    @field_validator('roc_range', 'activity_range', 'day_score_range')
     @classmethod
     def validate_ranges(cls, v):
         if len(v) != 2 or v[0] >= v[1] or not (0 <= v[0] <= 1) or not (0 <= v[1] <= 1):
             raise ValueError("Range must be [min, max] with 0 <= min < max <= 1")
+        return v
+    
+    @field_validator('date_range')
+    @classmethod
+    def validate_date_range(cls, v):
+        if len(v) != 2:
+            raise ValueError("Date range must be [start, end]")
+        # Allow None values for open-ended ranges
         return v
 
 
@@ -431,42 +446,54 @@ class CurriculumConfig(BaseModel):
     # Training stages with direct range assignments
     stage_1_beginner: CurriculumStageConfig = Field(
         default=CurriculumStageConfig(
-            episode_range=[0, 2000],
-            episode_length=256,
-            batch_size=2048,
-            offset_ratio=1.0,
+            enabled=True,
+            symbols=[],  # Empty = all symbols
+            date_range=[None, None],  # None = all dates
+            day_score_range=[0.7, 1.0],  # High quality days for beginners
             roc_range=[0.05, 1.0],
-            activity_range=[0.0, 1.0]
+            activity_range=[0.0, 1.0],
+            max_updates=500,  # 500 updates then switch
+            max_episodes=None,
+            max_cycles=None
         )
     )
     stage_2_intermediate: CurriculumStageConfig = Field(
         default=CurriculumStageConfig(
-            episode_range=[2000, 5000],
-            episode_length=512,
-            batch_size=4096,
-            offset_ratio=1.0,
+            enabled=True,
+            symbols=[],
+            date_range=[None, None],
+            day_score_range=[0.5, 0.9],  # Medium quality days
             roc_range=[0.6, 1.0],
-            activity_range=[0.3, 1.0]
+            activity_range=[0.3, 1.0],
+            max_updates=800,
+            max_episodes=None,
+            max_cycles=None
         )
     )
     stage_3_advanced: CurriculumStageConfig = Field(
         default=CurriculumStageConfig(
-            episode_range=[5000, 8000],
-            episode_length=768,
-            batch_size=6144,
-            offset_ratio=0.75,
+            enabled=True,
+            symbols=[],
+            date_range=[None, None],
+            day_score_range=[0.3, 0.7],  # Lower quality, more challenging
             roc_range=[0.4, 1.0],
-            activity_range=[0.2, 1.0]
+            activity_range=[0.2, 1.0],
+            max_updates=None,  # No limit - train indefinitely
+            max_episodes=None,
+            max_cycles=None
         )
     )
     stage_4_specialization: CurriculumStageConfig = Field(
         default=CurriculumStageConfig(
-            episode_range=[8000, None],
-            episode_length=1024,
-            batch_size=8192,
-            offset_ratio=0.75,
+            enabled=False,  # Disabled by default
+            symbols=[],
+            date_range=[None, None],
+            day_score_range=[0.0, 1.0],  # All days
             roc_range=[0.0, 1.0],
-            activity_range=[0.0, 1.0]
+            activity_range=[0.0, 1.0],
+            max_updates=None,
+            max_episodes=None,
+            max_cycles=None
         )
     )
 

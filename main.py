@@ -307,7 +307,8 @@ def create_metrics_components(config: Config, log: logging.Logger, model: torch.
     # Create metrics system with feature attribution
     additional_config = {
         'feature_names': feature_names,
-        'enable_feature_attribution': True
+        'enable_feature_attribution': True,
+        'model_config': config.model
     }
     metrics_manager, metrics_integrator = metrics_config.create_metrics_system(
         model=model,

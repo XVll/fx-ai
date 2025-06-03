@@ -106,7 +106,8 @@ class MetricsFactory:
             enable_dashboard: bool = False,
             dashboard_port: int = 8050,
             feature_names: Optional[Dict[str, List[str]]] = None,
-            enable_feature_attribution: bool = True
+            enable_feature_attribution: bool = True,
+            model_config: Optional[Any] = None
     ) -> MetricsManager:
         """Create a complete metrics system with all components"""
 
@@ -149,7 +150,8 @@ class MetricsFactory:
         collectors.append(ModelInternalsCollector(
             model=model,
             feature_names=feature_names,
-            enable_attribution=enable_feature_attribution
+            enable_attribution=enable_feature_attribution,
+            model_config=model_config
         ))
 
         # System collectors (optional)
@@ -577,7 +579,8 @@ class MetricsConfig:
             enable_dashboard=self.enable_dashboard,
             dashboard_port=self.dashboard_port,
             feature_names=feature_names,
-            enable_feature_attribution=enable_feature_attribution
+            enable_feature_attribution=enable_feature_attribution,
+            model_config=additional_config.get('model_config') if additional_config else None
         )
 
         integrator = MetricsIntegrator(manager)

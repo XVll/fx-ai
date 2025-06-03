@@ -7,29 +7,38 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-# Training
+# Momentum Training (RECOMMENDED)
+momentum = "poetry run python main.py --config momentum_training"
+momentum-continue = "poetry run python main.py --config momentum_training --continue"
+build-index = "poetry run python build_index.py"
+
+# Legacy Training (standard single-day training)
+quick = "poetry run python main.py --config quick_test"
+init = "poetry run python main.py"
 train = "poetry run python main.py --continue"
+
 # Backtest
-backtest = "poetry run python main.py --config backtest --date {{date}} --symbol {{symbol}}"
+backtest = "poetry run python main.py --config backtest"
+backtest-date = "poetry run python main.py --config backtest --date {{date}}"
 
 # Scan for momentum days in data
 scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.5"
-
-# Index building
-build-index = "poetry run python build_index.py"
+scan-high = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.7"
+scan-all = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.0"
 
 # Hyperparameter Optimization with Optuna
 optuna = "poetry run python optuna_optimization.py --spec config/optuna/default.yaml"
+optuna-study = "poetry run python optuna_optimization.py --study-name {{study_name}}"
 optuna-quick = "poetry run python optuna_optimization.py --spec config/optuna/quick_search.yaml"
 optuna-comprehensive = "poetry run python optuna_optimization.py --spec config/optuna/comprehensive_search.yaml"
 optuna-reward = "poetry run python optuna_optimization.py --spec config/optuna/reward_focused.yaml"
-optuna-parallel = "poetry run python optuna_optimization.py --spec config/optuna/parallel_search.yaml --n-jobs {{n_jobs}}"
+optuna-parallel = "poetry run python optuna_optimization.py --spec config/optuna/parallel_search.yaml --n-jobs {{n_jobs:4}}"
 optuna-dashboard = "optuna-dashboard sqlite:///optuna_studies.db"
 optuna-best = "poetry run python optuna_optimization.py --show-best {{study_name}}"
 
 # Testing
-test = "poetry run python -m pytest tests/ -xvs"
-test-fast = "poetry run python -m pytest tests/ -x --tb=short"
+test = "poetry run pytest -v"
+test-fast = "poetry run pytest --tb=short"
 
 # Utility Tasks
 clean = "rm -rf outputs/* wandb/* __pycache__"

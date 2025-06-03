@@ -21,9 +21,7 @@ class ContinuousTrainingCallback(TrainingCallback):
             lr_annealing: Optional[Dict[str, Any]] = None,
             best_model_criterion: str = "mean_reward",
             best_model_mode: str = "max",
-            load_metadata: Optional[Dict[str, Any]] = None,
-            momentum_day_rotation_frequency: int = 50,  # Rotate momentum days every N updates
-            curriculum_progression_rate: float = 0.01,  # How fast to progress curriculum
+            load_metadata: Optional[Dict[str, Any]] = None
     ):
         self.model_manager = model_manager
         self.reward_metric = reward_metric
@@ -32,8 +30,6 @@ class ContinuousTrainingCallback(TrainingCallback):
         self.best_model_criterion = best_model_criterion
         self.best_model_mode = best_model_mode
         self.load_metadata = load_metadata or {}
-        self.momentum_day_rotation_frequency = momentum_day_rotation_frequency
-        self.curriculum_progression_rate = curriculum_progression_rate
 
         self.logger = logging.getLogger(__name__)
 
@@ -43,11 +39,6 @@ class ContinuousTrainingCallback(TrainingCallback):
         self.session_start_time = None
         self.last_sync_time = None
         self.last_sync_update = 0
-        
-        # Momentum day management
-        self.momentum_day_update_counter = 0
-        self.performance_trend = []
-        self.last_momentum_day_switch = 0
 
         # Load the previous best reward if continuing
         if load_metadata and 'metrics' in load_metadata:
@@ -178,61 +169,16 @@ class ContinuousTrainingCallback(TrainingCallback):
                     metrics,
                     save_reward
                 )
-
-        # Momentum day management
-        self._manage_momentum_days(trainer, update_metrics, rollout_stats)
-
-    def _manage_momentum_days(self, trainer, update_metrics: Dict, rollout_stats: Dict):
-        """Manage momentum day rotation and curriculum progression."""
-        self.momentum_day_update_counter += 1
-        
-        # Track performance trend
-        raw_reward = rollout_stats.get(self.reward_metric)
-        if raw_reward is None or not isinstance(raw_reward, (int, float, np.number)) or not np.isfinite(raw_reward):
-            current_reward = 0.0  # Default to 0 for performance tracking
-        else:
-            current_reward = float(raw_reward)
-        self.performance_trend.append(current_reward)
-        if len(self.performance_trend) > 20:  # Keep last 20 updates
-            self.performance_trend.pop(0)
-            
-        # Check if we should rotate momentum days
-        should_rotate = (
-            self.momentum_day_update_counter - self.last_momentum_day_switch 
-            >= self.momentum_day_rotation_frequency
-        )
-        
-        # Also rotate if performance has plateaued
-        if len(self.performance_trend) >= 10:
-            recent_trend = self.performance_trend[-10:]
-            trend_std = sum((x - sum(recent_trend)/len(recent_trend))**2 for x in recent_trend) / len(recent_trend)
-            if trend_std < 0.01:  # Very low variance = plateau
-                should_rotate = True
                 
-        if should_rotate and hasattr(trainer, '_select_next_momentum_day'):
-            if trainer._select_next_momentum_day():
-                self.last_momentum_day_switch = self.momentum_day_update_counter
-                self.logger.info(f"🔄 Rotated to new momentum day at update {self.momentum_day_update_counter}")
-                
-        # Update curriculum progress
-        if hasattr(trainer, 'curriculum_progress') and len(self.performance_trend) >= 5:
-            # Progressive curriculum based on performance stability
-            recent_performance = self.performance_trend[-5:]
-            avg_performance = sum(recent_performance) / len(recent_performance)
+        # Check if training should stop (e.g., curriculum complete)
+        if hasattr(trainer, 'stop_training') and trainer.stop_training:
+            self.logger.info("Training stop requested - ending training loop")
+            return True  # Signal to stop training
             
-            if avg_performance > 0 and all(r > -0.5 for r in recent_performance):
-                # Good performance, increase difficulty
-                trainer.curriculum_progress = min(1.0, 
-                    trainer.curriculum_progress + self.curriculum_progression_rate)
-            elif avg_performance < -1.0:
-                # Poor performance, decrease difficulty
-                trainer.curriculum_progress = max(0.0, 
-                    trainer.curriculum_progress - self.curriculum_progression_rate * 0.5)
-                    
-            # Log curriculum progress periodically
-            if self.momentum_day_update_counter % 25 == 0:
-                self.logger.info(f"📚 Curriculum progress: {trainer.curriculum_progress:.2%} "
-                               f"(avg reward: {avg_performance:.3f})")
+    def on_curriculum_complete(self, trainer):
+        """Called when all curriculum stages are completed."""
+        self.logger.info("🎉 All curriculum stages completed - stopping training")
+        trainer.stop_training = True
 
     def on_training_end(self, trainer, stats):
         """Save final model and session summary"""
