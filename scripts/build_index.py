@@ -1,5 +1,5 @@
 import sys
-sys.path.append('.')
+sys.path.append('..')
 
 from data.scanner.momentum_scanner import MomentumScanner
 from utils.logger import setup_rich_logging
