@@ -291,13 +291,34 @@ def create_metrics_components(config: Config, log: logging.Logger, model: torch.
     feature_names = get_feature_names_from_config()
     logging.info(f"🔍 Feature attribution enabled with {sum(len(names) for names in feature_names.values())} total features")
     
+    # Get symbols from curriculum stages
+    def get_curriculum_symbols(config):
+        symbols = set()
+        stages = [
+            config.curriculum.stage_1_beginner,
+            config.curriculum.stage_2_intermediate, 
+            config.curriculum.stage_3_advanced,
+            config.curriculum.stage_4_specialization
+        ]
+        for stage in stages:
+            if stage.enabled:
+                symbols.update(stage.symbols)
+        return list(symbols)
+    
+    curriculum_symbols = get_curriculum_symbols(config)
+    primary_symbol = curriculum_symbols[0] if curriculum_symbols else "curriculum"
+    
     # Create metrics config
+    wandb_tags = ["trading", "ppo", "curriculum"]
+    if curriculum_symbols:
+        wandb_tags.extend(curriculum_symbols[:3])  # Add up to 3 symbols as tags
+        
     metrics_config = MetricsConfig(
         wandb_project=config.wandb.project if config.wandb.enabled else "local",
         wandb_entity=config.wandb.entity if config.wandb.enabled else None,
         wandb_run_name=run_name,
-        wandb_tags=["trading", "ppo", config.env.symbol],
-        symbol=config.env.symbol,
+        wandb_tags=wandb_tags,
+        symbol=primary_symbol,
         initial_capital=config.env.initial_capital,
         enable_dashboard=config.dashboard.enabled,
         dashboard_port=config.dashboard.port,
@@ -597,14 +618,13 @@ def train(config: Config):
         # Initialize momentum-based training by selecting first momentum day
         logger.info("🎯 Initializing momentum-based training...")
         
-        # Set the primary asset first so momentum methods work
-        env.primary_asset = config.env.symbol
+        # Set primary asset - this will be determined by curriculum
+        env.primary_asset = primary_symbol
         
         if not trainer._select_next_momentum_day():
-            logger.error("Failed to select initial momentum day, falling back to config end date")
-            # Fallback to setting up environment with config end date
-            fallback_date = datetime.strptime(config.data.end_date, "%Y-%m-%d") if config.data.end_date else datetime.now()
-            env.setup_session(symbol=config.env.symbol, date=fallback_date)
+            logger.error("Failed to select initial momentum day - curriculum stage may have no valid days")
+            logger.error("Check your curriculum configuration: symbols, date_range, day_score_range")
+            raise RuntimeError("No momentum days available for current curriculum stage")
         else:
             # Set up environment with the selected momentum day
             current_day = trainer.current_momentum_day
@@ -688,8 +708,16 @@ def main():
         if args.experiment:
             config.experiment_name = args.experiment
         if args.symbol:
-            config.env.symbol = args.symbol
-            config.data.symbols = [args.symbol]
+            # Override all curriculum stages to use this symbol
+            stages = [
+                config.curriculum.stage_1_beginner,
+                config.curriculum.stage_2_intermediate,
+                config.curriculum.stage_3_advanced,
+                config.curriculum.stage_4_specialization
+            ]
+            for stage in stages:
+                if stage.enabled:
+                    stage.symbols = [args.symbol]
         if args.continue_training:
             config.training.continue_training = True
         if args.device:

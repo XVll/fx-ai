@@ -7,7 +7,7 @@
 - Sweep has errors when starting, fix them.
 
 
- thinkultra, think. We are having issues with reward system and actions. Model finds a way to abuse what every I do, It first started not taking trades because of losses, I added inactivity penalty , then it started not taking trades and 
-  spamming sell action which is not possible. I want you to consider action masking, and a new reward design so it cannot abuse and will allow to train model in best possible way. Now 
-  create a new structure for rewards and masking based on our model design and trading style. Such design, will also allow to tune for begginer to advanced. With parameters over time we will make it harder but first need to learn trade. 
-  Reward selections must be perfect and smart. Now write down your plan without implementing.
+Okay do not implement anything yet but I want you to analyze our new curriculum learning, I refactored whole training cycle and moved all logic that decides what to train on and how long to there to make it easier for hyper parameter       │
+│   tuning. First I want you to analyze it and create a plan for that implementation, if that is not apporiate for this task just say how we can fix it. In current version we are able to select symbol, date range and end conditions like        │
+│   episode, update, cycle. we can also choose which stages or single stage with unlimited training etc, we can choose the day quality, reset point quality etc. Chack if it is compatible with our next hyper parameter optimization and create a  │
+│   plan.  
