@@ -18,10 +18,12 @@ scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.5"
 # Index building
 build-index = "poetry run python build_index.py"
 
-# Hyperparameter Optimization
-sweep = "poetry run python scripts/sweep.py --config default.yaml --count 20"
-sweep-quick = "poetry run python scripts/sweep.py --config default.yaml --count 5"
-sweep-long = "poetry run python scripts/sweep.py --config default.yaml --count 50"
+# Hyperparameter Optimization with Optuna
+optuna = "poetry run python optuna_optimization.py"
+optuna-study = "poetry run python optuna_optimization.py --study {{study_name}}"
+optuna-parallel = "poetry run python optuna_optimization.py --n-jobs {{n_jobs}}"
+optuna-dashboard = "optuna-dashboard sqlite:///optuna_studies.db"
+optuna-best = "poetry run python optuna_optimization.py --show-best {{study_name}}"
 
 # Testing
 test = "poetry run python -m pytest tests/ -xvs"
@@ -52,6 +54,10 @@ dash = "^3.0.4"
 plotly = "^6.1.1"
 tqdm = "^4.67.1"
 captum = "^0.7.0"
+optuna = "^4.1.0"
+optuna-dashboard = "^0.18.0"
+joblib = "^1.4.2"
+scikit-learn = "^1.6.0"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.24.0"
