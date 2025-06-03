@@ -65,7 +65,8 @@
       "Bash(poetry lock:*)",
       "Bash([ -d /Users/fx/Repositories/FxAIv2/scripts ])",
       "Bash(chmod:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(git rm -r --cached cache/features/)"
     ],
     "deny": []
   },
