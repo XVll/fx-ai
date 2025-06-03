@@ -25,7 +25,8 @@ class ModelInternalsCollector(MetricCollector):
         buffer_size: int = 100,
         model: Optional[torch.nn.Module] = None,
         feature_names: Optional[Dict[str, List[str]]] = None,
-        enable_attribution: bool = True
+        enable_attribution: bool = True,
+        model_config: Optional[Any] = None
     ):
         super().__init__("internals", MetricCategory.MODEL)
         self.logger = logging.getLogger(__name__)
@@ -64,7 +65,8 @@ class ModelInternalsCollector(MetricCollector):
                     model=model,
                     feature_names=feature_names,
                     config=config,
-                    logger=self.logger
+                    logger=self.logger,
+                    model_config=model_config
                 )
                 self.logger.info("Feature attribution analyzer initialized")
             except Exception as e:

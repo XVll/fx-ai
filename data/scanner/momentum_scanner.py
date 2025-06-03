@@ -759,8 +759,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Scan momentum days in Databento files')
     parser.add_argument('--min-quality', type=float, default=0.5, 
                        help='Minimum quality score (default: 0.5)')
-    parser.add_argument('--symbols', nargs='+', default=['MLGO'],
-                       help='Symbols to scan (default: MLGO)')
+    parser.add_argument('--symbols', nargs='+', default=[],
+                       help='Symbols to scan (default: scan all available)')
     parser.add_argument('--rebuild', action='store_true',
                        help='Force rebuild existing indices')
     
@@ -771,7 +771,7 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     
     # Initialize scanner with default paths
-    data_dir = "dnb/mlgo"
+    data_dir = "dnb"
     output_dir = "cache/indices/momentum_index"
     scanner = MomentumScanner(data_dir=data_dir, output_dir=output_dir)
     

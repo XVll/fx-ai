@@ -11,7 +11,7 @@ poetry install
 wandb login
 
 # Momentum Training (RECOMMENDED - uses smart day selection and curriculum learning)
-poetry run poe momentum                    # Start momentum training
+poetry run poe momentum                    # Start momentum training (specify symbol in config or --symbol)
 poetry run poe momentum-continue           # Continue momentum training from best model
 poetry run poe build-index                 # Build momentum day index (run once)
 
@@ -20,14 +20,14 @@ poetry run poe quick                       # Quick model testing
 poetry run poe init                        # Train new model from scratch
 poetry run poe train                       # Continue training from best model
 
-# Using scripts directly
+# Using scripts directly with symbol specification
 poetry run python main.py --config momentum_training --symbol AAPL
-poetry run python main.py --config momentum_training --symbol AAPL --continue
-poetry run python scripts/run.py train --momentum --symbol AAPL --continue-training
+poetry run python main.py --config momentum_training --symbol TSLA --continue
+poetry run poe momentum -- --symbol NVDA   # Pass symbol to poe task
 
 # Run backtest
-poetry run poe backtest                    # Uses date 2025-04-15
-poetry run poe backtest-custom             # Uses date 2025-03-27
+poetry run poe backtest                    # Run backtest (configure date/symbol in config)
+poetry run poe backtest-date               # Specify date: poetry run poe backtest-date 2025-04-15
 
 # Scan for momentum days in data
 poetry run poe scan                        # Min quality 0.5

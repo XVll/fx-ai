@@ -97,7 +97,8 @@ class CaptumFeatureAnalyzer:
         feature_names: Dict[str, List[str]],
         device: Union[str, torch.device] = None,
         config: AttributionConfig = None,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
+        model_config: Optional[Any] = None
     ):
         """
         Initialize Captum feature analyzer.
@@ -117,10 +118,33 @@ class CaptumFeatureAnalyzer:
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.config = config or AttributionConfig()
         self.logger = logger or logging.getLogger(__name__)
+        self.model_config = model_config
         
         # Branch information
         self.branch_names = ['hf', 'mf', 'lf', 'portfolio']
         self.total_features = sum(len(names) for names in feature_names.values())
+        
+        # Set branch configurations from model config if available
+        if model_config and hasattr(model_config, 'hf_seq_len'):
+            self.branch_configs = {
+                'hf': (model_config.hf_seq_len, model_config.hf_feat_dim),
+                'mf': (model_config.mf_seq_len, model_config.mf_feat_dim),
+                'lf': (model_config.lf_seq_len, model_config.lf_feat_dim),
+                'portfolio': (model_config.portfolio_seq_len, model_config.portfolio_feat_dim)
+            }
+            self.logger.info(f"Using model config dimensions: hf=({model_config.hf_seq_len},{model_config.hf_feat_dim}), "
+                           f"mf=({model_config.mf_seq_len},{model_config.mf_feat_dim}), "
+                           f"lf=({model_config.lf_seq_len},{model_config.lf_feat_dim}), "
+                           f"portfolio=({model_config.portfolio_seq_len},{model_config.portfolio_feat_dim})")
+        else:
+            # Fallback to updated defaults
+            self.branch_configs = {
+                'hf': (60, 7),
+                'mf': (30, 43),
+                'lf': (30, 19),
+                'portfolio': (5, 10)
+            }
+            self.logger.warning(f"No model_config provided, using fallback dimensions: {self.branch_configs}")
         
         # Attribution tracking
         self.attribution_history = defaultdict(lambda: deque(maxlen=1000))
@@ -234,15 +258,7 @@ class CaptumFeatureAnalyzer:
         state_dict = {}
         start_idx = 0
         
-        # Expected dimensions for each branch
-        branch_configs = {
-            'hf': (60, 9),      # (seq_len, feat_dim)
-            'mf': (20, 43),     # (seq_len, feat_dim)
-            'lf': (1, 19),      # (seq_len, feat_dim)
-            'portfolio': (1, 5)  # (seq_len, feat_dim)
-        }
-        
-        for branch, (seq_len, feat_dim) in branch_configs.items():
+        for branch, (seq_len, feat_dim) in self.branch_configs.items():
             end_idx = start_idx + (seq_len * feat_dim)
             branch_tensor = tensor[:, start_idx:end_idx].reshape(batch_size, seq_len, feat_dim)
             state_dict[branch] = branch_tensor.to(self.device)
@@ -256,11 +272,23 @@ class CaptumFeatureAnalyzer:
         for branch in self.branch_names:
             if branch in state_dict:
                 branch_tensor = state_dict[branch]
-                # Flatten the tensor while preserving batch dimension
-                if branch_tensor.dim() == 3:  # [batch, seq, feat]
-                    flattened = branch_tensor.flatten(start_dim=1)
+                
+                # Handle different tensor shapes from PPO agent
+                if branch_tensor.dim() == 4:  # [batch=1, 1, seq, feat] - from stacking batched states
+                    # Squeeze the extra dimension and flatten
+                    flattened = branch_tensor.squeeze(1).flatten(start_dim=1)
+                elif branch_tensor.dim() == 3:  # [batch=1, seq, feat] or [batch, seq, feat]
+                    # Check if first dim is 1 (single batched state from PPO)
+                    if branch_tensor.shape[0] == 1:
+                        flattened = branch_tensor.flatten(start_dim=1)
+                    else:
+                        flattened = branch_tensor.flatten(start_dim=1)
+                elif branch_tensor.dim() == 2:  # [seq, feat] - flatten all
+                    flattened = branch_tensor.flatten()
+                    flattened = flattened.unsqueeze(0)  # Add batch dimension
                 else:
                     flattened = branch_tensor
+                    
                 tensors.append(flattened)
         
         return torch.cat(tensors, dim=1)
@@ -507,14 +535,7 @@ class CaptumFeatureAnalyzer:
         branch_attrs = {}
         start_idx = 0
         
-        branch_configs = {
-            'hf': (60, 9),
-            'mf': (20, 43),
-            'lf': (1, 19),
-            'portfolio': (1, 5)
-        }
-        
-        for branch, (seq_len, feat_dim) in branch_configs.items():
+        for branch, (seq_len, feat_dim) in self.branch_configs.items():
             end_idx = start_idx + (seq_len * feat_dim)
             branch_attr = attributions[:, start_idx:end_idx]
             
