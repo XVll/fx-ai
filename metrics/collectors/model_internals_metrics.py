@@ -47,14 +47,13 @@ class ModelInternalsCollector(MetricCollector):
         self.enable_attribution = enable_attribution and ATTRIBUTION_AVAILABLE
         self.state_buffer = deque(maxlen=50)  # Store states for attribution analysis
         self.last_attribution_analysis_time = 0
-        self.attribution_analysis_interval = 300  # 5 minutes between attribution analyses
+        self.attribution_analysis_interval = 30  # 30 seconds between attribution analyses
         
         # Initialize feature attribution analyzer if available
         if self.enable_attribution and model is not None and feature_names is not None:
             try:
                 # Configure Captum with sensible defaults
                 config = AttributionConfig(
-                    primary_method=AttributionConfig.primary_method,
                     n_steps=25,  # Faster for real-time analysis
                     n_samples=10,
                     use_noise_tunnel=True,
@@ -257,23 +256,36 @@ class ModelInternalsCollector(MetricCollector):
             
             # Feature attribution metrics
             if self.enable_attribution and self.attribution_analyzer:
-                # Track attention patterns if available
-                if self.last_attention_weights is not None:
-                    attention_analysis = self.attribution_analyzer.track_attention_patterns(self.last_attention_weights)
-                    if 'attention_stability' in attention_analysis:
-                        metrics[f"{self.category.value}.{self.name}.attention_stability"] = MetricValue(attention_analysis['attention_stability'])
-                
                 # Get top feature importance scores
-                top_features = self.attribution_analyzer.get_top_features(n=1)
-                for branch, features in top_features.items():
-                    if features:
-                        top_importance = features[0][1]  # (name, importance)
-                        metrics[f"{self.category.value}.{self.name}.top_feature_importance_{branch}"] = MetricValue(top_importance)
+                try:
+                    top_features = self.attribution_analyzer.get_feature_importance_ranking(n_top=1)
+                    for branch, feature_list in top_features.items():
+                        if feature_list:
+                            # feature_list is List[Tuple[str, float]]
+                            top_importance = feature_list[0][1]  # (name, importance)
+                            metrics[f"{self.category.value}.{self.name}.top_feature_importance_{branch}"] = MetricValue(top_importance)
+                except Exception as e:
+                    self.logger.debug(f"Error getting feature importance: {e}")
                 
                 # Dead feature detection
-                dead_features = self.attribution_analyzer.detect_dead_features()
-                total_dead = sum(len(features) for features in dead_features.values())
-                metrics[f"{self.category.value}.{self.name}.dead_features_count"] = MetricValue(total_dead)
+                try:
+                    dead_features = self.attribution_analyzer.get_dead_features()
+                    total_dead = sum(len(features) for features in dead_features.values())
+                    metrics[f"{self.category.value}.{self.name}.dead_features_count"] = MetricValue(total_dead)
+                except Exception as e:
+                    self.logger.debug(f"Error getting dead features: {e}")
+                
+                # Simple attention stability calculation (since track_attention_patterns doesn't exist)
+                if self.last_attention_weights is not None and len(self.attention_weights_history) > 1:
+                    try:
+                        # Calculate stability as variance across recent attention weights
+                        recent_weights = list(self.attention_weights_history)[-5:]
+                        if len(recent_weights) > 1:
+                            weight_variance = np.var(recent_weights, axis=0).mean()
+                            stability = 1.0 / (1.0 + weight_variance)  # Higher stability = lower variance
+                            metrics[f"{self.category.value}.{self.name}.attention_stability"] = MetricValue(stability)
+                    except Exception as e:
+                        self.logger.debug(f"Error calculating attention stability: {e}")
                     
         except Exception as e:
             self.logger.debug(f"Error collecting model internals metrics: {e}")
@@ -333,6 +345,10 @@ class ModelInternalsCollector(MetricCollector):
                 else:
                     state_copy[key] = tensor
             self.state_buffer.append(state_copy)
+            
+            # Log buffer status every 10 states for debugging
+            if len(self.state_buffer) % 10 == 0:
+                self.logger.debug(f"Attribution state buffer: {len(self.state_buffer)} states stored")
     
     def run_periodic_shap_analysis(self) -> Optional[Dict[str, Any]]:
         """Run attribution analysis periodically using Captum"""
@@ -340,9 +356,20 @@ class ModelInternalsCollector(MetricCollector):
             return None
         
         current_time = time.time()
-        if (current_time - self.last_attribution_analysis_time < self.attribution_analysis_interval or 
-            len(self.state_buffer) < 20):
+        time_since_last = current_time - self.last_attribution_analysis_time
+        states_available = len(self.state_buffer)
+        
+        self.logger.debug(f"Attribution check: {time_since_last:.1f}s since last, {states_available} states available")
+        
+        if time_since_last < self.attribution_analysis_interval:
+            self.logger.debug(f"Attribution skipped: only {time_since_last:.1f}s since last (need {self.attribution_analysis_interval}s)")
             return None
+            
+        if states_available < 5:  # Reduced from 20 to 5 for faster testing
+            self.logger.debug(f"Attribution skipped: only {states_available} states (need 5)")
+            return None
+        
+        self.logger.info(f"🔍 Starting Captum attribution analysis with {states_available} states")
         
         try:
             # Convert state buffer to list of dicts
@@ -453,20 +480,28 @@ class ModelInternalsCollector(MetricCollector):
         }
         
         # Add top features by branch using Captum rankings
-        top_features = self.attribution_analyzer.get_feature_importance_ranking(n_top=3)
-        summary["top_features_by_branch"] = {}
-        for branch, features in top_features.items():
-            summary["top_features_by_branch"][branch] = [
-                {"name": name, "importance": importance} 
-                for name, importance in features
-            ]
+        try:
+            top_features = self.attribution_analyzer.get_feature_importance_ranking(n_top=3)
+            summary["top_features_by_branch"] = {}
+            for branch, feature_list in top_features.items():
+                summary["top_features_by_branch"][branch] = [
+                    {"name": name, "importance": importance} 
+                    for name, importance in feature_list
+                ]
+        except Exception as e:
+            self.logger.debug(f"Error getting top features for summary: {e}")
+            summary["top_features_by_branch"] = {}
         
         # Add dead features info
-        dead_features = self.attribution_analyzer.get_dead_features()
-        summary["dead_features"] = {
-            "total_count": sum(len(features) for features in dead_features.values()),
-            "by_branch": {branch: features for branch, features in dead_features.items()}
-        }
+        try:
+            dead_features = self.attribution_analyzer.get_dead_features()
+            summary["dead_features"] = {
+                "total_count": sum(len(features) for features in dead_features.values()),
+                "by_branch": {branch: list(features) for branch, features in dead_features.items()}
+            }
+        except Exception as e:
+            self.logger.debug(f"Error getting dead features for summary: {e}")
+            summary["dead_features"] = {"total_count": 0, "by_branch": {}}
         
         # Add gradient flow analysis if available
         gradient_analysis = self.attribution_analyzer.analyze_gradient_flow()

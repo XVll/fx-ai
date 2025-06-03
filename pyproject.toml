@@ -19,9 +19,11 @@ scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.5"
 build-index = "poetry run python build_index.py"
 
 # Hyperparameter Optimization with Optuna
-optuna = "poetry run python optuna_optimization.py"
-optuna-study = "poetry run python optuna_optimization.py --study {{study_name}}"
-optuna-parallel = "poetry run python optuna_optimization.py --n-jobs {{n_jobs}}"
+optuna = "poetry run python optuna_optimization.py --spec config/optuna/default.yaml"
+optuna-quick = "poetry run python optuna_optimization.py --spec config/optuna/quick_search.yaml"
+optuna-comprehensive = "poetry run python optuna_optimization.py --spec config/optuna/comprehensive_search.yaml"
+optuna-reward = "poetry run python optuna_optimization.py --spec config/optuna/reward_focused.yaml"
+optuna-parallel = "poetry run python optuna_optimization.py --spec config/optuna/parallel_search.yaml --n-jobs {{n_jobs}}"
 optuna-dashboard = "optuna-dashboard sqlite:///optuna_studies.db"
 optuna-best = "poetry run python optuna_optimization.py --show-best {{study_name}}"
 
