@@ -674,6 +674,8 @@ def main():
                         help='Continue from latest checkpoint')
     parser.add_argument('--device', type=str, choices=['cuda', 'cpu', 'mps'], default=None,
                         help='Device to use for training')
+    parser.add_argument('--no-dashboard', dest='no_dashboard', action='store_true',
+                        help='Disable dashboard for automated runs')
     
     args = parser.parse_args()
     
@@ -691,6 +693,8 @@ def main():
             config.training.continue_training = True
         if args.device:
             config.training.device = args.device
+        if args.no_dashboard:
+            config.dashboard.enabled = False
         
         # Log configuration
         console.print(f"[bold green]Loaded configuration:[/bold green] {args.config or 'defaults'}")

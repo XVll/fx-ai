@@ -34,8 +34,18 @@ poetry run poe scan                        # Min quality 0.5
 poetry run poe scan-high                   # Min quality 0.7  
 poetry run poe scan-all                    # All momentum days (0.0)
 
-# Hyperparameter optimization
-poetry run python scripts/sweep.py --config default.yaml --count 20
+# Hyperparameter Optimization with Optuna
+poetry run poe optuna                      # Run default optimization
+poetry run poe optuna-study study_name     # Run specific study
+poetry run poe optuna-parallel 4           # Run with 4 parallel workers
+poetry run poe optuna-dashboard            # Launch Optuna dashboard
+poetry run poe optuna-best study_name      # Show best config for study
+
+# Quick optimization presets
+poetry run python optuna_optimization.py --spec config/optuna/quick_search.yaml
+poetry run python optuna_optimization.py --spec config/optuna/comprehensive_search.yaml
+poetry run python optuna_optimization.py --spec config/optuna/reward_focused.yaml
+poetry run python optuna_optimization.py --spec config/optuna/parallel_search.yaml --n-jobs 8
 
 # Live dashboard (auto-launches with training)
 # Access at http://localhost:8051
@@ -123,6 +133,14 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
    - Live dashboard with real-time visualization
    - Collectors: training, trading, model, execution, reward metrics
 
+9. **Hyperparameter Optimization** (`optuna_optimization.py`)
+   - Advanced Optuna integration with multiple samplers (TPE, CMA-ES, etc.)
+   - Configurable pruning strategies for efficient search
+   - Parallel execution support for multi-GPU optimization
+   - Study management with SQLite storage and result tracking
+   - Automatic visualization generation (optimization history, parameter importance)
+   - Predefined optimization configurations for different scenarios
+
 ### Configuration System
 
 Uses Hydra for hierarchical configuration management:
@@ -134,6 +152,11 @@ Uses Hydra for hierarchical configuration management:
 - `config/data/databento.yaml` - Data source configurations
 - `config/simulation/default.yaml` - Market simulation parameters
 - `config/wandb/` - Experiment tracking settings
+- `config/optuna/` - Hyperparameter optimization specifications:
+  - `quick_search.yaml` - Fast optimization focusing on key parameters
+  - `comprehensive_search.yaml` - Full parameter space exploration
+  - `reward_focused.yaml` - Reward system coefficient optimization
+  - `parallel_search.yaml` - Multi-GPU parallel optimization
 
 ### Key Features
 

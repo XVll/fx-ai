@@ -1,0 +1,157 @@
+name: reward_system_optimization
+description: Focus on optimizing reward system coefficients
+version: "1.0"
+
+dashboard_port: 8052
+log_level: INFO
+results_dir: optuna_results
+save_study_plots: true
+
+studies:
+  - study_name: fx_ai_reward_optimization
+    direction: maximize
+    metric_name: mean_reward
+    storage: sqlite:///optuna_studies.db
+    load_if_exists: true
+    
+    sampler:
+      type: CmaEsSampler
+      n_startup_trials: 15
+      warn_independent_sampling: false
+      seed: 42
+    
+    pruner:
+      type: PatientPruner
+      patience: 10
+      min_delta: 0.05
+    
+    parameters:
+      # All reward system parameters
+      - name: env.reward.pnl_coefficient
+        type: float
+        low: 10.0
+        high: 1000.0
+      
+      - name: env.reward.holding_penalty_coefficient
+        type: float
+        low: 0.1
+        high: 20.0
+      
+      - name: env.reward.drawdown_penalty_coefficient
+        type: float
+        low: 0.5
+        high: 50.0
+      
+      - name: env.reward.bankruptcy_penalty_coefficient
+        type: float
+        low: 10.0
+        high: 200.0
+      
+      - name: env.reward.profit_giveback_penalty_coefficient
+        type: float
+        low: 0.5
+        high: 10.0
+      
+      - name: env.reward.profit_giveback_threshold
+        type: float
+        low: 0.1
+        high: 0.5
+      
+      - name: env.reward.max_drawdown_penalty_coefficient
+        type: float
+        low: 5.0
+        high: 100.0
+      
+      - name: env.reward.max_drawdown_threshold_percent
+        type: float
+        low: 0.005
+        high: 0.05
+      
+      - name: env.reward.profit_closing_bonus_coefficient
+        type: float
+        low: 10.0
+        high: 500.0
+      
+      - name: env.reward.clean_trade_coefficient
+        type: float
+        low: 5.0
+        high: 200.0
+      
+      - name: env.reward.max_mae_threshold
+        type: float
+        low: 0.005
+        high: 0.05
+      
+      - name: env.reward.min_gain_threshold
+        type: float
+        low: 0.005
+        high: 0.03
+      
+      - name: env.reward.activity_bonus_per_trade
+        type: float
+        low: 0.01
+        high: 0.1
+      
+      - name: env.reward.hold_penalty_per_step
+        type: float
+        low: 0.001
+        high: 0.05
+      
+      - name: env.reward.max_holding_time_steps
+        type: int
+        low: 60
+        high: 300
+      
+      - name: env.reward.base_multiplier
+        type: float
+        low: 1000.0
+        high: 10000.0
+    
+    n_trials: 100
+    n_jobs: 1
+    catch_exceptions: true
+    
+    training_config:
+      mode: train
+      experiment_name: optuna_reward
+      config: momentum_training
+      
+      training:
+        total_updates: 150
+        checkpoint_interval: 50
+        eval_frequency: 25
+        eval_episodes: 10
+        rollout_steps: 2048
+        # Use proven good training parameters
+        learning_rate: 0.00015
+        batch_size: 64
+        n_epochs: 8
+        gamma: 0.99
+        gae_lambda: 0.95
+        clip_epsilon: 0.15
+        entropy_coef: 0.01
+        value_coef: 0.5
+      
+      model:
+        # Use proven good model architecture
+        d_model: 128
+        n_layers: 6
+        n_heads: 8
+        dropout: 0.1
+      
+      env:
+        symbol: MLGO
+        max_episode_steps: 512
+      
+      wandb:
+        enabled: true
+        project: fx-ai-optuna
+        tags: [optuna, reward_optimization]
+      
+      dashboard:
+        enabled: false
+    
+    episodes_per_trial: 3000
+    eval_frequency: 100
+    eval_episodes: 10
+    save_checkpoints: true
