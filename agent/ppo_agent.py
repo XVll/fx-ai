@@ -1089,13 +1089,22 @@ class PPOTrainer:
         self.metrics.start_update()
         
         # Run periodic feature attribution analysis
-        if self.global_update_counter % 1 == 0:  # Every 1 update (testing WandB native plots)
-            self.logger.info(f"🔍 Attempting attribution analysis at update {self.global_update_counter}")
+        # Get attribution frequency from config or use default of 10
+        attribution_frequency = getattr(self.config, 'attribution_update_frequency', 10)
+        
+        if self.global_update_counter % attribution_frequency == 0:
+            self.logger.info(f"🔍 Attempting SHAP attribution analysis at update {self.global_update_counter}")
             try:
-                attribution_results = self.metrics.run_periodic_shap_analysis()  # Now uses fast gradient attribution
+                attribution_results = self.metrics.run_periodic_shap_analysis()
                 if attribution_results:
-                    self.logger.info("🔍 Gradient attribution analysis completed - feature importance updated")
-                    self.logger.info(f"🔍 Attribution results keys: {list(attribution_results.keys()) if attribution_results else 'None'}")
+                    if 'error' not in attribution_results:
+                        self.logger.info("✅ SHAP attribution analysis completed successfully")
+                        # Log summary of top features if available
+                        if 'top_features' in attribution_results:
+                            top_3 = attribution_results['top_features'][:3]
+                            self.logger.info(f"🏆 Top features: {[(f.get('name', 'unknown'), f.get('importance', 0)) for f in top_3]}")
+                    else:
+                        self.logger.warning(f"🔍 Attribution analysis had error: {attribution_results.get('error')}")
                 else:
                     self.logger.warning("🔍 Attribution analysis returned None - check conditions or errors")
             except Exception as e:
