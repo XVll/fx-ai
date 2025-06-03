@@ -47,7 +47,7 @@ class ModelInternalsCollector(MetricCollector):
         self.enable_attribution = enable_attribution and ATTRIBUTION_AVAILABLE
         self.state_buffer = deque(maxlen=50)  # Store states for attribution analysis
         self.last_attribution_analysis_time = 0
-        self.attribution_analysis_interval = 30  # 30 seconds between attribution analyses
+        self.attribution_analysis_interval = 1  # 1 second for testing
         
         # Initialize feature attribution analyzer if available
         if self.enable_attribution and model is not None and feature_names is not None:
