@@ -310,7 +310,7 @@ class DashboardServer:
                 },
                 {
                     'Metric': 'Profit Factor',
-                    'Episode': profit_factor_display,
+                    'Episode': "N/A",
                     'Session': profit_factor_display
                 }
             ]
@@ -599,58 +599,18 @@ class DashboardServer:
                 
             training_content = html.Div(training_children)
             
-            # PPO Metrics - all PPO values with sparklines, tooltips, and health indicators
-            # Debug: Log available state attributes to identify correct names
-            import logging
-            logger = logging.getLogger(__name__)
-            available_attrs = [attr for attr in dir(state) if not attr.startswith('_')]
-            ppo_related = [attr for attr in available_attrs if any(keyword in attr.lower() for keyword in ['kl', 'lr', 'learning', 'reward', 'clip', 'entropy', 'loss', 'variance'])]
-            logger.debug(f"Available PPO-related state attributes: {ppo_related}")
-            
-            # Get KL Divergence with multiple fallbacks
-            kl_value = getattr(state, 'kl_divergence', getattr(state, 'approx_kl', getattr(state, 'kl_div', 0.0)))
-            kl_history = getattr(state, 'kl_divergence_history', getattr(state, 'approx_kl_history', getattr(state, 'kl_div_history', deque())))
-            logger.debug(f"KL Divergence: value={kl_value}, history_len={len(kl_history) if kl_history else 0}")
-            
-            # Get Learning Rate with multiple fallbacks
-            lr_value = getattr(state, 'learning_rate', getattr(state, 'lr', getattr(state, 'current_lr', 0.0)))
-            lr_history = getattr(state, 'learning_rate_history', getattr(state, 'lr_history', getattr(state, 'current_lr_history', deque())))
-            logger.debug(f"Learning Rate: value={lr_value}, history_len={len(lr_history) if lr_history else 0}")
-            
-            # Get Mean Reward with multiple fallbacks
-            mean_reward_value = getattr(state, 'mean_episode_reward', getattr(state, 'mean_reward', getattr(state, 'avg_reward', getattr(state, 'episode_reward_mean', 0.0))))
-            mean_reward_history = getattr(state, 'mean_episode_reward_history', getattr(state, 'mean_reward_history', getattr(state, 'avg_reward_history', deque())))
-            logger.debug(f"Mean Reward: value={mean_reward_value}, history_len={len(mean_reward_history) if mean_reward_history else 0}")
-            
-            # Debug: Show which metrics are working vs not working
-            working_metrics = []
-            broken_metrics = []
-            for name, value, history in [
-                ("Policy Loss", state.policy_loss, state.policy_loss_history),
-                ("Value Loss", state.value_loss, state.value_loss_history),
-                ("Entropy", state.entropy, state.entropy_history),
-                ("KL Divergence", kl_value, kl_history),
-                ("Clip Fraction", getattr(state, 'clip_fraction', 0.0), getattr(state, 'clip_fraction_history', deque())),
-                ("Learning Rate", lr_value, lr_history),
-                ("Mean Reward", mean_reward_value, mean_reward_history)
-            ]:
-                if value != 0.0 and len(history) > 0:
-                    working_metrics.append(name)
-                else:
-                    broken_metrics.append(f"{name}(val={value}, hist={len(history)})")
-            
-            logger.debug(f"Working metrics: {working_metrics}")
-            logger.debug(f"Broken metrics: {broken_metrics}")
+            # PPO Metrics - using correct attribute names from ppo_agent.py
+            # The PPO agent sends metrics with these exact names in the ppo_data dict
             
             ppo_metrics_data = [
                 ("Policy Loss", state.policy_loss, state.policy_loss_history),
                 ("Value Loss", state.value_loss, state.value_loss_history),
                 ("Entropy", state.entropy, state.entropy_history),
-                ("KL Divergence", kl_value, kl_history),
-                ("Clip Fraction", getattr(state, 'clip_fraction', getattr(state, 'clipfrac', 0.0)), getattr(state, 'clip_fraction_history', getattr(state, 'clipfrac_history', deque()))),
-                ("Learning Rate", lr_value, lr_history),
-                ("Explained Var", getattr(state, 'explained_variance', getattr(state, 'explained_var', 0.0)), getattr(state, 'explained_variance_history', getattr(state, 'explained_var_history', deque()))),
-                ("Mean Reward", mean_reward_value, mean_reward_history),
+                ("KL Divergence", getattr(state, 'kl_divergence', 0.0), getattr(state, 'kl_divergence_history', deque())),
+                ("Clip Fraction", getattr(state, 'clip_fraction', 0.0), getattr(state, 'clip_fraction_history', deque())),
+                ("Learning Rate", getattr(state, 'learning_rate', 0.0), getattr(state, 'learning_rate_history', deque())),
+                ("Explained Var", getattr(state, 'explained_variance', 0.0), getattr(state, 'explained_variance_history', deque())),
+                ("Mean Reward", getattr(state, 'mean_episode_reward', 0.0), getattr(state, 'mean_episode_reward_history', deque())),
             ]
             
             ppo_content = html.Div([
@@ -906,9 +866,9 @@ class DashboardServer:
                              color=DARK_THEME['accent_blue'] if roc_range[0] <= current_roc_score <= roc_range[1] else DARK_THEME['text_muted']),
                 self._info_row("Activity", f"{current_activity_score:.2f}", 
                              color=DARK_THEME['accent_orange'] if activity_range[0] <= current_activity_score <= activity_range[1] else DARK_THEME['text_muted']),
-                self._info_row("ROC Range", f"[{roc_range[0]:.1f}, {roc_range[1]:.1f}]", 
+                self._info_row("ROC Range", f"[{roc_range[0]:.2f}, {roc_range[1]:.2f}]", 
                              color=DARK_THEME['text_muted']),
-                self._info_row("Activity Range", f"[{activity_range[0]:.1f}, {activity_range[1]:.1f}]", 
+                self._info_row("Activity Range", f"[{activity_range[0]:.2f}, {activity_range[1]:.2f}]", 
                              color=DARK_THEME['text_muted']),
             ])
             

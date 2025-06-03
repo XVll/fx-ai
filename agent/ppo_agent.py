@@ -529,22 +529,29 @@ class PPOTrainer:
                 self.reset_point_cycles_completed += 1
                 self.used_reset_point_indices.clear()
                 self.logger.info(f"🔄 Completed cycle {self.reset_point_cycles_completed} through reset points")
+            
+            # Always emit cycle tracking after each episode for real-time dashboard updates
+            if hasattr(self.metrics, 'metrics_manager'):
+                cycles_remaining = self.episodes_per_day - self.reset_point_cycles_completed
+                progress_pct = (self.reset_point_cycles_completed / self.episodes_per_day) * 100
                 
-                # Emit cycle completion tracking for dashboard
-                if hasattr(self.metrics, 'metrics_manager'):
-                    cycles_remaining = self.episodes_per_day - self.reset_point_cycles_completed
-                    progress_pct = (self.reset_point_cycles_completed / self.episodes_per_day) * 100
-                    
+                # Calculate more detailed progress within current cycle
+                total_available_points = len(self.env.available_reset_points) if hasattr(self.env, 'available_reset_points') else 0
+                points_used_in_cycle = len(self.used_reset_point_indices)
+                points_remaining_in_cycle = max(0, total_available_points - points_used_in_cycle)
 
-                    cycle_tracking = {
-                        'cycles_completed': self.reset_point_cycles_completed,
-                        'target_cycles_per_day': self.episodes_per_day,
-                        'cycles_remaining_for_day_switch': cycles_remaining,
-                        'episodes_on_current_day': self.episodes_completed_on_current_day,
-                        'day_switch_progress_pct': progress_pct,
-                        'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown'
-                    }
-                    self.metrics.metrics_manager.emit_event('cycle_completion', cycle_tracking)
+                cycle_tracking = {
+                    'cycles_completed': self.reset_point_cycles_completed,
+                    'target_cycles_per_day': self.episodes_per_day,
+                    'cycles_remaining_for_day_switch': cycles_remaining,
+                    'episodes_on_current_day': self.episodes_completed_on_current_day,
+                    'day_switch_progress_pct': progress_pct,
+                    'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown',
+                    'total_available_points': total_available_points,
+                    'points_used_in_cycle': points_used_in_cycle,
+                    'points_remaining_in_cycle': points_remaining_in_cycle
+                }
+                self.metrics.metrics_manager.emit_event('cycle_completion', cycle_tracking)
 
             # Note: momentum day progress tracking is done via metrics, 
             # reset points data is only sent on actual day changes
@@ -629,6 +636,12 @@ class PPOTrainer:
         total_invalid_actions = 0
 
         while collected_steps < self.rollout_steps:
+            # Check for training interruption every 50 steps
+            if collected_steps % 50 == 0:
+                if hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted:
+                    self.logger.warning(f"Training interrupted during rollout collection at step {collected_steps}")
+                    break
+            
             # Update rollout progress periodically
             if collected_steps % 100 == 0 and hasattr(self.metrics, "metrics_manager"):
                 training_data = {
@@ -678,9 +691,11 @@ class PPOTrainer:
                 if action_probs is not None:
                     self.metrics.update_action_probabilities(action_probs)
             
-            # Track feature statistics periodically
+            # Track feature statistics and attribution data
             if collected_steps % 100 == 0:
                 self.metrics.update_feature_statistics(current_env_state_np)
+                # Store state for feature attribution analysis
+                self.metrics.update_state_for_attribution(current_model_state_torch_batched)
 
             try:
                 next_env_state_np, reward, terminated, truncated, info = self.env.step(env_action)
@@ -914,6 +929,15 @@ class PPOTrainer:
         # Start update timing
         self.metrics.start_update()
         
+        # Run periodic feature attribution analysis
+        if self.global_update_counter % 10 == 0:  # Every 10 updates
+            try:
+                shap_results = self.metrics.run_periodic_shap_analysis()
+                if shap_results:
+                    self.logger.info("🔍 SHAP analysis completed - feature importance updated")
+            except Exception as e:
+                self.logger.debug(f"SHAP analysis failed: {e}")
+        
         # Update dashboard that we're in update phase
         if hasattr(self.metrics, "metrics_manager"):
             # Calculate current performance metrics
@@ -976,6 +1000,11 @@ class PPOTrainer:
         total_gradient_norm = 0
 
         for epoch in range(self.ppo_epochs):
+            # Check for training interruption before each epoch
+            if hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted:
+                self.logger.warning(f"Training interrupted during policy update at epoch {epoch}")
+                break
+                
             np.random.shuffle(indices)
             
             # Log epoch start
@@ -1120,20 +1149,22 @@ class PPOTrainer:
         # Record metrics
         self.metrics.record_model_losses(avg_actor_loss, avg_critic_loss, avg_entropy)
         self.metrics.record_ppo_metrics(avg_clipfrac, avg_approx_kl, avg_explained_variance)
-        self.metrics.record_learning_rate(self.lr)
+        # Get actual learning rate from optimizer in case it has been modified by scheduler
+        current_lr = self.optimizer.param_groups[0]['lr']
+        self.metrics.record_learning_rate(current_lr)
 
         # Update dashboard with PPO metrics
         if hasattr(self.metrics, "metrics_manager"):
             mean_reward = np.mean(self.recent_episode_rewards) if len(self.recent_episode_rewards) > 0 else 0
             ppo_data = {
-                'lr': self.lr,
-                'mean_reward': mean_reward,
+                'learning_rate': current_lr,
+                'mean_episode_reward': mean_reward,
                 'policy_loss': avg_actor_loss,
                 'value_loss': avg_critic_loss,
                 'entropy': avg_entropy,
                 'total_loss': avg_actor_loss + avg_critic_loss,
                 'clip_fraction': avg_clipfrac,
-                'approx_kl': avg_approx_kl,
+                'kl_divergence': avg_approx_kl,
                 'explained_variance': avg_explained_variance
             }
             self.metrics.metrics_manager.emit_event("ppo_metrics", ppo_data)
@@ -1249,7 +1280,17 @@ class PPOTrainer:
         best_eval_reward = -float('inf')
 
         while self.global_step_counter < total_training_steps:
+            # Check for training interruption
+            if hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted:
+                self.logger.warning("Training interrupted during training loop")
+                break
+                
             rollout_info = self.collect_rollout_data()
+            
+            # Check for interruption after rollout collection
+            if hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted:
+                self.logger.warning("Training interrupted after rollout collection")
+                break
 
             if self.buffer.get_size() < self.rollout_steps and self.buffer.get_size() < self.batch_size:
                 self.logger.warning(f"Buffer size {self.buffer.get_size()} too small. Skipping update.")
@@ -1257,6 +1298,11 @@ class PPOTrainer:
                     continue
 
             update_metrics = self.update_policy()
+            
+            # Check for interruption after policy update
+            if hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted:
+                self.logger.warning("Training interrupted after policy update")
+                break
 
             for callback in self.callbacks:
                 callback.on_update_iteration_end(self, self.global_update_counter, update_metrics, rollout_info)
@@ -1356,6 +1402,11 @@ class PPOTrainer:
         episode_details = []
 
         for i in range(n_episodes):
+            # Check for training interruption during evaluation
+            if hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted:
+                self.logger.warning(f"Training interrupted during evaluation at episode {i}")
+                break
+                
             env_state_np, _ = self._reset_environment_with_momentum()
             current_episode_reward = 0.0
             current_episode_length = 0
@@ -1458,7 +1509,7 @@ class PPOTrainer:
             first_10 = np.mean(recent_rewards[:10])
             last_10 = np.mean(recent_rewards[-10:])
             trend = last_10 - first_10
-            trend_pct = (trend / abs(first_10) * 100) if first_10 != 0 else 0
+            trend_pct = (trend / abs(first_10) * 100) if first_10 != 0 else 0.0
             
             self.logger.info(f"📈 PERFORMANCE TREND:")
             self.logger.info(f"   First 10 episodes: {first_10:.3f}")

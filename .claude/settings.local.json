@@ -61,7 +61,8 @@
       "Bash(git checkout:*)",
       "Bash(if [ -d \"best_models/MLGO\" ])",
       "Bash(then mv best_models/MLGO/* cache/model/best/)",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(poetry lock:*)"
     ],
     "deny": []
   },

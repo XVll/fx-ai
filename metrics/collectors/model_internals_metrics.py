@@ -1,6 +1,7 @@
 # metrics/collectors/model_internals_metrics.py - Model internals and diagnostics collector
 
 import logging
+import time
 from typing import Dict, Optional, Any, List
 import numpy as np
 import torch
@@ -9,11 +10,23 @@ from collections import deque
 
 from ..core import MetricCollector, MetricValue, MetricCategory, MetricType, MetricMetadata
 
+try:
+    from feature.attribution import FeatureAttributionAnalyzer
+    ATTRIBUTION_AVAILABLE = True
+except ImportError:
+    ATTRIBUTION_AVAILABLE = False
+
 
 class ModelInternalsCollector(MetricCollector):
-    """Collector for model internals and diagnostic metrics"""
+    """Collector for model internals and diagnostic metrics with feature attribution"""
     
-    def __init__(self, buffer_size: int = 100):
+    def __init__(
+        self, 
+        buffer_size: int = 100,
+        model: Optional[torch.nn.Module] = None,
+        feature_names: Optional[Dict[str, List[str]]] = None,
+        enable_attribution: bool = True
+    ):
         super().__init__("internals", MetricCategory.MODEL)
         self.logger = logging.getLogger(__name__)
         self.buffer_size = buffer_size
@@ -28,6 +41,26 @@ class ModelInternalsCollector(MetricCollector):
         
         # Feature statistics tracking
         self.feature_stats = {}
+        
+        # Feature attribution tracking
+        self.attribution_analyzer = None
+        self.enable_attribution = enable_attribution and ATTRIBUTION_AVAILABLE
+        self.state_buffer = deque(maxlen=50)  # Store states for attribution analysis
+        self.last_shap_analysis_time = 0
+        self.shap_analysis_interval = 300  # 5 minutes between SHAP analyses
+        
+        # Initialize feature attribution analyzer if available
+        if self.enable_attribution and model is not None and feature_names is not None:
+            try:
+                self.attribution_analyzer = FeatureAttributionAnalyzer(
+                    model=model,
+                    feature_names=feature_names,
+                    logger=self.logger
+                )
+                self.logger.info("Feature attribution analyzer initialized")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize attribution analyzer: {e}")
+                self.enable_attribution = False
         
         # Register metrics
         self._register_metrics()
@@ -118,6 +151,44 @@ class ModelInternalsCollector(MetricCollector):
                 unit="%",
                 frequency="step"
             ))
+        
+        # Feature attribution metrics (if enabled)
+        if self.enable_attribution:
+            self.register_metric("attribution_analysis_count", MetricMetadata(
+                category=MetricCategory.MODEL,
+                metric_type=MetricType.COUNTER,
+                description="Number of feature attribution analyses performed",
+                unit="count",
+                frequency="episode"
+            ))
+            
+            # Top feature importance scores
+            for branch in ['hf', 'mf', 'lf', 'portfolio']:
+                self.register_metric(f"top_feature_importance_{branch}", MetricMetadata(
+                    category=MetricCategory.MODEL,
+                    metric_type=MetricType.GAUGE,
+                    description=f"Importance score of top feature in {branch} branch",
+                    unit="importance",
+                    frequency="episode"
+                ))
+            
+            # Dead feature detection
+            self.register_metric("dead_features_count", MetricMetadata(
+                category=MetricCategory.MODEL,
+                metric_type=MetricType.GAUGE,
+                description="Number of detected dead/unused features",
+                unit="count",
+                frequency="episode"
+            ))
+            
+            # Attention stability metrics
+            self.register_metric("attention_stability", MetricMetadata(
+                category=MetricCategory.MODEL,
+                metric_type=MetricType.GAUGE,
+                description="Stability of attention patterns over time",
+                unit="stability",
+                frequency="step"
+            ))
     
     def collect(self) -> Dict[str, MetricValue]:
         """Collect model internals metrics"""
@@ -173,6 +244,26 @@ class ModelInternalsCollector(MetricCollector):
                     metrics[f"{self.category.value}.{self.name}.feature_{branch}_mean"] = MetricValue(stats['mean'])
                     metrics[f"{self.category.value}.{self.name}.feature_{branch}_std"] = MetricValue(stats['std'])
                     metrics[f"{self.category.value}.{self.name}.feature_{branch}_sparsity"] = MetricValue(stats['sparsity'])
+            
+            # Feature attribution metrics
+            if self.enable_attribution and self.attribution_analyzer:
+                # Track attention patterns if available
+                if self.last_attention_weights is not None:
+                    attention_analysis = self.attribution_analyzer.track_attention_patterns(self.last_attention_weights)
+                    if 'attention_stability' in attention_analysis:
+                        metrics[f"{self.category.value}.{self.name}.attention_stability"] = MetricValue(attention_analysis['attention_stability'])
+                
+                # Get top feature importance scores
+                top_features = self.attribution_analyzer.get_top_features(n=1)
+                for branch, features in top_features.items():
+                    if features:
+                        top_importance = features[0][1]  # (name, importance)
+                        metrics[f"{self.category.value}.{self.name}.top_feature_importance_{branch}"] = MetricValue(top_importance)
+                
+                # Dead feature detection
+                dead_features = self.attribution_analyzer.detect_dead_features()
+                total_dead = sum(len(features) for features in dead_features.values())
+                metrics[f"{self.category.value}.{self.name}.dead_features_count"] = MetricValue(total_dead)
                     
         except Exception as e:
             self.logger.debug(f"Error collecting model internals metrics: {e}")
@@ -220,6 +311,165 @@ class ModelInternalsCollector(MetricCollector):
     def get_action_distribution_history(self) -> List[Any]:
         """Get action probability history for analysis"""
         return list(self.action_probs_history)
+    
+    def update_state_for_attribution(self, state_dict: Dict[str, torch.Tensor]):
+        """Store state for feature attribution analysis"""
+        if self.enable_attribution:
+            # Store a copy of the state for later analysis
+            state_copy = {}
+            for key, tensor in state_dict.items():
+                if torch.is_tensor(tensor):
+                    state_copy[key] = tensor.detach().cpu().clone()
+                else:
+                    state_copy[key] = tensor
+            self.state_buffer.append(state_copy)
+    
+    def run_periodic_shap_analysis(self) -> Optional[Dict[str, Any]]:
+        """Run SHAP analysis periodically if enough data is available"""
+        if not self.enable_attribution or not self.attribution_analyzer:
+            return None
+        
+        current_time = time.time()
+        if (current_time - self.last_shap_analysis_time < self.shap_analysis_interval or 
+            len(self.state_buffer) < 20):
+            return None
+        
+        try:
+            # Convert state buffer to list of dicts
+            states_for_analysis = []
+            for state in list(self.state_buffer)[-30:]:  # Use last 30 states
+                # Ensure tensors are properly formatted
+                formatted_state = {}
+                for key, tensor in state.items():
+                    if torch.is_tensor(tensor):
+                        formatted_state[key] = tensor.to(self.attribution_analyzer.device)
+                    else:
+                        formatted_state[key] = tensor
+                states_for_analysis.append(formatted_state)
+            
+            # Run SHAP analysis
+            shap_values = self.attribution_analyzer.calculate_shap_values(
+                sample_states=states_for_analysis,
+                max_samples=20
+            )
+            
+            if shap_values:
+                self.last_shap_analysis_time = current_time
+                self.logger.info("Completed periodic SHAP analysis")
+                
+                # Update feature importance based on SHAP values
+                for branch, values in shap_values.items():
+                    if branch in self.attribution_analyzer.feature_names:
+                        feature_names = self.attribution_analyzer.feature_names[branch]
+                        # Average SHAP values across samples for each feature
+                        avg_importance = np.mean(np.abs(values), axis=0)
+                        
+                        for feature_name, importance in zip(feature_names, avg_importance):
+                            self.attribution_analyzer.update_feature_importance(feature_name, importance)
+                
+                return shap_values
+            
+        except Exception as e:
+            self.logger.warning(f"SHAP analysis failed: {e}")
+        
+        return None
+    
+    def run_permutation_importance_analysis(self, environment, n_episodes: int = 20) -> Optional[Dict[str, Dict[str, float]]]:
+        """Run permutation importance analysis"""
+        if not self.enable_attribution or not self.attribution_analyzer:
+            return None
+        
+        try:
+            # Get the model from the attribution analyzer
+            model = self.attribution_analyzer.model
+            
+            # Run permutation importance
+            importance_scores = self.attribution_analyzer.calculate_permutation_importance(
+                environment=environment,
+                model=model,
+                n_episodes=n_episodes,
+                n_permutations=5
+            )
+            
+            if importance_scores:
+                self.logger.info("Completed permutation importance analysis")
+                
+                # Update feature importance scores
+                for branch, scores in importance_scores.items():
+                    for feature_name, importance in scores.items():
+                        self.attribution_analyzer.update_feature_importance(feature_name, importance)
+            
+            return importance_scores
+            
+        except Exception as e:
+            self.logger.warning(f"Permutation importance analysis failed: {e}")
+            return None
+    
+    def generate_feature_report(self, save_path: Optional[str] = None) -> Dict[str, Any]:
+        """Generate comprehensive feature importance report"""
+        if not self.enable_attribution or not self.attribution_analyzer:
+            return {}
+        
+        try:
+            # Run analysis if we have enough data
+            shap_values = None
+            if len(self.state_buffer) >= 10:
+                states_for_analysis = []
+                for state in list(self.state_buffer)[-10:]:
+                    formatted_state = {}
+                    for key, tensor in state.items():
+                        if torch.is_tensor(tensor):
+                            formatted_state[key] = tensor.to(self.attribution_analyzer.device)
+                        else:
+                            formatted_state[key] = tensor
+                    states_for_analysis.append(formatted_state)
+                
+                shap_values = self.attribution_analyzer.calculate_shap_values(
+                    sample_states=states_for_analysis,
+                    max_samples=10
+                )
+            
+            # Generate report
+            report = self.attribution_analyzer.generate_feature_importance_report(
+                shap_values=shap_values,
+                save_path=save_path
+            )
+            
+            return report
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate feature report: {e}")
+            return {}
+    
+    def get_feature_attribution_summary(self) -> Dict[str, Any]:
+        """Get a summary of current feature attribution analysis"""
+        if not self.enable_attribution or not self.attribution_analyzer:
+            return {"attribution_enabled": False}
+        
+        summary = {
+            "attribution_enabled": True,
+            "states_buffered": len(self.state_buffer),
+            "last_shap_analysis": self.last_shap_analysis_time,
+            "total_features": self.attribution_analyzer.total_features
+        }
+        
+        # Add top features by branch
+        top_features = self.attribution_analyzer.get_top_features(n=3)
+        summary["top_features_by_branch"] = {}
+        for branch, features in top_features.items():
+            summary["top_features_by_branch"][branch] = [
+                {"name": name, "importance": importance} 
+                for name, importance in features
+            ]
+        
+        # Add dead features info
+        dead_features = self.attribution_analyzer.detect_dead_features()
+        summary["dead_features"] = {
+            "total_count": sum(len(features) for features in dead_features.values()),
+            "by_type": {feature_type: len(features) for feature_type, features in dead_features.items()}
+        }
+        
+        return summary
     
     def _get_metadata(self, metric_name: str) -> MetricMetadata:
         """Get metadata for a metric by name"""

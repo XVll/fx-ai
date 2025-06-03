@@ -33,6 +33,7 @@ setup = "wandb login"
 dashboard = "echo 'Dashboard will auto-launch during training at http://localhost:8051'"
 killport = "lsof -ti:8051 | xargs kill -9 || echo 'Port 8051 already free'"
 
+
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
 numpy = "^2.2.5"
@@ -50,6 +51,7 @@ setuptools = "==80.8.0"
 dash = "^3.0.4"
 plotly = "^6.1.1"
 tqdm = "^4.67.1"
+shap = "^0.46.0"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.24.0"

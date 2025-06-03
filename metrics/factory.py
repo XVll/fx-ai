@@ -104,7 +104,9 @@ class MetricsFactory:
             initial_capital: float = 25000.0,
             include_system: bool = True,
             enable_dashboard: bool = False,
-            dashboard_port: int = 8050
+            dashboard_port: int = 8050,
+            feature_names: Optional[Dict[str, List[str]]] = None,
+            enable_feature_attribution: bool = True
     ) -> MetricsManager:
         """Create a complete metrics system with all components"""
 
@@ -143,8 +145,12 @@ class MetricsFactory:
         # Reward collectors
         collectors.extend(MetricsFactory.create_reward_collectors())
         
-        # Model internals collectors
-        collectors.append(ModelInternalsCollector())
+        # Model internals collectors with feature attribution
+        collectors.append(ModelInternalsCollector(
+            model=model,
+            feature_names=feature_names,
+            enable_attribution=enable_feature_attribution
+        ))
 
         # System collectors (optional)
         if include_system:
@@ -284,6 +290,41 @@ class MetricsIntegrator:
         collector = self.get_collector('ModelInternalsCollector')
         if collector:
             collector.update_feature_statistics(features)
+    
+    # Feature attribution integration methods
+    def update_state_for_attribution(self, state_dict: Dict[str, Any]):
+        """Store state for feature attribution analysis"""
+        collector = self.get_collector('ModelInternalsCollector')
+        if collector:
+            collector.update_state_for_attribution(state_dict)
+    
+    def run_periodic_shap_analysis(self) -> Optional[Dict[str, Any]]:
+        """Run periodic SHAP analysis"""
+        collector = self.get_collector('ModelInternalsCollector')
+        if collector:
+            return collector.run_periodic_shap_analysis()
+        return None
+    
+    def run_permutation_importance_analysis(self, environment, n_episodes: int = 20) -> Optional[Dict[str, Dict[str, float]]]:
+        """Run permutation importance analysis"""
+        collector = self.get_collector('ModelInternalsCollector')
+        if collector:
+            return collector.run_permutation_importance_analysis(environment, n_episodes)
+        return None
+    
+    def generate_feature_report(self, save_path: Optional[str] = None) -> Dict[str, Any]:
+        """Generate comprehensive feature importance report"""
+        collector = self.get_collector('ModelInternalsCollector')
+        if collector:
+            return collector.generate_feature_report(save_path)
+        return {}
+    
+    def get_feature_attribution_summary(self) -> Dict[str, Any]:
+        """Get feature attribution summary"""
+        collector = self.get_collector('ModelInternalsCollector')
+        if collector:
+            return collector.get_feature_attribution_summary()
+        return {"attribution_enabled": False}
 
     # Portfolio integration methods
     def update_portfolio(self, equity: float, cash: float, unrealized_pnl: float, realized_pnl: float,

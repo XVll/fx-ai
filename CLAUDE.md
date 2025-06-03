@@ -42,6 +42,7 @@ poetry run python scripts/sweep.py --config default.yaml --count 20
 
 # Kill dashboard if stuck
 poetry run poe killport
+
 ```
 
 ### Testing & Validation
@@ -144,9 +145,10 @@ Uses Hydra for hierarchical configuration management:
 6. **Multi-timeframe Analysis**: Processes data from tick-level to daily
 7. **Realistic Simulation**: Bid-ask spreads, market impact, trading fees, latency
 8. **Comprehensive Features**: 100+ features covering price action, volume, order flow, market structure
-9. **Live Dashboard**: Real-time training visualization with charts, metrics, and component analysis at http://localhost:8051
-10. **Model Management**: Keeps top 5 models by reward with metadata tracking
-11. **Test Suite**: Comprehensive testing for simulators and environment with pytest
+9. **Feature Attribution**: SHAP analysis, attention tracking, and dead feature detection automatically integrated during training
+10. **Live Dashboard**: Real-time training visualization with charts, metrics, and component analysis at http://localhost:8051
+11. **Model Management**: Keeps top 5 models by reward with metadata tracking
+12. **Test Suite**: Comprehensive testing for simulators and environment with pytest
 
 ### Data Flow
 
@@ -188,7 +190,7 @@ Databento Files → DataManager → MarketSimulator → FeatureExtractor → PPO
 ## Important Notes
 
 - The system focuses on momentum/squeeze trading strategies for low-float stocks
-- Feature extraction is critical - see README.md for planned v2 feature architecture
+- **Feature Attribution**: Automatic SHAP analysis every 10 training updates, real-time attention tracking, and dead feature detection integrated into all training runs
 - Model checkpoints are saved in `cache/model/best/` with JSON metadata
 - Databento data files are stored in `dnb/mlgo/` directory structure
 - Logging configured through `utils/logger.py` using Rich handler
