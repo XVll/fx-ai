@@ -67,13 +67,20 @@ class WandBTransmitter(MetricTransmitter):
             else:
                 self.logger.info(f"Initializing new W&B run: {project_name}")
 
+                # Filter out empty or invalid tags
+                filtered_tags = []
+                if tags:
+                    for tag in tags:
+                        if tag and isinstance(tag, str) and tag.strip() and len(tag.strip()) <= 64:
+                            filtered_tags.append(tag.strip())
+                
                 # Initialize with explicit settings
                 self.run = wandb.init(
                     project=project_name,
                     entity=entity,
                     name=run_name,
                     config=config or {},
-                    tags=tags or [],
+                    tags=filtered_tags,
                     group=group,
                     job_type=job_type,
                     save_code=save_code,

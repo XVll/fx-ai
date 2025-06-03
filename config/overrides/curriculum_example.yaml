@@ -46,12 +46,5 @@ curriculum:
     max_episodes: null
     max_cycles: null
 
-# You can also override data config to ensure all needed symbols are loaded
-data:
-  symbols: ["AAPL", "TSLA", "NVDA"]  # Load all symbols used in curriculum
-  start_date: "2025-04-01"
-  end_date: "2025-05-31"
-
-# Optional: Override environment symbol (will be switched by curriculum)
-env:
-  symbol: "AAPL"  # Initial symbol, will be overridden by curriculum
+# Note: Symbols are only defined in curriculum stages
+# The system will automatically discover all symbols from enabled stages

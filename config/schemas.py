@@ -116,8 +116,7 @@ class RewardConfig(BaseModel):
 
 class EnvConfig(BaseModel):
     """Trading environment configuration"""
-    # Symbol settings
-    symbol: str = Field(default="", description="Trading symbol")
+    # Note: symbol is now determined by curriculum stages, not configured here
     
     # Capital and risk - optimized for momentum trading
     initial_capital: float = Field(default=25000.0, description="Starting capital")
@@ -181,7 +180,7 @@ class DataConfig(BaseModel):
     
     # Databento specific
     data_dir: str = Field(default="dnb", description="Data directory")
-    symbols: List[str] = Field(default_factory=list, description="Symbols to load")
+    # Note: symbols are now determined by curriculum stages, not configured here
     
     # Data types to load
     load_trades: bool = True
