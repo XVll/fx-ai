@@ -1,0 +1,22 @@
+[
+  {
+    "trial_number": 224,
+    "params": {
+      "training.learning_rate": 0.0002582755794155255,
+      "training.batch_size": 64,
+      "training.entropy_coef": 0.0023207517877310694,
+      "training.gamma": 0.9879560115446847,
+      "model.d_model": 64,
+      "model.n_layers": 5,
+      "model.dropout": 0.1035730015369363,
+      "training.rollout_steps": 4096,
+      "env.reward.pnl_coefficient": 193.30862010412497
+    },
+    "metrics": {
+      "reward": -33.8374,
+      "mean_reward": -5.12
+    },
+    "datetime": "2025-06-04T01:12:42.839335",
+    "duration": null
+  }
+]

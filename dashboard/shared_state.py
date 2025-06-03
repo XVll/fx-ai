@@ -93,6 +93,9 @@ class SharedDashboardState:
     explained_variance: float = 0.0
     mean_episode_reward: float = 0.0
     
+    # Feature attribution summary (from model internals metrics)
+    attribution_summary: Dict[str, Any] = field(default_factory=dict)
+    
     # PPO sparkline histories (last 10 values for each metric)
     policy_loss_history: Deque[float] = field(default_factory=lambda: deque(maxlen=10))
     value_loss_history: Deque[float] = field(default_factory=lambda: deque(maxlen=10))
@@ -530,6 +533,10 @@ class DashboardStateManager:
                        'curriculum_strategy', 'curriculum_episode_length']:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
+            
+            # Feature attribution summary
+            if 'attribution_summary' in metrics:
+                self._state.attribution_summary = metrics['attribution_summary']
                     
             # Reward components (current step)
             if 'reward_components' in metrics:

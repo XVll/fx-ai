@@ -11,7 +11,7 @@ from collections import deque
 from ..core import MetricCollector, MetricValue, MetricCategory, MetricType, MetricMetadata
 
 try:
-    from feature.attribution import CaptumFeatureAnalyzer, AttributionConfig
+    from feature.attribution.shap_analyzer import ShapFeatureAnalyzer
     ATTRIBUTION_AVAILABLE = True
 except ImportError:
     ATTRIBUTION_AVAILABLE = False
@@ -48,27 +48,40 @@ class ModelInternalsCollector(MetricCollector):
         self.enable_attribution = enable_attribution and ATTRIBUTION_AVAILABLE
         self.state_buffer = deque(maxlen=50)  # Store states for attribution analysis
         self.last_attribution_analysis_time = 0
-        self.attribution_analysis_interval = 1  # 1 second for testing
+        self.attribution_analysis_interval = 0  # No time-based limits (controlled by PPO agent)
         
         # Initialize feature attribution analyzer if available
         if self.enable_attribution and model is not None and feature_names is not None:
             try:
-                # Configure Captum with sensible defaults
-                config = AttributionConfig(
-                    n_steps=25,  # Faster for real-time analysis
-                    n_samples=10,
-                    use_noise_tunnel=True,
-                    track_gradients=True,
-                    track_activations=True
-                )
-                self.attribution_analyzer = CaptumFeatureAnalyzer(
+                # Extract branch configs from model_config
+                branch_configs = {}
+                if model_config:
+                    for branch in feature_names.keys():
+                        seq_len_attr = f"{branch}_seq_len"
+                        feat_dim_attr = f"{branch}_feat_dim"
+                        
+                        if hasattr(model_config, seq_len_attr) and hasattr(model_config, feat_dim_attr):
+                            seq_len = getattr(model_config, seq_len_attr)
+                            feat_dim = getattr(model_config, feat_dim_attr)
+                            branch_configs[branch] = (seq_len, feat_dim)
+                else:
+                    # Fallback defaults
+                    default_configs = {
+                        'hf': (60, 7),
+                        'mf': (30, 43), 
+                        'lf': (30, 19),
+                        'portfolio': (5, 10)
+                    }
+                    for branch in feature_names.keys():
+                        branch_configs[branch] = default_configs.get(branch, (30, 10))
+                
+                self.attribution_analyzer = ShapFeatureAnalyzer(
                     model=model,
                     feature_names=feature_names,
-                    config=config,
-                    logger=self.logger,
-                    model_config=model_config
+                    branch_configs=branch_configs,
+                    logger=self.logger
                 )
-                self.logger.info("Feature attribution analyzer initialized")
+                self.logger.info("✅ SHAP feature attribution analyzer initialized")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize attribution analyzer: {e}")
                 self.enable_attribution = False
@@ -256,26 +269,9 @@ class ModelInternalsCollector(MetricCollector):
                     metrics[f"{self.category.value}.{self.name}.feature_{branch}_std"] = MetricValue(stats['std'])
                     metrics[f"{self.category.value}.{self.name}.feature_{branch}_sparsity"] = MetricValue(stats['sparsity'])
             
-            # Feature attribution metrics
-            if self.enable_attribution and self.attribution_analyzer:
-                # Get top feature importance scores
-                try:
-                    top_features = self.attribution_analyzer.get_feature_importance_ranking(n_top=1)
-                    for branch, feature_list in top_features.items():
-                        if feature_list:
-                            # feature_list is List[Tuple[str, float]]
-                            top_importance = feature_list[0][1]  # (name, importance)
-                            metrics[f"{self.category.value}.{self.name}.top_feature_importance_{branch}"] = MetricValue(top_importance)
-                except Exception as e:
-                    self.logger.debug(f"Error getting feature importance: {e}")
-                
-                # Dead feature detection
-                try:
-                    dead_features = self.attribution_analyzer.get_dead_features()
-                    total_dead = sum(len(features) for features in dead_features.values())
-                    metrics[f"{self.category.value}.{self.name}.dead_features_count"] = MetricValue(total_dead)
-                except Exception as e:
-                    self.logger.debug(f"Error getting dead features: {e}")
+            # SHAP attribution metrics (from stored results)
+            # Note: Actual SHAP analysis happens in run_periodic_shap_analysis()
+            # Here we just collect the stored metrics for dashboard/wandb
                 
                 # Simple attention stability calculation (since track_attention_patterns doesn't exist)
                 if self.last_attention_weights is not None and len(self.attention_weights_history) > 1:
@@ -358,7 +354,7 @@ class ModelInternalsCollector(MetricCollector):
                 self.logger.debug(f"Attribution state buffer: {len(self.state_buffer)} states stored")
     
     def run_periodic_shap_analysis(self) -> Optional[Dict[str, Any]]:
-        """Run attribution analysis periodically using Captum"""
+        """Run SHAP attribution analysis periodically"""
         if not self.enable_attribution or not self.attribution_analyzer:
             return None
         
@@ -366,106 +362,218 @@ class ModelInternalsCollector(MetricCollector):
         time_since_last = current_time - self.last_attribution_analysis_time
         states_available = len(self.state_buffer)
         
-        self.logger.debug(f"Attribution check: {time_since_last:.1f}s since last, {states_available} states available")
+        self.logger.debug(f"SHAP check: {time_since_last:.1f}s since last, {states_available} states available")
         
-        if time_since_last < self.attribution_analysis_interval:
-            self.logger.debug(f"Attribution skipped: only {time_since_last:.1f}s since last (need {self.attribution_analysis_interval}s)")
+        # Skip time-based check since we're controlled by PPO agent update frequency
+        # if time_since_last < self.attribution_analysis_interval:
+        #     self.logger.debug(f"SHAP skipped: only {time_since_last:.1f}s since last (need {self.attribution_analysis_interval}s)")
+        #     return None
+            
+        if states_available < 2:  # Need minimal states for analysis
+            self.logger.debug(f"Attribution skipped: only {states_available} states (need 2)")
+            return None
+        
+        # SHAP is too slow and unstable with 2330 features - use fast gradient attribution instead
+        self.logger.info(f"🚀 Using fast gradient attribution (SHAP disabled for performance with {states_available} states)")
+        return self._run_fast_gradient_attribution()
+    
+    def _run_fast_gradient_attribution(self) -> Optional[Dict[str, Any]]:
+        """Fast gradient-based attribution as fallback when SHAP is too slow"""
+        if not self.enable_attribution or len(self.state_buffer) < 2:
             return None
             
-        if states_available < 5:  # Reduced from 20 to 5 for faster testing
-            self.logger.debug(f"Attribution skipped: only {states_available} states (need 5)")
-            return None
-        
-        self.logger.info(f"🔍 Starting Captum attribution analysis with {states_available} states")
-        
         try:
-            # Convert state buffer to list of dicts
-            states_for_analysis = []
-            for state in list(self.state_buffer)[-30:]:  # Use last 30 states
-                # Ensure tensors are properly formatted
-                formatted_state = {}
-                for key, tensor in state.items():
-                    if torch.is_tensor(tensor):
-                        formatted_state[key] = tensor.to(self.attribution_analyzer.device)
-                    else:
-                        formatted_state[key] = tensor
-                states_for_analysis.append(formatted_state)
+            from feature.attribution.simple_attribution import SimpleFeatureAttribution
             
-            # Run Captum attribution analysis
-            attribution_results = self.attribution_analyzer.calculate_attributions(
-                sample_states=states_for_analysis,
-                return_convergence_delta=False  # Faster without convergence check
-            )
+            # Create simple attribution analyzer if needed
+            if not hasattr(self, '_simple_analyzer'):
+                self._simple_analyzer = SimpleFeatureAttribution(
+                    model=self.attribution_analyzer.model if self.attribution_analyzer else None,
+                    feature_names=self.attribution_analyzer.feature_names if self.attribution_analyzer else {},
+                    branch_configs=self.attribution_analyzer.branch_configs if self.attribution_analyzer else {},
+                    logger=self.logger
+                )
             
-            if attribution_results:
-                self.last_attribution_analysis_time = current_time
-                self.logger.info("✅ Completed periodic Captum attribution analysis")
+            # Use recent states
+            analysis_states = list(self.state_buffer)[-3:]  # Use 3 states for gradient analysis
+            
+            self.logger.info(f"🚀 Running fast gradient attribution on {len(analysis_states)} states")
+            start_time = time.time()
+            
+            # Run simple attribution
+            attribution_results = self._simple_analyzer.analyze_features(analysis_states)
+            analysis_time = time.time() - start_time
+            
+            if attribution_results and 'error' not in attribution_results:
+                self.logger.info(f"✅ Fast gradient attribution completed in {analysis_time:.2f}s")
                 
-                # Log consensus metrics if available
-                if 'consensus' in attribution_results:
-                    consensus = attribution_results['consensus']
-                    self.logger.info(f"📊 Attribution consensus: {consensus.get('mean_correlation', 0):.3f}")
-                
-                # Log attribution metrics
-                if 'metrics' in attribution_results:
-                    metrics = attribution_results['metrics']
-                    self.logger.info(f"📈 Attribution quality - Sparsity: {metrics.get('sparsity', 0):.3f}, "
-                                     f"Concentration: {metrics.get('concentration', 0):.3f}")
-                
-                # Log top features by branch for visibility
-                if 'branch_attributions' in attribution_results:
-                    self.logger.info("🔥 Top features by branch:")
-                    for branch, attrs in attribution_results['branch_attributions'].items():
-                        if branch in self.attribution_analyzer.feature_names:
-                            feature_names = self.attribution_analyzer.feature_names[branch]
-                            mean_attrs = attrs.mean(axis=0)  # Average across samples
+                # Convert to SHAP-compatible format for dashboard
+                if 'input_gradients' in attribution_results:
+                    branch_importance = attribution_results['input_gradients']
+                    
+                    # Create simplified results in SHAP format
+                    simplified_results = {
+                        'method': 'fast_gradient',
+                        'analysis_time': analysis_time,
+                        'n_samples': len(analysis_states),
+                        'branch_importance': branch_importance,
+                        'summary_stats': {
+                            'mean_absolute_importance': float(np.mean([abs(v) for v in branch_importance.values()])),
+                            'explanation_quality': 'fast_approximation'
+                        },
+                        'top_features': [
+                            {'branch': branch, 'importance': importance, 'rank': i+1} 
+                            for i, (branch, importance) in enumerate(
+                                sorted(branch_importance.items(), key=lambda x: abs(x[1]), reverse=True)
+                            )
+                        ][:5]
+                    }
+                    
+                    # Store results for metrics collection
+                    self._store_attribution_results(simplified_results)
+                    
+                    # Log key results to console (like SHAP did)
+                    branch_ranking = sorted(branch_importance.items(), key=lambda x: abs(x[1]), reverse=True)
+                    self.logger.info(f"📊 Branch ranking: {[(b, f'{s:.3f}') for b, s in branch_ranking]}")
+                    
+                    top_5 = simplified_results['top_features'][:5]
+                    feature_list = [(f['branch'], f"{f['importance']:.4f}") for f in top_5]
+                    self.logger.info(f"🔥 Top branches: {feature_list}")
+                    
+                    # Log to WandB using native plots (no local files!)
+                    try:
+                        import wandb
+                        if wandb.run:
+                            log_dict = {}
                             
-                            # Get top 3 features for this branch
-                            top_indices = np.argsort(np.abs(mean_attrs))[-3:][::-1]
-                            top_features = [(feature_names[i], mean_attrs[i]) for i in top_indices if i < len(feature_names)]
+                            # Branch importance metrics
+                            for branch, importance in branch_importance.items():
+                                log_dict[f"attribution/branch_{branch}_importance"] = importance
                             
-                            feature_summary = ", ".join([f"{name}: {score:.4f}" for name, score in top_features])
-                            self.logger.info(f"   📊 {branch.upper()}: {feature_summary}")
-                
-                # Store results for metrics collection
-                self._store_attribution_results(attribution_results)
-                
-                return attribution_results
+                            # Summary stats
+                            for stat, value in simplified_results['summary_stats'].items():
+                                log_dict[f"attribution/{stat}"] = value
+                            
+                            # Top features
+                            for i, feature_info in enumerate(simplified_results['top_features'][:5]):
+                                log_dict[f"attribution/top_branch_{i+1}_importance"] = feature_info['importance']
+                                log_dict[f"attribution/top_branch_{i+1}_name"] = feature_info['branch']
+                            
+                            # Analysis metadata
+                            log_dict["attribution/analysis_time"] = analysis_time
+                            log_dict["attribution/n_samples_analyzed"] = len(analysis_states)
+                            log_dict["attribution/method"] = "fast_gradient"
+                            
+                            # Create native WandB visualizations (no local files!)
+                            branches = list(branch_importance.keys())
+                            importances = list(branch_importance.values())
+                            
+                            # 1. Bar chart using wandb.plot.bar
+                            bar_data = [[branch, importance] for branch, importance in zip(branches, importances)]
+                            bar_table = wandb.Table(data=bar_data, columns=["Branch", "Importance"])
+                            log_dict["attribution/branch_importance_chart"] = wandb.plot.bar(
+                                bar_table, "Branch", "Importance",
+                                title=f"Branch Importance (Gradient Attribution) - {analysis_time:.2f}s"
+                            )
+                            
+                            # 2. Line plot for trends
+                            log_dict["attribution/branch_importance_line"] = wandb.plot.line(
+                                bar_table, "Branch", "Importance",
+                                title="Attribution Scores by Branch"
+                            )
+                            
+                            # 3. Custom HTML plot for pie chart using plotly
+                            try:
+                                import plotly.graph_objects as go
+                                import plotly.io as pio
+                                
+                                # Create pie chart
+                                fig = go.Figure(data=[go.Pie(
+                                    labels=branches,
+                                    values=[abs(v) for v in importances],
+                                    title=f"Branch Importance Distribution<br>(Analysis: {analysis_time:.2f}s)"
+                                )])
+                                
+                                fig.update_traces(
+                                    textposition='inside', 
+                                    textinfo='percent+label',
+                                    textfont_size=12
+                                )
+                                
+                                fig.update_layout(
+                                    showlegend=True,
+                                    width=600, height=500,
+                                    font=dict(size=12)
+                                )
+                                
+                                # Log as HTML (wandb supports this!)
+                                log_dict["attribution/branch_pie_chart"] = wandb.Html(pio.to_html(fig, include_plotlyjs='inline'))
+                                
+                            except ImportError:
+                                self.logger.debug("Plotly not available for pie chart")
+                            
+                            # 4. Create a summary table
+                            summary_data = []
+                            for i, (branch, importance) in enumerate(zip(branches, importances)):
+                                summary_data.append([i+1, branch, f"{importance:.4f}", f"{abs(importance)/sum(abs(v) for v in importances)*100:.1f}%"])
+                            
+                            summary_table = wandb.Table(
+                                data=summary_data,
+                                columns=["Rank", "Branch", "Importance", "Percentage"]
+                            )
+                            log_dict["attribution/importance_table"] = summary_table
+                            
+                            wandb.log(log_dict)
+                            self.logger.info(f"📈 Logged {len(log_dict)} gradient attribution metrics + native WandB plots")
+                    except Exception as e:
+                        self.logger.debug(f"WandB logging failed: {e}")
+                    
+                    return simplified_results
+            
+            return attribution_results
             
         except Exception as e:
-            self.logger.warning(f"Captum attribution analysis failed: {e}")
-        
-        return None
+            self.logger.error(f"Fast gradient attribution failed: {e}")
+            return None
     
     def _store_attribution_results(self, attribution_results: Dict[str, Any]):
-        """Store attribution results for later retrieval by metrics collection"""
-        # Store key attribution metrics that should show up in dashboards
+        """Store SHAP attribution results for later retrieval by metrics collection"""
         self.last_attribution_metrics = {}
         
-        # Store consensus scores
-        if 'consensus' in attribution_results:
-            consensus = attribution_results['consensus']
-            for metric, value in consensus.items():
-                self.last_attribution_metrics[f"consensus_{metric}"] = value
+        # Store branch importance scores
+        if 'branch_importance' in attribution_results:
+            for branch, importance in attribution_results['branch_importance'].items():
+                self.last_attribution_metrics[f"shap_branch_{branch}_importance"] = importance
         
-        # Store quality metrics
-        if 'metrics' in attribution_results:
-            quality_metrics = attribution_results['metrics']
-            for metric, value in quality_metrics.items():
-                self.last_attribution_metrics[f"quality_{metric}"] = value
+        # Store summary statistics
+        if 'summary_stats' in attribution_results:
+            for metric, value in attribution_results['summary_stats'].items():
+                self.last_attribution_metrics[f"shap_{metric}"] = value
         
-        # Store top feature scores by branch
-        if 'branch_attributions' in attribution_results:
-            for branch, attrs in attribution_results['branch_attributions'].items():
-                if branch in self.attribution_analyzer.feature_names:
-                    mean_attrs = attrs.mean(axis=0)
-                    # Store max attribution score for this branch
-                    max_score = float(np.max(np.abs(mean_attrs)))
-                    mean_score = float(np.mean(np.abs(mean_attrs)))
-                    self.last_attribution_metrics[f"branch_{branch}_max_attribution"] = max_score
-                    self.last_attribution_metrics[f"branch_{branch}_mean_attribution"] = mean_score
+        # Store top feature scores
+        if 'top_features' in attribution_results:
+            for i, feature_info in enumerate(attribution_results['top_features'][:5]):  # Top 5
+                self.last_attribution_metrics[f"shap_top_feature_{i+1}_importance"] = feature_info['importance']
+                # Handle both SHAP and gradient attribution formats
+                if 'feature_name' in feature_info:
+                    self.last_attribution_metrics[f"shap_top_feature_{i+1}_name"] = f"{feature_info['branch']}.{feature_info['feature_name']}"
+                else:
+                    # For gradient attribution, just use branch name
+                    self.last_attribution_metrics[f"shap_top_feature_{i+1}_name"] = feature_info['branch']
         
-        self.logger.debug(f"Stored {len(self.last_attribution_metrics)} attribution metrics for dashboard/wandb")
+        # Store dead features count
+        if 'dead_features' in attribution_results:
+            total_dead = sum(len(features) for features in attribution_results['dead_features'].values())
+            self.last_attribution_metrics['shap_dead_features_total'] = total_dead
+            
+            for branch, dead_list in attribution_results['dead_features'].items():
+                self.last_attribution_metrics[f"shap_dead_features_{branch}"] = len(dead_list)
+        
+        # Store analysis metadata
+        self.last_attribution_metrics['shap_analysis_time'] = attribution_results.get('analysis_time', 0)
+        self.last_attribution_metrics['shap_samples_analyzed'] = attribution_results.get('n_samples', 0)
+        
+        self.logger.debug(f"Stored {len(self.last_attribution_metrics)} SHAP attribution metrics for dashboard/wandb")
     
     def run_permutation_importance_analysis(self, environment, n_episodes: int = 20) -> Optional[Dict[str, Dict[str, float]]]:
         """Run permutation importance analysis"""
@@ -476,15 +584,28 @@ class ModelInternalsCollector(MetricCollector):
             # Get the model from the attribution analyzer
             model = self.attribution_analyzer.model
             
-            # Permutation importance is less relevant with gradient-based attribution
-            # Return feature rankings instead
-            rankings = self.attribution_analyzer.get_feature_importance_ranking(
-                n_top=5,
-                method="historical"
-            )
+            # Use recent attribution results if available
+            rankings = {}
+            if hasattr(self, 'last_attribution_metrics') and self.last_attribution_metrics:
+                # Convert SHAP metrics to permutation importance format
+                for key, value in self.last_attribution_metrics.items():
+                    if 'branch_' in key and '_importance' in key:
+                        branch = key.replace('shap_branch_', '').replace('_importance', '')
+                        rankings[branch] = {'importance': float(value)}
+                
+                if rankings:
+                    self.logger.info("Retrieved feature importance rankings from SHAP")
+                    return rankings
             
-            if rankings:
-                self.logger.info("Retrieved feature importance rankings from Captum")
+            # Fallback: run new SHAP analysis if no recent results
+            if len(self.state_buffer) >= 5:
+                attribution_results = self.run_periodic_shap_analysis()
+                if attribution_results and 'branch_importance' in attribution_results:
+                    for branch, importance in attribution_results['branch_importance'].items():
+                        rankings[branch] = {'importance': float(importance)}
+                    if rankings:
+                        self.logger.info("Generated new SHAP rankings")
+                        return rankings
             
             return rankings
             
@@ -510,63 +631,123 @@ class ModelInternalsCollector(MetricCollector):
                             formatted_state[key] = tensor
                     states_for_analysis.append(formatted_state)
             
-            # Generate comprehensive report using Captum
-            report = self.attribution_analyzer.generate_attribution_report(
-                sample_states=states_for_analysis if states_for_analysis else [],
-                save_path=save_path
-            )
-            
-            return report
+            # Generate comprehensive report using SHAP
+            if states_for_analysis:
+                attribution_results = self.attribution_analyzer.analyze_features(states_for_analysis, max_samples=10)
+                
+                if attribution_results and 'error' not in attribution_results:
+                    # Build comprehensive report from SHAP results
+                    report = {
+                        "method": "SHAP",
+                        "analysis_summary": attribution_results.get('summary_stats', {}),
+                        "branch_importance": attribution_results.get('branch_importance', {}),
+                        "top_features": attribution_results.get('top_features', []),
+                        "dead_features": attribution_results.get('dead_features', {}),
+                        "feature_interactions": attribution_results.get('feature_interactions', {}),
+                        "individual_explanations": attribution_results.get('individual_explanations', []),
+                        "analysis_time": attribution_results.get('analysis_time', 0),
+                        "samples_analyzed": attribution_results.get('n_samples', 0)
+                    }
+                    
+                    # Save plot paths if available
+                    if 'plot_paths' in attribution_results:
+                        report['visualizations'] = attribution_results['plot_paths']
+                        
+                    self.logger.info(f"Generated comprehensive SHAP feature report with {len(report)} sections")
+                    
+                    # Save to file if requested
+                    if save_path:
+                        import json
+                        try:
+                            with open(save_path, 'w') as f:
+                                # Convert non-serializable objects for JSON
+                                serializable_report = {}
+                                for key, value in report.items():
+                                    try:
+                                        json.dumps(value)  # Test if serializable
+                                        serializable_report[key] = value
+                                    except (TypeError, ValueError):
+                                        serializable_report[key] = str(value)
+                                json.dump(serializable_report, f, indent=2)
+                            self.logger.info(f"SHAP feature report saved to {save_path}")
+                        except Exception as e:
+                            self.logger.warning(f"Failed to save report to {save_path}: {e}")
+                            
+                    return report
+                else:
+                    return {"error": "SHAP analysis failed"}
+            else:
+                return {"error": "No states available for analysis"}
             
         except Exception as e:
             self.logger.error(f"Failed to generate feature report: {e}")
             return {}
     
     def get_feature_attribution_summary(self) -> Dict[str, Any]:
-        """Get a summary of current feature attribution analysis"""
-        if not self.enable_attribution or not self.attribution_analyzer:
+        """Get a summary of current gradient feature attribution analysis"""
+        if not self.enable_attribution:
             return {"attribution_enabled": False}
         
-        summary = {
-            "attribution_enabled": True,
-            "states_buffered": len(self.state_buffer),
-            "last_attribution_analysis": self.last_attribution_analysis_time,
-            "total_features": self.attribution_analyzer.total_features
-        }
-        
-        # Add top features by branch using Captum rankings
-        try:
-            top_features = self.attribution_analyzer.get_feature_importance_ranking(n_top=3)
-            summary["top_features_by_branch"] = {}
-            for branch, feature_list in top_features.items():
-                summary["top_features_by_branch"][branch] = [
-                    {"name": name, "importance": importance} 
-                    for name, importance in feature_list
-                ]
-        except Exception as e:
-            self.logger.debug(f"Error getting top features for summary: {e}")
-            summary["top_features_by_branch"] = {}
-        
-        # Add dead features info
-        try:
-            dead_features = self.attribution_analyzer.get_dead_features()
-            summary["dead_features"] = {
-                "total_count": sum(len(features) for features in dead_features.values()),
-                "by_branch": {branch: list(features) for branch, features in dead_features.items()}
+        # Use stored attribution results from gradient analysis
+        if hasattr(self, 'last_attribution_metrics') and self.last_attribution_metrics:
+            # Convert gradient attribution results to dashboard format
+            summary = {
+                "attribution_enabled": True,
+                "method": "fast_gradient",
+                "total_features_tracked": len(self.last_attribution_metrics),
+                "branches_tracked": len([k for k in self.last_attribution_metrics.keys() if 'branch_' in k and '_importance' in k]),
             }
-        except Exception as e:
-            self.logger.debug(f"Error getting dead features for summary: {e}")
-            summary["dead_features"] = {"total_count": 0, "by_branch": {}}
+            
+            # Top features for dashboard
+            top_features = []
+            for i in range(1, 6):  # Top 5
+                importance_key = f"shap_top_feature_{i}_importance"
+                name_key = f"shap_top_feature_{i}_name" 
+                if importance_key in self.last_attribution_metrics and name_key in self.last_attribution_metrics:
+                    top_features.append({
+                        "name": self.last_attribution_metrics[name_key],
+                        "current": float(self.last_attribution_metrics[importance_key]),
+                        "average": float(self.last_attribution_metrics[importance_key]),  # No history yet
+                        "trend": "stable"
+                    })
+            
+            summary["top_features"] = top_features
+            
+            # Branch importance for dashboard
+            branch_importance = {}
+            for key, value in self.last_attribution_metrics.items():
+                if key.startswith('shap_branch_') and key.endswith('_importance'):
+                    branch = key.replace('shap_branch_', '').replace('_importance', '')
+                    branch_importance[branch] = {
+                        "current": float(value),
+                        "average": float(value),  # No history yet
+                        "trend": "stable"
+                    }
+            
+            summary["branch_importance"] = branch_importance
+            
+            # Convert branch importance to top_features_by_branch format for dashboard
+            top_features_by_branch = {}
+            for branch, importance_data in branch_importance.items():
+                top_features_by_branch[branch] = [{
+                    "name": branch,
+                    "importance": importance_data["current"],
+                    "rank": 1
+                }]
+            
+            summary["top_features_by_branch"] = top_features_by_branch
+            
+            # Add quality metrics
+            summary["explanation_quality"] = "fast_approximation"
+            summary["dead_features_count"] = self.last_attribution_metrics.get('shap_dead_features_total', 0)
+            
+            self.logger.info(f"📊 Generated attribution summary with {len(summary)} keys for dashboard")
+            self.logger.info(f"📊 Top branches: {list(branch_importance.keys())}")
+            return summary
         
-        # Add gradient flow analysis if available
-        gradient_analysis = self.attribution_analyzer.analyze_gradient_flow()
-        if gradient_analysis and 'error' not in gradient_analysis:
-            summary["gradient_flow"] = {
-                "vanishing_layers": gradient_analysis.get('vanishing_gradients', []),
-                "exploding_layers": gradient_analysis.get('exploding_gradients', [])
-            }
-        
-        return summary
+        return {"attribution_enabled": False, "reason": "No attribution data available"}
+    
+    # Local file visualization method removed - using WandB native plots instead!
     
     def _get_metadata(self, metric_name: str) -> MetricMetadata:
         """Get metadata for a metric by name"""

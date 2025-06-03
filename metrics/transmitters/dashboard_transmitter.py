@@ -13,17 +13,19 @@ from dashboard.shared_state import dashboard_state
 class DashboardTransmitter(MetricTransmitter):
     """Transmitter that sends metrics to the live dashboard"""
     
-    def __init__(self, port: int = 8050, update_interval: float = 0.1):
+    def __init__(self, port: int = 8050, update_interval: float = 0.1, metrics_integrator=None):
         """
         Initialize the dashboard transmitter
         
         Args:
             port: Port to run the dashboard on
             update_interval: Interval for batching updates
+            metrics_integrator: Optional metrics integrator for attribution data
         """
         self.logger = logging.getLogger(__name__)
         self.port = port
         self.update_interval = update_interval
+        self.metrics_integrator = metrics_integrator
         
         # We now use shared state instead of dashboard instance
         self._is_started = False
@@ -147,6 +149,15 @@ class DashboardTransmitter(MetricTransmitter):
                                 
                             dashboard_state.update_metrics(dashboard_update)
                         self._metric_buffer.clear()
+                
+                # Periodically fetch attribution summary (every 5 seconds)
+                if hasattr(self, '_last_attribution_fetch'):
+                    if time.time() - self._last_attribution_fetch > 5.0:
+                        self._fetch_attribution_summary()
+                        self._last_attribution_fetch = time.time()
+                else:
+                    self._last_attribution_fetch = time.time()
+                    self._fetch_attribution_summary()
                 
                 # Process events (with timeout to allow checking stop event)
                 deadline = time.time() + self.update_interval
@@ -397,6 +408,20 @@ class DashboardTransmitter(MetricTransmitter):
         except Exception as e:
             self.logger.error(f"Error processing event {event_name}: {e}")
     
+    def _fetch_attribution_summary(self):
+        """Fetch attribution summary from metrics integrator and send to dashboard"""
+        if not self.metrics_integrator:
+            return
+            
+        try:
+            attribution_summary = self.metrics_integrator.get_feature_attribution_summary()
+            if attribution_summary and attribution_summary.get('attribution_enabled', False):
+                # Send attribution summary to dashboard
+                dashboard_state.update_metrics({'attribution_summary': attribution_summary})
+                self.logger.debug(f"Updated dashboard with attribution summary: {len(attribution_summary)} keys")
+        except Exception as e:
+            self.logger.debug(f"Failed to fetch attribution summary: {e}")
+
     def close(self):
         """Close the dashboard transmitter"""
         self.logger.info("Closing dashboard transmitter")

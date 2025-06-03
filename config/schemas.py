@@ -230,7 +230,6 @@ class TrainingConfig(BaseModel):
     
     # Continuous training - production ready
     continue_training: bool = False
-    total_updates: int = Field(default=3000, description="Total training updates")
     checkpoint_interval: int = Field(default=50, description="Updates between checkpoints")
     keep_best_n_models: int = Field(default=5, description="Number of best models to keep")
     
@@ -239,7 +238,7 @@ class TrainingConfig(BaseModel):
     early_stop_min_delta: float = Field(default=0.01, description="Minimum improvement to reset patience")
     
     # Evaluation
-    eval_frequency: int = Field(default=25, description="Updates between evaluations")
+    eval_frequency: int = Field(default=5, description="Updates between evaluations")
     eval_episodes: int = Field(default=10, description="Episodes for evaluation")
     
     # Model selection metric

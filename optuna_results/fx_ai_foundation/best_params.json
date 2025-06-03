@@ -1,0 +1,16 @@
+{
+  "best_value": 0.0,
+  "best_params": {
+    "training.learning_rate": 0.00015263707169053988,
+    "training.batch_size": 64,
+    "training.entropy_coef": 0.03678838294409871,
+    "training.gamma": 0.9938689549303106,
+    "model.d_model": 128,
+    "model.n_layers": 4,
+    "model.dropout": 0.06537632355355812,
+    "training.rollout_steps": 2048,
+    "env.reward.pnl_coefficient": 125.93488414232718
+  },
+  "best_trial": 112,
+  "n_trials": 216
+}

@@ -152,7 +152,22 @@ class DashboardServer:
                     ], style=self._card_style()),
                 ], style={'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '6px', 'marginBottom': '6px'}),
                 
-                # Row 4: Full-width Chart
+                # Row 4: Feature Attribution Panel (2-column layout)
+                html.Div([
+                    # Top Features by Branch
+                    html.Div([
+                        html.H4("🔍 Top Features", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                        html.Div(id='attribution-features-content')
+                    ], style=self._card_style()),
+                    
+                    # Attribution Quality Metrics
+                    html.Div([
+                        html.H4("📊 Attribution Quality", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
+                        html.Div(id='attribution-quality-content')
+                    ], style=self._card_style()),
+                ], style={'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '6px', 'marginBottom': '6px'}),
+                
+                # Row 5: Full-width Chart
                 html.Div([
                     html.H4("Price & Volume (Focused View)", style={'color': DARK_THEME['text_primary'], 'marginBottom': '4px', 'fontSize': '12px', 'fontWeight': 'bold'}),
                     dcc.Graph(id='candlestick-chart', style={'height': '500px'})
@@ -202,6 +217,8 @@ class DashboardServer:
              Output('ppo-metrics-content', 'children'),
              Output('reward-table-container', 'children'),
              Output('env-content', 'children'),
+             Output('attribution-features-content', 'children'),
+             Output('attribution-quality-content', 'children'),
              Output('candlestick-chart', 'figure'),
              Output('performance-footer', 'children')],
             Input('interval-component', 'n_intervals')
@@ -875,6 +892,10 @@ class DashboardServer:
             # Custom candlestick chart
             candlestick_chart = self._create_price_chart(state)
             
+            # Attribution panels
+            attribution_features_content = self._create_attribution_features_content(state)
+            attribution_quality_content = self._create_attribution_quality_content(state)
+            
             # Performance footer with eps/Hour moved here
             eps_per_hour = getattr(state, 'episodes_per_hour', 0.0)
             updates_per_hour = state.updates_per_second * 3600
@@ -882,7 +903,8 @@ class DashboardServer:
             
             return (header_info, session_time_str, market_info, portfolio_position_info, performance_metrics_info,
                    trades_table, trade_counter_text, actions_content, episode_content, training_content, ppo_content,
-                   reward_table, env_content, candlestick_chart, footer)
+                   reward_table, env_content, attribution_features_content, attribution_quality_content, 
+                   candlestick_chart, footer)
             
     def _info_row(self, label: str, value: str, color: Optional[str] = None) -> html.Div:
         """Create an info row with label left-aligned and value right-aligned"""
@@ -1585,6 +1607,158 @@ class DashboardServer:
         
         return fig
         
+    def _create_attribution_features_content(self, state) -> html.Div:
+        """Create top features attribution content"""
+        try:
+            # Get attribution summary from state
+            attribution_summary = getattr(state, 'attribution_summary', None)
+            
+            if not attribution_summary or not attribution_summary.get('top_features_by_branch'):
+                return html.Div([
+                    html.Div("🔍 Analyzing features...", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px', 'textAlign': 'center', 'padding': '20px'})
+                ])
+            
+            top_features = attribution_summary['top_features_by_branch']
+            
+            feature_elements = []
+            branch_colors = {
+                'hf': DARK_THEME['accent_red'], 
+                'mf': DARK_THEME['accent_blue'], 
+                'lf': DARK_THEME['accent_green'], 
+                'portfolio': DARK_THEME['accent_orange']
+            }
+            
+            for branch, features in top_features.items():
+                if features:  # List of {'name': str, 'importance': float}
+                    # Branch header
+                    branch_color = branch_colors.get(branch, DARK_THEME['accent_purple'])
+                    feature_elements.append(
+                        html.Div(f"{branch.upper()}", style={
+                            'color': branch_color, 
+                            'fontSize': '11px', 
+                            'fontWeight': 'bold', 
+                            'marginBottom': '2px'
+                        })
+                    )
+                    
+                    # Top 3 features for this branch
+                    for feature in features[:3]:
+                        importance = feature['importance']
+                        # Scale importance to percentage for display
+                        importance_pct = min(100, abs(importance) * 1000)  # Scale for visibility
+                        bar_color = branch_color if importance > 0 else DARK_THEME['text_muted']
+                        
+                        feature_elements.append(
+                            html.Div([
+                                html.Div([
+                                    html.Span(feature['name'], style={
+                                        'color': DARK_THEME['text_primary'], 
+                                        'fontSize': '10px',
+                                        'display': 'inline-block',
+                                        'width': '60%',
+                                        'whiteSpace': 'nowrap',
+                                        'overflow': 'hidden',
+                                        'textOverflow': 'ellipsis'
+                                    }),
+                                    html.Span(f"{importance:.3f}", style={
+                                        'color': branch_color, 
+                                        'fontSize': '10px',
+                                        'fontWeight': 'bold',
+                                        'float': 'right'
+                                    })
+                                ], style={'marginBottom': '1px'}),
+                                html.Div(style={
+                                    'height': '2px',
+                                    'backgroundColor': DARK_THEME['border'],
+                                    'marginBottom': '3px',
+                                    'position': 'relative'
+                                }, children=[
+                                    html.Div(style={
+                                        'height': '100%',
+                                        'width': f"{importance_pct}%",
+                                        'backgroundColor': bar_color,
+                                        'transition': 'width 0.3s ease'
+                                    })
+                                ])
+                            ], style={'marginBottom': '4px'})
+                        )
+                    
+                    # Add spacing between branches
+                    feature_elements.append(html.Div(style={'height': '4px'}))
+            
+            if not feature_elements:
+                return html.Div([
+                    html.Div("No feature data available", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px', 'textAlign': 'center'})
+                ])
+            
+            return html.Div(feature_elements, style={'maxHeight': '120px', 'overflowY': 'auto'})
+            
+        except Exception as e:
+            return html.Div([
+                html.Div(f"Error: {str(e)}", style={'color': DARK_THEME['accent_red'], 'fontSize': '10px'})
+            ])
+    
+    def _create_attribution_quality_content(self, state) -> html.Div:
+        """Create attribution quality metrics content"""
+        try:
+            # Get attribution summary from state
+            attribution_summary = getattr(state, 'attribution_summary', None)
+            
+            if not attribution_summary:
+                return html.Div([
+                    html.Div("📊 Waiting for attribution analysis...", style={'color': DARK_THEME['text_secondary'], 'fontSize': '11px', 'textAlign': 'center', 'padding': '20px'})
+                ])
+            
+            quality_elements = []
+            
+            # Consensus score
+            consensus = attribution_summary.get('consensus_mean_correlation', 0.0)
+            consensus_color = DARK_THEME['accent_green'] if consensus > 0.7 else DARK_THEME['accent_orange'] if consensus > 0.4 else DARK_THEME['accent_red']
+            quality_elements.append(
+                self._info_row("Consensus", f"{consensus:.3f}", consensus_color)
+            )
+            
+            # Sparsity
+            sparsity = attribution_summary.get('quality_sparsity', 0.0)
+            sparsity_color = DARK_THEME['accent_blue'] if sparsity > 0.5 else DARK_THEME['text_primary']
+            quality_elements.append(
+                self._info_row("Sparsity", f"{sparsity:.3f}", sparsity_color)
+            )
+            
+            # Dead features count
+            dead_count = attribution_summary.get('dead_features_count', 0)
+            dead_color = DARK_THEME['accent_red'] if dead_count > 10 else DARK_THEME['text_primary']
+            quality_elements.append(
+                self._info_row("Dead Features", str(dead_count), dead_color)
+            )
+            
+            # Branch max attributions
+            max_attrs = {}
+            for key, value in attribution_summary.items():
+                if key.startswith('branch_') and key.endswith('_max_attribution'):
+                    branch = key.replace('branch_', '').replace('_max_attribution', '')
+                    max_attrs[branch] = value
+            
+            if max_attrs:
+                quality_elements.append(html.Div(style={'height': '4px'}))  # Spacer
+                quality_elements.append(
+                    html.Div("Max Attribution:", style={'color': DARK_THEME['text_secondary'], 'fontSize': '10px', 'fontWeight': 'bold'})
+                )
+                
+                for branch, max_attr in max_attrs.items():
+                    branch_colors = {'hf': DARK_THEME['accent_red'], 'mf': DARK_THEME['accent_blue'], 'lf': DARK_THEME['accent_green'], 'portfolio': DARK_THEME['accent_orange']}
+                    branch_color = branch_colors.get(branch, DARK_THEME['text_primary'])
+                    quality_elements.append(
+                        self._info_row(f"{branch.upper()}", f"{max_attr:.3f}", branch_color)
+                    )
+            
+            return html.Div(quality_elements)
+            
+        except Exception as e:
+            return html.Div([
+                html.Div(f"Error: {str(e)}", style={'color': DARK_THEME['accent_red'], 'fontSize': '10px'})
+            ])
+
     def run(self):
         """Run the dashboard server"""
         if self.app is None:

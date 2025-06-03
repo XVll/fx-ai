@@ -14,8 +14,11 @@ studies:
     storage: sqlite:///optuna_studies.db
     load_if_exists: true
     
+    # NEW: Base config reference system
+    base_config: momentum_training
+    
     sampler:
-      type: CmaEsSampler          # Better for continuous reward coefficients
+      type: CmaEsSampler      # Better for continuous reward coefficients
       n_startup_trials: 10
       seed: 42
       warn_independent_sampling: false
@@ -27,8 +30,8 @@ studies:
       interval_steps: 4
       n_min_trials: 4
     
+    # ONLY reward system parameters (will be populated by transfer script)
     parameters:
-      # Core reward system parameters (12 params)
       - name: env.reward.pnl_coefficient
         type: float
         low: 80.0
@@ -94,108 +97,32 @@ studies:
     n_jobs: 1
     catch_exceptions: true
     
-    training_config:
+    # ONLY trial-specific overrides (foundation params will be set by transfer script)
+    trial_overrides:
       mode: train
       experiment_name: optuna_reward
-      config: momentum_training
       
       training:
-        total_updates: 25         # Longer for reward stability testing
         checkpoint_interval: 8
         eval_frequency: 8
         eval_episodes: 5
-        rollout_steps: 2048
         continue_training: false
         
-        # FIXED from Phase 1 results (will be populated by best foundation results)
-        learning_rate: 0.0002     # PLACEHOLDER - will be set from phase1 best
-        batch_size: 64            # PLACEHOLDER - will be set from phase1 best
-        entropy_coef: 0.01        # PLACEHOLDER - will be set from phase1 best
-        gamma: 0.99               # PLACEHOLDER - will be set from phase1 best
-        
-        # Fixed defaults
-        n_epochs: 8
-        clip_epsilon: 0.2
-        gae_lambda: 0.95
-        value_coef: 0.5
-        max_grad_norm: 0.3
-        use_lr_annealing: true
-        lr_annealing_factor: 0.7
-        lr_annealing_patience: 50
-        min_learning_rate: 1.0e-06
+        # FIXED foundation parameters (populated by transfer script)
+        # learning_rate: [SET BY TRANSFER]
+        # batch_size: [SET BY TRANSFER]
+        # entropy_coef: [SET BY TRANSFER]
+        # gamma: [SET BY TRANSFER]
       
       model:
-        # FIXED from Phase 1 results (will be populated by best foundation results)
-        d_model: 128              # PLACEHOLDER - will be set from phase1 best
-        n_layers: 6               # PLACEHOLDER - will be set from phase1 best
-        dropout: 0.1              # PLACEHOLDER - will be set from phase1 best
+        # FIXED foundation parameters (populated by transfer script)
+        # d_model: [SET BY TRANSFER]
+        # n_layers: [SET BY TRANSFER]
+        # dropout: [SET BY TRANSFER]
         
-        # Fixed defaults
-        d_fused: 512
-        n_heads: 8
-        d_ff: 2048
-        hf_layers: 3
-        mf_layers: 3
-        lf_layers: 2
-        portfolio_layers: 2
-        hf_heads: 8
-        mf_heads: 8
-        lf_heads: 4
-        portfolio_heads: 4
-        continuous_action: false
-      
-      env:
-        symbol: MLGO              # Single symbol for reward optimization
-        max_episode_steps: 256
-        training_mode: true
-        feature_update_interval: 1
-        max_training_steps: null
-        max_steps: 1000
-        early_stop_loss_threshold: 0.85
-        random_reset: true
-        max_episode_loss_percent: 0.15
-        bankruptcy_threshold_factor: 0.01
-        render_mode: none
-        
-        # Fixed environment parameters
-        initial_capital: 25000.0
-        max_position_size: 1.0
-        leverage: 1.0
-        commission_rate: 0.001
-        slippage_rate: 0.0005
-        min_transaction_amount: 100.0
-        max_drawdown: 0.3
-        stop_loss_pct: 0.15
-        daily_loss_limit: 0.25
-        
-        # Reward parameters will be optimized (see parameters section above)
-        reward:
-          # Fixed reward parameters (not optimized in this phase)
-          profit_giveback_threshold: 0.3
-          max_drawdown_threshold_percent: 0.01
-          max_clean_drawdown_percent: 0.01
-          max_mae_threshold: 0.02
-          min_gain_threshold: 0.01
-          enable_pnl_reward: true
-          enable_holding_penalty: true
-          enable_drawdown_penalty: true
-          enable_profit_giveback_penalty: true
-          enable_max_drawdown_penalty: true
-          enable_profit_closing_bonus: true
-          enable_clean_trade_bonus: true
-          enable_trading_activity_bonus: true
-          enable_inactivity_penalty: true
-      
-      # Reward phase curriculum: Single symbol, single stage, longer training
       curriculum:
         stage_1_beginner:
-          enabled: true
-          symbols: ["MLGO"]
-          date_range: [null, null]    # You will configure
-          day_score_range: [0.7, 1.0]  # You will configure
-          roc_range: [0.05, 1.0]      # You will configure
-          activity_range: [0.0, 1.0]  # You will configure
-          max_updates: 25             # Match training.total_updates
+          max_cycles: 8          # More cycles for reward testing
         
         stage_2_intermediate:
           enabled: false
@@ -206,74 +133,22 @@ studies:
         stage_4_specialization:
           enabled: false
       
-      data:
-        provider: databento
-        data_dir: dnb
-        symbols: ["MLGO"]
-        load_trades: true
-        load_quotes: true
-        load_order_book: true
-        load_ohlcv: true
-        start_date: '2025-02-03'
-        end_date: '2025-04-29'
-        cache_enabled: true
-        cache_dir: cache
-        preload_days: 2
-        index_dir: cache/indices
-        auto_build_index: true
-      
-      simulation:
-        execution_delay_ms: 100
-        partial_fill_probability: 0.0
-        allow_shorting: false
-        mean_latency_ms: 100.0
-        latency_std_dev_ms: 20.0
-        base_slippage_bps: 10.0
-        size_impact_slippage_bps_per_unit: 0.2
-        max_total_slippage_bps: 100.0
-        commission_per_share: 0.005
-        fee_per_share: 0.001
-        min_commission_per_order: 1.0
-        max_commission_pct_of_value: 0.5
-        market_impact_model: linear
-        market_impact_coefficient: 0.0001
-        spread_model: historical
-        fixed_spread_bps: 10.0
-        random_start_prob: 0.95
-        warmup_steps: 60
-        initial_cash: 25000.0
-        max_position_value_ratio: 1.0
-        max_position_holding_seconds: null
-      
       wandb:
         enabled: true
         project: fx-ai-optuna-reward
-        entity: null
-        name: null
         tags: [optuna, phase2, reward]
         notes: "Phase 2: Reward system optimization with fixed foundation"
-        log_frequency:
-          training: 1
-          episode: 1
-          rollout: 1
-          evaluation: 1
-        save_code: true
         save_model: false
       
       dashboard:
         enabled: false
       
       logging:
-        level: INFO
-        console_enabled: true
-        console_format: simple
         file_enabled: false
-        log_rewards: true
         log_actions: false
         log_features: false
-        log_portfolio: true
     
-    episodes_per_trial: 2500     # ~25 updates × 8 episodes per update × 12.5 rollouts
+    episodes_per_trial: 2500     # ~25 updates × estimated episodes per update
     eval_frequency: 8
     eval_episodes: 5
     save_checkpoints: false

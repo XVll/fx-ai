@@ -1,0 +1,50 @@
+curriculum:
+  stage_1_beginner:
+    max_cycles: 5
+  stage_2_intermediate:
+    enabled: false
+  stage_3_advanced:
+    enabled: false
+  stage_4_specialization:
+    enabled: false
+dashboard:
+  enabled: false
+env:
+  max_episode_steps: 512
+  reward:
+    pnl_coefficient: 82.69185123669662
+experiment_name: fx_ai_foundation_trial_102
+logging:
+  console_enabled: true
+  file_enabled: false
+  level: INFO
+  log_actions: false
+  log_features: false
+mode: train
+model:
+  d_model: 256
+  dropout: 0.15673400111454272
+  n_layers: 6
+training:
+  batch_size: 64
+  checkpoint_interval: 10
+  continue_training: false
+  entropy_coef: 0.0022503924374055713
+  eval_episodes: 5
+  eval_frequency: 10
+  gamma: 0.9840617418288322
+  learning_rate: 0.00017038397123877002
+  n_epochs: 8
+  rollout_steps: 4096
+  total_updates: 30
+wandb:
+  enabled: true
+  notes: 'Phase 1: Foundation hyperparameter optimization'
+  project: fx-ai-optuna-foundation
+  save_model: false
+  tags:
+  - optuna
+  - phase1
+  - foundation
+  - optuna
+  - trial_102

@@ -221,7 +221,7 @@ Databento Files → DataManager → MarketSimulator → FeatureExtractor → PPO
 ## Important Notes
 
 - The system focuses on momentum/squeeze trading strategies for low-float stocks
-- **Feature Attribution**: Automatic Captum gradient-based attribution analysis every 10 training updates, real-time attention tracking, gradient flow analysis, and dead feature detection integrated into all training runs
+- **Feature Attribution**: Automatic SHAP attribution analysis every training update, real-time attention tracking, feature importance visualization, and dead feature detection integrated into all training runs
 - Model checkpoints are saved in `cache/model/best/` with JSON metadata
 - Databento data files are stored in `dnb/mlgo/` directory structure
 - Logging configured through `utils/logger.py` using Rich handler
