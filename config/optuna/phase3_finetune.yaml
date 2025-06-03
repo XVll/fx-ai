@@ -1,0 +1,312 @@
+name: phase3_finetune_optimization
+description: "Phase 3: Fine-tuning with remaining parameters + refinement of best values from Phase 1&2"
+version: "1.0"
+
+dashboard_port: 8052
+log_level: INFO
+results_dir: optuna_results
+save_study_plots: true
+
+studies:
+  - study_name: fx_ai_finetune
+    direction: maximize
+    metric_name: mean_reward
+    storage: sqlite:///optuna_studies.db
+    load_if_exists: true
+    
+    sampler:
+      type: TPESampler
+      n_startup_trials: 12
+      multivariate: true
+      seed: 42
+      consider_prior: true
+      prior_weight: 1.2          # Higher prior weight for refinement
+      consider_magic_clip: true
+      consider_endpoints: true    # Consider endpoints for refinement
+    
+    pruner:
+      type: PatientPruner
+      base_pruner:
+        type: MedianPruner
+        n_startup_trials: 5
+        n_warmup_steps: 25
+        interval_steps: 5
+        n_min_trials: 4
+      patience: 3
+      min_delta: 0.01
+    
+    parameters:
+      # Remaining training parameters (4 params)
+      - name: training.n_epochs
+        type: int
+        low: 6
+        high: 12
+      
+      - name: training.clip_epsilon
+        type: float
+        low: 0.15
+        high: 0.3
+      
+      - name: training.gae_lambda
+        type: float
+        low: 0.92
+        high: 0.98
+      
+      - name: training.value_coef
+        type: float
+        low: 0.3
+        high: 0.8
+      
+      # Remaining model parameters (2 params)
+      - name: model.n_heads
+        type: categorical
+        choices: [4, 8, 16]
+      
+      - name: model.d_ff
+        type: categorical
+        choices: [1024, 2048, 4096]
+      
+      # Environment parameters (3 params)
+      - name: env.commission_rate
+        type: float
+        low: 0.0005
+        high: 0.002
+      
+      - name: env.slippage_rate
+        type: float
+        low: 0.0002
+        high: 0.001
+      
+      - name: env.max_episode_steps
+        type: categorical
+        choices: [256, 384, 512]
+      
+      # Refinement of critical parameters from previous phases (4 params)
+      - name: training.learning_rate_refinement
+        type: float_log
+        low: 0.00015               # Will be adjusted based on phase1 best ±20%
+        high: 0.00025              # Will be adjusted based on phase1 best ±20%
+      
+      - name: model.d_model_adjacent
+        type: categorical
+        choices: [128, 256]        # Will be adjusted based on phase1 best
+      
+      - name: env.reward.pnl_coefficient_refinement
+        type: float
+        low: 140.0                 # Will be adjusted based on phase2 best ±15%
+        high: 180.0                # Will be adjusted based on phase2 best ±15%
+      
+      - name: env.reward.holding_penalty_coefficient_refinement
+        type: float
+        low: 1.5                   # Will be adjusted based on phase2 best ±25%
+        high: 3.5                  # Will be adjusted based on phase2 best ±25%
+    
+    n_trials: 75
+    timeout: null
+    n_jobs: 1
+    catch_exceptions: true
+    
+    training_config:
+      mode: train
+      experiment_name: optuna_finetune
+      config: momentum_training
+      
+      training:
+        total_updates: 40         # Longer training for final validation
+        checkpoint_interval: 10
+        eval_frequency: 10
+        eval_episodes: 8
+        rollout_steps: 2048
+        continue_training: false
+        
+        # FIXED from Phase 1&2 results (placeholders to be updated)
+        learning_rate: 0.0002     # Will be set from refinement or phase1 best
+        batch_size: 64            # FIXED from phase1 best
+        entropy_coef: 0.01        # FIXED from phase1 best
+        gamma: 0.99               # FIXED from phase1 best
+        
+        # These will be optimized in this phase (see parameters section)
+        # n_epochs, clip_epsilon, gae_lambda, value_coef
+        
+        # Fixed defaults
+        max_grad_norm: 0.3
+        use_lr_annealing: true
+        lr_annealing_factor: 0.7
+        lr_annealing_patience: 50
+        min_learning_rate: 1.0e-06
+      
+      model:
+        # FIXED from Phase 1 results
+        d_model: 128              # Will be set from refinement or phase1 best
+        n_layers: 6               # FIXED from phase1 best
+        dropout: 0.1              # FIXED from phase1 best
+        
+        # These will be optimized in this phase (see parameters section)
+        # n_heads, d_ff
+        
+        # Fixed defaults
+        d_fused: 512
+        hf_layers: 3
+        mf_layers: 3
+        lf_layers: 2
+        portfolio_layers: 2
+        hf_heads: 8
+        mf_heads: 8
+        lf_heads: 4
+        portfolio_heads: 4
+        continuous_action: false
+      
+      env:
+        symbol: MLGO              # Can be configured for multi-symbol testing
+        training_mode: true
+        feature_update_interval: 1
+        max_training_steps: null
+        max_steps: 1000
+        early_stop_loss_threshold: 0.85
+        random_reset: true
+        max_episode_loss_percent: 0.15
+        bankruptcy_threshold_factor: 0.01
+        render_mode: none
+        
+        # These will be optimized in this phase (see parameters section)
+        # commission_rate, slippage_rate, max_episode_steps
+        
+        # Fixed environment parameters
+        initial_capital: 25000.0
+        max_position_size: 1.0
+        leverage: 1.0
+        min_transaction_amount: 100.0
+        max_drawdown: 0.3
+        stop_loss_pct: 0.15
+        daily_loss_limit: 0.25
+        
+        # FIXED from Phase 2 results (placeholders to be updated)
+        reward:
+          pnl_coefficient: 150.0   # Will be set from refinement or phase2 best
+          holding_penalty_coefficient: 2.5  # Will be set from refinement or phase2 best
+          drawdown_penalty_coefficient: 8.0  # FIXED from phase2 best
+          profit_closing_bonus_coefficient: 120.0  # FIXED from phase2 best
+          clean_trade_coefficient: 30.0     # FIXED from phase2 best
+          base_multiplier: 4000             # FIXED from phase2 best
+          bankruptcy_penalty_coefficient: 60.0  # FIXED from phase2 best
+          profit_giveback_penalty_coefficient: 3.0  # FIXED from phase2 best
+          max_drawdown_penalty_coefficient: 15.0    # FIXED from phase2 best
+          activity_bonus_per_trade: 0.03           # FIXED from phase2 best
+          hold_penalty_per_step: 0.015             # FIXED from phase2 best
+          max_holding_time_steps: 180              # FIXED from phase2 best
+          
+          # Fixed reward parameters
+          profit_giveback_threshold: 0.3
+          max_drawdown_threshold_percent: 0.01
+          max_clean_drawdown_percent: 0.01
+          max_mae_threshold: 0.02
+          min_gain_threshold: 0.01
+          enable_pnl_reward: true
+          enable_holding_penalty: true
+          enable_drawdown_penalty: true
+          enable_profit_giveback_penalty: true
+          enable_max_drawdown_penalty: true
+          enable_profit_closing_bonus: true
+          enable_clean_trade_bonus: true
+          enable_trading_activity_bonus: true
+          enable_inactivity_penalty: true
+      
+      # Fine-tune phase curriculum: Test multi-stage progression
+      curriculum:
+        stage_1_beginner:
+          enabled: true
+          symbols: ["MLGO"]
+          date_range: [null, null]    # You will configure
+          day_score_range: [0.7, 1.0]  # You will configure
+          roc_range: [0.05, 1.0]      # You will configure
+          activity_range: [0.0, 1.0]  # You will configure
+          max_updates: 25
+        
+        stage_2_intermediate:
+          enabled: true
+          symbols: ["MLGO"]
+          date_range: [null, null]    # You will configure
+          day_score_range: [0.5, 0.8]  # You will configure
+          roc_range: [0.03, 1.0]      # You will configure
+          activity_range: [0.0, 1.0]  # You will configure
+          max_updates: 15
+        
+        stage_3_advanced:
+          enabled: false            # Can be enabled for comprehensive testing
+        
+        stage_4_specialization:
+          enabled: false
+      
+      data:
+        provider: databento
+        data_dir: dnb
+        symbols: ["MLGO"]         # Can add more symbols for robustness testing
+        load_trades: true
+        load_quotes: true
+        load_order_book: true
+        load_ohlcv: true
+        start_date: '2025-02-03'
+        end_date: '2025-04-29'
+        cache_enabled: true
+        cache_dir: cache
+        preload_days: 2
+        index_dir: cache/indices
+        auto_build_index: true
+      
+      simulation:
+        execution_delay_ms: 100
+        partial_fill_probability: 0.0
+        allow_shorting: false
+        mean_latency_ms: 100.0
+        latency_std_dev_ms: 20.0
+        base_slippage_bps: 10.0
+        size_impact_slippage_bps_per_unit: 0.2
+        max_total_slippage_bps: 100.0
+        commission_per_share: 0.005
+        fee_per_share: 0.001
+        min_commission_per_order: 1.0
+        max_commission_pct_of_value: 0.5
+        market_impact_model: linear
+        market_impact_coefficient: 0.0001
+        spread_model: historical
+        fixed_spread_bps: 10.0
+        random_start_prob: 0.95
+        warmup_steps: 60
+        initial_cash: 25000.0
+        max_position_value_ratio: 1.0
+        max_position_holding_seconds: null
+      
+      wandb:
+        enabled: true
+        project: fx-ai-optuna-finetune
+        entity: null
+        name: null
+        tags: [optuna, phase3, finetune]
+        notes: "Phase 3: Fine-tuning with multi-stage curriculum progression"
+        log_frequency:
+          training: 1
+          episode: 1
+          rollout: 1
+          evaluation: 1
+        save_code: true
+        save_model: true          # Save models in final phase
+      
+      dashboard:
+        enabled: false
+      
+      logging:
+        level: INFO
+        console_enabled: true
+        console_format: simple
+        file_enabled: true
+        log_dir: logs
+        log_rewards: true
+        log_actions: true
+        log_features: false
+        log_portfolio: true
+    
+    episodes_per_trial: 4000     # ~40 updates × 8 episodes per update × 12.5 rollouts
+    eval_frequency: 10
+    eval_episodes: 8
+    save_checkpoints: true       # Save checkpoints in final phase
+    checkpoint_dir: optuna_finetune_checkpoints

@@ -40,6 +40,7 @@ try:
     CAPTUM_AVAILABLE = True
 except ImportError:
     CAPTUM_AVAILABLE = False
+    viz = None
     logging.warning("Captum not available. Install with: poetry add captum")
 
 
@@ -255,6 +256,14 @@ class CaptumFeatureAnalyzer:
     def _tensor_to_state_dict(self, tensor: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Convert flattened tensor back to state dict format"""
         batch_size = tensor.shape[0]
+        total_expected_size = sum(seq_len * feat_dim for seq_len, feat_dim in self.branch_configs.values())
+        
+        if tensor.shape[1] != total_expected_size:
+            self.logger.error(f"Tensor size mismatch: expected {total_expected_size}, got {tensor.shape[1]}")
+            self.logger.error(f"Branch configs: {self.branch_configs}")
+            self.logger.error(f"Tensor shape: {tensor.shape}")
+            raise ValueError(f"Input tensor size {tensor.shape[1]} does not match expected size {total_expected_size}")
+        
         state_dict = {}
         start_idx = 0
         
@@ -269,29 +278,77 @@ class CaptumFeatureAnalyzer:
     def _state_dict_to_tensor(self, state_dict: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Convert state dict to flattened tensor for attribution"""
         tensors = []
+        
+        # Process branches in consistent order
         for branch in self.branch_names:
             if branch in state_dict:
                 branch_tensor = state_dict[branch]
+                expected_seq_len, expected_feat_dim = self.branch_configs[branch]
                 
-                # Handle different tensor shapes from PPO agent
-                if branch_tensor.dim() == 4:  # [batch=1, 1, seq, feat] - from stacking batched states
-                    # Squeeze the extra dimension and flatten
-                    flattened = branch_tensor.squeeze(1).flatten(start_dim=1)
-                elif branch_tensor.dim() == 3:  # [batch=1, seq, feat] or [batch, seq, feat]
-                    # Check if first dim is 1 (single batched state from PPO)
+                # Log current tensor shape for debugging
+                self.logger.debug(f"Processing {branch}: shape={branch_tensor.shape}, expected=({expected_seq_len}, {expected_feat_dim})")
+                
+                # Ensure tensor is 2D (seq_len, feat_dim) before flattening
+                if branch_tensor.dim() == 4:  # [batch=1, 1, seq, feat]
+                    branch_tensor = branch_tensor.squeeze(0).squeeze(0)  # Remove batch dims
+                elif branch_tensor.dim() == 3:  # [batch=1, seq, feat] or [1, seq, feat]
                     if branch_tensor.shape[0] == 1:
-                        flattened = branch_tensor.flatten(start_dim=1)
+                        branch_tensor = branch_tensor.squeeze(0)  # Remove batch dim
                     else:
-                        flattened = branch_tensor.flatten(start_dim=1)
-                elif branch_tensor.dim() == 2:  # [seq, feat] - flatten all
-                    flattened = branch_tensor.flatten()
-                    flattened = flattened.unsqueeze(0)  # Add batch dimension
-                else:
-                    flattened = branch_tensor
-                    
+                        # Multiple samples in batch - take first one
+                        branch_tensor = branch_tensor[0]
+                elif branch_tensor.dim() == 2:  # [seq, feat] - already correct
+                    pass
+                elif branch_tensor.dim() == 1:  # Already flattened
+                    # Reshape to expected dimensions
+                    expected_size = expected_seq_len * expected_feat_dim
+                    if branch_tensor.shape[0] == expected_size:
+                        branch_tensor = branch_tensor.reshape(expected_seq_len, expected_feat_dim)
+                    else:
+                        self.logger.warning(f"Tensor size mismatch for {branch}: got {branch_tensor.shape[0]}, expected {expected_size}")
+                        # Pad or truncate to expected size
+                        if branch_tensor.shape[0] < expected_size:
+                            padding = torch.zeros(expected_size - branch_tensor.shape[0], device=branch_tensor.device)
+                            branch_tensor = torch.cat([branch_tensor, padding])
+                        else:
+                            branch_tensor = branch_tensor[:expected_size]
+                        branch_tensor = branch_tensor.reshape(expected_seq_len, expected_feat_dim)
+                
+                # Validate final shape
+                if branch_tensor.shape != (expected_seq_len, expected_feat_dim):
+                    self.logger.error(f"Shape mismatch for {branch}: got {branch_tensor.shape}, expected ({expected_seq_len}, {expected_feat_dim})")
+                    # Force reshape if possible
+                    try:
+                        total_elements = branch_tensor.numel()
+                        expected_elements = expected_seq_len * expected_feat_dim
+                        if total_elements == expected_elements:
+                            branch_tensor = branch_tensor.reshape(expected_seq_len, expected_feat_dim)
+                        else:
+                            # Create tensor of correct shape filled with zeros, copy what we can
+                            correct_tensor = torch.zeros(expected_seq_len, expected_feat_dim, device=branch_tensor.device)
+                            flat_input = branch_tensor.flatten()
+                            copy_size = min(flat_input.shape[0], expected_elements)
+                            correct_tensor.flatten()[:copy_size] = flat_input[:copy_size]
+                            branch_tensor = correct_tensor
+                    except Exception as e:
+                        self.logger.error(f"Failed to fix shape for {branch}: {e}")
+                        # Create zero tensor of correct shape as fallback
+                        branch_tensor = torch.zeros(expected_seq_len, expected_feat_dim, device=self.device)
+                
+                # Flatten to 1D for concatenation
+                flattened = branch_tensor.flatten()
                 tensors.append(flattened)
+            else:
+                # Branch not present - create zero tensor
+                expected_seq_len, expected_feat_dim = self.branch_configs[branch]
+                zero_tensor = torch.zeros(expected_seq_len * expected_feat_dim, device=self.device)
+                tensors.append(zero_tensor)
         
-        return torch.cat(tensors, dim=1)
+        # Concatenate all branch tensors
+        full_tensor = torch.cat(tensors, dim=0)
+        
+        # Add batch dimension
+        return full_tensor.unsqueeze(0)
     
     def _setup_gradient_hooks(self):
         """Setup hooks to track gradients and activations"""
@@ -758,61 +815,219 @@ class CaptumFeatureAnalyzer:
         report: Dict[str, Any],
         save_path: str
     ):
-        """Generate and save attribution visualizations"""
+        """Generate and save attribution visualizations using both custom plots and Captum's visualization tools"""
         try:
-            fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+            # Create comprehensive visualization figure
+            fig = plt.figure(figsize=(20, 16))
+            gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
             fig.suptitle('Captum Feature Attribution Analysis', fontsize=16)
             
-            # Plot 1: Feature importance by branch
-            ax = axes[0, 0]
-            for branch, rankings in report['feature_rankings'].items():
+            # Plot 1: Feature importance by branch (custom)
+            ax1 = fig.add_subplot(gs[0, 0])
+            branch_colors = {'hf': 'red', 'mf': 'blue', 'lf': 'green', 'portfolio': 'orange'}
+            for i, (branch, rankings) in enumerate(report['feature_rankings'].items()):
                 if rankings:
                     features, importances = zip(*rankings[:5])
-                    ax.barh(range(len(features)), importances, label=branch, alpha=0.7)
-            ax.set_xlabel('Attribution Score')
-            ax.set_title('Top Features by Branch')
-            ax.legend()
+                    y_pos = np.arange(len(features)) + i * 0.2
+                    ax1.barh(y_pos, importances, height=0.15, 
+                            label=branch, alpha=0.7, color=branch_colors.get(branch, 'gray'))
+            ax1.set_xlabel('Attribution Score')
+            ax1.set_title('Top Features by Branch')
+            ax1.legend()
             
-            # Plot 2: Attribution distribution
-            ax = axes[0, 1]
+            # Plot 2: Attribution distribution (custom)
+            ax2 = fig.add_subplot(gs[0, 1])
             all_attributions = []
             for branch_attrs in results.get('branch_attributions', {}).values():
                 all_attributions.extend(branch_attrs.flatten())
             if all_attributions:
-                ax.hist(all_attributions, bins=50, alpha=0.7, color='blue')
-                ax.set_xlabel('Attribution Value')
-                ax.set_ylabel('Frequency')
-                ax.set_title('Attribution Distribution')
+                ax2.hist(all_attributions, bins=50, alpha=0.7, color='blue', edgecolor='black')
+                ax2.set_xlabel('Attribution Value')
+                ax2.set_ylabel('Frequency')
+                ax2.set_title('Attribution Distribution')
+                ax2.axvline(np.mean(all_attributions), color='red', linestyle='--', label=f'Mean: {np.mean(all_attributions):.4f}')
+                ax2.legend()
             
-            # Plot 3: Consensus analysis
-            ax = axes[1, 0]
+            # Plot 3: Consensus analysis (custom)
+            ax3 = fig.add_subplot(gs[0, 2])
             if report.get('consensus_analysis'):
                 metrics = list(report['consensus_analysis'].keys())
                 values = list(report['consensus_analysis'].values())
-                ax.bar(metrics, values, color=['green' if v > 0.7 else 'orange' if v > 0.4 else 'red' for v in values])
-                ax.set_ylabel('Score')
-                ax.set_title('Attribution Method Consensus')
-                ax.set_ylim(0, 1)
+                colors = ['green' if v > 0.7 else 'orange' if v > 0.4 else 'red' for v in values]
+                bars = ax3.bar(metrics, values, color=colors, alpha=0.7, edgecolor='black')
+                ax3.set_ylabel('Score')
+                ax3.set_title('Attribution Method Consensus')
+                ax3.set_ylim(0, 1)
+                # Add value labels on bars
+                for bar, value in zip(bars, values):
+                    ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                            f'{value:.3f}', ha='center', va='bottom', fontweight='bold')
             
-            # Plot 4: Gradient flow
-            ax = axes[1, 1]
+            # Plot 4: Gradient flow (custom)
+            ax4 = fig.add_subplot(gs[1, 0])
             if report.get('gradient_flow', {}).get('gradient_norms'):
                 layers = list(report['gradient_flow']['gradient_norms'].keys())
                 norms = list(report['gradient_flow']['gradient_norms'].values())
-                ax.semilogy(range(len(layers)), norms, 'o-')
-                ax.set_xticks(range(len(layers)))
-                ax.set_xticklabels(layers, rotation=45, ha='right')
-                ax.set_ylabel('Gradient Norm (log scale)')
-                ax.set_title('Gradient Flow Analysis')
+                ax4.semilogy(range(len(layers)), norms, 'o-', markersize=8, linewidth=2)
+                ax4.set_xticks(range(len(layers)))
+                ax4.set_xticklabels(layers, rotation=45, ha='right')
+                ax4.set_ylabel('Gradient Norm (log scale)')
+                ax4.set_title('Gradient Flow Analysis')
+                ax4.grid(True, alpha=0.3)
+            
+            # Plot 5: Branch-wise attribution heatmap (custom)
+            ax5 = fig.add_subplot(gs[1, 1])
+            if 'branch_attributions' in results:
+                branch_data = []
+                branch_labels = []
+                for branch, attrs in results['branch_attributions'].items():
+                    # Take mean across samples and select top features
+                    mean_attrs = attrs.mean(axis=0)
+                    top_indices = np.argsort(np.abs(mean_attrs))[-10:]  # Top 10 features
+                    branch_data.append(mean_attrs[top_indices])
+                    branch_labels.append(branch)
+                
+                if branch_data:
+                    # Create heatmap
+                    import seaborn as sns
+                    heatmap_data = np.array([data for data in branch_data if len(data) > 0])
+                    if heatmap_data.size > 0:
+                        sns.heatmap(heatmap_data, yticklabels=branch_labels, 
+                                  cmap='RdBu_r', center=0, ax=ax5, cbar_kws={'label': 'Attribution Score'})
+                        ax5.set_title('Branch Attribution Heatmap (Top Features)')
+                        ax5.set_xlabel('Feature Index (Top 10)')
+            
+            # Plot 6: Attribution ranking comparison (custom)
+            ax6 = fig.add_subplot(gs[1, 2])
+            if len(results.get('attributions', {})) > 1:
+                # Compare different attribution methods
+                methods = list(results['attributions'].keys())
+                method_scores = []
+                for method in methods:
+                    if 'attributions' in results['attributions'][method]:
+                        attrs = results['attributions'][method]['attributions']
+                        # Calculate total attribution magnitude per method
+                        total_magnitude = torch.abs(attrs).sum().item()
+                        method_scores.append(total_magnitude)
+                    else:
+                        method_scores.append(0)
+                
+                if method_scores:
+                    bars = ax6.bar(methods, method_scores, alpha=0.7, color='skyblue', edgecolor='black')
+                    ax6.set_ylabel('Total Attribution Magnitude')
+                    ax6.set_title('Attribution Method Comparison')
+                    ax6.tick_params(axis='x', rotation=45)
+                    # Add value labels
+                    for bar, score in zip(bars, method_scores):
+                        ax6.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(method_scores)*0.01,
+                               f'{score:.2f}', ha='center', va='bottom', fontweight='bold')
+            
+            # Plot 7: Feature stability over time (if we have historical data)
+            ax7 = fig.add_subplot(gs[2, :])
+            if hasattr(self, 'attribution_history') and self.attribution_history:
+                # Plot top 5 most important features over time
+                stability_data = {}
+                for feature_key, history in self.attribution_history.items():
+                    if len(history) >= 5:  # Need some history
+                        # Calculate recent average importance
+                        recent_avg = np.mean([abs(x) for x in list(history)[-10:]])
+                        stability_data[feature_key] = (list(history), recent_avg)
+                
+                # Sort by importance and take top 5
+                top_features = sorted(stability_data.items(), key=lambda x: x[1][1], reverse=True)[:5]
+                
+                for feature_key, (history, _) in top_features:
+                    x_vals = range(len(history))
+                    y_vals = [abs(val) for val in history]
+                    ax7.plot(x_vals, y_vals, label=feature_key.split('.')[-1], marker='o', alpha=0.7)
+                
+                ax7.set_xlabel('Analysis Step')
+                ax7.set_ylabel('Attribution Magnitude')
+                ax7.set_title('Feature Importance Stability Over Time (Top 5 Features)')
+                ax7.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                ax7.grid(True, alpha=0.3)
             
             plt.tight_layout()
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             plt.close()
             
-            self.logger.info(f"Attribution visualizations saved to {save_path}")
+            # Generate additional Captum-specific visualizations if available
+            self._generate_captum_native_visualizations(results, save_path)
+            
+            self.logger.info(f"Comprehensive attribution visualizations saved to {save_path}")
             
         except Exception as e:
             self.logger.error(f"Failed to generate visualizations: {e}")
+    
+    def _generate_captum_native_visualizations(self, results: Dict[str, Any], base_save_path: str):
+        """Generate visualizations using Captum's native visualization tools"""
+        try:
+            from pathlib import Path
+            base_path = Path(base_save_path)
+            captum_dir = base_path.parent / f"{base_path.stem}_captum_viz"
+            captum_dir.mkdir(exist_ok=True)
+            
+            # Get primary attribution results
+            primary_attrs = results.get('attributions', {}).get(self.config.primary_method.value, {})
+            if 'attributions' not in primary_attrs:
+                self.logger.debug("No primary attribution data for Captum visualizations")
+                return
+            
+            attributions = primary_attrs['attributions']
+            
+            # Generate feature attribution bar chart using Captum's visualization
+            if 'branch_attributions' in results:
+                for branch, branch_attrs in results['branch_attributions'].items():
+                    if branch in self.feature_names:
+                        try:
+                            # Prepare data for Captum visualization
+                            feature_names = self.feature_names[branch]
+                            mean_attrs = branch_attrs.mean(axis=0)  # Average across samples
+                            
+                            # Use Captum's visualization function
+                            if viz is not None:
+                                try:
+                                    fig, ax = viz.visualize_importances_as_bar_chart(
+                                        importances=mean_attrs,
+                                        feature_names=feature_names,
+                                        title=f'{branch.upper()} Branch Feature Attributions ({self.config.primary_method.value})',
+                                        x_label='Attribution Score'
+                                    )
+                                except AttributeError:
+                                    # Fallback to manual visualization if Captum function not available
+                                    fig, ax = plt.subplots(figsize=(12, 8))
+                                    y_pos = np.arange(len(feature_names))
+                                    ax.barh(y_pos, mean_attrs, alpha=0.7)
+                                    ax.set_yticks(y_pos)
+                                    ax.set_yticklabels(feature_names)
+                                    ax.set_xlabel('Attribution Score')
+                                    ax.set_title(f'{branch.upper()} Branch Feature Attributions ({self.config.primary_method.value})')
+                                    ax.grid(True, alpha=0.3)
+                            else:
+                                # Fallback to manual visualization
+                                fig, ax = plt.subplots(figsize=(12, 8))
+                                y_pos = np.arange(len(feature_names))
+                                ax.barh(y_pos, mean_attrs, alpha=0.7)
+                                ax.set_yticks(y_pos)
+                                ax.set_yticklabels(feature_names)
+                                ax.set_xlabel('Attribution Score')
+                                ax.set_title(f'{branch.upper()} Branch Feature Attributions ({self.config.primary_method.value})')
+                                ax.grid(True, alpha=0.3)
+                            
+                            # Save the figure
+                            captum_path = captum_dir / f"{branch}_captum_bar_chart.png"
+                            fig.savefig(captum_path, dpi=300, bbox_inches='tight')
+                            plt.close(fig)
+                            
+                            self.logger.debug(f"Saved Captum bar chart for {branch} to {captum_path}")
+                            
+                        except Exception as e:
+                            self.logger.debug(f"Failed to generate Captum bar chart for {branch}: {e}")
+            
+            self.logger.info(f"Captum native visualizations saved to {captum_dir}")
+            
+        except Exception as e:
+            self.logger.debug(f"Failed to generate Captum native visualizations: {e}")
     
     def get_dead_features(
         self,
