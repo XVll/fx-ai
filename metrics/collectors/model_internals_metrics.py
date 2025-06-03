@@ -11,7 +11,7 @@ from collections import deque
 from ..core import MetricCollector, MetricValue, MetricCategory, MetricType, MetricMetadata
 
 try:
-    from feature.attribution import FeatureAttributionAnalyzer
+    from feature.attribution import CaptumFeatureAnalyzer, AttributionConfig
     ATTRIBUTION_AVAILABLE = True
 except ImportError:
     ATTRIBUTION_AVAILABLE = False
@@ -46,15 +46,25 @@ class ModelInternalsCollector(MetricCollector):
         self.attribution_analyzer = None
         self.enable_attribution = enable_attribution and ATTRIBUTION_AVAILABLE
         self.state_buffer = deque(maxlen=50)  # Store states for attribution analysis
-        self.last_shap_analysis_time = 0
-        self.shap_analysis_interval = 300  # 5 minutes between SHAP analyses
+        self.last_attribution_analysis_time = 0
+        self.attribution_analysis_interval = 300  # 5 minutes between attribution analyses
         
         # Initialize feature attribution analyzer if available
         if self.enable_attribution and model is not None and feature_names is not None:
             try:
-                self.attribution_analyzer = FeatureAttributionAnalyzer(
+                # Configure Captum with sensible defaults
+                config = AttributionConfig(
+                    primary_method=AttributionConfig.primary_method,
+                    n_steps=25,  # Faster for real-time analysis
+                    n_samples=10,
+                    use_noise_tunnel=True,
+                    track_gradients=True,
+                    track_activations=True
+                )
+                self.attribution_analyzer = CaptumFeatureAnalyzer(
                     model=model,
                     feature_names=feature_names,
+                    config=config,
                     logger=self.logger
                 )
                 self.logger.info("Feature attribution analyzer initialized")
@@ -325,12 +335,12 @@ class ModelInternalsCollector(MetricCollector):
             self.state_buffer.append(state_copy)
     
     def run_periodic_shap_analysis(self) -> Optional[Dict[str, Any]]:
-        """Run SHAP analysis periodically if enough data is available"""
+        """Run attribution analysis periodically using Captum"""
         if not self.enable_attribution or not self.attribution_analyzer:
             return None
         
         current_time = time.time()
-        if (current_time - self.last_shap_analysis_time < self.shap_analysis_interval or 
+        if (current_time - self.last_attribution_analysis_time < self.attribution_analysis_interval or 
             len(self.state_buffer) < 20):
             return None
         
@@ -347,30 +357,31 @@ class ModelInternalsCollector(MetricCollector):
                         formatted_state[key] = tensor
                 states_for_analysis.append(formatted_state)
             
-            # Run SHAP analysis
-            shap_values = self.attribution_analyzer.calculate_shap_values(
+            # Run Captum attribution analysis
+            attribution_results = self.attribution_analyzer.calculate_attributions(
                 sample_states=states_for_analysis,
-                max_samples=20
+                return_convergence_delta=False  # Faster without convergence check
             )
             
-            if shap_values:
-                self.last_shap_analysis_time = current_time
-                self.logger.info("Completed periodic SHAP analysis")
+            if attribution_results:
+                self.last_attribution_analysis_time = current_time
+                self.logger.info("Completed periodic Captum attribution analysis")
                 
-                # Update feature importance based on SHAP values
-                for branch, values in shap_values.items():
-                    if branch in self.attribution_analyzer.feature_names:
-                        feature_names = self.attribution_analyzer.feature_names[branch]
-                        # Average SHAP values across samples for each feature
-                        avg_importance = np.mean(np.abs(values), axis=0)
-                        
-                        for feature_name, importance in zip(feature_names, avg_importance):
-                            self.attribution_analyzer.update_feature_importance(feature_name, importance)
+                # Log consensus metrics if available
+                if 'consensus' in attribution_results:
+                    consensus = attribution_results['consensus']
+                    self.logger.info(f"Attribution consensus: {consensus.get('mean_correlation', 0):.3f}")
                 
-                return shap_values
+                # Log attribution metrics
+                if 'metrics' in attribution_results:
+                    metrics = attribution_results['metrics']
+                    self.logger.debug(f"Attribution quality - Sparsity: {metrics.get('sparsity', 0):.3f}, "
+                                     f"Concentration: {metrics.get('concentration', 0):.3f}")
+                
+                return attribution_results
             
         except Exception as e:
-            self.logger.warning(f"SHAP analysis failed: {e}")
+            self.logger.warning(f"Captum attribution analysis failed: {e}")
         
         return None
     
@@ -383,23 +394,17 @@ class ModelInternalsCollector(MetricCollector):
             # Get the model from the attribution analyzer
             model = self.attribution_analyzer.model
             
-            # Run permutation importance
-            importance_scores = self.attribution_analyzer.calculate_permutation_importance(
-                environment=environment,
-                model=model,
-                n_episodes=n_episodes,
-                n_permutations=5
+            # Permutation importance is less relevant with gradient-based attribution
+            # Return feature rankings instead
+            rankings = self.attribution_analyzer.get_feature_importance_ranking(
+                n_top=5,
+                method="historical"
             )
             
-            if importance_scores:
-                self.logger.info("Completed permutation importance analysis")
-                
-                # Update feature importance scores
-                for branch, scores in importance_scores.items():
-                    for feature_name, importance in scores.items():
-                        self.attribution_analyzer.update_feature_importance(feature_name, importance)
+            if rankings:
+                self.logger.info("Retrieved feature importance rankings from Captum")
             
-            return importance_scores
+            return rankings
             
         except Exception as e:
             self.logger.warning(f"Permutation importance analysis failed: {e}")
@@ -411,10 +416,9 @@ class ModelInternalsCollector(MetricCollector):
             return {}
         
         try:
-            # Run analysis if we have enough data
-            shap_values = None
+            # Prepare states for analysis
+            states_for_analysis = []
             if len(self.state_buffer) >= 10:
-                states_for_analysis = []
                 for state in list(self.state_buffer)[-10:]:
                     formatted_state = {}
                     for key, tensor in state.items():
@@ -423,15 +427,10 @@ class ModelInternalsCollector(MetricCollector):
                         else:
                             formatted_state[key] = tensor
                     states_for_analysis.append(formatted_state)
-                
-                shap_values = self.attribution_analyzer.calculate_shap_values(
-                    sample_states=states_for_analysis,
-                    max_samples=10
-                )
             
-            # Generate report
-            report = self.attribution_analyzer.generate_feature_importance_report(
-                shap_values=shap_values,
+            # Generate comprehensive report using Captum
+            report = self.attribution_analyzer.generate_attribution_report(
+                sample_states=states_for_analysis if states_for_analysis else [],
                 save_path=save_path
             )
             
@@ -449,12 +448,12 @@ class ModelInternalsCollector(MetricCollector):
         summary = {
             "attribution_enabled": True,
             "states_buffered": len(self.state_buffer),
-            "last_shap_analysis": self.last_shap_analysis_time,
+            "last_attribution_analysis": self.last_attribution_analysis_time,
             "total_features": self.attribution_analyzer.total_features
         }
         
-        # Add top features by branch
-        top_features = self.attribution_analyzer.get_top_features(n=3)
+        # Add top features by branch using Captum rankings
+        top_features = self.attribution_analyzer.get_feature_importance_ranking(n_top=3)
         summary["top_features_by_branch"] = {}
         for branch, features in top_features.items():
             summary["top_features_by_branch"][branch] = [
@@ -463,11 +462,19 @@ class ModelInternalsCollector(MetricCollector):
             ]
         
         # Add dead features info
-        dead_features = self.attribution_analyzer.detect_dead_features()
+        dead_features = self.attribution_analyzer.get_dead_features()
         summary["dead_features"] = {
             "total_count": sum(len(features) for features in dead_features.values()),
-            "by_type": {feature_type: len(features) for feature_type, features in dead_features.items()}
+            "by_branch": {branch: features for branch, features in dead_features.items()}
         }
+        
+        # Add gradient flow analysis if available
+        gradient_analysis = self.attribution_analyzer.analyze_gradient_flow()
+        if gradient_analysis and 'error' not in gradient_analysis:
+            summary["gradient_flow"] = {
+                "vanishing_layers": gradient_analysis.get('vanishing_gradients', []),
+                "exploding_layers": gradient_analysis.get('exploding_gradients', [])
+            }
         
         return summary
     

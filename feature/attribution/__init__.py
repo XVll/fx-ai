@@ -1,8 +1,8 @@
 """Feature Attribution Analysis Package
 
-Provides comprehensive feature importance analysis tools for trading models.
+Provides comprehensive gradient-based feature importance analysis using Captum.
 """
 
-from .feature_attribution_analyzer import FeatureAttributionAnalyzer
+from .captum_feature_analyzer import CaptumFeatureAnalyzer, AttributionMethod, AttributionConfig
 
-__all__ = ['FeatureAttributionAnalyzer']
+__all__ = ['CaptumFeatureAnalyzer', 'AttributionMethod', 'AttributionConfig']
