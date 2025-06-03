@@ -11,7 +11,7 @@ from collections import deque
 from ..core import MetricCollector, MetricValue, MetricCategory, MetricType, MetricMetadata
 
 try:
-    from feature.attribution.shap_analyzer import ShapFeatureAnalyzer
+    from feature.attribution.comprehensive_shap_analyzer import ComprehensiveSHAPAnalyzer, AttributionConfig
     ATTRIBUTION_AVAILABLE = True
 except ImportError:
     ATTRIBUTION_AVAILABLE = False
@@ -49,6 +49,7 @@ class ModelInternalsCollector(MetricCollector):
         self.state_buffer = deque(maxlen=50)  # Store states for attribution analysis
         self.last_attribution_analysis_time = 0
         self.attribution_analysis_interval = 0  # No time-based limits (controlled by PPO agent)
+        self.last_attribution_summary = None  # Store summary for dashboard
         
         # Initialize feature attribution analyzer if available
         if self.enable_attribution and model is not None and feature_names is not None:
@@ -75,13 +76,28 @@ class ModelInternalsCollector(MetricCollector):
                     for branch in feature_names.keys():
                         branch_configs[branch] = default_configs.get(branch, (30, 10))
                 
-                self.attribution_analyzer = ShapFeatureAnalyzer(
+                # Create attribution config
+                attribution_config = AttributionConfig(
+                    enabled=True,
+                    update_frequency=10,  # Default, will be controlled by PPO agent
+                    methods=["gradient_shap", "integrated_gradients"],
+                    primary_method="gradient_shap",
+                    max_samples_per_analysis=5,
+                    background_samples=10,
+                    track_interactions=True,
+                    save_plots=True,
+                    log_to_wandb=True,
+                    dashboard_update=True
+                )
+                
+                self.attribution_analyzer = ComprehensiveSHAPAnalyzer(
                     model=model,
                     feature_names=feature_names,
                     branch_configs=branch_configs,
+                    config=attribution_config,
                     logger=self.logger
                 )
-                self.logger.info("✅ SHAP feature attribution analyzer initialized")
+                self.logger.info("✅ Comprehensive SHAP feature attribution analyzer initialized")
             except Exception as e:
                 self.logger.warning(f"Failed to initialize attribution analyzer: {e}")
                 self.enable_attribution = False
@@ -354,28 +370,84 @@ class ModelInternalsCollector(MetricCollector):
                 self.logger.debug(f"Attribution state buffer: {len(self.state_buffer)} states stored")
     
     def run_periodic_shap_analysis(self) -> Optional[Dict[str, Any]]:
-        """Run SHAP attribution analysis periodically"""
+        """Run comprehensive SHAP attribution analysis periodically"""
         if not self.enable_attribution or not self.attribution_analyzer:
             return None
         
+        # Check if attribution is enabled in config
+        if hasattr(self.attribution_analyzer, 'config') and not self.attribution_analyzer.config.enabled:
+            return None
+            
         current_time = time.time()
         time_since_last = current_time - self.last_attribution_analysis_time
         states_available = len(self.state_buffer)
         
         self.logger.debug(f"SHAP check: {time_since_last:.1f}s since last, {states_available} states available")
         
-        # Skip time-based check since we're controlled by PPO agent update frequency
-        # if time_since_last < self.attribution_analysis_interval:
-        #     self.logger.debug(f"SHAP skipped: only {time_since_last:.1f}s since last (need {self.attribution_analysis_interval}s)")
-        #     return None
-            
         if states_available < 2:  # Need minimal states for analysis
             self.logger.debug(f"Attribution skipped: only {states_available} states (need 2)")
             return None
         
-        # SHAP is too slow and unstable with 2330 features - use fast gradient attribution instead
-        self.logger.info(f"🚀 Using fast gradient attribution (SHAP disabled for performance with {states_available} states)")
-        return self._run_fast_gradient_attribution()
+        # Setup background data if needed
+        if not hasattr(self.attribution_analyzer, 'background_cache') or self.attribution_analyzer.background_cache is None:
+            background_states = list(self.state_buffer)[:10]  # Use first 10 states as background
+            self.attribution_analyzer.setup_background(background_states)
+            
+        # Run comprehensive SHAP analysis
+        try:
+            self.logger.info(f"🔍 Starting comprehensive SHAP analysis with {states_available} states")
+            
+            # Convert states to list
+            analysis_states = list(self.state_buffer)
+            
+            # Run analysis
+            results = self.attribution_analyzer.analyze_features(analysis_states)
+            
+            if results and 'error' not in results:
+                self.last_attribution_analysis_time = current_time
+                
+                # Store results for metrics collection
+                self._store_attribution_results(results)
+                
+                # Log to WandB
+                if hasattr(self.attribution_analyzer, 'log_to_wandb'):
+                    self.attribution_analyzer.log_to_wandb(results)
+                    
+                # Get dashboard summary
+                if hasattr(self.attribution_analyzer, 'get_summary_for_logging'):
+                    dashboard_summary = self.attribution_analyzer.get_summary_for_logging()
+                    # Store for dashboard access
+                    self.last_attribution_summary = dashboard_summary
+                    
+                return results
+            else:
+                self.logger.warning(f"SHAP analysis returned error or None: {results}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"SHAP analysis failed: {e}")
+            # Fallback to fast gradient attribution
+            self.logger.info("Falling back to fast gradient attribution")
+            return self._run_fast_gradient_attribution()
+    
+    def configure_shap_frequency(self, update_frequency: int):
+        """Configure SHAP update frequency (e.g., 10 or 50 updates)"""
+        if self.attribution_analyzer and hasattr(self.attribution_analyzer, 'config'):
+            old_freq = self.attribution_analyzer.config.update_frequency
+            self.attribution_analyzer.config.update_frequency = update_frequency
+            self.logger.info(f"Updated SHAP frequency from {old_freq} to {update_frequency} updates")
+            
+    def disable_shap_analysis(self):
+        """Completely disable SHAP analysis"""
+        if self.attribution_analyzer and hasattr(self.attribution_analyzer, 'config'):
+            self.attribution_analyzer.config.enabled = False
+            self.logger.info("SHAP analysis has been disabled")
+            
+    def enable_shap_analysis(self):
+        """Enable SHAP analysis"""
+        if self.attribution_analyzer and hasattr(self.attribution_analyzer, 'config'):
+            self.attribution_analyzer.config.enabled = True
+            self.logger.info("SHAP analysis has been enabled")
     
     def _run_fast_gradient_attribution(self) -> Optional[Dict[str, Any]]:
         """Fast gradient-based attribution as fallback when SHAP is too slow"""
