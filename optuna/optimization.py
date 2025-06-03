@@ -41,6 +41,11 @@ from rich.layout import Layout
 from rich.live import Live
 import wandb
 
+# Add parent directory to Python path for imports
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+
 from config.optuna.optuna_config import (
     OptunaStudySpec,
     StudyConfig,
@@ -988,7 +993,7 @@ class OptunaOptimizer:
             try:
                 study = optuna.load_study(
                     study_name=study_name, 
-                    storage="sqlite:///optuna_studies.db"
+                    storage="sqlite:///optuna/studies.db"
                 )
                 
                 n_trials = len(study.trials)
@@ -1107,7 +1112,7 @@ def main():
     # Handle dashboard
     if args.dashboard:
         console.print("[bold]Launching Optuna dashboard...[/bold]")
-        os.system("optuna-dashboard sqlite:///optuna_studies.db")
+        os.system("optuna-dashboard sqlite:///optuna/studies.db")
         return
     
     # Create optimizer

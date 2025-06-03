@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 
 # Add project root to path
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).parent.parent))
 
 from feature.attribution import CaptumFeatureAnalyzer, AttributionConfig
 from main import get_feature_names_from_config

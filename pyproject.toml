@@ -10,7 +10,7 @@ package-mode = false
 # Momentum Training (RECOMMENDED)
 train = "poetry run python main.py --config momentum_training"
 train-continue = "poetry run python main.py --config momentum_training --continue"
-build-index = "poetry run python build_index.py"
+build-index = "poetry run python scripts/build_index.py"
 
 # Legacy Training (standard single-day training)
 quick = "poetry run python main.py --config quick_test"
@@ -26,12 +26,12 @@ scan-high = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.
 scan-all = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.0"
 
 # 3-Phase Hyperparameter Optimization with Optuna
-optuna-foundation = "poetry run python optuna_optimization.py --spec config/optuna/phase1_foundation.yaml"
-optuna-reward = "poetry run python optuna_optimization.py --spec config/optuna/phase2_reward.yaml"
-optuna-finetune = "poetry run python optuna_optimization.py --spec config/optuna/phase3_finetune.yaml"
-optuna-dashboard = "optuna-dashboard sqlite:///optuna_studies.db"
-optuna-best = "poetry run python optuna_optimization.py --show-best {{study_name}}"
-optuna-results = "poetry run python optuna_optimization.py --show-results"
+optuna-foundation = "poetry run python optuna/optimization.py --spec config/optuna/phase1_foundation.yaml"
+optuna-reward = "poetry run python optuna/optimization.py --spec config/optuna/phase2_reward.yaml"
+optuna-finetune = "poetry run python optuna/optimization.py --spec config/optuna/phase3_finetune.yaml"
+optuna-dashboard = "optuna-dashboard sqlite:///optuna/studies.db"
+optuna-best = "poetry run python optuna/optimization.py --show-best {{study_name}}"
+optuna-results = "poetry run python optuna/optimization.py --show-results"
 optuna-status = "poetry run python scripts/transfer_best_params.py --status"
 optuna-transfer-1to2 = "poetry run python scripts/transfer_best_params.py --from-phase 1 --to-phase 2"
 optuna-transfer-2to3 = "poetry run python scripts/transfer_best_params.py --from-phase 2 --to-phase 3"
