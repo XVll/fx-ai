@@ -1,0 +1,151 @@
+name: default_hyperparameter_optimization
+description: Default hyperparameter optimization for FxAI (balanced approach)
+version: "1.0"
+
+dashboard_port: 8052
+log_level: INFO
+results_dir: optuna_results
+save_study_plots: true
+
+studies:
+  - study_name: fx_ai_default
+    direction: maximize
+    metric_name: mean_reward
+    storage: sqlite:///optuna_studies.db
+    load_if_exists: true
+    
+    sampler:
+      type: TPESampler
+      n_startup_trials: 15
+      multivariate: true
+      seed: 42
+    
+    pruner:
+      type: MedianPruner
+      n_startup_trials: 8
+      n_warmup_steps: 25
+      interval_steps: 5
+      n_min_trials: 5
+    
+    parameters:
+      # Key training parameters
+      - name: training.learning_rate
+        type: float_log
+        low: 0.00001
+        high: 0.001
+      
+      - name: training.batch_size
+        type: categorical
+        choices: [32, 64, 128, 256]
+      
+      - name: training.n_epochs
+        type: int
+        low: 4
+        high: 16
+      
+      - name: training.gamma
+        type: float
+        low: 0.95
+        high: 0.999
+      
+      - name: training.gae_lambda
+        type: float
+        low: 0.9
+        high: 0.98
+      
+      - name: training.clip_epsilon
+        type: float
+        low: 0.1
+        high: 0.3
+      
+      - name: training.entropy_coef
+        type: float_log
+        low: 0.0001
+        high: 0.1
+      
+      - name: training.value_coef
+        type: float
+        low: 0.25
+        high: 1.0
+      
+      # Model architecture parameters
+      - name: model.d_model
+        type: categorical
+        choices: [64, 128, 256]
+      
+      - name: model.n_layers
+        type: int
+        low: 4
+        high: 12
+      
+      - name: model.dropout
+        type: float
+        low: 0.0
+        high: 0.3
+      
+      # Key reward parameters
+      - name: env.reward.pnl_coefficient
+        type: float
+        low: 50.0
+        high: 300.0
+      
+      - name: env.reward.holding_penalty_coefficient
+        type: float
+        low: 0.5
+        high: 5.0
+      
+      - name: env.reward.drawdown_penalty_coefficient
+        type: float
+        low: 1.0
+        high: 20.0
+      
+      - name: env.reward.profit_closing_bonus_coefficient
+        type: float
+        low: 50.0
+        high: 200.0
+      
+      - name: env.reward.clean_trade_coefficient
+        type: float
+        low: 10.0
+        high: 50.0
+    
+    n_trials: 100
+    n_jobs: 1
+    catch_exceptions: true
+    
+    training_config:
+      mode: train
+      experiment_name: optuna_default
+      config: momentum_training
+      
+      training:
+        total_updates: 150
+        checkpoint_interval: 50
+        eval_frequency: 25
+        eval_episodes: 10
+        rollout_steps: 2048
+        continue_training: false
+      
+      env:
+        symbol: MLGO
+        max_episode_steps: 512
+        training_mode: true
+      
+      data:
+        provider: databento
+        symbols: [MLGO]
+        cache_enabled: true
+      
+      wandb:
+        enabled: true
+        project: fx-ai-optuna
+        tags: [optuna, default_optimization]
+      
+      dashboard:
+        enabled: false
+    
+    episodes_per_trial: 3000
+    eval_frequency: 100
+    eval_episodes: 10
+    save_checkpoints: true
+    checkpoint_dir: optuna_default_checkpoints
