@@ -52,7 +52,7 @@ from config.optuna.optuna_config import (
     DistributionType,
 )
 from config.loader import load_config
-from main import train_agent
+# Training function is called via subprocess to avoid import conflicts
 from utils.logger import get_logger
 
 console = Console()
@@ -753,6 +753,101 @@ class OptunaOptimizer:
         console.print(f"\n[bold green]Best configuration saved to {best_config_file}[/bold green]")
         console.print("\n[bold]Best configuration:[/bold]")
         console.print(yaml.dump(best_config, default_flow_style=False))
+    
+    def show_all_results(self):
+        """Show results from all 3 phases."""
+        phases = [
+            ("Phase 1 (Foundation)", "fx_ai_foundation"),
+            ("Phase 2 (Reward)", "fx_ai_reward"),
+            ("Phase 3 (Fine-tune)", "fx_ai_finetune"),
+        ]
+        
+        console.print("\n[bold cyan]🎯 3-Phase Optimization Results Summary[/bold cyan]")
+        console.print("=" * 60)
+        
+        all_results = {}
+        
+        for phase_name, study_name in phases:
+            try:
+                study = optuna.load_study(
+                    study_name=study_name, 
+                    storage="sqlite:///optuna_studies.db"
+                )
+                
+                n_trials = len(study.trials)
+                if n_trials > 0:
+                    completed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+                    pruned_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
+                    failed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.FAIL])
+                    
+                    best_value = study.best_value
+                    best_trial_number = study.best_trial.number
+                    
+                    console.print(f"\n[bold green]✅ {phase_name}[/bold green]")
+                    console.print(f"   Study: {study_name}")
+                    console.print(f"   Trials: {completed_trials} completed, {pruned_trials} pruned, {failed_trials} failed")
+                    console.print(f"   Best value: {best_value:.4f} (trial #{best_trial_number})")
+                    
+                    # Show top 3 parameters by importance
+                    if completed_trials >= 5:
+                        try:
+                            importances = optuna.importance.get_param_importances(study)
+                            top_params = list(importances.items())[:3]
+                            console.print("   Top parameters:")
+                            for param_name, importance in top_params:
+                                console.print(f"     {param_name}: {importance:.3f}")
+                        except Exception:
+                            pass
+                    
+                    all_results[phase_name] = {
+                        "study_name": study_name,
+                        "completed_trials": completed_trials,
+                        "best_value": best_value,
+                        "best_trial": best_trial_number,
+                        "best_params": study.best_params
+                    }
+                else:
+                    console.print(f"\n[yellow]⏳ {phase_name}[/yellow]")
+                    console.print(f"   Study: {study_name}")
+                    console.print("   Status: Not started")
+                    
+            except Exception as e:
+                console.print(f"\n[red]❌ {phase_name}[/red]")
+                console.print(f"   Study: {study_name}")
+                console.print(f"   Status: Not found ({str(e)})")
+        
+        # Show progression analysis
+        if len(all_results) >= 2:
+            console.print("\n[bold cyan]📈 Optimization Progression[/bold cyan]")
+            phase_names = list(all_results.keys())
+            for i in range(1, len(phase_names)):
+                prev_phase = phase_names[i-1]
+                curr_phase = phase_names[i]
+                
+                prev_value = all_results[prev_phase]["best_value"]
+                curr_value = all_results[curr_phase]["best_value"]
+                improvement = ((curr_value - prev_value) / abs(prev_value)) * 100
+                
+                console.print(f"   {prev_phase} → {curr_phase}: {improvement:+.1f}% improvement")
+        
+        # Show next steps
+        console.print("\n[bold cyan]🚀 Next Steps[/bold cyan]")
+        
+        if "Phase 1 (Foundation)" not in all_results:
+            console.print("   1. Start foundation optimization: poetry run poe optuna-foundation")
+        elif "Phase 2 (Reward)" not in all_results:
+            console.print("   1. Transfer foundation results: poetry run poe optuna-transfer-1to2")
+            console.print("   2. Start reward optimization: poetry run poe optuna-reward")
+        elif "Phase 3 (Fine-tune)" not in all_results:
+            console.print("   1. Transfer reward results: poetry run poe optuna-transfer-2to3")
+            console.print("   2. Start fine-tuning: poetry run poe optuna-finetune")
+        else:
+            final_phase = list(all_results.keys())[-1]
+            best_study = all_results[final_phase]["study_name"]
+            console.print(f"   ✅ All phases complete! Use best configuration from {best_study}")
+            console.print(f"   Get final config: poetry run poe optuna-best {best_study}")
+        
+        console.print("\n[dim]💡 Tip: Use 'poetry run poe optuna-dashboard' to explore detailed results[/dim]")
 
 
 def main():
@@ -780,6 +875,11 @@ def main():
         help="Show best configuration for study",
     )
     parser.add_argument(
+        "--show-results",
+        action="store_true",
+        help="Show results from all 3 phases",
+    )
+    parser.add_argument(
         "--dashboard",
         action="store_true",
         help="Launch Optuna dashboard",
@@ -799,6 +899,11 @@ def main():
     # Handle show best
     if args.show_best:
         optimizer.show_best_config(args.show_best)
+        return
+    
+    # Handle show results
+    if args.show_results:
+        optimizer.show_all_results()
         return
     
     # Override n_jobs if specified

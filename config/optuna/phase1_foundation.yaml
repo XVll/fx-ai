@@ -174,12 +174,14 @@ studies:
         stage_1_beginner:
           enabled: true
           symbols: ["MLGO"]
-          date_range: [null, null]    # You will configure
-          day_score_range: [0.7, 1.0]  # You will configure  
-          roc_range: [0.05, 1.0]      # You will configure
-          activity_range: [0.0, 1.0]  # You will configure
-          max_updates: 15             # Match training.total_updates
-        
+          date_range: ["2025-02-21", "2025-02-21"]
+          day_score_range: [0.7, 1.0]
+          roc_range: [0.05, 1.0]
+          activity_range: [0.0, 1.0]
+          max_updates: null
+          max_episodes: null
+          max_cycles: 3
+
         stage_2_intermediate:
           enabled: false
         

@@ -211,7 +211,7 @@ class PPOTrainer:
             elif hasattr(self.env, 'data_manager'):
                 # Fallback to data manager if environment reset points not available
                 reset_points_df = self.env.data_manager.get_reset_points(
-                    momentum_day_info.get('symbol', 'MLGO'), 
+                    momentum_day_info['symbol'], 
                     momentum_day_info['date']
                 )
                 if not reset_points_df.empty:
@@ -422,13 +422,17 @@ class PPOTrainer:
             if stage.date_range[0] is not None:
                 from datetime import datetime
                 start_date = datetime.strptime(stage.date_range[0], '%Y-%m-%d').date()
-                if day_info['date'] < start_date:
+                # Convert pd.Timestamp to date for comparison
+                day_date = day_info['date'].date() if hasattr(day_info['date'], 'date') else day_info['date']
+                if day_date < start_date:
                     continue
                     
             if stage.date_range[1] is not None:
                 from datetime import datetime
                 end_date = datetime.strptime(stage.date_range[1], '%Y-%m-%d').date()
-                if day_info['date'] > end_date:
+                # Convert pd.Timestamp to date for comparison
+                day_date = day_info['date'].date() if hasattr(day_info['date'], 'date') else day_info['date']
+                if day_date > end_date:
                     continue
                     
             # Filter by day score
