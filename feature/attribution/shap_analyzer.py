@@ -53,10 +53,20 @@ class ShapFeatureAnalyzer:
         device: torch.device = None,
         logger: Optional[logging.Logger] = None,
         save_plots: bool = True,
-        plot_dir: str = "outputs/shap_plots"
+        plot_dir: str = "outputs/shap_plots",
+        enabled: bool = True
     ):
+        self.enabled = enabled
+        self.logger = logger or logging.getLogger(__name__)
+        
         if not SHAP_AVAILABLE:
             raise ImportError("SHAP is required. Install with: pip install shap")
+        
+        # Check if attribution is enabled
+        if not self.enabled:
+            self.logger.info("🔕 SHAP Attribution analysis is DISABLED")
+            self.feature_stats = {"total_features": 0, "branches": [], "branch_sizes": {}}
+            return
             
         self.model = model
         self.feature_names = feature_names

@@ -104,8 +104,8 @@ studies:
         
       curriculum:
         stage_1_beginner:
-          max_cycles: 5          # More cycles per trial for meaningful training
-          max_updates: 5         # Quick stage for faster optimization
+          max_cycles: 2          # More cycles per trial for meaningful training
+          max_updates: null         # Quick stage for faster optimization
         
         stage_2_intermediate:
           enabled: false         # Single stage for foundation

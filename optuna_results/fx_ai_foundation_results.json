@@ -1,22 +1,22 @@
 [
   {
-    "trial_number": 224,
+    "trial_number": 0,
     "params": {
-      "training.learning_rate": 0.0002582755794155255,
-      "training.batch_size": 64,
-      "training.entropy_coef": 0.0023207517877310694,
-      "training.gamma": 0.9879560115446847,
-      "model.d_model": 64,
-      "model.n_layers": 5,
-      "model.dropout": 0.1035730015369363,
-      "training.rollout_steps": 4096,
-      "env.reward.pnl_coefficient": 193.30862010412497
+      "training.learning_rate": 0.0001535528683888687,
+      "training.batch_size": 32,
+      "training.entropy_coef": 0.0018410729205738682,
+      "training.gamma": 0.9745238410897499,
+      "model.d_model": 128,
+      "model.n_layers": 7,
+      "model.dropout": 0.05411689885916049,
+      "training.rollout_steps": 1024,
+      "env.reward.pnl_coefficient": 120.00149278556214
     },
     "metrics": {
-      "reward": -33.8374,
+      "reward": -5.12,
       "mean_reward": -5.12
     },
-    "datetime": "2025-06-04T01:12:42.839335",
+    "datetime": "2025-06-04T01:40:15.977130",
     "duration": null
   }
 ]
