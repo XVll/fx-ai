@@ -931,12 +931,16 @@ class PPOTrainer:
         
         # Run periodic feature attribution analysis
         if self.global_update_counter % 10 == 0:  # Every 10 updates
+            self.logger.info(f"🔍 Attempting attribution analysis at update {self.global_update_counter}")
             try:
                 attribution_results = self.metrics.run_periodic_shap_analysis()  # Method name kept for compatibility
                 if attribution_results:
                     self.logger.info("🔍 Captum attribution analysis completed - feature importance updated")
+                    self.logger.info(f"🔍 Attribution results keys: {list(attribution_results.keys()) if attribution_results else 'None'}")
+                else:
+                    self.logger.warning("🔍 Attribution analysis returned None - check conditions or errors")
             except Exception as e:
-                self.logger.debug(f"Feature attribution analysis failed: {e}")
+                self.logger.error(f"🔍 Feature attribution analysis failed: {e}", exc_info=True)
         
         # Update dashboard that we're in update phase
         if hasattr(self.metrics, "metrics_manager"):
