@@ -88,7 +88,6 @@ class SharedDashboardState:
     value_loss: float = 0.0
     entropy: float = 0.0
     clip_fraction: float = 0.0
-    approx_kl: float = 0.0
     learning_rate: float = 0.0
     kl_divergence: float = 0.0
     explained_variance: float = 0.0
@@ -250,10 +249,21 @@ class DashboardStateManager:
                             self._state.current_timestamp):
                             try:
                                 hold_duration = self._state.current_timestamp - self._state.position_entry_timestamp
-                                self._state.position_hold_time_seconds = int(hold_duration.total_seconds())
-                            except TypeError:
-                                # Timezone mismatch - skip update
-                                pass
+                                new_hold_time = int(hold_duration.total_seconds())
+                                # Only update if the time has actually changed (avoid constant logging)
+                                if abs(new_hold_time - self._state.position_hold_time_seconds) >= 1:
+                                    self._state.position_hold_time_seconds = new_hold_time
+                                    # Periodic debug logging (every 60 seconds)
+                                    if new_hold_time % 60 == 0:
+                                        import logging
+                                        logger = logging.getLogger(__name__)
+                                        logger.debug(f"Hold time updated: {new_hold_time}s ({new_hold_time//60}m) for {self._state.position_side} position")
+                            except Exception as e:
+                                # Log the error for debugging
+                                import logging
+                                logger = logging.getLogger(__name__)
+                                logger.debug(f"Market update hold time calculation error: {e}, current_ts: {self._state.current_timestamp}, entry_ts: {self._state.position_entry_timestamp}")
+                                # Keep previous value instead of resetting to 0
                             
                     except:
                         self._state.ny_time = datetime.now().strftime('%H:%M:%S')
@@ -351,26 +361,41 @@ class DashboardStateManager:
                 entry_timestamp = data.get('entry_timestamp')
                 if entry_timestamp and self._state.position_side != 'FLAT':
                     # Store entry timestamp for open positions (ensure timezone-naive)
-                    if isinstance(entry_timestamp, str):
-                        entry_ts = pd.to_datetime(entry_timestamp)
-                    else:
-                        entry_ts = pd.to_datetime(entry_timestamp)
-                    
-                    # Make timezone-naive to match current_timestamp
-                    if entry_ts.tz is not None:
-                        entry_ts = entry_ts.tz_localize(None)
-                    
-                    self._state.position_entry_timestamp = entry_ts
-                    
-                    # Calculate hold time
-                    if self._state.current_timestamp and self._state.position_entry_timestamp:
-                        try:
-                            hold_duration = self._state.current_timestamp - self._state.position_entry_timestamp
-                            self._state.position_hold_time_seconds = int(hold_duration.total_seconds())
-                        except TypeError:
-                            # Timezone mismatch fallback
+                    try:
+                        if isinstance(entry_timestamp, str):
+                            entry_ts = pd.to_datetime(entry_timestamp)
+                        else:
+                            entry_ts = pd.to_datetime(entry_timestamp)
+                        
+                        # Convert to NY time and make timezone-naive to match current_timestamp
+                        if entry_ts.tz is not None:
+                            # Convert from original timezone to NY time, then remove timezone
+                            entry_ts_ny = entry_ts.tz_convert('America/New_York').tz_localize(None)
+                        else:
+                            # Assume UTC and convert to NY time, then remove timezone
+                            entry_ts_ny = entry_ts.tz_localize('UTC').tz_convert('America/New_York').tz_localize(None)
+                        
+                        self._state.position_entry_timestamp = entry_ts_ny
+                        
+                        # Calculate hold time immediately
+                        if self._state.current_timestamp:
+                            try:
+                                hold_duration = self._state.current_timestamp - self._state.position_entry_timestamp
+                                self._state.position_hold_time_seconds = int(hold_duration.total_seconds())
+                            except Exception as e:
+                                # Log the error for debugging
+                                import logging
+                                logger = logging.getLogger(__name__)
+                                logger.debug(f"Hold time calculation error: {e}, current_ts: {self._state.current_timestamp}, entry_ts: {self._state.position_entry_timestamp}")
+                                self._state.position_hold_time_seconds = 0
+                        else:
                             self._state.position_hold_time_seconds = 0
-                    else:
+                    except Exception as e:
+                        # Log timestamp parsing errors
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.debug(f"Entry timestamp parsing error: {e}, timestamp: {entry_timestamp}")
+                        self._state.position_entry_timestamp = None
                         self._state.position_hold_time_seconds = 0
                 else:
                     # Reset for FLAT positions
@@ -444,17 +469,19 @@ class DashboardStateManager:
             # PPO metrics
             ppo_updated = False
             for key in ['policy_loss', 'value_loss', 'entropy', 'clip_fraction', 
-                       'approx_kl', 'learning_rate', 'kl_divergence', 'explained_variance', 'mean_episode_reward']:
+                       'learning_rate', 'kl_divergence', 'explained_variance', 'mean_episode_reward']:
                 if key in metrics:
                     old_value = getattr(self._state, key, 0.0)
                     new_value = metrics[key]
                     setattr(self._state, key, new_value)
                     
-                    # Update sparkline history if value changed
-                    if new_value != old_value:
-                        history_attr = f"{key}_history"
-                        if hasattr(self._state, history_attr):
-                            getattr(self._state, history_attr).append(new_value)
+                    # Update sparkline history if value changed or history is empty
+                    history_attr = f"{key}_history"
+                    if hasattr(self._state, history_attr):
+                        history_deque = getattr(self._state, history_attr)
+                        # Add to history if value changed significantly or history is empty
+                        if len(history_deque) == 0 or abs(new_value - old_value) > 1e-8:
+                            history_deque.append(new_value)
                     
                     ppo_updated = True
                     

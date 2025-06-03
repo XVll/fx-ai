@@ -1,0 +1,17 @@
+env:
+  reward:
+    drawdown_penalty_coefficient: 3.2652075759388897
+    holding_penalty_coefficient: 1.1524751582906516
+    pnl_coefficient: 158.94361684207098
+model:
+  d_model: 64
+  dropout: 0.16501583194530894
+  n_layers: 8
+training:
+  batch_size: 128
+  clip_epsilon: 0.2169320723693781
+  entropy_coef: 0.0019342476537174027
+  gae_lambda: 0.9509148591077836
+  gamma: 0.9676645081594988
+  learning_rate: 0.0004716394503960684
+  n_epochs: 8

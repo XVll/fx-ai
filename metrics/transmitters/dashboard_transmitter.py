@@ -175,9 +175,9 @@ class DashboardTransmitter(MetricTransmitter):
             
             # Map metrics to dashboard fields
             if 'training.ppo' in metric_name or 'model.model' in metric_name:
-                if 'policy_loss' in metric_name:
+                if 'policy_loss' in metric_name or 'actor_loss' in metric_name:
                     dashboard_data['policy_loss'] = value
-                elif 'value_loss' in metric_name:
+                elif 'value_loss' in metric_name or 'critic_loss' in metric_name:
                     dashboard_data['value_loss'] = value
                 elif 'entropy' in metric_name:
                     dashboard_data['entropy'] = value
@@ -209,6 +209,8 @@ class DashboardTransmitter(MetricTransmitter):
                     dashboard_data['steps_per_second'] = value
                 elif 'updates_per_hour' in metric_name:
                     dashboard_data['updates_per_second'] = value / 3600  # Convert to per second
+                elif 'episode_reward_mean' in metric_name:
+                    dashboard_data['mean_episode_reward'] = value
                     
             elif 'training.episode' in metric_name:
                 if 'reward' in metric_name and 'mean' in metric_name:

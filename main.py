@@ -229,8 +229,48 @@ def create_env_components(config: Config, data_manager: DataManager, log: loggin
     return env
 
 
-def create_metrics_components(config: Config, log: logging.Logger):
-    """Create metrics and dashboard components with proper config passing"""
+def get_feature_names_from_config():
+    """Get feature names for each branch based on the feature system"""
+    return {
+        'hf': [
+            'price_velocity', 'price_acceleration', 'tape_imbalance', 
+            'tape_aggression_ratio', 'spread_compression', 'quote_velocity',
+            'quote_imbalance', 'volume_velocity', 'volume_acceleration'
+        ],
+        'mf': [
+            '1m_position_in_current_candle', '5m_position_in_current_candle',
+            '1m_body_size_relative', '5m_body_size_relative',
+            'distance_to_ema9_1m', 'distance_to_ema20_1m', 'distance_to_ema9_5m', 'distance_to_ema20_5m',
+            'ema_interaction_pattern', 'ema_crossover_dynamics', 'ema_trend_alignment',
+            'swing_high_distance_1m', 'swing_low_distance_1m', 'swing_high_distance_5m', 'swing_low_distance_5m',
+            'price_velocity_1m', 'price_velocity_5m', 'volume_velocity_1m', 'volume_velocity_5m',
+            'price_acceleration_1m', 'price_acceleration_5m', 'volume_acceleration_1m', 'volume_acceleration_5m',
+            'distance_to_vwap', 'vwap_slope', 'price_vwap_divergence',
+            'vwap_interaction_dynamics', 'vwap_breakout_quality', 'vwap_mean_reversion_tendency',
+            'relative_volume', 'volume_surge', 'cumulative_volume_delta', 'volume_momentum',
+            'professional_ema_system', 'professional_vwap_analysis', 'professional_momentum_quality', 'professional_volatility_regime',
+            'trend_acceleration', 'volume_pattern_evolution', 'momentum_quality', 'pattern_maturation',
+            'mf_trend_consistency', 'mf_volume_price_divergence', 'mf_momentum_persistence',
+            'volatility_adjusted_momentum', 'regime_relative_volume',
+            '1m_position_in_previous_candle', '5m_position_in_previous_candle',
+            '1m_upper_wick_relative', '1m_lower_wick_relative', '5m_upper_wick_relative', '5m_lower_wick_relative'
+        ],
+        'lf': [
+            'daily_range_position', 'prev_day_range_position', 'price_change_from_prev_close',
+            'support_distance', 'resistance_distance', 'whole_dollar_proximity', 'half_dollar_proximity',
+            'market_session_type', 'time_of_day_sin', 'time_of_day_cos',
+            'halt_state', 'time_since_halt', 'distance_to_luld_up', 'distance_to_luld_down', 'luld_band_width',
+            'session_progress', 'market_stress', 'session_volume_profile',
+            'adaptive_support_resistance', 'hf_momentum_summary', 'hf_volume_dynamics', 'hf_microstructure_quality'
+        ],
+        'portfolio': [
+            'position_side', 'position_size', 'unrealized_pnl', 'realized_pnl', 'total_pnl'
+        ]
+    }
+
+
+def create_metrics_components(config: Config, log: logging.Logger, model: torch.nn.Module = None):
+    """Create metrics and dashboard components with feature attribution support"""
     # Dashboard can work without W&B - only return None if both are disabled
     if not config.wandb.enabled and not config.dashboard.enabled:
         logging.warning("Both W&B and dashboard disabled - no metrics will be tracked")
@@ -247,6 +287,10 @@ def create_metrics_components(config: Config, log: logging.Logger):
     if not run_name and config.training.continue_training:
         run_name = f"continuous_{config.env.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
+    # Get feature names for attribution analysis
+    feature_names = get_feature_names_from_config()
+    logging.info(f"🔍 Feature attribution enabled with {sum(len(names) for names in feature_names.values())} total features")
+    
     # Create metrics config
     metrics_config = MetricsConfig(
         wandb_project=config.wandb.project if config.wandb.enabled else "local",
@@ -260,8 +304,15 @@ def create_metrics_components(config: Config, log: logging.Logger):
         transmit_interval=0.5  # More frequent for trading
     )
     
-    # Create metrics system
-    metrics_manager, metrics_integrator = metrics_config.create_metrics_system()
+    # Create metrics system with feature attribution
+    additional_config = {
+        'feature_names': feature_names,
+        'enable_feature_attribution': True
+    }
+    metrics_manager, metrics_integrator = metrics_config.create_metrics_system(
+        model=model,
+        additional_config=additional_config
+    )
     
     # Start auto-transmission
     metrics_manager.start_auto_transmit()
@@ -416,19 +467,19 @@ def train(config: Config):
         # The PPO agent will handle day selection and environment setup
         logger.info("🎯 Momentum-based training enabled - PPO agent will manage day selection")
         
-        # Metrics components
-        metrics_manager, metrics_integrator = create_metrics_components(config, logger)
+        # Model components (create first to pass to metrics)
+        model, optimizer, model_manager = create_model_components(
+            config, device, str(output_dir), logger
+        )
+        current_components['model_manager'] = model_manager
+        
+        # Metrics components with feature attribution
+        metrics_manager, metrics_integrator = create_metrics_components(config, logger, model)
         current_components['metrics_manager'] = metrics_manager
         
         # Update environment with metrics
         if metrics_integrator:
             env.metrics_integrator = metrics_integrator
-        
-        # Model components
-        model, optimizer, model_manager = create_model_components(
-            config, device, str(output_dir), logger
-        )
-        current_components['model_manager'] = model_manager
         
         # Register model metrics
         if metrics_manager and metrics_integrator:
