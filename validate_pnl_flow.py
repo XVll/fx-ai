@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 def create_test_configs():
     """Create test configurations."""
     env_config = EnvConfig(
-        initial_capital=25000.0,
-        symbol="MLGO"
+        initial_capital=25000.0
+        # symbol removed - symbols now come from curriculum stages
     )
     
     simulation_config = SimulationConfig(

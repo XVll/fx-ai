@@ -1,14 +1,17 @@
-name: default_hyperparameter_optimization
-description: Default hyperparameter optimization for FxAI (balanced approach)
+name: comprehensive_hyperparameter_search
+description: Comprehensive hyperparameter search for FxAI trading system
 version: "1.0"
 
 dashboard_port: 8052
 log_level: INFO
 results_dir: optuna_results
+notify_on_complete: false
 save_study_plots: true
+max_concurrent_trials: 4
+gpu_per_trial: 1.0
 
 studies:
-  - study_name: fx_ai_default
+  - study_name: fx_ai_comprehensive
     direction: maximize
     metric_name: mean_reward
     storage: sqlite:///optuna_studies.db
@@ -16,19 +19,23 @@ studies:
     
     sampler:
       type: TPESampler
-      n_startup_trials: 15
+      n_startup_trials: 20
+      n_ei_candidates: 24
       multivariate: true
+      consider_prior: true
+      prior_weight: 1.0
+      consider_magic_clip: true
       seed: 42
     
     pruner:
       type: MedianPruner
-      n_startup_trials: 8
-      n_warmup_steps: 25
-      interval_steps: 5
+      n_startup_trials: 10
+      n_warmup_steps: 50
+      interval_steps: 10
       n_min_trials: 5
     
     parameters:
-      # Key training parameters
+      # Training hyperparameters
       - name: training.learning_rate
         type: float_log
         low: 0.00001
@@ -51,11 +58,11 @@ studies:
       - name: training.gae_lambda
         type: float
         low: 0.9
-        high: 0.98
+        high: 0.99
       
       - name: training.clip_epsilon
         type: float
-        low: 0.1
+        low: 0.05
         high: 0.3
       
       - name: training.entropy_coef
@@ -65,87 +72,131 @@ studies:
       
       - name: training.value_coef
         type: float
-        low: 0.25
+        low: 0.1
         high: 1.0
       
-      # Model architecture parameters
+      - name: training.max_grad_norm
+        type: float
+        low: 0.1
+        high: 1.0
+      
+      # Model architecture
       - name: model.d_model
         type: categorical
         choices: [64, 128, 256]
       
       - name: model.n_layers
         type: int
-        low: 4
-        high: 12
+        low: 3
+        high: 10
+      
+      - name: model.n_heads
+        type: categorical
+        choices: [4, 8, 16]
       
       - name: model.dropout
         type: float
         low: 0.0
         high: 0.3
       
-      # Key reward parameters
+      - name: model.d_ff
+        type: categorical
+        choices: [512, 1024, 2048, 4096]
+      
+      # Reward system coefficients
       - name: env.reward.pnl_coefficient
         type: float
         low: 50.0
-        high: 300.0
+        high: 500.0
       
       - name: env.reward.holding_penalty_coefficient
         type: float
         low: 0.5
-        high: 5.0
+        high: 10.0
       
       - name: env.reward.drawdown_penalty_coefficient
         type: float
         low: 1.0
-        high: 20.0
+        high: 30.0
       
       - name: env.reward.profit_closing_bonus_coefficient
         type: float
-        low: 50.0
+        low: 20.0
         high: 200.0
       
       - name: env.reward.clean_trade_coefficient
         type: float
+        low: 5.0
+        high: 100.0
+      
+      - name: env.reward.bankruptcy_penalty_coefficient
+        type: float
         low: 10.0
+        high: 100.0
+      
+      - name: env.reward.max_drawdown_penalty_coefficient
+        type: float
+        low: 5.0
         high: 50.0
+      
+      # Environment settings
+      - name: env.max_episode_steps
+        type: categorical
+        choices: [256, 512, 768, 1024]
+      
+      - name: env.early_stop_loss_threshold
+        type: float
+        low: 0.8
+        high: 0.95
     
-    n_trials: 100
+    n_trials: 200
+    timeout: 86400  # 24 hours
     n_jobs: 1
     catch_exceptions: true
     
     training_config:
       mode: train
-      experiment_name: optuna_default
+      experiment_name: optuna_comprehensive
       config: momentum_training
       
       training:
-        total_updates: 150
+        total_updates: 200
         checkpoint_interval: 50
         eval_frequency: 25
         eval_episodes: 10
         rollout_steps: 2048
         continue_training: false
+        use_lr_annealing: true
+        lr_annealing_factor: 0.7
+        lr_annealing_patience: 50
       
       env:
-        symbol: MLGO
-        max_episode_steps: 512
+        initial_capital: 25000
         training_mode: true
       
       data:
         provider: databento
-        symbols: [MLGO]
         cache_enabled: true
+      
+      # Symbols now defined in curriculum stages
+      curriculum:
+        stage_1_beginner:
+          symbols: ["MLGO"]
+          enabled: true
       
       wandb:
         enabled: true
         project: fx-ai-optuna
-        tags: [optuna, default_optimization]
+        tags: [optuna, hyperparameter_search]
       
       dashboard:
         enabled: false
     
-    episodes_per_trial: 3000
+    episodes_per_trial: 4000
     eval_frequency: 100
     eval_episodes: 10
+    early_stop_patience: 10
+    early_stop_min_delta: 0.01
     save_checkpoints: true
-    checkpoint_dir: optuna_default_checkpoints
+    checkpoint_dir: optuna_checkpoints
+    keep_best_n: 5

@@ -38,13 +38,18 @@ In FxAI, you can optimize:
 poetry install  # Installs Optuna and related dependencies
 ```
 
-### 2. Run Your First Optimization
+### 2. Run 3-Phase Optimization
 ```bash
-# Quick optimization focusing on key parameters (recommended for beginners)
-poetry run poe optuna
+# Phase 1: Foundation optimization (2-4 hours)
+poetry run poe optuna-foundation
 
-# Or specify a particular optimization preset
-poetry run python optuna_optimization.py --spec config/optuna/quick_search.yaml
+# Transfer results and run Phase 2: Reward optimization (2-3 hours)  
+poetry run poe optuna-transfer-1to2
+poetry run poe optuna-reward
+
+# Transfer results and run Phase 3: Fine-tuning (3-5 hours)
+poetry run poe optuna-transfer-2to3
+poetry run poe optuna-finetune
 ```
 
 ### 3. Monitor Progress
@@ -52,9 +57,22 @@ poetry run python optuna_optimization.py --spec config/optuna/quick_search.yaml
 # Launch the Optuna dashboard in a separate terminal
 poetry run poe optuna-dashboard
 # Then open http://localhost:8052 in your browser
+
+# Check status of all phases
+poetry run poe optuna-status
 ```
 
 ### 4. View Results
+```bash
+# Show best parameters from each phase
+poetry run poe optuna-best fx_ai_foundation
+poetry run poe optuna-best fx_ai_reward  
+poetry run poe optuna-best fx_ai_finetune
+
+# Show comprehensive results
+poetry run poe optuna-results
+```
+
 After optimization completes, check:
 - Terminal output for best parameters found
 - `optuna_results/` directory for detailed results and visualizations

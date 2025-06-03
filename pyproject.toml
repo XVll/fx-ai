@@ -26,15 +26,16 @@ scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.5"
 scan-high = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.7"
 scan-all = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.0"
 
-# Hyperparameter Optimization with Optuna
-optuna = "poetry run python optuna_optimization.py --spec config/optuna/default.yaml"
-optuna-study = "poetry run python optuna_optimization.py --study-name {{study_name}}"
-optuna-quick = "poetry run python optuna_optimization.py --spec config/optuna/quick_search.yaml"
-optuna-comprehensive = "poetry run python optuna_optimization.py --spec config/optuna/comprehensive_search.yaml"
-optuna-reward = "poetry run python optuna_optimization.py --spec config/optuna/reward_focused.yaml"
-optuna-parallel = "poetry run python optuna_optimization.py --spec config/optuna/parallel_search.yaml --n-jobs {{n_jobs:4}}"
+# 3-Phase Hyperparameter Optimization with Optuna
+optuna-foundation = "poetry run python optuna_optimization.py --spec config/optuna/phase1_foundation.yaml"
+optuna-reward = "poetry run python optuna_optimization.py --spec config/optuna/phase2_reward.yaml"
+optuna-finetune = "poetry run python optuna_optimization.py --spec config/optuna/phase3_finetune.yaml"
 optuna-dashboard = "optuna-dashboard sqlite:///optuna_studies.db"
 optuna-best = "poetry run python optuna_optimization.py --show-best {{study_name}}"
+optuna-results = "poetry run python optuna_optimization.py --show-results"
+optuna-status = "poetry run python scripts/transfer_best_params.py --status"
+optuna-transfer-1to2 = "poetry run python scripts/transfer_best_params.py --from-phase 1 --to-phase 2"
+optuna-transfer-2to3 = "poetry run python scripts/transfer_best_params.py --from-phase 2 --to-phase 3"
 
 # Testing
 test = "poetry run pytest -v"

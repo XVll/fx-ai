@@ -63,7 +63,8 @@
       "Bash(then mv best_models/MLGO/* cache/model/best/)",
       "Bash(fi)",
       "Bash(poetry lock:*)",
-      "Bash([ -d /Users/fx/Repositories/FxAIv2/scripts ])"
+      "Bash([ -d /Users/fx/Repositories/FxAIv2/scripts ])",
+      "Bash(chmod:*)"
     ],
     "deny": []
   },

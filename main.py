@@ -269,6 +269,21 @@ def get_feature_names_from_config():
     }
 
 
+def get_curriculum_symbols(config):
+    """Extract all symbols from enabled curriculum stages"""
+    symbols = set()
+    stages = [
+        config.curriculum.stage_1_beginner,
+        config.curriculum.stage_2_intermediate, 
+        config.curriculum.stage_3_advanced,
+        config.curriculum.stage_4_specialization
+    ]
+    for stage in stages:
+        if stage.enabled:
+            symbols.update(stage.symbols)
+    return list(symbols)
+
+
 def create_metrics_components(config: Config, log: logging.Logger, model: torch.nn.Module = None):
     """Create metrics and dashboard components with feature attribution support"""
     # Dashboard can work without W&B - only return None if both are disabled
@@ -285,25 +300,14 @@ def create_metrics_components(config: Config, log: logging.Logger, model: torch.
     # Create run name
     run_name = config.wandb.name
     if not run_name and config.training.continue_training:
-        run_name = f"continuous_{config.env.symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # Get first curriculum symbol or use 'curriculum'
+        curriculum_symbols = get_curriculum_symbols(config)
+        primary_symbol = curriculum_symbols[0] if curriculum_symbols else "curriculum"
+        run_name = f"continuous_{primary_symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
     # Get feature names for attribution analysis
     feature_names = get_feature_names_from_config()
     logging.info(f"🔍 Feature attribution enabled with {sum(len(names) for names in feature_names.values())} total features")
-    
-    # Get symbols from curriculum stages
-    def get_curriculum_symbols(config):
-        symbols = set()
-        stages = [
-            config.curriculum.stage_1_beginner,
-            config.curriculum.stage_2_intermediate, 
-            config.curriculum.stage_3_advanced,
-            config.curriculum.stage_4_specialization
-        ]
-        for stage in stages:
-            if stage.enabled:
-                symbols.update(stage.symbols)
-        return list(symbols)
     
     curriculum_symbols = get_curriculum_symbols(config)
     primary_symbol = curriculum_symbols[0] if curriculum_symbols else "curriculum"
@@ -392,7 +396,7 @@ def create_training_callbacks(config: Config, model_manager, output_dir: str,
         ModelCheckpointCallback(
             save_dir=str(Path(output_dir) / "models"),
             save_freq=config.training.checkpoint_interval,
-            prefix=config.env.symbol,
+            prefix="model",
             save_best_only=True
         )
     )
@@ -450,7 +454,9 @@ def train(config: Config):
     logger.info("="*80)
     logger.info(f"🚀 Starting FX-AI Training System")
     logger.info(f"📊 Experiment: {config.experiment_name}")
-    logger.info(f"📈 Symbol: {config.env.symbol}")
+    # Get curriculum symbols for logging
+    curriculum_symbols = get_curriculum_symbols(config)
+    logger.info(f"📈 Symbols: {curriculum_symbols if curriculum_symbols else 'from curriculum stages'}")
     
     # Handle both dict and object access patterns
     model_cfg = config.model
@@ -534,7 +540,7 @@ def train(config: Config):
                 "update_iter": 0,
                 "timestamp": time.time(),
                 "initial_model": True,
-                "symbol": config.env.symbol
+                "symbol": "curriculum"
             }
             
             # Create a temporary checkpoint to save as initial model
@@ -619,6 +625,8 @@ def train(config: Config):
         logger.info("🎯 Initializing momentum-based training...")
         
         # Set primary asset - this will be determined by curriculum
+        curriculum_symbols = get_curriculum_symbols(config)
+        primary_symbol = curriculum_symbols[0] if curriculum_symbols else "curriculum"
         env.primary_asset = primary_symbol
         
         if not trainer._select_next_momentum_day():

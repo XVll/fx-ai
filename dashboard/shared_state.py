@@ -16,8 +16,8 @@ class SharedDashboardState:
     
     # Session info
     session_start_time: datetime = field(default_factory=datetime.now)
-    model_name: str = "MLGO_v1"
-    symbol: str = "MLGO"
+    model_name: str = "curriculum_v1"
+    symbol: str = "curriculum"
     
     # Market data (from event stream)
     current_price: float = 0.0

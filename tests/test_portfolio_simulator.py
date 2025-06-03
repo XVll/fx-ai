@@ -27,8 +27,8 @@ def logger():
 def env_config():
     """Create a test environment config."""
     return EnvConfig(
-        initial_capital=25000.0,
-        symbol="MLGO"
+        initial_capital=25000.0
+        # symbol removed - symbols now come from curriculum stages
     )
 
 

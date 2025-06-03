@@ -288,6 +288,11 @@ class ModelInternalsCollector(MetricCollector):
                             metrics[f"{self.category.value}.{self.name}.attention_stability"] = MetricValue(stability)
                     except Exception as e:
                         self.logger.debug(f"Error calculating attention stability: {e}")
+            
+            # Add stored attribution metrics to collection
+            if hasattr(self, 'last_attribution_metrics') and self.last_attribution_metrics:
+                for metric_name, value in self.last_attribution_metrics.items():
+                    metrics[f"{self.category.value}.{self.name}.{metric_name}"] = MetricValue(value)
                     
         except Exception as e:
             self.logger.debug(f"Error collecting model internals metrics: {e}")
@@ -394,18 +399,36 @@ class ModelInternalsCollector(MetricCollector):
             
             if attribution_results:
                 self.last_attribution_analysis_time = current_time
-                self.logger.info("Completed periodic Captum attribution analysis")
+                self.logger.info("✅ Completed periodic Captum attribution analysis")
                 
                 # Log consensus metrics if available
                 if 'consensus' in attribution_results:
                     consensus = attribution_results['consensus']
-                    self.logger.info(f"Attribution consensus: {consensus.get('mean_correlation', 0):.3f}")
+                    self.logger.info(f"📊 Attribution consensus: {consensus.get('mean_correlation', 0):.3f}")
                 
                 # Log attribution metrics
                 if 'metrics' in attribution_results:
                     metrics = attribution_results['metrics']
-                    self.logger.debug(f"Attribution quality - Sparsity: {metrics.get('sparsity', 0):.3f}, "
+                    self.logger.info(f"📈 Attribution quality - Sparsity: {metrics.get('sparsity', 0):.3f}, "
                                      f"Concentration: {metrics.get('concentration', 0):.3f}")
+                
+                # Log top features by branch for visibility
+                if 'branch_attributions' in attribution_results:
+                    self.logger.info("🔥 Top features by branch:")
+                    for branch, attrs in attribution_results['branch_attributions'].items():
+                        if branch in self.attribution_analyzer.feature_names:
+                            feature_names = self.attribution_analyzer.feature_names[branch]
+                            mean_attrs = attrs.mean(axis=0)  # Average across samples
+                            
+                            # Get top 3 features for this branch
+                            top_indices = np.argsort(np.abs(mean_attrs))[-3:][::-1]
+                            top_features = [(feature_names[i], mean_attrs[i]) for i in top_indices if i < len(feature_names)]
+                            
+                            feature_summary = ", ".join([f"{name}: {score:.4f}" for name, score in top_features])
+                            self.logger.info(f"   📊 {branch.upper()}: {feature_summary}")
+                
+                # Store results for metrics collection
+                self._store_attribution_results(attribution_results)
                 
                 return attribution_results
             
@@ -413,6 +436,36 @@ class ModelInternalsCollector(MetricCollector):
             self.logger.warning(f"Captum attribution analysis failed: {e}")
         
         return None
+    
+    def _store_attribution_results(self, attribution_results: Dict[str, Any]):
+        """Store attribution results for later retrieval by metrics collection"""
+        # Store key attribution metrics that should show up in dashboards
+        self.last_attribution_metrics = {}
+        
+        # Store consensus scores
+        if 'consensus' in attribution_results:
+            consensus = attribution_results['consensus']
+            for metric, value in consensus.items():
+                self.last_attribution_metrics[f"consensus_{metric}"] = value
+        
+        # Store quality metrics
+        if 'metrics' in attribution_results:
+            quality_metrics = attribution_results['metrics']
+            for metric, value in quality_metrics.items():
+                self.last_attribution_metrics[f"quality_{metric}"] = value
+        
+        # Store top feature scores by branch
+        if 'branch_attributions' in attribution_results:
+            for branch, attrs in attribution_results['branch_attributions'].items():
+                if branch in self.attribution_analyzer.feature_names:
+                    mean_attrs = attrs.mean(axis=0)
+                    # Store max attribution score for this branch
+                    max_score = float(np.max(np.abs(mean_attrs)))
+                    mean_score = float(np.mean(np.abs(mean_attrs)))
+                    self.last_attribution_metrics[f"branch_{branch}_max_attribution"] = max_score
+                    self.last_attribution_metrics[f"branch_{branch}_mean_attribution"] = mean_score
+        
+        self.logger.debug(f"Stored {len(self.last_attribution_metrics)} attribution metrics for dashboard/wandb")
     
     def run_permutation_importance_analysis(self, environment, n_episodes: int = 20) -> Optional[Dict[str, Dict[str, float]]]:
         """Run permutation importance analysis"""

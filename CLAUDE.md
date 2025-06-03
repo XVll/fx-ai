@@ -37,18 +37,23 @@ poetry run poe scan                        # Min quality 0.5
 poetry run poe scan-high                   # Min quality 0.7  
 poetry run poe scan-all                    # All momentum days (0.0)
 
-# Hyperparameter Optimization with Optuna
-poetry run poe optuna                      # Run default optimization
-poetry run poe optuna-study study_name     # Run specific study
-poetry run poe optuna-parallel 4           # Run with 4 parallel workers
-poetry run poe optuna-dashboard            # Launch Optuna dashboard
-poetry run poe optuna-best study_name      # Show best config for study
+# 3-Phase Hyperparameter Optimization with Optuna
+# Phase 1: Foundation (core training + model architecture)
+poetry run poe optuna-foundation           # Optimize learning_rate, batch_size, d_model, etc.
 
-# Quick optimization presets
-poetry run python optuna_optimization.py --spec config/optuna/quick_search.yaml
-poetry run python optuna_optimization.py --spec config/optuna/comprehensive_search.yaml
-poetry run python optuna_optimization.py --spec config/optuna/reward_focused.yaml
-poetry run python optuna_optimization.py --spec config/optuna/parallel_search.yaml --n-jobs 8
+# Phase 2: Reward system (with fixed foundation)
+poetry run poe optuna-transfer-1to2        # Transfer foundation results to phase 2
+poetry run poe optuna-reward               # Optimize all reward coefficients
+
+# Phase 3: Fine-tuning (remaining params + refinement)
+poetry run poe optuna-transfer-2to3        # Transfer all results to phase 3
+poetry run poe optuna-finetune             # Final optimization + validation
+
+# Management commands
+poetry run poe optuna-dashboard            # Launch Optuna dashboard
+poetry run poe optuna-status               # Show status of all 3 phases
+poetry run poe optuna-best fx_ai_foundation # Show best config from specific phase
+poetry run poe optuna-results              # Show results from all phases
 
 # Live dashboard (auto-launches with training)
 # Access at http://localhost:8051
