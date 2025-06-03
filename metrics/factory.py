@@ -182,6 +182,10 @@ class MetricsIntegrator:
         for collector_id, collector in self.metrics_manager.collectors.items():
             collector_type = collector.__class__.__name__
             self._collectors[collector_type] = collector
+            
+        # Add convenient reference for model internals collector
+        if 'ModelInternalsCollector' in self._collectors:
+            self.model_internals_collector = self._collectors['ModelInternalsCollector']
 
     def get_collector(self, collector_type: str):
         """Get a specific collector by type"""
@@ -559,6 +563,10 @@ class MetricsConfig:
 
         wandb_config = self.create_wandb_config(additional_config)
 
+        # Extract feature attribution parameters from additional_config
+        feature_names = additional_config.get('feature_names') if additional_config else None
+        enable_feature_attribution = additional_config.get('enable_feature_attribution', True) if additional_config else True
+        
         manager = MetricsFactory.create_complete_metrics_system(
             wandb_config=wandb_config,
             model=model,
@@ -567,7 +575,9 @@ class MetricsConfig:
             initial_capital=self.initial_capital,
             include_system=self.include_system_metrics,
             enable_dashboard=self.enable_dashboard,
-            dashboard_port=self.dashboard_port
+            dashboard_port=self.dashboard_port,
+            feature_names=feature_names,
+            enable_feature_attribution=enable_feature_attribution
         )
 
         integrator = MetricsIntegrator(manager)
