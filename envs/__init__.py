@@ -2,4 +2,4 @@
 
 from .trading_environment import TradingEnvironment
 
-__all__ = ['TradingEnvironment']
+__all__ = ["TradingEnvironment"]

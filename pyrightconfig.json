@@ -1,0 +1,9 @@
+{
+  "pythonPath": ".venv/bin/python",
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["."],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingModuleSource": "warning"
+}

@@ -3,13 +3,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import Dict, Tuple, Optional, Union, List
+from typing import Dict, Tuple, Optional, Union
 
 from ai.layers import (
     PositionalEncoding,
     TransformerEncoderLayer,
     TransformerEncoder,
-    AttentionFusion
+    AttentionFusion,
 )
 from config.schemas import ModelConfig
 
@@ -23,10 +23,10 @@ class MultiBranchTransformer(nn.Module):
     """
 
     def __init__(
-            self,
-            model_config:ModelConfig,
-            device: Union[str, torch.device] = None,
-            logger: Optional[object] = None  # Logger for debugging
+        self,
+        model_config: ModelConfig,
+        device: Union[str, torch.device] = None,
+        logger: Optional[object] = None,  # Logger for debugging
     ):
         super().__init__()
         self.logger = logger or logging.getLogger(__name__)
@@ -65,29 +65,61 @@ class MultiBranchTransformer(nn.Module):
 
         # HF Branch (High Frequency)
         self.hf_proj = nn.Linear(model_config.hf_feat_dim, model_config.d_model)
-        self.hf_pos_enc = PositionalEncoding(model_config.d_model, model_config.dropout, max_len=model_config.hf_seq_len)
-        encoder_layer_hf = TransformerEncoderLayer(model_config.d_model, model_config.hf_heads, dim_feedforward=2 * model_config.d_model, dropout=model_config.dropout)
+        self.hf_pos_enc = PositionalEncoding(
+            model_config.d_model, model_config.dropout, max_len=model_config.hf_seq_len
+        )
+        encoder_layer_hf = TransformerEncoderLayer(
+            model_config.d_model,
+            model_config.hf_heads,
+            dim_feedforward=2 * model_config.d_model,
+            dropout=model_config.dropout,
+        )
         self.hf_encoder = TransformerEncoder(encoder_layer_hf, model_config.hf_layers)
 
         # MF Branch (Medium Frequency)
         self.mf_proj = nn.Linear(model_config.mf_feat_dim, model_config.d_model)
-        self.mf_pos_enc = PositionalEncoding(model_config.d_model, model_config.dropout, max_len=model_config.mf_seq_len)
-        encoder_layer_mf = TransformerEncoderLayer(model_config.d_model, model_config.mf_heads, dim_feedforward=2 * model_config.d_model, dropout=model_config.dropout)
+        self.mf_pos_enc = PositionalEncoding(
+            model_config.d_model, model_config.dropout, max_len=model_config.mf_seq_len
+        )
+        encoder_layer_mf = TransformerEncoderLayer(
+            model_config.d_model,
+            model_config.mf_heads,
+            dim_feedforward=2 * model_config.d_model,
+            dropout=model_config.dropout,
+        )
         self.mf_encoder = TransformerEncoder(encoder_layer_mf, model_config.mf_layers)
 
         # LF Branch (Low Frequency)
         self.lf_proj = nn.Linear(model_config.lf_feat_dim, model_config.d_model)
-        self.lf_pos_enc = PositionalEncoding(model_config.d_model, model_config.dropout, max_len=model_config.lf_seq_len)
-        encoder_layer_lf = TransformerEncoderLayer(model_config.d_model, model_config.lf_heads, dim_feedforward=2 * model_config.d_model, dropout=model_config.dropout)
+        self.lf_pos_enc = PositionalEncoding(
+            model_config.d_model, model_config.dropout, max_len=model_config.lf_seq_len
+        )
+        encoder_layer_lf = TransformerEncoderLayer(
+            model_config.d_model,
+            model_config.lf_heads,
+            dim_feedforward=2 * model_config.d_model,
+            dropout=model_config.dropout,
+        )
         self.lf_encoder = TransformerEncoder(encoder_layer_lf, model_config.lf_layers)
 
         # Portfolio Branch (Static features)
-        self.portfolio_proj = nn.Linear(model_config.portfolio_feat_dim, model_config.d_model)
-        self.portfolio_pos_enc = PositionalEncoding(model_config.d_model, model_config.dropout, max_len=model_config.portfolio_seq_len)
-        encoder_layer_portfolio = TransformerEncoderLayer(model_config.d_model, model_config.portfolio_heads, dim_feedforward=2 * model_config.d_model,
-                                                          dropout=model_config.dropout)
-        self.portfolio_encoder = TransformerEncoder(encoder_layer_portfolio, model_config.portfolio_layers)
-
+        self.portfolio_proj = nn.Linear(
+            model_config.portfolio_feat_dim, model_config.d_model
+        )
+        self.portfolio_pos_enc = PositionalEncoding(
+            model_config.d_model,
+            model_config.dropout,
+            max_len=model_config.portfolio_seq_len,
+        )
+        encoder_layer_portfolio = TransformerEncoderLayer(
+            model_config.d_model,
+            model_config.portfolio_heads,
+            dim_feedforward=2 * model_config.d_model,
+            dropout=model_config.dropout,
+        )
+        self.portfolio_encoder = TransformerEncoder(
+            encoder_layer_portfolio, model_config.portfolio_layers
+        )
 
         # Cross-timeframe attention for pattern recognition
         # This allows HF features to attend to MF/LF patterns
@@ -95,18 +127,28 @@ class MultiBranchTransformer(nn.Module):
             embed_dim=model_config.d_model,
             num_heads=4,
             dropout=model_config.dropout,
-            batch_first=True
+            batch_first=True,
         )
-        
+
         # Pattern extraction layer - identifies key points in sequences
         self.pattern_extractor = nn.Sequential(
-            nn.Conv1d(model_config.d_model, model_config.d_model // 2, kernel_size=3, padding=1),
+            nn.Conv1d(
+                model_config.d_model,
+                model_config.d_model // 2,
+                kernel_size=3,
+                padding=1,
+            ),
             nn.ReLU(),
-            nn.Conv1d(model_config.d_model // 2, model_config.d_model // 4, kernel_size=3, padding=1),
+            nn.Conv1d(
+                model_config.d_model // 2,
+                model_config.d_model // 4,
+                kernel_size=3,
+                padding=1,
+            ),
             nn.ReLU(),
-            nn.AdaptiveMaxPool1d(1)  # Extract most prominent pattern
+            nn.AdaptiveMaxPool1d(1),  # Extract most prominent pattern
         )
-        
+
         # Fusion Layer - 5 inputs: HF, MF, LF, Portfolio, Cross-attention
         self.fusion = AttentionFusion(model_config.d_model, 5, model_config.d_fused, 4)
 
@@ -124,16 +166,16 @@ class MultiBranchTransformer(nn.Module):
             nn.Linear(model_config.d_fused, model_config.d_fused // 2),
             nn.LayerNorm(model_config.d_fused // 2),
             nn.GELU(),
-            nn.Linear(model_config.d_fused // 2, 1)
+            nn.Linear(model_config.d_fused // 2, 1),
         )
 
         self.to(self.device)
 
     def forward(
-            self,
-            state_dict: Dict[str, torch.Tensor],
-            return_internals: bool = False
-    ) -> Tuple[Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, ...]], torch.Tensor]:
+        self, state_dict: Dict[str, torch.Tensor], return_internals: bool = False
+    ) -> Tuple[
+        Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, ...]], torch.Tensor
+    ]:
         """
         Forward pass through the model.
 
@@ -155,13 +197,15 @@ class MultiBranchTransformer(nn.Module):
         for key, tensor in state_dict.items():
             if torch.isnan(tensor).any():
                 nan_count = torch.isnan(tensor).sum().item()
-                self.logger.warning(f"NaN detected in input tensor '{key}': {nan_count} values")
+                self.logger.warning(
+                    f"NaN detected in input tensor '{key}': {nan_count} values"
+                )
 
         # Extract features from dict, ensuring they're on the right device
-        hf_features = state_dict['hf'].to(self.device)
-        mf_features = state_dict['mf'].to(self.device)
-        lf_features = state_dict['lf'].to(self.device)
-        portfolio_features = state_dict['portfolio'].to(self.device)
+        hf_features = state_dict["hf"].to(self.device)
+        mf_features = state_dict["mf"].to(self.device)
+        lf_features = state_dict["lf"].to(self.device)
+        portfolio_features = state_dict["portfolio"].to(self.device)
 
         # HF features: should be [batch_size, hf_seq_len, hf_feat_dim]
         if hf_features.ndim == 2:  # [seq_len, feat_dim]
@@ -179,11 +223,12 @@ class MultiBranchTransformer(nn.Module):
         if portfolio_features.ndim == 2:  # [seq_len, feat_dim]
             portfolio_features = portfolio_features.unsqueeze(0)  # Add batch dim
 
-
         # Add missing dimensions if needed - this makes the model more robust
         # HF features
         if hf_features.ndim < 3:
-            self.logger.warning(f"hf_features has unexpected shape: {hf_features.shape}. Adding missing dimensions.")
+            self.logger.warning(
+                f"hf_features has unexpected shape: {hf_features.shape}. Adding missing dimensions."
+            )
             if hf_features.ndim == 1:  # [feat_dim]
                 hf_features = hf_features.unsqueeze(0).unsqueeze(0)  # [1, 1, feat_dim]
             elif hf_features.ndim == 2:  # [seq_len, feat_dim]
@@ -191,7 +236,9 @@ class MultiBranchTransformer(nn.Module):
 
         # MF features
         if mf_features.ndim < 3:
-            self.logger.warning(f"mf_features has unexpected shape: {mf_features.shape}. Adding missing dimensions.")
+            self.logger.warning(
+                f"mf_features has unexpected shape: {mf_features.shape}. Adding missing dimensions."
+            )
             if mf_features.ndim == 1:  # [feat_dim]
                 mf_features = mf_features.unsqueeze(0).unsqueeze(0)  # [1, 1, feat_dim]
             elif mf_features.ndim == 2:  # [seq_len, feat_dim]
@@ -199,7 +246,9 @@ class MultiBranchTransformer(nn.Module):
 
         # LF features
         if lf_features.ndim < 3:
-            self.logger.warning(f"lf_features has unexpected shape: {lf_features.shape}. Adding missing dimensions.")
+            self.logger.warning(
+                f"lf_features has unexpected shape: {lf_features.shape}. Adding missing dimensions."
+            )
             if lf_features.ndim == 1:  # [feat_dim]
                 lf_features = lf_features.unsqueeze(0).unsqueeze(0)  # [1, 1, feat_dim]
             elif lf_features.ndim == 2:  # [seq_len, feat_dim]
@@ -208,12 +257,16 @@ class MultiBranchTransformer(nn.Module):
         # Portfolio features
         if portfolio_features.ndim < 3:
             self.logger.warning(
-                f"portfolio_features has unexpected shape: {portfolio_features.shape}. Adding missing dimensions.")
+                f"portfolio_features has unexpected shape: {portfolio_features.shape}. Adding missing dimensions."
+            )
             if portfolio_features.ndim == 1:  # [feat_dim]
-                portfolio_features = portfolio_features.unsqueeze(0).unsqueeze(0)  # [1, 1, feat_dim]
+                portfolio_features = portfolio_features.unsqueeze(0).unsqueeze(
+                    0
+                )  # [1, 1, feat_dim]
             elif portfolio_features.ndim == 2:  # [seq_len, feat_dim]
-                portfolio_features = portfolio_features.unsqueeze(0)  # [1, seq_len, feat_dim]
-
+                portfolio_features = portfolio_features.unsqueeze(
+                    0
+                )  # [1, seq_len, feat_dim]
 
         # Process HF Branch
         # Shape: (batch_size, hf_seq_len, d_model)
@@ -227,7 +280,7 @@ class MultiBranchTransformer(nn.Module):
         time_weights = torch.exp(torch.linspace(-2, 0, seq_len, device=hf_x.device))
         time_weights = time_weights.unsqueeze(0).unsqueeze(-1)  # (1, seq_len, 1)
         time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)  # Normalize
-        
+
         # Weighted temporal pooling
         hf_weighted = hf_x * time_weights
         hf_rep = hf_weighted.sum(dim=1)  # (batch_size, d_model)
@@ -244,7 +297,7 @@ class MultiBranchTransformer(nn.Module):
         time_weights = torch.exp(torch.linspace(-1.5, 0, seq_len, device=mf_x.device))
         time_weights = time_weights.unsqueeze(0).unsqueeze(-1)
         time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)
-        
+
         # Weighted temporal pooling
         mf_weighted = mf_x * time_weights
         mf_rep = mf_weighted.sum(dim=1)  # (batch_size, d_model)
@@ -261,7 +314,7 @@ class MultiBranchTransformer(nn.Module):
         time_weights = torch.exp(torch.linspace(-1, 0, seq_len, device=lf_x.device))
         time_weights = time_weights.unsqueeze(0).unsqueeze(-1)
         time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)
-        
+
         # Weighted temporal pooling
         lf_weighted = lf_x * time_weights
         lf_rep = lf_weighted.sum(dim=1)  # (batch_size, d_model)
@@ -274,48 +327,49 @@ class MultiBranchTransformer(nn.Module):
         portfolio_x = self.portfolio_encoder(portfolio_x)
         # Portfolio uses recent history with decay
         seq_len = portfolio_x.size(1)
-        time_weights = torch.exp(torch.linspace(-1, 0, seq_len, device=portfolio_x.device))
+        time_weights = torch.exp(
+            torch.linspace(-1, 0, seq_len, device=portfolio_x.device)
+        )
         time_weights = time_weights.unsqueeze(0).unsqueeze(-1)
         time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)
-        
+
         # Weighted temporal pooling
         portfolio_weighted = portfolio_x * time_weights
         portfolio_rep = portfolio_weighted.sum(dim=1)  # (batch_size, d_model)
 
-
         # Cross-timeframe attention - HF attends to MF/LF patterns
         # This helps identify entry points within larger patterns
         # Concatenate MF and LF sequences for context
-        pattern_context = torch.cat([mf_x, lf_x], dim=1)  # (batch, mf_len + lf_len, d_model)
-        
+        pattern_context = torch.cat(
+            [mf_x, lf_x], dim=1
+        )  # (batch, mf_len + lf_len, d_model)
+
         # Use recent HF data as query to find relevant patterns
         hf_recent = hf_x[:, -10:, :]  # Last 10 seconds for entry timing
         cross_attn_output, cross_attn_weights = self.cross_timeframe_attention(
-            query=hf_recent,
-            key=pattern_context,
-            value=pattern_context
+            query=hf_recent, key=pattern_context, value=pattern_context
         )
         # Average the cross-attention output
         cross_attn_rep = cross_attn_output.mean(dim=1)  # (batch, d_model)
-        
+
         # Extract key patterns from LF data (swing points, consolidations)
         # Transpose for Conv1d: (batch, d_model, seq_len)
         lf_patterns = lf_x.transpose(1, 2)
-        pattern_features = self.pattern_extractor(lf_patterns).squeeze(-1)  # (batch, d_model//4)
-        
+        pattern_features = self.pattern_extractor(lf_patterns).squeeze(
+            -1
+        )  # (batch, d_model//4)
+
         # Pad pattern features to match d_model
-        pattern_features_padded = F.pad(pattern_features, (0, self.model_config.d_model - pattern_features.size(-1)))
+        pattern_features_padded = F.pad(
+            pattern_features, (0, self.model_config.d_model - pattern_features.size(-1))
+        )
 
         # Fusion via attention
         # Prepares all branches for fusion
         # Shape: (batch_size, 5, d_model) - HF, MF, LF, Portfolio, Cross-attention
-        features_to_fuse = torch.stack([
-            hf_rep, 
-            mf_rep, 
-            lf_rep, 
-            portfolio_rep, 
-            cross_attn_rep
-        ], dim=1)
+        features_to_fuse = torch.stack(
+            [hf_rep, mf_rep, lf_rep, portfolio_rep, cross_attn_rep], dim=1
+        )
 
         # Fuse all-branches
         # Shape: (batch_size, d_fused)
@@ -334,25 +388,23 @@ class MultiBranchTransformer(nn.Module):
 
         # Get value estimate
         value = self.critic(fused)
-        
+
         # Get attention weights if available
-        if hasattr(self.fusion, 'get_branch_importance'):
+        if hasattr(self.fusion, "get_branch_importance"):
             self._last_branch_importance = self.fusion.get_branch_importance()
-        
+
         # Store action probabilities for analysis (discrete actions only)
         if len(action_params) == 2:
             # Convert logits to probabilities
             type_probs = torch.softmax(action_params[0], dim=-1)
             size_probs = torch.softmax(action_params[1], dim=-1)
             self._last_action_probs = (type_probs.detach(), size_probs.detach())
-        
+
         return action_params, value
 
     # In ai/transformer.py - MultiBranchTransformer class
     def get_action(
-            self,
-            state_dict: Dict[str, torch.Tensor],
-            deterministic: bool = False
+        self, state_dict: Dict[str, torch.Tensor], deterministic: bool = False
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         Get an action from the policy with guaranteed log probability calculation.
@@ -368,23 +420,31 @@ class MultiBranchTransformer(nn.Module):
                     action_type = torch.argmax(action_type_logits, dim=-1)
                     action_size = torch.argmax(action_size_logits, dim=-1)
                 else:
-                    action_type_dist = torch.distributions.Categorical(logits=action_type_logits)
-                    action_size_dist = torch.distributions.Categorical(logits=action_size_logits)
+                    action_type_dist = torch.distributions.Categorical(
+                        logits=action_type_logits
+                    )
+                    action_size_dist = torch.distributions.Categorical(
+                        logits=action_size_logits
+                    )
                     action_type = action_type_dist.sample()
                     action_size = action_size_dist.sample()
 
                 action = torch.stack([action_type, action_size], dim=-1)
 
                 # Calculate combined log probability
-                type_log_prob = torch.distributions.Categorical(logits=action_type_logits).log_prob(action_type)
-                size_log_prob = torch.distributions.Categorical(logits=action_size_logits).log_prob(action_size)
+                type_log_prob = torch.distributions.Categorical(
+                    logits=action_type_logits
+                ).log_prob(action_type)
+                size_log_prob = torch.distributions.Categorical(
+                    logits=action_size_logits
+                ).log_prob(action_size)
                 log_prob = (type_log_prob + size_log_prob).unsqueeze(1)
 
                 action_info = {
-                    'action_type_logits': action_type_logits,
-                    'action_size_logits': action_size_logits,
-                    'value': value,
-                    'log_prob': log_prob  # Always include log_prob
+                    "action_type_logits": action_type_logits,
+                    "action_size_logits": action_size_logits,
+                    "value": value,
+                    "log_prob": log_prob,  # Always include log_prob
                 }
             else:
                 # For a single discrete action
@@ -399,21 +459,23 @@ class MultiBranchTransformer(nn.Module):
                 log_prob = dist.log_prob(action).unsqueeze(1)
 
                 action_info = {
-                    'logits': logits,
-                    'value': value,
-                    'log_prob': log_prob  # Always include log_prob
+                    "logits": logits,
+                    "value": value,
+                    "log_prob": log_prob,  # Always include log_prob
                 }
 
             return action, action_info
-    
+
     def get_last_attention_weights(self) -> Optional[np.ndarray]:
         """Get the last computed attention weights from fusion layer"""
-        if hasattr(self, '_last_branch_importance'):
+        if hasattr(self, "_last_branch_importance"):
             return self._last_branch_importance
         return None
-    
-    def get_last_action_probabilities(self) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+
+    def get_last_action_probabilities(
+        self,
+    ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
         """Get the last computed action probabilities"""
-        if hasattr(self, '_last_action_probs'):
+        if hasattr(self, "_last_action_probs"):
             return self._last_action_probs
         return None

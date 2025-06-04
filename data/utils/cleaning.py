@@ -1,7 +1,7 @@
 # data/utils/cleaning.py
 import pandas as pd
 import numpy as np
-from typing import Union, Dict, List, Optional
+from typing import List
 
 
 def clean_ohlc_data(df: pd.DataFrame, price_cols: List[str] = None) -> pd.DataFrame:
@@ -21,7 +21,7 @@ def clean_ohlc_data(df: pd.DataFrame, price_cols: List[str] = None) -> pd.DataFr
 
     # Default price columns if not specified
     if price_cols is None:
-        price_cols = ['open', 'high', 'low', 'close']
+        price_cols = ["open", "high", "low", "close"]
 
     # Make a copy to avoid modifying the original
     df_clean = df.copy()
@@ -37,29 +37,29 @@ def clean_ohlc_data(df: pd.DataFrame, price_cols: List[str] = None) -> pd.DataFr
             df_clean = df_clean[df_clean[col] > 0]
 
     # Ensure high >= low
-    if 'high' in df_clean.columns and 'low' in df_clean.columns:
+    if "high" in df_clean.columns and "low" in df_clean.columns:
         # Find inconsistent rows
-        invalid_mask = df_clean['high'] < df_clean['low']
+        invalid_mask = df_clean["high"] < df_clean["low"]
         if invalid_mask.any():
             # For invalid rows, swap high and low
-            temp = df_clean.loc[invalid_mask, 'high'].copy()
-            df_clean.loc[invalid_mask, 'high'] = df_clean.loc[invalid_mask, 'low']
-            df_clean.loc[invalid_mask, 'low'] = temp
+            temp = df_clean.loc[invalid_mask, "high"].copy()
+            df_clean.loc[invalid_mask, "high"] = df_clean.loc[invalid_mask, "low"]
+            df_clean.loc[invalid_mask, "low"] = temp
 
     # Ensure high >= open/close >= low
-    for col in ['open', 'close']:
+    for col in ["open", "close"]:
         if col in df_clean.columns:
-            if 'high' in df_clean.columns:
-                df_clean['high'] = np.maximum(df_clean['high'], df_clean[col])
-            if 'low' in df_clean.columns:
-                df_clean['low'] = np.minimum(df_clean['low'], df_clean[col])
+            if "high" in df_clean.columns:
+                df_clean["high"] = np.maximum(df_clean["high"], df_clean[col])
+            if "low" in df_clean.columns:
+                df_clean["low"] = np.minimum(df_clean["low"], df_clean[col])
 
     # Handle volume-related issues
-    if 'volume' in df_clean.columns:
+    if "volume" in df_clean.columns:
         # Remove rows with negative volume
-        df_clean = df_clean[df_clean['volume'] >= 0]
+        df_clean = df_clean[df_clean["volume"] >= 0]
         # Replace NaN volume with 0
-        df_clean['volume'] = df_clean['volume'].fillna(0)
+        df_clean["volume"] = df_clean["volume"].fillna(0)
 
     # For low float momentum stocks, we need to be careful with outlier detection
     # since these stocks can have legitimate huge price moves
@@ -96,20 +96,20 @@ def clean_trades_data(trades_df: pd.DataFrame) -> pd.DataFrame:
     df_clean = trades_df.copy()
 
     # Remove rows with NaN prices
-    if 'price' in df_clean.columns:
-        df_clean = df_clean.dropna(subset=['price'])
-        df_clean = df_clean[df_clean['price'] > 0]
+    if "price" in df_clean.columns:
+        df_clean = df_clean.dropna(subset=["price"])
+        df_clean = df_clean[df_clean["price"] > 0]
 
     # Remove rows with NaN or negative sizes
-    if 'size' in df_clean.columns:
-        df_clean = df_clean.dropna(subset=['size'])
-        df_clean = df_clean[df_clean['size'] > 0]
+    if "size" in df_clean.columns:
+        df_clean = df_clean.dropna(subset=["size"])
+        df_clean = df_clean[df_clean["size"] > 0]
 
     # Special logic for momentum stocks with legitimate large price jumps
     # Set a very high threshold for removing price outliers
-    if 'price' in df_clean.columns:
+    if "price" in df_clean.columns:
         # Calculate price jumps
-        price_jumps = df_clean['price'].pct_change().abs()
+        price_jumps = df_clean["price"].pct_change().abs()
 
         # Only filter out extreme jumps that are likely data errors
         # For momentum stocks, even 100% jumps can happen in a split second
@@ -138,11 +138,15 @@ def clean_quotes_data(quotes_df: pd.DataFrame) -> pd.DataFrame:
     df_clean = quotes_df.copy()
 
     # Find price and size columns based on standard naming
-    price_cols = [col for col in df_clean.columns if 'price' in col.lower() or 'px' in col.lower()]
-    size_cols = [col for col in df_clean.columns if 'size' in col.lower() or 'sz' in col.lower()]
+    price_cols = [
+        col for col in df_clean.columns if "price" in col.lower() or "px" in col.lower()
+    ]
+    size_cols = [
+        col for col in df_clean.columns if "size" in col.lower() or "sz" in col.lower()
+    ]
 
     # Drop rows with NaN price values in essential columns
-    essential_price_cols = ['bid_price', 'ask_price', 'bid_px_00', 'ask_px_00']
+    essential_price_cols = ["bid_price", "ask_price", "bid_px_00", "ask_px_00"]
     essential_cols = [col for col in essential_price_cols if col in df_clean.columns]
     if essential_cols:
         df_clean = df_clean.dropna(subset=essential_cols)
@@ -158,15 +162,21 @@ def clean_quotes_data(quotes_df: pd.DataFrame) -> pd.DataFrame:
             df_clean = df_clean[df_clean[col] >= 0]
 
     # Ensure bid < ask for all levels (allowing for zero bid/ask)
-    bid_cols = [col for col in price_cols if 'bid' in col.lower()]
-    ask_cols = [col for col in price_cols if 'ask' in col.lower()]
+    bid_cols = [col for col in price_cols if "bid" in col.lower()]
+    ask_cols = [col for col in price_cols if "ask" in col.lower()]
 
     for bid_col in bid_cols:
         for ask_col in ask_cols:
             # Estimate if they're at the same level by looking at column names
-            if bid_col[-2:] == ask_col[-2:]:  # Same level, e.g., bid_px_00 and ask_px_00
+            if (
+                bid_col[-2:] == ask_col[-2:]
+            ):  # Same level, e.g., bid_px_00 and ask_px_00
                 # Find crossed quotes (bid >= ask) where both values are > 0
-                crossed = (df_clean[bid_col] >= df_clean[ask_col]) & (df_clean[bid_col] > 0) & (df_clean[ask_col] > 0)
+                crossed = (
+                    (df_clean[bid_col] >= df_clean[ask_col])
+                    & (df_clean[bid_col] > 0)
+                    & (df_clean[ask_col] > 0)
+                )
                 if crossed.any():
                     df_clean = df_clean[~crossed]
 

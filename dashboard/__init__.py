@@ -5,12 +5,12 @@ from .shared_state import DashboardStateManager, SharedDashboardState, dashboard
 from .dashboard_server import DashboardServer, start_dashboard
 
 __all__ = [
-    'TradingEventStream', 
-    'EventType', 
-    'event_stream',
-    'DashboardStateManager',
-    'SharedDashboardState', 
-    'dashboard_state',
-    'DashboardServer',
-    'start_dashboard'
+    "TradingEventStream",
+    "EventType",
+    "event_stream",
+    "DashboardStateManager",
+    "SharedDashboardState",
+    "dashboard_state",
+    "DashboardServer",
+    "start_dashboard",
 ]

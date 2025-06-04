@@ -1,5 +1,5 @@
 # ai/networks.py
-# NOTE: These networks are currently unused as the MultiBranchTransformer 
+# NOTE: These networks are currently unused as the MultiBranchTransformer
 # has built-in actor-critic heads. Kept for potential future use.
 
 import torch
@@ -24,7 +24,7 @@ class ActorNetwork(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
-            nn.GELU()
+            nn.GELU(),
         )
 
         if continuous_action:
@@ -75,7 +75,7 @@ class CriticNetwork(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.GELU(),
-            nn.Linear(hidden_dim, 1)
+            nn.Linear(hidden_dim, 1),
         )
 
     def forward(self, x):

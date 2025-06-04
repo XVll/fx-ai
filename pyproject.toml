@@ -36,9 +36,12 @@ optuna-status = "poetry run python scripts/transfer_best_params.py --status"
 optuna-transfer-1to2 = "poetry run python scripts/transfer_best_params.py --from-phase 1 --to-phase 2"
 optuna-transfer-2to3 = "poetry run python scripts/transfer_best_params.py --from-phase 2 --to-phase 3"
 
-# Testing
+# Testing & Linting
 test = "poetry run pytest -v"
 test-fast = "poetry run pytest --tb=short"
+lint = "poetry run pyright ."
+lint-fix = "poetry run ruff check --fix ."
+format = "poetry run ruff format ."
 
 # Utility Tasks
 clean = "rm -rf outputs/* wandb/* __pycache__"
@@ -75,6 +78,7 @@ scikit-learn = "^1.6.0"
 poethepoet = "^0.24.0"
 pytest = "^7.0"
 coverage= "^7.8.2"
+ruff = "^0.11.12"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

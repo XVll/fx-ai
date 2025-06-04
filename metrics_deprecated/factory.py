@@ -9,9 +9,20 @@ from .manager import MetricsManager
 from .transmitters.wandb_transmitter import WandBTransmitter, WandBConfig
 from .transmitters.dashboard_transmitter import DashboardTransmitter
 from .collectors.model_metrics import ModelMetricsCollector, OptimizerMetricsCollector
-from .collectors.training_metrics import TrainingMetricsCollector, EvaluationMetricsCollector
-from .collectors.trading_metrics import PortfolioMetricsCollector, PositionMetricsCollector, TradeMetricsCollector
-from .collectors.execution_metrics import ExecutionMetricsCollector, EnvironmentMetricsCollector, SystemMetricsCollector
+from .collectors.training_metrics import (
+    TrainingMetricsCollector,
+    EvaluationMetricsCollector,
+)
+from .collectors.trading_metrics import (
+    PortfolioMetricsCollector,
+    PositionMetricsCollector,
+    TradeMetricsCollector,
+)
+from .collectors.execution_metrics import (
+    ExecutionMetricsCollector,
+    EnvironmentMetricsCollector,
+    SystemMetricsCollector,
+)
 from .collectors.visualization_metrics import VisualizationMetrics
 from .collectors.reward_metrics import RewardMetricsCollector
 from .collectors.model_internals_metrics import ModelInternalsCollector
@@ -33,17 +44,24 @@ class MetricsFactory:
             group=config.group,
             job_type=config.job_type,
             save_code=config.save_code,
-            log_frequency=config.log_frequency
+            log_frequency=config.log_frequency,
         )
-    
-    @staticmethod
-    def create_dashboard_transmitter(port: int = 8050, update_interval: float = 0.1, metrics_integrator=None) -> DashboardTransmitter:
-        """Create a dashboard transmitter"""
-        return DashboardTransmitter(port=port, update_interval=update_interval, metrics_integrator=metrics_integrator)
 
     @staticmethod
-    def create_model_collectors(model: Optional[nn.Module] = None,
-                                optimizer: Optional[optim.Optimizer] = None) -> List:
+    def create_dashboard_transmitter(
+        port: int = 8050, update_interval: float = 0.1, metrics_integrator=None
+    ) -> DashboardTransmitter:
+        """Create a dashboard transmitter"""
+        return DashboardTransmitter(
+            port=port,
+            update_interval=update_interval,
+            metrics_integrator=metrics_integrator,
+        )
+
+    @staticmethod
+    def create_model_collectors(
+        model: Optional[nn.Module] = None, optimizer: Optional[optim.Optimizer] = None
+    ) -> List:
         """Create model-related collectors"""
         collectors = []
 
@@ -58,38 +76,34 @@ class MetricsFactory:
     @staticmethod
     def create_training_collectors() -> List:
         """Create training-related collectors"""
-        return [
-            TrainingMetricsCollector(),
-            EvaluationMetricsCollector()
-        ]
+        return [TrainingMetricsCollector(), EvaluationMetricsCollector()]
 
     @staticmethod
-    def create_trading_collectors(symbol: str, initial_capital: float = 25000.0) -> List:
+    def create_trading_collectors(
+        symbol: str, initial_capital: float = 25000.0
+    ) -> List:
         """Create trading-related collectors"""
         return [
             PortfolioMetricsCollector(initial_capital),
             PositionMetricsCollector(symbol),
-            TradeMetricsCollector()
+            TradeMetricsCollector(),
         ]
 
     @staticmethod
     def create_execution_collectors() -> List:
         """Create execution-related collectors"""
-        return [
-            ExecutionMetricsCollector(),
-            EnvironmentMetricsCollector()
-        ]
+        return [ExecutionMetricsCollector(), EnvironmentMetricsCollector()]
 
     @staticmethod
     def create_system_collectors() -> List:
         """Create system-related collectors"""
         return [SystemMetricsCollector()]
-    
+
     @staticmethod
     def create_visualization_collectors() -> List:
         """Create visualization-related collectors"""
         return [VisualizationMetrics()]
-    
+
     @staticmethod
     def create_reward_collectors() -> List:
         """Create reward system collectors"""
@@ -97,32 +111,30 @@ class MetricsFactory:
 
     @staticmethod
     def create_complete_metrics_system(
-            wandb_config: WandBConfig,
-            model: Optional[nn.Module] = None,
-            optimizer: Optional[optim.Optimizer] = None,
-            symbol: str = "UNKNOWN",
-            initial_capital: float = 25000.0,
-            include_system: bool = True,
-            enable_dashboard: bool = False,
-            dashboard_port: int = 8050,
-            feature_names: Optional[Dict[str, List[str]]] = None,
-            enable_feature_attribution: bool = True,
-            model_config: Optional[Any] = None
+        wandb_config: WandBConfig,
+        model: Optional[nn.Module] = None,
+        optimizer: Optional[optim.Optimizer] = None,
+        symbol: str = "UNKNOWN",
+        initial_capital: float = 25000.0,
+        include_system: bool = True,
+        enable_dashboard: bool = False,
+        dashboard_port: int = 8050,
+        feature_names: Optional[Dict[str, List[str]]] = None,
+        enable_feature_attribution: bool = True,
+        model_config: Optional[Any] = None,
     ) -> MetricsManager:
         """Create a complete metrics system with all components"""
 
         # Create manager
         manager = MetricsManager(
-            transmit_interval=1.0,
-            auto_transmit=True,
-            buffer_size=1000
+            transmit_interval=1.0, auto_transmit=True, buffer_size=1000
         )
 
         # Add W&B transmitter only if project name is not "local"
         if wandb_config.project_name != "local":
             wandb_transmitter = MetricsFactory.create_wandb_transmitter(wandb_config)
             manager.add_transmitter(wandb_transmitter)
-            
+
         # We'll add the dashboard transmitter after creating the integrator
 
         # Add all collectors
@@ -135,26 +147,30 @@ class MetricsFactory:
         collectors.extend(MetricsFactory.create_training_collectors())
 
         # Trading collectors
-        collectors.extend(MetricsFactory.create_trading_collectors(symbol, initial_capital))
+        collectors.extend(
+            MetricsFactory.create_trading_collectors(symbol, initial_capital)
+        )
 
         # Execution collectors
         collectors.extend(MetricsFactory.create_execution_collectors())
-        
+
         # Reward collectors
         collectors.extend(MetricsFactory.create_reward_collectors())
-        
+
         # Model internals collectors with feature attribution
-        collectors.append(ModelInternalsCollector(
-            model=model,
-            feature_names=feature_names,
-            enable_attribution=enable_feature_attribution,
-            model_config=model_config
-        ))
+        collectors.append(
+            ModelInternalsCollector(
+                model=model,
+                feature_names=feature_names,
+                enable_attribution=enable_feature_attribution,
+                model_config=model_config,
+            )
+        )
 
         # System collectors (optional)
         if include_system:
             collectors.extend(MetricsFactory.create_system_collectors())
-            
+
         # Visualization collectors (always included for episode tracking)
         collectors.extend(MetricsFactory.create_visualization_collectors())
 
@@ -167,8 +183,7 @@ class MetricsFactory:
             # Create integrator to pass to dashboard
             integrator = MetricsIntegrator(manager)
             dashboard_transmitter = MetricsFactory.create_dashboard_transmitter(
-                port=dashboard_port, 
-                metrics_integrator=integrator
+                port=dashboard_port, metrics_integrator=integrator
             )
             manager.add_transmitter(dashboard_transmitter)
 
@@ -191,33 +206,39 @@ class MetricsIntegrator:
         for collector_id, collector in self.metrics_manager.collectors.items():
             collector_type = collector.__class__.__name__
             self._collectors[collector_type] = collector
-            
+
         # Add convenient reference for model internals collector
-        if 'ModelInternalsCollector' in self._collectors:
-            self.model_internals_collector = self._collectors['ModelInternalsCollector']
+        if "ModelInternalsCollector" in self._collectors:
+            self.model_internals_collector = self._collectors["ModelInternalsCollector"]
 
     def get_collector(self, collector_type: str):
         """Get a specific collector by type"""
         return self._collectors.get(collector_type)
 
     # Model integration methods
-    def record_model_losses(self, actor_loss: float, critic_loss: float, entropy: float):
+    def record_model_losses(
+        self, actor_loss: float, critic_loss: float, entropy: float
+    ):
         """Record model loss metrics"""
-        collector = self.get_collector('ModelMetricsCollector')
+        collector = self.get_collector("ModelMetricsCollector")
         if collector:
             metrics = collector.record_loss_metrics(actor_loss, critic_loss, entropy)
             self._transmit_metrics(metrics)
 
-    def record_ppo_metrics(self, clip_fraction: float, approx_kl: float, explained_variance: float):
+    def record_ppo_metrics(
+        self, clip_fraction: float, approx_kl: float, explained_variance: float
+    ):
         """Record PPO-specific metrics"""
-        collector = self.get_collector('ModelMetricsCollector')
+        collector = self.get_collector("ModelMetricsCollector")
         if collector:
-            metrics = collector.record_ppo_metrics(clip_fraction, approx_kl, explained_variance)
+            metrics = collector.record_ppo_metrics(
+                clip_fraction, approx_kl, explained_variance
+            )
             self._transmit_metrics(metrics)
 
     def record_learning_rate(self, learning_rate: float):
         """Record learning rate"""
-        collector = self.get_collector('ModelMetricsCollector')
+        collector = self.get_collector("ModelMetricsCollector")
         if collector:
             metrics = collector.record_learning_rate(learning_rate)
             self._transmit_metrics(metrics)
@@ -225,43 +246,43 @@ class MetricsIntegrator:
     # Training integration methods
     def start_training(self):
         """Start training tracking"""
-        collector = self.get_collector('TrainingMetricsCollector')
+        collector = self.get_collector("TrainingMetricsCollector")
         if collector:
             collector.start_training()
 
     def start_episode(self):
         """Start episode tracking"""
-        collector = self.get_collector('TrainingMetricsCollector')
+        collector = self.get_collector("TrainingMetricsCollector")
         if collector:
             collector.start_episode()
 
     def end_episode(self, reward: float, length: int):
         """End episode tracking"""
-        collector = self.get_collector('TrainingMetricsCollector')
+        collector = self.get_collector("TrainingMetricsCollector")
         if collector:
             collector.end_episode(reward, length)
 
     def start_update(self):
         """Start update tracking"""
-        collector = self.get_collector('TrainingMetricsCollector')
+        collector = self.get_collector("TrainingMetricsCollector")
         if collector:
             collector.start_update()
 
     def end_update(self):
         """End update tracking"""
-        collector = self.get_collector('TrainingMetricsCollector')
+        collector = self.get_collector("TrainingMetricsCollector")
         if collector:
             collector.end_update()
 
     def record_rollout_time(self, duration: float):
         """Record rollout duration"""
-        collector = self.get_collector('TrainingMetricsCollector')
+        collector = self.get_collector("TrainingMetricsCollector")
         if collector:
             collector.record_rollout_time(duration)
 
     def update_step(self, step: int):
         """Update step count"""
-        collector = self.get_collector('TrainingMetricsCollector')
+        collector = self.get_collector("TrainingMetricsCollector")
         if collector:
             collector.update_step(step)
 
@@ -271,7 +292,7 @@ class MetricsIntegrator:
     # Evaluation integration methods
     def start_evaluation(self):
         """Start evaluation"""
-        collector = self.get_collector('EvaluationMetricsCollector')
+        collector = self.get_collector("EvaluationMetricsCollector")
         if collector:
             collector.start_evaluation()
 
@@ -279,120 +300,154 @@ class MetricsIntegrator:
 
     def end_evaluation(self, rewards: List[float], lengths: List[int]):
         """End evaluation"""
-        collector = self.get_collector('EvaluationMetricsCollector')
+        collector = self.get_collector("EvaluationMetricsCollector")
         if collector:
             collector.end_evaluation(rewards, lengths)
 
         self.metrics_manager.update_state(is_evaluating=False, is_training=True)
-    
+
     # Model internals integration methods
     def update_attention_weights(self, weights: Any):
         """Update attention weights from model"""
-        collector = self.get_collector('ModelInternalsCollector')
+        collector = self.get_collector("ModelInternalsCollector")
         if collector:
             collector.update_attention_weights(weights)
-    
+
     def update_action_probabilities(self, action_probs: Any):
         """Update action probability distributions"""
-        collector = self.get_collector('ModelInternalsCollector')
+        collector = self.get_collector("ModelInternalsCollector")
         if collector:
             collector.update_action_probabilities(action_probs)
-    
+
     def update_feature_statistics(self, features: Dict[str, Any]):
         """Update feature distribution statistics"""
-        collector = self.get_collector('ModelInternalsCollector')
+        collector = self.get_collector("ModelInternalsCollector")
         if collector:
             collector.update_feature_statistics(features)
-    
+
     # Feature attribution integration methods
     def update_state_for_attribution(self, state_dict: Dict[str, Any]):
         """Store state for feature attribution analysis"""
-        collector = self.get_collector('ModelInternalsCollector')
+        collector = self.get_collector("ModelInternalsCollector")
         if collector:
             collector.update_state_for_attribution(state_dict)
-    
+
     def run_periodic_shap_analysis(self) -> Optional[Dict[str, Any]]:
         """Run periodic SHAP analysis"""
-        collector = self.get_collector('ModelInternalsCollector')
+        collector = self.get_collector("ModelInternalsCollector")
         if collector:
             return collector.run_periodic_shap_analysis()
         return None
-    
-    def run_permutation_importance_analysis(self, environment, n_episodes: int = 20) -> Optional[Dict[str, Dict[str, float]]]:
+
+    def run_permutation_importance_analysis(
+        self, environment, n_episodes: int = 20
+    ) -> Optional[Dict[str, Dict[str, float]]]:
         """Run permutation importance analysis"""
-        collector = self.get_collector('ModelInternalsCollector')
+        collector = self.get_collector("ModelInternalsCollector")
         if collector:
-            return collector.run_permutation_importance_analysis(environment, n_episodes)
+            return collector.run_permutation_importance_analysis(
+                environment, n_episodes
+            )
         return None
-    
-    def generate_feature_report(self, save_path: Optional[str] = None) -> Dict[str, Any]:
+
+    def generate_feature_report(
+        self, save_path: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Generate comprehensive feature importance report"""
-        collector = self.get_collector('ModelInternalsCollector')
+        collector = self.get_collector("ModelInternalsCollector")
         if collector:
             return collector.generate_feature_report(save_path)
         return {}
-    
+
     def get_feature_attribution_summary(self) -> Dict[str, Any]:
         """Get feature attribution summary"""
-        collector = self.get_collector('ModelInternalsCollector')
+        collector = self.get_collector("ModelInternalsCollector")
         if collector:
             return collector.get_feature_attribution_summary()
         return {"attribution_enabled": False}
 
     # Portfolio integration methods
-    def update_portfolio(self, equity: float, cash: float, unrealized_pnl: float, realized_pnl: float,
-                        total_commission: float = 0.0, total_slippage: float = 0.0, total_fees: float = 0.0):
+    def update_portfolio(
+        self,
+        equity: float,
+        cash: float,
+        unrealized_pnl: float,
+        realized_pnl: float,
+        total_commission: float = 0.0,
+        total_slippage: float = 0.0,
+        total_fees: float = 0.0,
+    ):
         """Update portfolio state"""
-        collector = self.get_collector('PortfolioMetricsCollector')
+        collector = self.get_collector("PortfolioMetricsCollector")
         if collector:
             collector.update_portfolio_state(equity, cash, unrealized_pnl, realized_pnl)
 
-    def update_position(self, quantity: float, side: str, avg_entry_price: float,
-                        market_value: float, unrealized_pnl: float, current_price: float):
+    def update_position(
+        self,
+        quantity: float,
+        side: str,
+        avg_entry_price: float,
+        market_value: float,
+        unrealized_pnl: float,
+        current_price: float,
+    ):
         """Update position state"""
-        collector = self.get_collector('PositionMetricsCollector')
+        collector = self.get_collector("PositionMetricsCollector")
         if collector:
-            collector.update_position(quantity, side, avg_entry_price,
-                                      market_value, unrealized_pnl, current_price)
+            collector.update_position(
+                quantity,
+                side,
+                avg_entry_price,
+                market_value,
+                unrealized_pnl,
+                current_price,
+            )
 
     def record_trade(self, trade_data: Dict[str, Any]):
         """Record a completed trade"""
-        collector = self.get_collector('TradeMetricsCollector')
+        collector = self.get_collector("TradeMetricsCollector")
         if collector:
             collector.record_trade(trade_data)
-            
+
         # Emit trade event for dashboard
-        self.metrics_manager.emit_event('trade_execution', trade_data)
+        self.metrics_manager.emit_event("trade_execution", trade_data)
 
     # Execution integration methods
     def record_fill(self, fill_data: Dict[str, Any]):
         """Record a fill execution"""
-        collector = self.get_collector('ExecutionMetricsCollector')
+        collector = self.get_collector("ExecutionMetricsCollector")
         if collector:
             collector.record_fill(fill_data)
-            
+
         # Emit trade event for dashboard
         trade_data = {
-            'quantity': fill_data.get('executed_quantity', 0),
-            'price': fill_data.get('executed_price', 0),
-            'commission': fill_data.get('commission', 0),
-            'slippage': fill_data.get('slippage_cost_total', 0),
-            'fees': fill_data.get('fees', 0)
+            "quantity": fill_data.get("executed_quantity", 0),
+            "price": fill_data.get("executed_price", 0),
+            "commission": fill_data.get("commission", 0),
+            "slippage": fill_data.get("slippage_cost_total", 0),
+            "fees": fill_data.get("fees", 0),
         }
-        self.metrics_manager.emit_event('trade_execution', trade_data)
+        self.metrics_manager.emit_event("trade_execution", trade_data)
 
     # Environment integration methods
-    def record_environment_step(self, reward: float, action: str, is_invalid: bool = False,
-                                reward_components: Optional[Dict[str, float]] = None,
-                                episode_reward: Optional[float] = None,
-                                current_step: Optional[int] = None,
-                                max_steps: Optional[int] = None,
-                                episode_number: Optional[int] = None):
+    def record_environment_step(
+        self,
+        reward: float,
+        action: str,
+        is_invalid: bool = False,
+        reward_components: Optional[Dict[str, float]] = None,
+        episode_reward: Optional[float] = None,
+        current_step: Optional[int] = None,
+        max_steps: Optional[int] = None,
+        episode_number: Optional[int] = None,
+    ):
         """Record environment step"""
-        collector = self.get_collector('EnvironmentMetricsCollector')
+        collector = self.get_collector("EnvironmentMetricsCollector")
         if collector:
-            collector.record_step(reward, action, is_invalid, reward_components, episode_reward)
-            
+            collector.record_step(
+                reward, action, is_invalid, reward_components, episode_reward
+            )
+
             # Update episode state if parameters provided
             if all(x is not None for x in [current_step, max_steps, episode_number]):
                 collector.update_episode_state(
@@ -400,69 +455,78 @@ class MetricsIntegrator:
                     max_steps=max_steps,
                     episode_number=episode_number,
                     cumulative_reward=episode_reward or 0.0,
-                    step_reward=reward
+                    step_reward=reward,
                 )
-            
+
         # Also update reward metrics if components provided
         if reward_components:
-            reward_collector = self.get_collector('RewardMetricsCollector')
+            reward_collector = self.get_collector("RewardMetricsCollector")
             if reward_collector:
                 reward_collector.update_reward(reward, reward_components)
-                
-            # Emit reward components event
-            self.metrics_manager.emit_event('reward_components', {'components': reward_components})
 
-    def record_episode_end(self, episode_reward: float, episode_action_counts: Dict[str, int] = None):
+            # Emit reward components event
+            self.metrics_manager.emit_event(
+                "reward_components", {"components": reward_components}
+            )
+
+    def record_episode_end(
+        self, episode_reward: float, episode_action_counts: Dict[str, int] = None
+    ):
         """Record episode end in environment"""
-        collector = self.get_collector('EnvironmentMetricsCollector')
+        collector = self.get_collector("EnvironmentMetricsCollector")
         if collector:
             collector.record_episode_end(episode_reward)
-            
+
         # Record episode action counts for dashboard
         if episode_action_counts:
             metrics = {}
             for action, count in episode_action_counts.items():
-                metrics[f'episode_action_{action.lower()}_count'] = count
-            
+                metrics[f"episode_action_{action.lower()}_count"] = count
+
             # Send to dashboard via metrics manager
             if self.metrics_manager:
-                self.metrics_manager.emit_event('episode_actions', metrics)
-                
+                self.metrics_manager.emit_event("episode_actions", metrics)
+
         # Emit episode end event for dashboard
         if self.metrics_manager:
-            self.metrics_manager.emit_event('episode_end', {
-                'episode_reward': episode_reward,
-                'episode_number': getattr(self, '_current_episode', 0)
-            })
-            
+            self.metrics_manager.emit_event(
+                "episode_end",
+                {
+                    "episode_reward": episode_reward,
+                    "episode_number": getattr(self, "_current_episode", 0),
+                },
+            )
+
         # Reset reward collector for new episode
-        reward_collector = self.get_collector('RewardMetricsCollector')
+        reward_collector = self.get_collector("RewardMetricsCollector")
         if reward_collector:
             reward_collector.reset_episode()
-            
+
         # Emit episode end event
         episode_data = {
-            'episode_reward': episode_reward,
-            'episode_num': self.metrics_manager.current_episode
+            "episode_reward": episode_reward,
+            "episode_num": self.metrics_manager.current_episode,
         }
-        self.metrics_manager.emit_event('episode_end', episode_data)
-            
+        self.metrics_manager.emit_event("episode_end", episode_data)
+
     # Reward integration methods
     def register_reward_component(self, component_name: str, component_type: str):
         """Register a reward component for tracking"""
-        collector = self.get_collector('RewardMetricsCollector')
+        collector = self.get_collector("RewardMetricsCollector")
         if collector:
             collector.register_component(component_name, component_type)
-            
-    def update_reward_metrics(self, total_reward: float, component_rewards: Dict[str, float]):
+
+    def update_reward_metrics(
+        self, total_reward: float, component_rewards: Dict[str, float]
+    ):
         """Update reward metrics directly"""
-        collector = self.get_collector('RewardMetricsCollector')
+        collector = self.get_collector("RewardMetricsCollector")
         if collector:
             collector.update_reward(total_reward, component_rewards)
-            
+
     def get_reward_statistics(self) -> Dict[str, Dict[str, float]]:
         """Get reward component statistics"""
-        collector = self.get_collector('RewardMetricsCollector')
+        collector = self.get_collector("RewardMetricsCollector")
         if collector:
             return collector.get_component_statistics()
         return {}
@@ -470,10 +534,10 @@ class MetricsIntegrator:
     # System integration methods
     def start_system_tracking(self):
         """Start system tracking"""
-        collector = self.get_collector('SystemMetricsCollector')
+        collector = self.get_collector("SystemMetricsCollector")
         if collector:
             collector.start_tracking()
-            
+
     # Custom metrics
     def record_custom_metrics(self, metrics: Dict[str, Any]):
         """Record custom metrics directly to transmitters"""
@@ -501,30 +565,28 @@ class MetricsIntegrator:
 class MetricsConfig:
     """Configuration class for metrics system"""
 
-    def __init__(self,
-                 # W&B Configuration
-                 wandb_project: str = "fx-ai",
-                 wandb_entity: Optional[str] = None,
-                 wandb_run_name: Optional[str] = None,
-                 wandb_tags: Optional[List[str]] = None,
-                 wandb_group: Optional[str] = None,
-
-                 # Metrics Configuration
-                 transmit_interval: float = 1.0,
-                 auto_transmit: bool = True,
-                 buffer_size: int = 1000,
-                 include_system_metrics: bool = True,
-
-                 # Trading Configuration
-                 symbol: str = "UNKNOWN",
-                 initial_capital: float = 25000.0,
-                 
-                 # Dashboard Configuration
-                 enable_dashboard: bool = False,
-                 dashboard_port: int = 8050,
-
-                 # Log Frequencies (in steps)
-                 log_frequencies: Optional[Dict[str, int]] = None):
+    def __init__(
+        self,
+        # W&B Configuration
+        wandb_project: str = "fx-ai",
+        wandb_entity: Optional[str] = None,
+        wandb_run_name: Optional[str] = None,
+        wandb_tags: Optional[List[str]] = None,
+        wandb_group: Optional[str] = None,
+        # Metrics Configuration
+        transmit_interval: float = 1.0,
+        auto_transmit: bool = True,
+        buffer_size: int = 1000,
+        include_system_metrics: bool = True,
+        # Trading Configuration
+        symbol: str = "UNKNOWN",
+        initial_capital: float = 25000.0,
+        # Dashboard Configuration
+        enable_dashboard: bool = False,
+        dashboard_port: int = 8050,
+        # Log Frequencies (in steps)
+        log_frequencies: Optional[Dict[str, int]] = None,
+    ):
         self.wandb_project = wandb_project
         self.wandb_entity = wandb_entity
         self.wandb_run_name = wandb_run_name
@@ -538,7 +600,7 @@ class MetricsConfig:
 
         self.symbol = symbol
         self.initial_capital = initial_capital
-        
+
         self.enable_dashboard = enable_dashboard
         self.dashboard_port = dashboard_port
 
@@ -548,10 +610,12 @@ class MetricsConfig:
             "trading": 1,
             "execution": 1,
             "environment": 1,
-            "system": 10
+            "system": 10,
         }
 
-    def create_wandb_config(self, additional_config: Optional[Dict[str, Any]] = None) -> WandBConfig:
+    def create_wandb_config(
+        self, additional_config: Optional[Dict[str, Any]] = None
+    ) -> WandBConfig:
         """Create W&B configuration"""
         config = additional_config or {}
 
@@ -561,21 +625,29 @@ class MetricsConfig:
             run_name=self.wandb_run_name,
             tags=self.wandb_tags,
             group=self.wandb_group,
-            log_frequency=self.log_frequencies
+            log_frequency=self.log_frequencies,
         )
 
-    def create_metrics_system(self,
-                              model: Optional[nn.Module] = None,
-                              optimizer: Optional[optim.Optimizer] = None,
-                              additional_config: Optional[Dict[str, Any]] = None) -> tuple[MetricsManager, MetricsIntegrator]:
+    def create_metrics_system(
+        self,
+        model: Optional[nn.Module] = None,
+        optimizer: Optional[optim.Optimizer] = None,
+        additional_config: Optional[Dict[str, Any]] = None,
+    ) -> tuple[MetricsManager, MetricsIntegrator]:
         """Create complete metrics system"""
 
         wandb_config = self.create_wandb_config(additional_config)
 
         # Extract feature attribution parameters from additional_config
-        feature_names = additional_config.get('feature_names') if additional_config else None
-        enable_feature_attribution = additional_config.get('enable_feature_attribution', True) if additional_config else True
-        
+        feature_names = (
+            additional_config.get("feature_names") if additional_config else None
+        )
+        enable_feature_attribution = (
+            additional_config.get("enable_feature_attribution", True)
+            if additional_config
+            else True
+        )
+
         manager = MetricsFactory.create_complete_metrics_system(
             wandb_config=wandb_config,
             model=model,
@@ -587,7 +659,9 @@ class MetricsConfig:
             dashboard_port=self.dashboard_port,
             feature_names=feature_names,
             enable_feature_attribution=enable_feature_attribution,
-            model_config=additional_config.get('model_config') if additional_config else None
+            model_config=additional_config.get("model_config")
+            if additional_config
+            else None,
         )
 
         integrator = MetricsIntegrator(manager)
@@ -596,29 +670,31 @@ class MetricsConfig:
 
 
 # Convenience functions for quick setup
-def create_simple_metrics_system(project_name: str,
-                                 symbol: str,
-                                 model: Optional[nn.Module] = None,
-                                 optimizer: Optional[optim.Optimizer] = None,
-                                 entity: Optional[str] = None) -> tuple[MetricsManager, MetricsIntegrator]:
+def create_simple_metrics_system(
+    project_name: str,
+    symbol: str,
+    model: Optional[nn.Module] = None,
+    optimizer: Optional[optim.Optimizer] = None,
+    entity: Optional[str] = None,
+) -> tuple[MetricsManager, MetricsIntegrator]:
     """Create a simple metrics system with minimal configuration"""
 
     config = MetricsConfig(
-        wandb_project=project_name,
-        wandb_entity=entity,
-        symbol=symbol
+        wandb_project=project_name, wandb_entity=entity, symbol=symbol
     )
 
     return config.create_metrics_system(model, optimizer)
 
 
-def create_trading_metrics_system(project_name: str,
-                                  symbol: str,
-                                  initial_capital: float,
-                                  model: Optional[nn.Module] = None,
-                                  optimizer: Optional[optim.Optimizer] = None,
-                                  entity: Optional[str] = None,
-                                  run_name: Optional[str] = None) -> tuple[MetricsManager, MetricsIntegrator]:
+def create_trading_metrics_system(
+    project_name: str,
+    symbol: str,
+    initial_capital: float,
+    model: Optional[nn.Module] = None,
+    optimizer: Optional[optim.Optimizer] = None,
+    entity: Optional[str] = None,
+    run_name: Optional[str] = None,
+) -> tuple[MetricsManager, MetricsIntegrator]:
     """Create a metrics system optimized for trading"""
 
     config = MetricsConfig(
@@ -635,8 +711,8 @@ def create_trading_metrics_system(project_name: str,
             "trading": 1,
             "execution": 1,
             "environment": 1,
-            "system": 20  # Less frequent for system metrics
-        }
+            "system": 20,  # Less frequent for system metrics
+        },
     )
 
     return config.create_metrics_system(model, optimizer)

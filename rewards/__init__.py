@@ -8,21 +8,21 @@ from rewards.components import (
     ProfitGivebackPenalty,
     MaxDrawdownPenalty,
     ProfitClosingBonus,
-    BankruptcyPenalty
+    BankruptcyPenalty,
 )
 from rewards.calculator import RewardSystem
 
 __all__ = [
-    'RewardComponent',
-    'RewardState',
-    'RewardType', 
-    'RewardMetadata',
-    'PnLReward',
-    'HoldingTimePenalty',
-    'DrawdownPenalty',
-    'ProfitGivebackPenalty',
-    'MaxDrawdownPenalty',
-    'ProfitClosingBonus',
-    'BankruptcyPenalty',
-    'RewardSystem'
+    "RewardComponent",
+    "RewardState",
+    "RewardType",
+    "RewardMetadata",
+    "PnLReward",
+    "HoldingTimePenalty",
+    "DrawdownPenalty",
+    "ProfitGivebackPenalty",
+    "MaxDrawdownPenalty",
+    "ProfitClosingBonus",
+    "BankruptcyPenalty",
+    "RewardSystem",
 ]

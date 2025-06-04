@@ -81,7 +81,9 @@
       "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -c \"\nfrom config.schemas import EnvironmentConfig, SimulationConfig, ModelConfig, RewardConfig, ScannerConfig, DataConfig, TrainingConfig\nfrom simulators.portfolio_simulator import PortfolioSimulator\nfrom simulators.execution_simulator import ExecutionSimulator\nfrom data.scanner.momentum_scanner import MomentumScanner\nfrom rewards.calculator import RewardCalculator\n\nprint('✅ All main imports successful!')\nprint('✅ Config restructuring complete!')\n\")",
       "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -c \"\nfrom config.schemas import EnvironmentConfig, SimulationConfig, ModelConfig, RewardConfig, ScannerConfig, DataConfig, TrainingConfig\nfrom simulators.portfolio_simulator import PortfolioSimulator\nfrom simulators.execution_simulator import ExecutionSimulator\nfrom data.scanner.momentum_scanner import MomentumScanner\nfrom rewards.calculator import RewardSystem\n\nprint('All main imports successful!')\nprint('Config restructuring complete!')\n\")",
       "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -m pytest tests/test_portfolio_simulator.py::TestPortfolioInitialization -v)",
-      "Bash(setxkbmap:*)"
+      "Bash(setxkbmap:*)",
+      "Bash(npm install:*)",
+      "Bash(pyright:*)"
     ],
     "deny": []
   },

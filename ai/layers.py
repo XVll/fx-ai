@@ -14,18 +14,20 @@ class PositionalEncoding(nn.Module):
 
         # Create positional encoding matrix
         position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model)
+        )
         pe = torch.zeros(max_len, d_model)
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
+        self.register_buffer("pe", pe)
 
     def forward(self, x):
         """
         Args:
             x: Tensor, shape [batch_size, seq_len, embedding_dim]
         """
-        x = x + self.pe[:x.size(1)]
+        x = x + self.pe[: x.size(1)]
         return self.dropout(x)
 
 
@@ -36,7 +38,9 @@ class TransformerEncoderLayer(nn.Module):
 
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1):
         super().__init__()
-        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
+        self.self_attn = nn.MultiheadAttention(
+            d_model, nhead, dropout=dropout, batch_first=True
+        )
 
         # Feed-forward network
         self.linear1 = nn.Linear(d_model, dim_feedforward)
@@ -59,9 +63,13 @@ class TransformerEncoderLayer(nn.Module):
         """
         # Self-attention block
         src_norm = self.norm1(src)
-        src2, _ = self.self_attn(src_norm, src_norm, src_norm,
-                                 attn_mask=src_mask,
-                                 key_padding_mask=src_key_padding_mask)
+        src2, _ = self.self_attn(
+            src_norm,
+            src_norm,
+            src_norm,
+            attn_mask=src_mask,
+            key_padding_mask=src_key_padding_mask,
+        )
         src = src + self.dropout1(src2)
 
         # Feed-forward block
@@ -86,7 +94,9 @@ class TransformerEncoder(nn.Module):
         output = src
 
         for layer in self.layers:
-            output = layer(output, src_mask=mask, src_key_padding_mask=src_key_padding_mask)
+            output = layer(
+                output, src_mask=mask, src_key_padding_mask=src_key_padding_mask
+            )
 
         return self.norm(output)
 
@@ -110,9 +120,9 @@ class AttentionFusion(nn.Module):
             nn.Linear(in_dim * num_branches, out_dim),
             nn.LayerNorm(out_dim),
             nn.GELU(),
-            nn.Dropout(dropout)
+            nn.Dropout(dropout),
         )
-        
+
         # Store last attention weights for analysis
         self.last_attention_weights = None
 
@@ -128,7 +138,7 @@ class AttentionFusion(nn.Module):
         """
         # Apply self-attention across branches
         attn_output, attention_weights = self.self_attention(x, x, x)
-        
+
         # Store attention weights for analysis
         if attention_weights is not None:
             self.last_attention_weights = attention_weights.detach()
@@ -139,16 +149,16 @@ class AttentionFusion(nn.Module):
 
         # Project to output dimension
         output = self.proj(flattened)
-        
+
         if return_attention:
             return output, attention_weights
         return output
-    
+
     def get_branch_importance(self):
         """Get the average attention each branch receives"""
         if self.last_attention_weights is None:
             return None
-        
+
         # Average over batch and heads, then sum attention received by each branch
         # Shape: [batch, num_heads, seq_len, seq_len] -> [seq_len]
         avg_attention = self.last_attention_weights.mean(dim=0).mean(dim=0).sum(dim=0)

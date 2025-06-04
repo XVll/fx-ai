@@ -3,22 +3,30 @@
 import logging
 import threading
 import time
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, List, Optional, Any
 from collections import defaultdict
 
 from .core import (
-    MetricCollector, MetricTransmitter, MetricAggregator, MetricFilter,
-    MetricValue, MetricMetadata, MetricCategory, MetricType
+    MetricCollector,
+    MetricTransmitter,
+    MetricAggregator,
+    MetricFilter,
+    MetricValue,
+    MetricMetadata,
+    MetricCategory,
+    MetricType,
 )
 
 
 class MetricsManager:
     """Central metrics management system"""
 
-    def __init__(self,
-                 transmit_interval: float = 1.0,
-                 auto_transmit: bool = True,
-                 buffer_size: int = 1000):
+    def __init__(
+        self,
+        transmit_interval: float = 1.0,
+        auto_transmit: bool = True,
+        buffer_size: int = 1000,
+    ):
         """
         Initialize the metrics manager
 
@@ -55,7 +63,7 @@ class MetricsManager:
 
         # Frequency-based collection tracking
         self._last_collections: Dict[str, float] = defaultdict(float)
-        
+
         # Visualization collector reference
         self.visualization_collector = None
 
@@ -70,12 +78,16 @@ class MetricsManager:
             # Register collector's metrics
             for metric_name, metadata in collector._metrics.items():
                 self._metric_registry[metric_name] = metadata
-                
+
             # Special handling for visualization collector
-            if hasattr(collector, 'start_episode') and hasattr(collector, 'end_episode'):
+            if hasattr(collector, "start_episode") and hasattr(
+                collector, "end_episode"
+            ):
                 self.visualization_collector = collector
 
-            self.logger.info(f"Registered collector: {collector_id} with {len(collector._metrics)} metrics")
+            self.logger.info(
+                f"Registered collector: {collector_id} with {len(collector._metrics)} metrics"
+            )
             return collector_id
 
     def unregister_collector(self, collector_id: str):
@@ -84,8 +96,11 @@ class MetricsManager:
             if collector_id in self.collectors:
                 collector = self.collectors.pop(collector_id)
                 # Remove collector's metrics from registry
-                to_remove = [name for name in self._metric_registry
-                             if name.startswith(f"{collector.category.value}.{collector.name}.")]
+                to_remove = [
+                    name
+                    for name in self._metric_registry
+                    if name.startswith(f"{collector.category.value}.{collector.name}.")
+                ]
                 for name in to_remove:
                     del self._metric_registry[name]
 
@@ -104,11 +119,14 @@ class MetricsManager:
                 self.transmitters.remove(transmitter)
                 self.logger.info(f"Removed transmitter: {type(transmitter).__name__}")
 
-    def update_state(self, step: Optional[int] = None,
-                     episode: Optional[int] = None,
-                     update: Optional[int] = None,
-                     is_training: Optional[bool] = None,
-                     is_evaluating: Optional[bool] = None):
+    def update_state(
+        self,
+        step: Optional[int] = None,
+        episode: Optional[int] = None,
+        update: Optional[int] = None,
+        is_training: Optional[bool] = None,
+        is_evaluating: Optional[bool] = None,
+    ):
         """Update the current state for metric collection"""
         with self._lock:
             if step is not None:
@@ -126,10 +144,12 @@ class MetricsManager:
             if is_evaluating is not None:
                 self.is_evaluating = is_evaluating
 
-    def collect_metrics(self,
-                        categories: Optional[List[MetricCategory]] = None,
-                        frequency: Optional[str] = None,
-                        force: bool = False) -> Dict[str, MetricValue]:
+    def collect_metrics(
+        self,
+        categories: Optional[List[MetricCategory]] = None,
+        frequency: Optional[str] = None,
+        force: bool = False,
+    ) -> Dict[str, MetricValue]:
         """
         Collect metrics from all registered collectors
 
@@ -145,7 +165,7 @@ class MetricsManager:
             # Capture state values at the start of collection to ensure consistency
             collection_step = self.current_step
             collection_episode = self.current_episode
-            
+
             for collector_id, collector in self.collectors.items():
                 if not collector.enabled:
                     continue
@@ -159,9 +179,13 @@ class MetricsManager:
                     last_collection = self._last_collections.get(collector_id, 0)
                     if frequency == "step" and current_time - last_collection < 1.0:
                         continue
-                    elif frequency == "episode" and current_time - last_collection < 5.0:
+                    elif (
+                        frequency == "episode" and current_time - last_collection < 5.0
+                    ):
                         continue
-                    elif frequency == "update" and current_time - last_collection < 10.0:
+                    elif (
+                        frequency == "update" and current_time - last_collection < 10.0
+                    ):
                         continue
 
                 try:
@@ -184,12 +208,16 @@ class MetricsManager:
 
         return collected_metrics
 
-    def record_metric(self, name: str, value: Any,
-                      category: MetricCategory = MetricCategory.SYSTEM,
-                      metric_type: MetricType = MetricType.GAUGE,
-                      description: str = "",
-                      unit: Optional[str] = None,
-                      tags: Optional[List[str]] = None):
+    def record_metric(
+        self,
+        name: str,
+        value: Any,
+        category: MetricCategory = MetricCategory.SYSTEM,
+        metric_type: MetricType = MetricType.GAUGE,
+        description: str = "",
+        unit: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ):
         """Record a single metric manually"""
 
         # Register metric if not exists
@@ -201,15 +229,13 @@ class MetricsManager:
                 description=description,
                 unit=unit,
                 tags=tags or [],
-                frequency="manual"
+                frequency="manual",
             )
             self._metric_registry[full_name] = metadata
 
         # Create metric value
         metric_value = MetricValue(
-            value=value,
-            step=self.current_step,
-            episode=self.current_episode
+            value=value, step=self.current_step, episode=self.current_episode
         )
 
         # Add to aggregator
@@ -217,9 +243,11 @@ class MetricsManager:
 
         return full_name
 
-    def transmit_metrics(self,
-                         metrics: Optional[Dict[str, MetricValue]] = None,
-                         filter_obj: Optional[MetricFilter] = None):
+    def transmit_metrics(
+        self,
+        metrics: Optional[Dict[str, MetricValue]] = None,
+        filter_obj: Optional[MetricFilter] = None,
+    ):
         """Transmit metrics to all registered transmitters"""
 
         # Capture current step atomically before collection/transmission
@@ -247,7 +275,9 @@ class MetricsManager:
             try:
                 transmitter.transmit(metrics, transmit_step)
             except Exception as e:
-                self.logger.error(f"Error transmitting with {type(transmitter).__name__}: {e}")
+                self.logger.error(
+                    f"Error transmitting with {type(transmitter).__name__}: {e}"
+                )
 
     def get_metric_value(self, name: str, aggregation: str = "last") -> Optional[float]:
         """Get current value of a metric"""
@@ -261,9 +291,11 @@ class MetricsManager:
         """Get metadata for a metric"""
         return self._metric_registry.get(name)
 
-    def list_metrics(self,
-                     categories: Optional[List[MetricCategory]] = None,
-                     enabled_only: bool = True) -> Dict[str, MetricMetadata]:
+    def list_metrics(
+        self,
+        categories: Optional[List[MetricCategory]] = None,
+        enabled_only: bool = True,
+    ) -> Dict[str, MetricMetadata]:
         """List all registered metrics with optional filtering"""
         result = {}
         for name, metadata in self._metric_registry.items():
@@ -288,14 +320,19 @@ class MetricsManager:
         """Start automatic metric transmission"""
         if self.auto_transmit and self._transmit_thread is None:
             self._stop_auto_transmit.clear()
-            self._transmit_thread = threading.Thread(target=self._auto_transmit_loop, daemon=True)
+            self._transmit_thread = threading.Thread(
+                target=self._auto_transmit_loop, daemon=True
+            )
             self._transmit_thread.start()
             self.logger.info("Started automatic metric transmission")
-            
+
     def start_dashboard(self, open_browser: bool = True):
         """Start dashboard transmitter if available"""
         for transmitter in self.transmitters:
-            if hasattr(transmitter, 'start') and transmitter.__class__.__name__ == 'DashboardTransmitter':
+            if (
+                hasattr(transmitter, "start")
+                and transmitter.__class__.__name__ == "DashboardTransmitter"
+            ):
                 transmitter.start(open_browser=open_browser)
                 self.logger.info("Dashboard transmitter started")
 
@@ -350,25 +387,25 @@ class MetricsManager:
             "current_update": self.current_update,
             "is_training": self.is_training,
             "is_evaluating": self.is_evaluating,
-            "auto_transmit_active": self._transmit_thread is not None
+            "auto_transmit_active": self._transmit_thread is not None,
         }
-        
+
     # Episode visualization methods
     def start_episode_visualization(self, episode_num: int, symbol: str, date: str):
         """Start collecting visualization data for a new episode"""
         if self.visualization_collector:
             self.visualization_collector.start_episode(episode_num, symbol, date)
-            
+
     def collect_step_visualization(self, step_data: Dict[str, Any]):
         """Collect visualization data for a single step"""
         if self.visualization_collector:
             self.visualization_collector.collect_step(step_data)
-            
+
     def collect_trade_visualization(self, trade_data: Dict[str, Any]):
         """Record a trade for visualization"""
         if self.visualization_collector:
             self.visualization_collector.collect_trade(trade_data)
-            
+
     def end_episode_visualization(self):
         """Generate and transmit episode visualizations"""
         if self.visualization_collector:
@@ -380,13 +417,15 @@ class MetricsManager:
                         transmitter.transmit(viz_metrics, self.current_step)
                     except Exception as e:
                         self.logger.error(f"Error transmitting visualizations: {e}")
-                        
+
     # Custom event methods for transmitters
     def emit_event(self, event_name: str, event_data: Dict[str, Any]):
         """Emit a custom event to all transmitters that support events"""
         for transmitter in self.transmitters:
-            if hasattr(transmitter, 'on_event'):
+            if hasattr(transmitter, "on_event"):
                 try:
                     transmitter.on_event(event_name, event_data)
                 except Exception as e:
-                    self.logger.error(f"Error emitting event {event_name} to {type(transmitter).__name__}: {e}")
+                    self.logger.error(
+                        f"Error emitting event {event_name} to {type(transmitter).__name__}: {e}"
+                    )

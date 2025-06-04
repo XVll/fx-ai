@@ -1,11 +1,12 @@
 # data/ai/data_models.py
 from dataclasses import dataclass
-from datetime import datetime
-from typing import List, Optional
+from typing import List
+
 
 @dataclass
 class TradeData:
     """Standardized trade data model."""
+
     price: float
     size: float
     side: str  # 'B', 'S', or 'N'
@@ -13,9 +14,11 @@ class TradeData:
     conditions: List[str]  # No longer optional
     trade_id: str  # No longer optional
 
+
 @dataclass
 class QuoteData:
     """Standardized quote data model."""
+
     bid_price: float
     ask_price: float
     bid_size: float
@@ -24,9 +27,11 @@ class QuoteData:
     ask_count: int  # No longer optional
     exchange: str  # No longer optional
 
+
 @dataclass
 class BarData:
     """Standardized OHLCV bar data model."""
+
     open: float
     high: float
     low: float
@@ -34,9 +39,11 @@ class BarData:
     volume: float
     timeframe: str  # '1s', '1m', '5m', '1d'
 
+
 @dataclass
 class StatusData:
     """Standardized trading status data model."""
+
     status: str  # 'TRADING', 'HALTED', etc.
     reason: str  # No longer optional
     is_trading: bool

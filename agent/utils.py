@@ -29,9 +29,13 @@ class ReplayBuffer:
         self.dones: Optional[torch.Tensor] = None
         self.advantages: Optional[torch.Tensor] = None
         self.returns: Optional[torch.Tensor] = None
-        logger.info(f"ReplayBuffer initialized with capacity {self.capacity} on device {self.device}")
+        logger.info(
+            f"ReplayBuffer initialized with capacity {self.capacity} on device {self.device}"
+        )
 
-    def _process_state_dict(self, state_dict_np: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
+    def _process_state_dict(
+        self, state_dict_np: Dict[str, np.ndarray]
+    ) -> Dict[str, torch.Tensor]:
         """
         Converts a dictionary of NumPy arrays to a dictionary of PyTorch tensors,
         preserving the original tensor structure.
@@ -40,8 +44,10 @@ class ReplayBuffer:
         for key, array_val in state_dict_np.items():
             # Debug logging for object arrays
             if array_val.dtype == np.object_:
-                logger.warning(f"Found object array for key '{key}', shape: {array_val.shape}, will attempt conversion")
-            
+                logger.warning(
+                    f"Found object array for key '{key}', shape: {array_val.shape}, will attempt conversion"
+                )
+
             # Ensure the numpy array is not an object array if it contains numerical data
             if array_val.dtype == np.object_:
                 try:
@@ -56,9 +62,11 @@ class ReplayBuffer:
                     else:
                         array_val = np.array(array_val.tolist(), dtype=np.float32)
                 except Exception as e:
-                    logger.error(f"Could not convert object array for key {key}: {e}. Array shape: {array_val.shape}")
+                    logger.error(
+                        f"Could not convert object array for key {key}: {e}. Array shape: {array_val.shape}"
+                    )
                     # Create a zero array as fallback to prevent corruption
-                    if hasattr(array_val, 'shape') and array_val.shape:
+                    if hasattr(array_val, "shape") and array_val.shape:
                         # Create proper shape with float32 dtype
                         shape = array_val.shape
                         array_val = np.zeros(shape, dtype=np.float32)
@@ -66,7 +74,7 @@ class ReplayBuffer:
                         raise ValueError(f"Cannot process object array for key {key}")
 
             # Ensure array is contiguous and has proper dtype before conversion
-            if not array_val.flags['C_CONTIGUOUS']:
+            if not array_val.flags["C_CONTIGUOUS"]:
                 array_val = np.ascontiguousarray(array_val, dtype=np.float32)
             elif array_val.dtype != np.float32:
                 array_val = array_val.astype(np.float32)
@@ -81,19 +89,22 @@ class ReplayBuffer:
                 logger.debug(f"Processed tensor '{key}' with shape: {tensor_val.shape}")
             except (TypeError, RuntimeError) as e:
                 logger.error(
-                    f"Error converting key '{key}' to tensor: {e}. Value shape: {array_val.shape}, Dtype: {array_val.dtype}")
+                    f"Error converting key '{key}' to tensor: {e}. Value shape: {array_val.shape}, Dtype: {array_val.dtype}"
+                )
                 # Handle or re-raise depending on how critical this is
                 raise
 
         return processed_tensors
 
-    def add(self,
-            state_np: Dict[str, np.ndarray],
-            action: torch.Tensor,  # Assuming action from a model is already a tensor
-            reward: float,
-            next_state_np: Dict[str, np.ndarray],
-            done: bool,
-            action_info: Dict[str, torch.Tensor]):  # Contains 'value' and 'log_prob' as tensors
+    def add(
+        self,
+        state_np: Dict[str, np.ndarray],
+        action: torch.Tensor,  # Assuming action from a model is already a tensor
+        reward: float,
+        next_state_np: Dict[str, np.ndarray],
+        done: bool,
+        action_info: Dict[str, torch.Tensor],
+    ):  # Contains 'value' and 'log_prob' as tensors
         """
         Add a transition to the buffer.
         State and next_state are expected as Dict[str, np.ndarray] from the environment.
@@ -107,13 +118,13 @@ class ReplayBuffer:
         # Let's convert on the fly to simplify prepare_data_for_training
 
         experience = {
-            'state': self._process_state_dict(state_np),
-            'action': action.detach().to(self.device),
-            'reward': torch.tensor([reward], dtype=torch.float32, device=self.device),
-            'next_state': self._process_state_dict(next_state_np),
-            'done': torch.tensor([done], dtype=torch.bool, device=self.device),
-            'value': action_info['value'].detach().to(self.device),
-            'log_prob': action_info['log_prob'].detach().to(self.device)
+            "state": self._process_state_dict(state_np),
+            "action": action.detach().to(self.device),
+            "reward": torch.tensor([reward], dtype=torch.float32, device=self.device),
+            "next_state": self._process_state_dict(next_state_np),
+            "done": torch.tensor([done], dtype=torch.bool, device=self.device),
+            "value": action_info["value"].detach().to(self.device),
+            "log_prob": action_info["log_prob"].detach().to(self.device),
         }
 
         self.buffer[self.position] = experience
@@ -130,7 +141,7 @@ class ReplayBuffer:
 
         # Initialize structures for each component
         all_states_components: Dict[str, List[torch.Tensor]] = {
-            key: [] for key in self.buffer[0]['state'].keys()
+            key: [] for key in self.buffer[0]["state"].keys()
         }
         all_actions: List[torch.Tensor] = []
         all_log_probs: List[torch.Tensor] = []
@@ -139,13 +150,13 @@ class ReplayBuffer:
         all_dones: List[torch.Tensor] = []
 
         for exp in self.buffer:
-            for key, tensor_val in exp['state'].items():
+            for key, tensor_val in exp["state"].items():
                 all_states_components[key].append(tensor_val)
-            all_actions.append(exp['action'])
-            all_log_probs.append(exp['log_prob'])
-            all_values.append(exp['value'])
-            all_rewards.append(exp['reward'])
-            all_dones.append(exp['done'])
+            all_actions.append(exp["action"])
+            all_log_probs.append(exp["log_prob"])
+            all_values.append(exp["value"])
+            all_rewards.append(exp["reward"])
+            all_dones.append(exp["done"])
 
         # Batch all components, preserving dimensions
         self.states = {}
@@ -154,17 +165,22 @@ class ReplayBuffer:
         for key, tensors_list in all_states_components.items():
             # Determine the dimensions for proper concatenation
             first_tensor = tensors_list[0]
-            if key in ['hf', 'mf', 'lf', 'portfolio']:
+            if key in ["hf", "mf", "lf", "portfolio"]:
                 # These should be [seq_len, feat_dim] tensors stacked into [batch_size, seq_len, feat_dim]
                 if first_tensor.ndim == 2:  # [seq_len, feat_dim]
                     self.states[key] = torch.stack(tensors_list, dim=0)
-                    logger.debug(f"Stacked {key} tensors to shape: {self.states[key].shape}")
+                    logger.debug(
+                        f"Stacked {key} tensors to shape: {self.states[key].shape}"
+                    )
                 elif first_tensor.ndim == 3:  # Already [1, seq_len, feat_dim]
                     self.states[key] = torch.cat(tensors_list, dim=0)
-                    logger.debug(f"Concatenated {key} tensors to shape: {self.states[key].shape}")
+                    logger.debug(
+                        f"Concatenated {key} tensors to shape: {self.states[key].shape}"
+                    )
                 else:
                     logger.warning(
-                        f"Unexpected shape for {key}: {first_tensor.shape}. Attempting default concatenation.")
+                        f"Unexpected shape for {key}: {first_tensor.shape}. Attempting default concatenation."
+                    )
                     self.states[key] = torch.cat(tensors_list, dim=0)
             else:
                 # Other components: default to concatenation
@@ -181,7 +197,9 @@ class ReplayBuffer:
         # The PPO agent will compute advantages and returns after this step
         self.advantages = None
         self.returns = None
-        logger.info(f"Buffer data prepared for training. Buffer size: {len(self.buffer)}")
+        logger.info(
+            f"Buffer data prepared for training. Buffer size: {len(self.buffer)}"
+        )
 
         # Log shapes for debugging
         for key, tensor in self.states.items():
@@ -194,12 +212,21 @@ class ReplayBuffer:
 
     def get_training_data(self) -> Optional[Dict[str, Any]]:
         """Returns all necessary data for a PPO update epoch if prepared."""
-        if self.states is None or self.actions is None or self.log_probs is None or \
-                self.rewards is None or self.dones is None or self.values is None or \
-                self.advantages is None or self.returns is None:  # Check if advantages and returns are computed
-            logger.error("Training data not fully prepared (states, actions, log_probs, "
-                         "rewards, dones, values, advantages, or returns are None). "
-                         "Call prepare_data_for_training() and then compute_advantages() first.")
+        if (
+            self.states is None
+            or self.actions is None
+            or self.log_probs is None
+            or self.rewards is None
+            or self.dones is None
+            or self.values is None
+            or self.advantages is None
+            or self.returns is None
+        ):  # Check if advantages and returns are computed
+            logger.error(
+                "Training data not fully prepared (states, actions, log_probs, "
+                "rewards, dones, values, advantages, or returns are None). "
+                "Call prepare_data_for_training() and then compute_advantages() first."
+            )
             return None
 
         return {
@@ -208,7 +235,7 @@ class ReplayBuffer:
             "old_log_probs": self.log_probs,
             "advantages": self.advantages,
             "returns": self.returns,
-            "values": self.values  # For KL divergence calculation or other diagnostics if needed
+            "values": self.values,  # For KL divergence calculation or other diagnostics if needed
         }
 
     def get_size(self) -> int:
@@ -229,23 +256,31 @@ class ReplayBuffer:
                         if isinstance(exp[key][sub_key], torch.Tensor):
                             exp[key][sub_key] = exp[key][sub_key].detach().cpu()
                             del exp[key][sub_key]
-        
+
         self.buffer.clear()
         self.position = 0
-        
+
         # Clear tensors and free memory
         if self.states is not None:
             for key in self.states:
                 if isinstance(self.states[key], torch.Tensor):
                     self.states[key] = self.states[key].detach().cpu()
-        
+
         # Detach and clear all tensors
-        for attr in ['actions', 'log_probs', 'values', 'rewards', 'dones', 'advantages', 'returns']:
+        for attr in [
+            "actions",
+            "log_probs",
+            "values",
+            "rewards",
+            "dones",
+            "advantages",
+            "returns",
+        ]:
             if hasattr(self, attr) and getattr(self, attr) is not None:
                 tensor = getattr(self, attr)
                 if isinstance(tensor, torch.Tensor):
                     setattr(self, attr, tensor.detach().cpu())
-        
+
         self.states = None
         self.actions = None
         self.log_probs = None
@@ -254,13 +289,14 @@ class ReplayBuffer:
         self.dones = None
         self.advantages = None
         self.returns = None
-        
+
         # Force garbage collection to free memory
         import gc
+
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            
+
         logger.info("ReplayBuffer cleared.")
 
     def is_ready_for_training(self) -> bool:
@@ -278,9 +314,9 @@ class ReplayBuffer:
 # The `preprocess_state_to_dict` is not needed if your ` environment ` already
 # produces the correct Dict[str, np.ndarray] structure.
 
+
 def convert_state_dict_to_tensors(
-        state_dict_np: Dict[str, np.ndarray],
-        device: torch.device
+    state_dict_np: Dict[str, np.ndarray], device: torch.device
 ) -> Dict[str, torch.Tensor]:
     """
     Converts a dictionary of NumPy arrays (features) to a dictionary of PyTorch tensors
@@ -304,15 +340,17 @@ def convert_state_dict_to_tensors(
                 else:
                     np_array = np.array(np_array.tolist(), dtype=np.float32)
             except Exception as e:
-                logger.error(f"Could not convert object array for key {key} during tensor conversion: {e}")
-                if hasattr(np_array, 'shape') and np_array.shape:
+                logger.error(
+                    f"Could not convert object array for key {key} during tensor conversion: {e}"
+                )
+                if hasattr(np_array, "shape") and np_array.shape:
                     shape = np_array.shape
                     np_array = np.zeros(shape, dtype=np.float32)
                 else:
                     raise ValueError(f"Cannot process object array for key {key}")
 
         # Ensure array is contiguous and has proper dtype before conversion
-        if not np_array.flags['C_CONTIGUOUS']:
+        if not np_array.flags["C_CONTIGUOUS"]:
             np_array = np.ascontiguousarray(np_array, dtype=np.float32)
         elif np_array.dtype != np.float32:
             np_array = np.array(np_array, dtype=np.float32)
@@ -320,6 +358,8 @@ def convert_state_dict_to_tensors(
         try:
             state_dict_torch[key] = torch.from_numpy(np_array).to(device)
         except (TypeError, RuntimeError) as e:
-            logger.error(f"Error converting key '{key}' to tensor: {e}. Shape: {np_array.shape}, Dtype: {np_array.dtype}")
+            logger.error(
+                f"Error converting key '{key}' to tensor: {e}. Shape: {np_array.shape}, Dtype: {np_array.dtype}"
+            )
             raise
     return state_dict_torch

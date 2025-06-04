@@ -2,11 +2,17 @@
 
 import logging
 import time
-from typing import Dict, Optional, Any, List
+from typing import Dict, Any, List
 from collections import deque
 import numpy as np
 
-from ..core import MetricCollector, MetricValue, MetricCategory, MetricType, MetricMetadata
+from ..core import (
+    MetricCollector,
+    MetricValue,
+    MetricCategory,
+    MetricType,
+    MetricMetadata,
+)
 
 
 class TrainingMetricsCollector(MetricCollector):
@@ -44,116 +50,155 @@ class TrainingMetricsCollector(MetricCollector):
         """Register all training metrics"""
 
         # Episode metrics
-        self.register_metric("episode_count", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.COUNTER,
-            description="Total number of completed episodes",
-            unit="episodes",
-            frequency="episode"
-        ))
+        self.register_metric(
+            "episode_count",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.COUNTER,
+                description="Total number of completed episodes",
+                unit="episodes",
+                frequency="episode",
+            ),
+        )
 
-        self.register_metric("episode_reward_mean", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.GAUGE,
-            description="Mean episode reward (recent)",
-            unit="reward",
-            aggregation="mean",
-            frequency="episode"
-        ))
+        self.register_metric(
+            "episode_reward_mean",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.GAUGE,
+                description="Mean episode reward (recent)",
+                unit="reward",
+                aggregation="mean",
+                frequency="episode",
+            ),
+        )
 
-        self.register_metric("episode_reward_std", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.GAUGE,
-            description="Standard deviation of episode rewards",
-            unit="reward",
-            frequency="episode"
-        ))
+        self.register_metric(
+            "episode_reward_std",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.GAUGE,
+                description="Standard deviation of episode rewards",
+                unit="reward",
+                frequency="episode",
+            ),
+        )
 
-        self.register_metric("episode_length_mean", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.GAUGE,
-            description="Mean episode length (recent)",
-            unit="steps",
-            aggregation="mean",
-            frequency="episode"
-        ))
+        self.register_metric(
+            "episode_length_mean",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.GAUGE,
+                description="Mean episode length (recent)",
+                unit="steps",
+                aggregation="mean",
+                frequency="episode",
+            ),
+        )
 
-        self.register_metric("episode_duration_mean", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.TIME,
-            description="Mean episode duration",
-            unit="seconds",
-            aggregation="mean",
-            frequency="episode"
-        ))
+        self.register_metric(
+            "episode_duration_mean",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.TIME,
+                description="Mean episode duration",
+                unit="seconds",
+                aggregation="mean",
+                frequency="episode",
+            ),
+        )
 
         # Step metrics
-        self.register_metric("global_step", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.COUNTER,
-            description="Global step counter",
-            unit="steps",
-            frequency="step"
-        ))
+        self.register_metric(
+            "global_step",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.COUNTER,
+                description="Global step counter",
+                unit="steps",
+                frequency="step",
+            ),
+        )
 
-        self.register_metric("steps_per_second", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.RATE,
-            description="Training steps per second",
-            unit="steps/sec",
-            frequency="step"
-        ))
+        self.register_metric(
+            "steps_per_second",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.RATE,
+                description="Training steps per second",
+                unit="steps/sec",
+                frequency="step",
+            ),
+        )
 
         # Update metrics
-        self.register_metric("update_count", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.COUNTER,
-            description="Total number of policy updates",
-            unit="updates",
-            frequency="update"
-        ))
+        self.register_metric(
+            "update_count",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.COUNTER,
+                description="Total number of policy updates",
+                unit="updates",
+                frequency="update",
+            ),
+        )
 
-        self.register_metric("update_duration", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.TIME,
-            description="Time taken for policy update",
-            unit="seconds",
-            frequency="update"
-        ))
+        self.register_metric(
+            "update_duration",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.TIME,
+                description="Time taken for policy update",
+                unit="seconds",
+                frequency="update",
+            ),
+        )
 
-        self.register_metric("rollout_duration", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.TIME,
-            description="Time taken for rollout collection",
-            unit="seconds",
-            frequency="update"
-        ))
+        self.register_metric(
+            "rollout_duration",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.TIME,
+                description="Time taken for rollout collection",
+                unit="seconds",
+                frequency="update",
+            ),
+        )
 
         # Training session metrics
-        self.register_metric("training_duration", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.TIME,
-            description="Total training time",
-            unit="seconds",
-            frequency="step"
-        ))
+        self.register_metric(
+            "training_duration",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.TIME,
+                description="Total training time",
+                unit="seconds",
+                frequency="step",
+            ),
+        )
 
         # Performance metrics
-        self.register_metric("episodes_per_hour", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.RATE,
-            description="Episodes completed per hour",
-            unit="episodes/hour",
-            frequency="episode"
-        ))
+        self.register_metric(
+            "episodes_per_hour",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.RATE,
+                description="Episodes completed per hour",
+                unit="episodes/hour",
+                frequency="episode",
+            ),
+        )
 
-        self.register_metric("updates_per_hour", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.RATE,
-            description="Updates completed per hour",
-            unit="updates/hour",
-            frequency="update"
-        ))
+        self.register_metric(
+            "updates_per_hour",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.RATE,
+                description="Updates completed per hour",
+                unit="updates/hour",
+                frequency="update",
+            ),
+        )
 
     def collect(self) -> Dict[str, MetricValue]:
         """Collect current training metrics"""
@@ -162,52 +207,84 @@ class TrainingMetricsCollector(MetricCollector):
 
         try:
             # Episode metrics
-            metrics[f"{self.category.value}.{self.name}.episode_count"] = MetricValue(self.current_episode)
+            metrics[f"{self.category.value}.{self.name}.episode_count"] = MetricValue(
+                self.current_episode
+            )
 
             if self.episode_rewards:
                 mean_reward = np.mean(self.episode_rewards)
-                std_reward = np.std(self.episode_rewards) if len(self.episode_rewards) > 1 else 0.0
-                metrics[f"{self.category.value}.{self.name}.episode_reward_mean"] = MetricValue(mean_reward)
-                metrics[f"{self.category.value}.{self.name}.episode_reward_std"] = MetricValue(std_reward)
+                std_reward = (
+                    np.std(self.episode_rewards)
+                    if len(self.episode_rewards) > 1
+                    else 0.0
+                )
+                metrics[f"{self.category.value}.{self.name}.episode_reward_mean"] = (
+                    MetricValue(mean_reward)
+                )
+                metrics[f"{self.category.value}.{self.name}.episode_reward_std"] = (
+                    MetricValue(std_reward)
+                )
 
             if self.episode_lengths:
                 mean_length = np.mean(self.episode_lengths)
-                metrics[f"{self.category.value}.{self.name}.episode_length_mean"] = MetricValue(mean_length)
+                metrics[f"{self.category.value}.{self.name}.episode_length_mean"] = (
+                    MetricValue(mean_length)
+                )
 
             if self.episode_times:
                 mean_duration = np.mean(self.episode_times)
-                metrics[f"{self.category.value}.{self.name}.episode_duration_mean"] = MetricValue(mean_duration)
+                metrics[f"{self.category.value}.{self.name}.episode_duration_mean"] = (
+                    MetricValue(mean_duration)
+                )
 
             # Step metrics
-            metrics[f"{self.category.value}.{self.name}.global_step"] = MetricValue(self.current_step)
+            metrics[f"{self.category.value}.{self.name}.global_step"] = MetricValue(
+                self.current_step
+            )
 
             if self.steps_per_second_history:
                 sps = np.mean(self.steps_per_second_history)
-                metrics[f"{self.category.value}.{self.name}.steps_per_second"] = MetricValue(sps)
+                metrics[f"{self.category.value}.{self.name}.steps_per_second"] = (
+                    MetricValue(sps)
+                )
 
             # Update metrics
-            metrics[f"{self.category.value}.{self.name}.update_count"] = MetricValue(self.current_update)
+            metrics[f"{self.category.value}.{self.name}.update_count"] = MetricValue(
+                self.current_update
+            )
 
             if self.update_times:
                 mean_update_time = np.mean(self.update_times)
-                metrics[f"{self.category.value}.{self.name}.update_duration"] = MetricValue(mean_update_time)
+                metrics[f"{self.category.value}.{self.name}.update_duration"] = (
+                    MetricValue(mean_update_time)
+                )
 
             if self.rollout_times:
                 mean_rollout_time = np.mean(self.rollout_times)
-                metrics[f"{self.category.value}.{self.name}.rollout_duration"] = MetricValue(mean_rollout_time)
+                metrics[f"{self.category.value}.{self.name}.rollout_duration"] = (
+                    MetricValue(mean_rollout_time)
+                )
 
             # Training session metrics
             if self.training_start_time:
                 training_duration = current_time - self.training_start_time
-                metrics[f"{self.category.value}.{self.name}.training_duration"] = MetricValue(training_duration)
+                metrics[f"{self.category.value}.{self.name}.training_duration"] = (
+                    MetricValue(training_duration)
+                )
 
                 # Performance rates
                 if training_duration > 0:
-                    episodes_per_hour = (self.current_episode / training_duration) * 3600
-                    metrics[f"{self.category.value}.{self.name}.episodes_per_hour"] = MetricValue(episodes_per_hour)
+                    episodes_per_hour = (
+                        self.current_episode / training_duration
+                    ) * 3600
+                    metrics[f"{self.category.value}.{self.name}.episodes_per_hour"] = (
+                        MetricValue(episodes_per_hour)
+                    )
 
                     updates_per_hour = (self.current_update / training_duration) * 3600
-                    metrics[f"{self.category.value}.{self.name}.updates_per_hour"] = MetricValue(updates_per_hour)
+                    metrics[f"{self.category.value}.{self.name}.updates_per_hour"] = (
+                        MetricValue(updates_per_hour)
+                    )
 
         except Exception as e:
             self.logger.debug(f"Error collecting training metrics: {e}")
@@ -255,7 +332,7 @@ class TrainingMetricsCollector(MetricCollector):
         if self.current_step > 0:
             # Calculate steps per second
             current_time = time.time()
-            if hasattr(self, '_last_step_time'):
+            if hasattr(self, "_last_step_time"):
                 time_diff = current_time - self._last_step_time
                 step_diff = step - self.current_step
                 if time_diff > 0:
@@ -275,8 +352,13 @@ class TrainingMetricsCollector(MetricCollector):
 
         if self.episode_rewards:
             summary["mean_reward"] = np.mean(self.episode_rewards)
-            summary["reward_trend"] = "improving" if len(self.episode_rewards) > 10 and \
-                                                     np.mean(list(self.episode_rewards)[-5:]) > np.mean(list(self.episode_rewards)[-10:-5]) else "stable"
+            summary["reward_trend"] = (
+                "improving"
+                if len(self.episode_rewards) > 10
+                and np.mean(list(self.episode_rewards)[-5:])
+                > np.mean(list(self.episode_rewards)[-10:-5])
+                else "stable"
+            )
 
         if self.training_start_time:
             summary["training_time"] = time.time() - self.training_start_time
@@ -309,37 +391,49 @@ class EvaluationMetricsCollector(MetricCollector):
     def _register_metrics(self):
         """Register evaluation metrics"""
 
-        self.register_metric("eval_reward_mean", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.GAUGE,
-            description="Mean evaluation reward",
-            unit="reward",
-            frequency="manual"
-        ))
+        self.register_metric(
+            "eval_reward_mean",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.GAUGE,
+                description="Mean evaluation reward",
+                unit="reward",
+                frequency="manual",
+            ),
+        )
 
-        self.register_metric("eval_reward_std", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.GAUGE,
-            description="Standard deviation of evaluation rewards",
-            unit="reward",
-            frequency="manual"
-        ))
+        self.register_metric(
+            "eval_reward_std",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.GAUGE,
+                description="Standard deviation of evaluation rewards",
+                unit="reward",
+                frequency="manual",
+            ),
+        )
 
-        self.register_metric("eval_length_mean", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.GAUGE,
-            description="Mean evaluation episode length",
-            unit="steps",
-            frequency="manual"
-        ))
+        self.register_metric(
+            "eval_length_mean",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.GAUGE,
+                description="Mean evaluation episode length",
+                unit="steps",
+                frequency="manual",
+            ),
+        )
 
-        self.register_metric("eval_count", MetricMetadata(
-            category=MetricCategory.TRAINING,
-            metric_type=MetricType.COUNTER,
-            description="Number of evaluation runs",
-            unit="evaluations",
-            frequency="manual"
-        ))
+        self.register_metric(
+            "eval_count",
+            MetricMetadata(
+                category=MetricCategory.TRAINING,
+                metric_type=MetricType.COUNTER,
+                description="Number of evaluation runs",
+                unit="evaluations",
+                frequency="manual",
+            ),
+        )
 
     def collect(self) -> Dict[str, MetricValue]:
         """Collect evaluation metrics"""
@@ -350,13 +444,23 @@ class EvaluationMetricsCollector(MetricCollector):
 
         try:
             mean_reward = np.mean(self.eval_rewards)
-            std_reward = np.std(self.eval_rewards) if len(self.eval_rewards) > 1 else 0.0
+            std_reward = (
+                np.std(self.eval_rewards) if len(self.eval_rewards) > 1 else 0.0
+            )
             mean_length = np.mean(self.eval_lengths) if self.eval_lengths else 0.0
 
-            metrics[f"{self.category.value}.{self.name}.eval_reward_mean"] = MetricValue(mean_reward)
-            metrics[f"{self.category.value}.{self.name}.eval_reward_std"] = MetricValue(std_reward)
-            metrics[f"{self.category.value}.{self.name}.eval_length_mean"] = MetricValue(mean_length)
-            metrics[f"{self.category.value}.{self.name}.eval_count"] = MetricValue(self.eval_count)
+            metrics[f"{self.category.value}.{self.name}.eval_reward_mean"] = (
+                MetricValue(mean_reward)
+            )
+            metrics[f"{self.category.value}.{self.name}.eval_reward_std"] = MetricValue(
+                std_reward
+            )
+            metrics[f"{self.category.value}.{self.name}.eval_length_mean"] = (
+                MetricValue(mean_length)
+            )
+            metrics[f"{self.category.value}.{self.name}.eval_count"] = MetricValue(
+                self.eval_count
+            )
 
         except Exception as e:
             self.logger.debug(f"Error collecting evaluation metrics: {e}")
@@ -378,9 +482,11 @@ class EvaluationMetricsCollector(MetricCollector):
         for length in lengths:
             self.eval_lengths.append(length)
 
-        self.logger.info(f"Evaluation {self.eval_count} completed: "
-                         f"Mean reward: {np.mean(rewards):.2f}, "
-                         f"Episodes: {len(rewards)}")
+        self.logger.info(
+            f"Evaluation {self.eval_count} completed: "
+            f"Mean reward: {np.mean(rewards):.2f}, "
+            f"Episodes: {len(rewards)}"
+        )
 
     def _get_metadata(self, metric_name: str) -> MetricMetadata:
         """Get metadata for a metric by name"""

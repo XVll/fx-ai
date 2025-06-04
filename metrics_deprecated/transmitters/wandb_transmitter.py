@@ -17,17 +17,19 @@ except ImportError:
 class WandBTransmitter(MetricTransmitter):
     """Transmit metrics to Weights & Biases with guaranteed transmission"""
 
-    def __init__(self,
-                 project_name: str,
-                 entity: Optional[str] = None,
-                 run_name: Optional[str] = None,
-                 config: Optional[Dict[str, Any]] = None,
-                 tags: Optional[List[str]] = None,
-                 group: Optional[str] = None,
-                 job_type: str = "training",
-                 save_code: bool = True,
-                 log_frequency: Dict[str, int] = None,
-                 prefix_categories: bool = True):
+    def __init__(
+        self,
+        project_name: str,
+        entity: Optional[str] = None,
+        run_name: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+        tags: Optional[List[str]] = None,
+        group: Optional[str] = None,
+        job_type: str = "training",
+        save_code: bool = True,
+        log_frequency: Dict[str, int] = None,
+        prefix_categories: bool = True,
+    ):
         """
         Initialize W&B transmitter with enhanced reliability.
         """
@@ -49,7 +51,7 @@ class WandBTransmitter(MetricTransmitter):
             "execution": 1,
             "environment": 1,
             "system": 5,  # Reduced from 10 for better visibility
-            **(log_frequency or {})
+            **(log_frequency or {}),
         }
 
         # Track last transmission times for frequency control
@@ -71,9 +73,14 @@ class WandBTransmitter(MetricTransmitter):
                 filtered_tags = []
                 if tags:
                     for tag in tags:
-                        if tag and isinstance(tag, str) and tag.strip() and len(tag.strip()) <= 64:
+                        if (
+                            tag
+                            and isinstance(tag, str)
+                            and tag.strip()
+                            and len(tag.strip()) <= 64
+                        ):
                             filtered_tags.append(tag.strip())
-                
+
                 # Initialize with explicit settings
                 self.run = wandb.init(
                     project=project_name,
@@ -84,14 +91,14 @@ class WandBTransmitter(MetricTransmitter):
                     group=group,
                     job_type=job_type,
                     save_code=save_code,
-                    resume="allow"  # Allow resume if accidentally restarted
+                    resume="allow",  # Allow resume if accidentally restarted
                 )
 
             # Verify the run is properly initialized
             if self.run is None:
                 raise RuntimeError("W&B run failed to initialize")
 
-            self.logger.info(f"✅ W&B transmitter initialized successfully")
+            self.logger.info("✅ W&B transmitter initialized successfully")
             self.logger.info(f"   🏷️  Run: {self.run.name} ({self.run.id})")
             self.logger.info(f"   🔗 URL: {self.run.url}")
 
@@ -107,7 +114,12 @@ class WandBTransmitter(MetricTransmitter):
         """Send a test metric to verify W&B connection."""
         try:
             # Don't specify step for initialization metrics to avoid warnings
-            wandb.log({"system/test_metric": 1.0, "system/initialization_time": wandb.run.start_time})
+            wandb.log(
+                {
+                    "system/test_metric": 1.0,
+                    "system/initialization_time": wandb.run.start_time,
+                }
+            )
             self.logger.info("✅ W&B connection test successful")
         except Exception as e:
             self.logger.error(f"W&B connection test failed: {e}")
@@ -117,7 +129,7 @@ class WandBTransmitter(MetricTransmitter):
         if self._finished:
             # Silently skip transmission if W&B has been finished
             return
-            
+
         if not self.run:
             self.logger.warning("W&B run not available, skipping transmission")
             return
@@ -129,10 +141,14 @@ class WandBTransmitter(MetricTransmitter):
         for metric_name, metric_value in metrics.items():
             try:
                 # Extract category from metric name
-                category = metric_name.split('.')[0] if '.' in metric_name else 'unknown'
+                category = (
+                    metric_name.split(".")[0] if "." in metric_name else "unknown"
+                )
 
                 # Check frequency (but be less aggressive for debugging)
-                if step is not None and step > 10:  # Skip frequency check for first 10 steps
+                if (
+                    step is not None and step > 10
+                ):  # Skip frequency check for first 10 steps
                     frequency = self.log_frequency.get(category, 1)
                     last_step = self._last_transmitted[category]
                     if step - last_step < frequency:
@@ -177,7 +193,9 @@ class WandBTransmitter(MetricTransmitter):
                     self._last_logged_step = global_step
                     # Debug logging for step tracking
                     if global_step % 100 == 0:
-                        self.logger.debug(f"W&B transmitted metrics at global step {global_step} (episode step {step})")
+                        self.logger.debug(
+                            f"W&B transmitted metrics at global step {global_step} (episode step {step})"
+                        )
                 elif step is None or step == 0:
                     wandb.log(wandb_metrics)
                 else:
@@ -189,9 +207,11 @@ class WandBTransmitter(MetricTransmitter):
 
                 # Log successful transmission (but not too frequently)
                 if self._total_metrics_sent % 50 == 0 or step is None or step < 5:
-                    self.logger.debug(f"📊 W&B: Sent {total_metrics_this_batch} metrics "
-                                      f"(categories: {', '.join(categories_logged)}) "
-                                      f"[total: {self._total_metrics_sent}]")
+                    self.logger.debug(
+                        f"📊 W&B: Sent {total_metrics_this_batch} metrics "
+                        f"(categories: {', '.join(categories_logged)}) "
+                        f"[total: {self._total_metrics_sent}]"
+                    )
 
             except Exception as e:
                 self._transmission_errors += 1
@@ -199,23 +219,25 @@ class WandBTransmitter(MetricTransmitter):
 
                 # Log error summary every 10 errors
                 if self._transmission_errors % 10 == 1:
-                    self.logger.error(f"W&B transmission errors: {self._transmission_errors}")
+                    self.logger.error(
+                        f"W&B transmission errors: {self._transmission_errors}"
+                    )
 
     def _format_metric_name(self, metric_name: str) -> str:
         """Format metric name for W&B display with improved hierarchy."""
         if not self.prefix_categories:
             # Remove category prefix
-            parts = metric_name.split('.')
+            parts = metric_name.split(".")
             if len(parts) > 2:
-                return '.'.join(parts[2:])  # Remove category.collector prefix
+                return ".".join(parts[2:])  # Remove category.collector prefix
             return metric_name
 
         # Keep hierarchical name but make it W&B friendly
         # Convert "category.collector.metric" to "category/metric"
-        parts = metric_name.split('.')
+        parts = metric_name.split(".")
         if len(parts) >= 3:
             category = parts[0]
-            metric = '_'.join(parts[2:])  # Join remaining parts
+            metric = "_".join(parts[2:])  # Join remaining parts
             return f"{category}/{metric}"
         elif len(parts) == 2:
             return f"{parts[0]}/{parts[1]}"
@@ -246,6 +268,7 @@ class WandBTransmitter(MetricTransmitter):
         # Handle numpy types
         try:
             import numpy as np
+
             if isinstance(value, np.number):
                 return float(value)
         except ImportError:
@@ -254,7 +277,9 @@ class WandBTransmitter(MetricTransmitter):
         # Try to convert to float
         try:
             float_val = float(value)
-            if not (float_val != float_val) and abs(float_val) < 1e10:  # Not NaN and reasonable
+            if (
+                not (float_val != float_val) and abs(float_val) < 1e10
+            ):  # Not NaN and reasonable
                 return float_val
         except (ValueError, TypeError):
             pass
@@ -318,22 +343,24 @@ class WandBTransmitter(MetricTransmitter):
             "total_metrics_sent": self._total_metrics_sent,
             "transmission_errors": self._transmission_errors,
             "run_id": self.run.id if self.run else None,
-            "run_url": self.run.get_url() if self.run else None
+            "run_url": self.run.get_url() if self.run else None,
         }
 
     def finish(self):
         """Finish the W&B run with stats logging."""
         if self._finished:
             return  # Already finished
-            
+
         self._finished = True  # Mark as finished to prevent further transmissions
-        
+
         if self.run:
             try:
                 # Log final stats
                 stats = self.get_stats()
-                self.logger.info(f"📊 W&B session stats: {stats['total_metrics_sent']} metrics sent, "
-                                 f"{stats['transmission_errors']} errors")
+                self.logger.info(
+                    f"📊 W&B session stats: {stats['total_metrics_sent']} metrics sent, "
+                    f"{stats['transmission_errors']} errors"
+                )
 
                 wandb.finish()
                 self.logger.info("✅ W&B run finished successfully")
@@ -348,17 +375,19 @@ class WandBTransmitter(MetricTransmitter):
 class WandBConfig:
     """Configuration for W&B transmitter with enhanced defaults."""
 
-    def __init__(self,
-                 project_name: str,
-                 entity: Optional[str] = None,
-                 run_name: Optional[str] = None,
-                 tags: Optional[List[str]] = None,
-                 group: Optional[str] = None,
-                 job_type: str = "training",
-                 save_code: bool = True,
-                 log_model: bool = True,
-                 watch_model: bool = True,
-                 log_frequency: Optional[Dict[str, int]] = None):
+    def __init__(
+        self,
+        project_name: str,
+        entity: Optional[str] = None,
+        run_name: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        group: Optional[str] = None,
+        job_type: str = "training",
+        save_code: bool = True,
+        log_model: bool = True,
+        watch_model: bool = True,
+        log_frequency: Optional[Dict[str, int]] = None,
+    ):
         self.project_name = project_name
         self.entity = entity
         self.run_name = run_name
@@ -377,7 +406,7 @@ class WandBConfig:
             "execution": 1,
             "environment": 1,
             "system": 5,
-            **(log_frequency or {})
+            **(log_frequency or {}),
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -392,5 +421,5 @@ class WandBConfig:
             "save_code": self.save_code,
             "log_model": self.log_model,
             "watch_model": self.watch_model,
-            "log_frequency": self.log_frequency
+            "log_frequency": self.log_frequency,
         }
