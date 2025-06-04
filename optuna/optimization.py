@@ -532,6 +532,7 @@ class OptunaOptimizer:
                 "main.py",
                 "--config", trial_config_name,  # This will load the base + our overrides
                 "--no-dashboard",
+                "--optuna-trial",  # Flag to indicate this is an optuna trial
             ]
             
             # Add any supported CLI arguments

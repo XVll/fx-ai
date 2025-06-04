@@ -103,14 +103,12 @@ class ExecutionSimulator:
                  logger: logging.Logger,
                  simulation_config: SimulationConfig,
                  np_random: np.random.Generator,
-                 market_simulator: MarketSimulator,
-                 metrics_integrator=None):
+                 market_simulator: MarketSimulator):
         
         self.logger = logger
         self.simulation_config = simulation_config
         self.np_random = np_random
         self.market_simulator = market_simulator
-        self.metrics_integrator = metrics_integrator
 
         # Action space configuration
         self.action_types = ["HOLD", "BUY", "SELL"]  # indices 0, 1, 2
@@ -369,11 +367,7 @@ class ExecutionSimulator:
             # Update session tracking
             self._update_session_stats(fill_details, latency_ms, slippage_bps)
             
-            # Record metrics
-            if self.metrics_integrator:
-                self._record_execution_metrics(fill_details, latency_ms, slippage_bps)
-
-            # NOTE: Trade execution event will be emitted by TradingEnvironment
+            # NOTE: Execution metrics will be recorded by callbacks in TradingEnvironment
             # after portfolio processing with correct P&L calculation
 
             self.total_orders_filled += 1
@@ -531,19 +525,7 @@ class ExecutionSimulator:
         self.fill_latencies.append(latency_ms)
         self.slippage_history.append(slippage_bps)
 
-    def _record_execution_metrics(self, fill: FillDetails, latency_ms: float, slippage_bps: float):
-        """Record execution metrics."""
-        if self.metrics_integrator:
-            self.metrics_integrator.record_fill({
-                'executed_quantity': fill.executed_quantity,
-                'executed_price': fill.executed_price,
-                'commission': fill.commission,
-                'fees': fill.fees,
-                'slippage_cost_total': fill.slippage_cost_total,
-                'slippage_bps': slippage_bps,
-                'latency_ms': latency_ms,
-                'side': fill.order_side.value
-            })
+    # Removed _record_execution_metrics - handled by callbacks in TradingEnvironment
 
     def _is_market_closed(self, current_time: datetime) -> bool:
         """Check if market is closed."""

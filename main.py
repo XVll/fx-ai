@@ -29,7 +29,7 @@ from data.scanner.momentum_scanner import MomentumScanner
 from envs.trading_environment import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from ai.transformer import MultiBranchTransformer
-from metrics.factory import MetricsConfig
+from agent.callbacks import create_callback_manager as create_callback_manager_base, CallbackManager
 from agent.base_callbacks import ModelCheckpointCallback, EarlyStoppingCallback, TrainingCallback, MomentumTrackingCallback
 from agent.continuous_training_callbacks import ContinuousTrainingCallback
 
@@ -56,17 +56,14 @@ def signal_handler(signum, frame):
     console.print("Press Ctrl+C again to force exit")
     console.print("=" * 50)
     
-    # Stop metrics auto-transmission immediately if running
-    if 'metrics_manager' in current_components:
-        metrics_manager = current_components['metrics_manager']
+    # Stop callbacks immediately if running
+    if 'callback_manager' in current_components:
+        callback_manager = current_components['callback_manager']
         try:
-            # Stop auto-transmission first to prevent further W&B logging
-            if hasattr(metrics_manager, 'stop_auto_transmit'):
-                metrics_manager.stop_auto_transmit()
-            # Close all transmitters which includes dashboard
-            for transmitter in metrics_manager.transmitters:
-                if hasattr(transmitter, 'close'):
-                    transmitter.close()
+            # Disable all callbacks to stop further processing
+            callback_manager.disable_all()
+            # Trigger cleanup for each callback
+            callback_manager.trigger('on_training_end', {'interrupted': True})
         except:
             pass
     
@@ -92,21 +89,21 @@ def cleanup_resources():
     try:
         logging.info("Starting resource cleanup...")
         
-        # Stop metrics auto-transmission first to prevent further W&B logging
-        if 'metrics_manager' in current_components:
-            metrics_manager = current_components['metrics_manager']
+        # Stop callbacks first to prevent further processing
+        if 'callback_manager' in current_components:
+            callback_manager = current_components['callback_manager']
             try:
-                if hasattr(metrics_manager, 'stop_auto_transmit'):
-                    metrics_manager.stop_auto_transmit()
-                    logging.info("Stopped metrics auto-transmission")
+                callback_manager.disable_all()
+                callback_manager.trigger('on_training_end', {'interrupted': True})
+                logging.info("Stopped callbacks")
                 # Give threads time to stop
                 import time
                 time.sleep(0.5)
             except Exception as e:
-                logging.error(f"Error stopping auto-transmission: {e}")
+                logging.error(f"Error stopping callbacks: {e}")
         
         # Clean up in reverse order of creation
-        cleanup_order = ['metrics_manager', 'trainer', 'env', 'data_manager']
+        cleanup_order = ['callback_manager', 'trainer', 'env', 'data_manager']
         
         for component_name in cleanup_order:
             if component_name in current_components:
@@ -221,7 +218,7 @@ def create_env_components(config: Config, data_manager: DataManager, log: loggin
         config=config,
         data_manager=data_manager,
         logger=log,
-        metrics_integrator=None  # Will be set later
+        callback_manager=None  # Will be set later
     )
     
     return env
@@ -281,102 +278,42 @@ def get_curriculum_symbols(config):
     return list(symbols)
 
 
-def create_metrics_components(config: Config, log: logging.Logger, model: torch.nn.Module = None):
-    """Create metrics and dashboard components with feature attribution support"""
-    # Always create metrics system - training requires it
-    if not config.wandb.enabled and not config.dashboard.enabled:
-        logging.warning("Both W&B and dashboard disabled - creating minimal metrics system")
-        # Create minimal metrics system for training compatibility
-        feature_names = get_feature_names_from_config()
-        curriculum_symbols = get_curriculum_symbols(config)
-        primary_symbol = curriculum_symbols[0] if curriculum_symbols else "curriculum"
-        
-        metrics_config = MetricsConfig(
-            wandb_project="disabled",
-            wandb_entity=None,
-            wandb_run_name="minimal",
-            wandb_tags=["minimal"],
-            symbol=primary_symbol,
-            initial_capital=config.simulation.initial_capital,
-            enable_dashboard=False,
-            dashboard_port=8050,  # Default port even if disabled
-            transmit_interval=1.0
-        )
-        
-        additional_config = {
-            'feature_names': feature_names,
-            'enable_feature_attribution': False,  # Disable for speed
-            'model_config': config.model
-        }
-        metrics_manager, metrics_integrator = metrics_config.create_metrics_system(
-            model=model,
-            additional_config=additional_config
-        )
-        return metrics_manager, metrics_integrator
-    
-    # Only log about W&B if it's enabled
-    if config.wandb.enabled:
-        logging.info("📊 Initializing metrics system with W&B integration")
-    else:
-        logging.info("📊 Initializing metrics system (W&B disabled)")
-    
-    # Create run name
-    run_name = config.wandb.name
-    if not run_name and config.training.continue_training:
-        # Get first curriculum symbol or use 'curriculum'
-        curriculum_symbols = get_curriculum_symbols(config)
-        primary_symbol = curriculum_symbols[0] if curriculum_symbols else "curriculum"
-        run_name = f"continuous_{primary_symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    
-    # Get feature names for attribution analysis
-    feature_names = get_feature_names_from_config()
-    logging.info(f"🔍 Feature attribution enabled with {sum(len(names) for names in feature_names.values())} total features")
-    
-    curriculum_symbols = get_curriculum_symbols(config)
-    primary_symbol = curriculum_symbols[0] if curriculum_symbols else "curriculum"
-    
-    # Create metrics config
-    wandb_tags = ["trading", "ppo", "curriculum"]
-    if curriculum_symbols:
-        wandb_tags.extend(curriculum_symbols[:3])  # Add up to 3 symbols as tags
-        
-    metrics_config = MetricsConfig(
-        wandb_project=config.wandb.project if config.wandb.enabled else "local",
-        wandb_entity=config.wandb.entity if config.wandb.enabled else None,
-        wandb_run_name=run_name,
-        wandb_tags=wandb_tags,
-        symbol=primary_symbol,
-        initial_capital=config.simulation.initial_capital,
-        enable_dashboard=config.dashboard.enabled,
-        dashboard_port=config.dashboard.port,
-        transmit_interval=0.5  # More frequent for trading
-    )
-    
-    # Create metrics system with feature attribution
-    additional_config = {
-        'feature_names': feature_names,
-        'enable_feature_attribution': True,
-        'model_config': config.model
+def create_callback_manager(config: Config, log: logging.Logger, model: torch.nn.Module = None) -> CallbackManager:
+    """Create callback manager with all configured callbacks"""
+    # Convert Config object to dict for callback creation
+    config_dict = {
+        "wandb": config.wandb.__dict__ if hasattr(config.wandb, '__dict__') else config.wandb,
+        "dashboard": config.dashboard.__dict__ if hasattr(config.dashboard, '__dict__') else config.dashboard,
+        "optuna_trial": getattr(config, 'optuna_trial', None),
+        "callbacks": getattr(config, 'callbacks', []),
+        "model": model,
+        "training": config.training.__dict__ if hasattr(config.training, '__dict__') else config.training,
+        "simulation": config.simulation.__dict__ if hasattr(config.simulation, '__dict__') else config.simulation,
     }
-    metrics_manager, metrics_integrator = metrics_config.create_metrics_system(
-        model=model,
-        additional_config=additional_config
-    )
     
-    # Start auto-transmission
-    metrics_manager.start_auto_transmit()
+    # Add feature names for attribution callbacks
+    if model:
+        config_dict['feature_names'] = get_feature_names_from_config()
     
-    # Start system tracking
-    metrics_integrator.start_system_tracking()
+    # Add curriculum symbols for tracking
+    curriculum_symbols = get_curriculum_symbols(config)
+    config_dict['curriculum_symbols'] = curriculum_symbols
+    config_dict['primary_symbol'] = curriculum_symbols[0] if curriculum_symbols else "curriculum"
     
-    logging.info("✅ Metrics system initialized, auto-transmission started")
+    # Create callback manager
+    callback_manager = create_callback_manager_base(config_dict)
     
-    # Start dashboard if enabled
-    if config.dashboard.enabled:
-        metrics_manager.start_dashboard(open_browser=True)
-        logging.info(f"🚀 Live dashboard enabled at http://localhost:{config.dashboard.port}")
+    # Log enabled callbacks
+    enabled_callbacks = [cb.__class__.__name__ for cb in callback_manager.callbacks if cb.enabled]
+    if enabled_callbacks:
+        logging.info(f"✅ Callback system initialized with: {', '.join(enabled_callbacks)}")
+    else:
+        logging.info("📊 No callbacks enabled")
     
-    return metrics_manager, metrics_integrator
+    # Start training lifecycle
+    callback_manager.trigger('on_training_start', config_dict)
+    
+    return callback_manager
 
 
 def create_model_components(config: Config, device: torch.device, 
@@ -518,28 +455,19 @@ def train(config: Config):
         # The PPO agent will handle day selection and environment setup
         logger.info("🎯 Momentum-based training enabled - PPO agent will manage day selection")
         
-        # Model components (create first to pass to metrics)
+        # Model components (create first to pass to callbacks)
         model, optimizer, model_manager = create_model_components(
             config, device, str(output_dir), logger
         )
         current_components['model_manager'] = model_manager
         
-        # Metrics components with feature attribution
-        metrics_manager, metrics_integrator = create_metrics_components(config, logger, model)
-        current_components['metrics_manager'] = metrics_manager
+        # Callback components
+        callback_manager = create_callback_manager(config, logger, model)
+        current_components['callback_manager'] = callback_manager
         
-        # Update environment with metrics
-        if metrics_integrator:
-            env.metrics_integrator = metrics_integrator
-        
-        # Register model metrics
-        if metrics_manager and metrics_integrator:
-            from metrics.collectors.model_metrics import ModelMetricsCollector, OptimizerMetricsCollector
-            model_collector = ModelMetricsCollector(model)
-            optimizer_collector = OptimizerMetricsCollector(optimizer)
-            metrics_manager.register_collector(model_collector)
-            metrics_manager.register_collector(optimizer_collector)
-            logger.info("📊 Model and optimizer collectors registered")
+        # Update environment with callback manager
+        if callback_manager:
+            env.callback_manager = callback_manager
         
         # Load best model if continuing
         loaded_metadata = {}
@@ -600,7 +528,7 @@ def train(config: Config):
         trainer = PPOTrainer(
             env=env,
             model=model,
-            metrics_integrator=metrics_integrator,
+            callback_manager=callback_manager,
             config=config,  # Pass full config - trainer will extract needed parameters
             device=device,
             output_dir=str(output_dir),
@@ -635,9 +563,13 @@ def train(config: Config):
             logger.info(f"✅ Initial momentum day set: {current_day['date'].strftime('%Y-%m-%d')} "
                        f"(quality: {current_day.get('quality_score', 0):.3f})")
         
-        # Start training metrics
-        if metrics_integrator:
-            metrics_integrator.start_training()
+        # Trigger training start
+        if callback_manager:
+            callback_manager.trigger('on_training_start', {
+                'config': config,
+                'model': model,
+                'device': device
+            })
         
         # Main training loop - curriculum-driven
         logger.info(f"🚀 Starting curriculum-driven training")
