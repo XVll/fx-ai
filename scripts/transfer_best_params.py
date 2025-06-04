@@ -136,7 +136,6 @@ def transfer_phase2_to_phase3():
         "env.reward.holding_penalty_coefficient": "env.reward.holding_penalty_coefficient",
         "env.reward.drawdown_penalty_coefficient": "env.reward.drawdown_penalty_coefficient",
         "env.reward.profit_closing_bonus_coefficient": "env.reward.profit_closing_bonus_coefficient",
-        "env.reward.clean_trade_coefficient": "env.reward.clean_trade_coefficient",
         "env.reward.base_multiplier": "env.reward.base_multiplier",
         "env.reward.bankruptcy_penalty_coefficient": "env.reward.bankruptcy_penalty_coefficient",
         "env.reward.profit_giveback_penalty_coefficient": "env.reward.profit_giveback_penalty_coefficient",

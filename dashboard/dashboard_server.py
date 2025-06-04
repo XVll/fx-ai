@@ -791,14 +791,12 @@ class DashboardServer:
             stage_colors = {
                 'stage_1': DARK_THEME['accent_green'],
                 'stage_2': DARK_THEME['accent_blue'],
-                'stage_3': DARK_THEME['accent_orange'],
-                'stage_4_specialization': DARK_THEME['accent_purple']
+                'stage_3': DARK_THEME['accent_orange']
             }
             stage_names = {
                 'stage_1': 'Beginner',
                 'stage_2': 'Intermediate', 
-                'stage_3': 'Advanced',
-                'stage_4_specialization': 'Master'
+                'stage_3': 'Advanced'
             }
             stage_display = stage_names.get(curriculum_stage, curriculum_stage.replace('_', ' ').title())
             curriculum_color = stage_colors.get(curriculum_stage, DARK_THEME['text_muted'])
@@ -810,8 +808,7 @@ class DashboardServer:
                 stage_thresholds = {
                     'stage_1': 2000,
                     'stage_2': 5000, 
-                    'stage_3': 8000,
-                    'stage_4_specialization': float('inf')
+                    'stage_3': float('inf')
                 }
                 current_threshold = stage_thresholds.get(curriculum_stage, float('inf'))
                 progress_pct = (total_episodes_curriculum / current_threshold * 100) if current_threshold != float('inf') else 100

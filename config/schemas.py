@@ -155,6 +155,8 @@ class RewardConfig(BaseModel):
     # Activity incentives
     activity_bonus_per_trade: float = Field(0.025, description="Trading activity bonus")
     hold_penalty_per_step: float = Field(0.01, description="Hold action penalty")
+    action_penalty_coefficient: float = Field(0.1, description="Action penalty coefficient")
+    quick_profit_bonus_coefficient: float = Field(1.0, description="Quick profit bonus coefficient")
     
     # Limits
     max_holding_time_steps: int = Field(180, description="Max holding time")
@@ -180,6 +182,10 @@ class EnvironmentConfig(BaseModel):
     
     # Episode control
     max_episode_steps: int = Field(256, gt=0, description="Maximum steps per episode")
+    max_training_steps: Optional[int] = Field(None, description="Maximum training steps")
+    
+    # Training mode
+    use_momentum_training: bool = Field(True, description="Use momentum-based training")
     
     # Termination conditions
     early_stop_loss_threshold: float = Field(0.85, description="Early stop threshold")
@@ -208,6 +214,7 @@ class DataConfig(BaseModel):
     # Provider settings
     provider: Literal["databento"] = Field("databento", description="Data provider")
     data_dir: str = Field("dnb", description="Data directory")
+    symbols: List[str] = Field(["MLGO"], description="Trading symbols")
     
     # Data types
     load_trades: bool = Field(True, description="Load trade data")
@@ -433,6 +440,18 @@ class DashboardConfig(BaseModel):
 
 
 # =============================================================================
+# DAY SELECTION CONFIGURATION
+# =============================================================================
+
+class DaySelectionConfig(BaseModel):
+    """Day selection configuration for training"""
+    
+    episodes_per_day: int = Field(5, description="Episodes per trading day")
+    reset_point_quality_range: List[float] = Field([0.5, 1.0], description="Reset point quality range")
+    day_switching_strategy: str = Field("quality_based", description="Day switching strategy")
+
+
+# =============================================================================
 # MAIN CONFIGURATION
 # =============================================================================
 
@@ -449,6 +468,9 @@ class Config(BaseModel):
     
     # Scanner configuration
     scanner: ScannerConfig = Field(default_factory=ScannerConfig)
+    
+    # Day selection
+    day_selection: DaySelectionConfig = Field(default_factory=DaySelectionConfig)
     
     # Monitoring
     logging: LoggingConfig = Field(default_factory=LoggingConfig)

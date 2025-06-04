@@ -195,7 +195,7 @@ class OptunaOptimizer:
                             high=200.0,
                         ),
                         ParameterConfig(
-                            name="env.reward.clean_trade_coefficient",
+                            name="env.reward.base_multiplier",
                             type=DistributionType.FLOAT,
                             low=10.0,
                             high=50.0,

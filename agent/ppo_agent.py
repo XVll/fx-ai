@@ -22,32 +22,33 @@ class PPOTrainer:
             env: TradingEnvironment,
             model: MultiBranchTransformer,
             metrics_integrator: MetricsIntegrator,
-            model_config: ModelConfig = None,
-            config: Optional[Any] = None,
-            lr: float = 3e-4,
-            gamma: float = 0.99,
-            gae_lambda: float = 0.95,
-            clip_eps: float = 0.2,
-            critic_coef: float = 0.5,
-            entropy_coef: float = 0.01,
-            max_grad_norm: float = 0.5,
-            ppo_epochs: int = 10,
-            batch_size: int = 64,
-            rollout_steps: int = 2048,
+            config: Any,
             device: Optional[Union[str, torch.device]] = None,
             output_dir: str = "./ppo_output",
             callbacks: Optional[List[TrainingCallback]] = None,
-            curriculum_method: str = "quality_based",
-            min_quality_threshold: float = 0.3,
-            episode_selection_mode: str = "momentum_days",
-            episodes_per_day: int = 10,
-            reset_point_quality_range: List[float] = None,
-            day_switching_strategy: str = "exhaustive",
     ):
         self.env = env
         self.model = model
         self.config = config  # Store full config for curriculum access
+        self.metrics = metrics_integrator
+
+        self.logger = logging.getLogger(__name__)
+
+        # Extract training parameters from config
+        training_config = config.training
+        self.lr = training_config.learning_rate
+        self.gamma = training_config.gamma
+        self.gae_lambda = training_config.gae_lambda
+        self.clip_eps = training_config.clip_epsilon
+        self.critic_coef = training_config.value_coef
+        self.entropy_coef = training_config.entropy_coef
+        self.max_grad_norm = training_config.max_grad_norm
+        self.ppo_epochs = training_config.n_epochs
+        self.batch_size = training_config.batch_size
+        self.rollout_steps = training_config.rollout_steps
+
         # Store model config - convert to dict if it's a Pydantic object
+        model_config = config.model
         if model_config is not None:
             if hasattr(model_config, 'model_dump'):
                 # It's a Pydantic model, convert to dict for storage
@@ -57,21 +58,6 @@ class PPOTrainer:
                 self.model_config = model_config
         else:
             self.model_config = {}
-        self.metrics = metrics_integrator
-
-        self.logger = logging.getLogger(__name__)
-
-        # Hyperparameters
-        self.lr = lr
-        self.gamma = gamma
-        self.gae_lambda = gae_lambda
-        self.clip_eps = clip_eps
-        self.critic_coef = critic_coef
-        self.entropy_coef = entropy_coef
-        self.max_grad_norm = max_grad_norm
-        self.ppo_epochs = ppo_epochs
-        self.batch_size = batch_size
-        self.rollout_steps = rollout_steps
 
         # Device setup
         if device is None:
@@ -117,14 +103,21 @@ class PPOTrainer:
         self.episode_times = []
 
         # Momentum-based training configuration
-        self.curriculum_method = curriculum_method
-        self.min_quality_threshold = min_quality_threshold
-        self.episode_selection_mode = episode_selection_mode
+        self.curriculum_method = "quality_based"  # Default curriculum method
+        self.min_quality_threshold = 0.3  # Default minimum quality threshold
+        self.episode_selection_mode = "momentum_days"  # Enable momentum-based training
         
-        # Day selection configuration
-        self.episodes_per_day = episodes_per_day
-        self.reset_point_quality_range = reset_point_quality_range or [0.0, 1.0]
-        self.day_switching_strategy = day_switching_strategy
+        # Day selection configuration - extract from config or use defaults
+        day_selection_config = getattr(config, 'day_selection', None)
+        if day_selection_config:
+            self.episodes_per_day = day_selection_config.episodes_per_day
+            self.reset_point_quality_range = day_selection_config.reset_point_quality_range or [0.0, 1.0]
+            self.day_switching_strategy = day_selection_config.day_switching_strategy
+        else:
+            # Default values if day_selection config not present
+            self.episodes_per_day = 10
+            self.reset_point_quality_range = [0.0, 1.0]
+            self.day_switching_strategy = "exhaustive"
         
         # Momentum training state
         self.current_momentum_day = None
@@ -379,8 +372,7 @@ class PPOTrainer:
         stages = [
             self.config.env.curriculum.stage_1,
             self.config.env.curriculum.stage_2,
-            self.config.env.curriculum.stage_3,
-            self.config.env.curriculum.stage_4_specialization
+            self.config.env.curriculum.stage_3
         ]
         
         # Return current stage if valid
@@ -493,8 +485,7 @@ class PPOTrainer:
         stages = [
             self.config.env.curriculum.stage_1,
             self.config.env.curriculum.stage_2,
-            self.config.env.curriculum.stage_3,
-            self.config.env.curriculum.stage_4_specialization
+            self.config.env.curriculum.stage_3
         ]
         
         # Find next enabled stage
@@ -527,12 +518,9 @@ class PPOTrainer:
             elif self.global_episode_counter < 5000:
                 stage_progress = min(100.0, ((self.global_episode_counter - 2000) / 3000) * 100)
                 stage_name = 'stage_2'
-            elif self.global_episode_counter < 8000:
+            else:
                 stage_progress = min(100.0, ((self.global_episode_counter - 5000) / 3000) * 100)
                 stage_name = 'stage_3'
-            else:
-                stage_progress = 100.0
-                stage_name = 'stage_4_specialization'
                 
             curriculum_data = {
                 'progress': self.curriculum_progress,

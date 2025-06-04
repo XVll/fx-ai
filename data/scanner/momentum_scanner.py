@@ -16,25 +16,21 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from data.utils.helpers import ensure_timezone_aware
-from config.schemas import MomentumScanningConfig, MomentumScoringConfig, SessionVolumeConfig
+from config.schemas import ScannerConfig
 
 
 class MomentumScanner:
     """Sniper-focused momentum scanner with 3-component scoring and session-aware volume profiling."""
     
     def __init__(self, data_dir: str, output_dir: str, 
-                 momentum_config: Optional[MomentumScanningConfig] = None,
-                 scoring_config: Optional[MomentumScoringConfig] = None,
-                 session_config: Optional[SessionVolumeConfig] = None,
+                 scanner_config: Optional[ScannerConfig] = None,
                  logger: Optional[logging.Logger] = None):
         """Initialize the momentum scanner.
         
         Args:
             data_dir: Directory containing Databento files
             output_dir: Directory to save index files
-            momentum_config: Momentum scanning configuration
-            scoring_config: Momentum scoring configuration
-            session_config: Session-aware volume configuration
+            scanner_config: Consolidated scanner configuration
             logger: Optional logger instance
         """
         self.data_dir = Path(data_dir)
@@ -44,9 +40,7 @@ class MomentumScanner:
         self.logger = logger or logging.getLogger(__name__)
         
         # Configuration with defaults
-        self.momentum_config = momentum_config or MomentumScanningConfig()
-        self.scoring_config = scoring_config or MomentumScoringConfig()
-        self.session_config = session_config or SessionVolumeConfig()
+        self.config = scanner_config or ScannerConfig()
         
         # Index paths
         self.day_index_path = self.output_dir / "momentum_days.parquet"
@@ -57,12 +51,12 @@ class MomentumScanner:
         
         # Market session definitions
         self._market_sessions = {
-            'premarket': (self._parse_time(self.session_config.premarket_start), 
-                         self._parse_time(self.session_config.premarket_end)),
-            'regular': (self._parse_time(self.session_config.regular_start), 
-                       self._parse_time(self.session_config.regular_end)),
-            'postmarket': (self._parse_time(self.session_config.postmarket_start), 
-                          self._parse_time(self.session_config.postmarket_end))
+            'premarket': (self._parse_time(self.config.premarket_start), 
+                         self._parse_time(self.config.premarket_end)),
+            'regular': (self._parse_time(self.config.regular_start), 
+                       self._parse_time(self.config.regular_end)),
+            'postmarket': (self._parse_time(self.config.postmarket_start), 
+                          self._parse_time(self.config.postmarket_end))
         }
     
     def _parse_time(self, time_str: str) -> time:
@@ -251,8 +245,8 @@ class MomentumScanner:
         
         # Check momentum criteria (NO CAPS - capture all volatility)
         is_momentum_day = (
-            max_intraday_move >= self.momentum_config.min_daily_move and
-            total_volume >= avg_session_volume * self.momentum_config.min_volume_multiplier
+            max_intraday_move >= self.config.min_daily_move and
+            total_volume >= avg_session_volume * self.config.min_volume_multiplier
         )
         
         if not is_momentum_day:
@@ -310,7 +304,7 @@ class MomentumScanner:
         # Calculate 2-component scores within session context
         five_min_bars = self._calculate_2component_scores(five_min_bars, session_volumes)
         
-        if len(five_min_bars) < self.scoring_config.min_reset_points:
+        if len(five_min_bars) < self.config.min_reset_points:
             self.logger.warning(f"Only {len(five_min_bars)} valid reset points for {symbol} {date}")
             return reset_points
         
@@ -318,8 +312,8 @@ class MomentumScanner:
         # Since ROC is typically small (0-0.3 range), scale it up to balance with activity
         roc_scaled = five_min_bars['roc_score'].abs() * 10.0
         five_min_bars['combined_score'] = (
-            roc_scaled * self.scoring_config.roc_weight +
-            five_min_bars['activity_score'] * self.scoring_config.activity_weight
+            roc_scaled * self.config.roc_weight +
+            five_min_bars['activity_score'] * self.config.activity_weight
         )
         
         # Generate reset points - each 5-minute bar is a potential reset point
@@ -339,9 +333,9 @@ class MomentumScanner:
         """Calculate rolling window scores: ROC [-1.0, 1.0], Activity [0.0, 1.0]."""
         
         # Configuration
-        window_size_periods = int(self.scoring_config.rolling_window_minutes / 5)  # Convert to 5-min periods
-        roc_periods = int(self.scoring_config.roc_lookback_minutes / 5)  # Convert to 5-min periods
-        activity_periods = int(self.scoring_config.activity_lookback_minutes / 5)  # Convert to 5-min periods
+        window_size_periods = int(60 / 5)  # 60 minutes / 5-min periods (not used)
+        roc_periods = int(self.config.roc_lookback_minutes / 5)  # Convert to 5-min periods
+        activity_periods = int(self.config.activity_lookback_minutes / 5)  # Convert to 5-min periods
         
         # Group by session for session-aware calculations
         session_scores = []
@@ -368,9 +362,10 @@ class MomentumScanner:
             # Better normalization using tanh for smooth [0.0, 1.0] mapping
             volume_ratio = session_data['volume_rolling'] / session_baseline
             
-            # Apply volume significance threshold
+            # Apply volume significance threshold (use reasonable default)
+            min_volume_threshold = 1000.0  # Minimum volume threshold
             volume_significant = (
-                session_data['volume_rolling'] >= self.scoring_config.min_volume_threshold
+                session_data['volume_rolling'] >= min_volume_threshold
             )
             
             # Use tanh normalization for better distribution in [0.0, 1.0]
@@ -472,7 +467,7 @@ class MomentumScanner:
                 
             try:
                 all_data = []
-                for file_path in files[-self.session_config.volume_window_days:]:
+                for file_path in files[-self.config.volume_window_days:]:
                     store = db.DBNStore.from_file(file_path)
                     df = store.to_df()
                     if not df.empty and 'volume' in df.columns:
