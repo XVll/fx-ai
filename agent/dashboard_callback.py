@@ -76,10 +76,18 @@ class DashboardCallback(BaseCallback):
         # Update session info
         self.dashboard_state.session_start_time = self.training_start_time
         self.dashboard_state.model_name = config.get('experiment_name', 'training')
-        self.dashboard_state.total_episodes = 0
-        self.dashboard_state.total_updates = 0
+        # Initialize attributes if they don't exist
+        if hasattr(self.dashboard_state, 'total_episodes'):
+            self.dashboard_state.total_episodes = 0
+        if hasattr(self.dashboard_state, 'total_updates'):
+            self.dashboard_state.total_updates = 0
         
-        # Reset tracking
+        # Reset tracking (initialize if needed)
+        if not hasattr(self.dashboard_state, 'episode_history'):
+            self.dashboard_state.episode_history = deque(maxlen=100)
+        if not hasattr(self.dashboard_state, 'training_events'):
+            self.dashboard_state.training_events = deque(maxlen=50)
+        
         self.dashboard_state.episode_history.clear()
         self.dashboard_state.training_events.clear()
         
@@ -94,7 +102,8 @@ class DashboardCallback(BaseCallback):
             return
         
         self.total_episodes = episode_num
-        self.dashboard_state.total_episodes = episode_num
+        if hasattr(self.dashboard_state, 'total_episodes'):
+            self.dashboard_state.total_episodes = episode_num
         
         # Initialize episode data
         self.current_episode_data = {
@@ -113,7 +122,9 @@ class DashboardCallback(BaseCallback):
         
         # Update dashboard state
         self.dashboard_state.symbol = self.current_episode_data['symbol']
-        self.dashboard_state.current_episode = episode_num
+        # Note: current_episode might not exist in SharedDashboardState
+        if hasattr(self.dashboard_state, 'current_episode'):
+            self.dashboard_state.current_episode = episode_num
         
         # Clear position for new episode
         self.dashboard_state.position_side = "FLAT"
@@ -223,8 +234,10 @@ class DashboardCallback(BaseCallback):
             return
         
         self.total_updates = update_num
-        self.dashboard_state.total_updates = update_num
-        self.dashboard_state.is_updating = True
+        if hasattr(self.dashboard_state, 'total_updates'):
+            self.dashboard_state.total_updates = update_num
+        if hasattr(self.dashboard_state, 'is_updating'):
+            self.dashboard_state.is_updating = True
     
     def on_update_end(self, update_num: int, update_metrics: Dict[str, Any]) -> None:
         """Update dashboard with PPO metrics."""
@@ -247,9 +260,11 @@ class DashboardCallback(BaseCallback):
         if self.training_start_time:
             elapsed = (datetime.now() - self.training_start_time).total_seconds()
             total_steps = update_metrics.get('total_steps', 0)
-            self.dashboard_state.steps_per_second = total_steps / max(1, elapsed)
+            if hasattr(self.dashboard_state, 'steps_per_second'):
+                self.dashboard_state.steps_per_second = total_steps / max(1.0, elapsed)
         
-        self.dashboard_state.is_updating = False
+        if hasattr(self.dashboard_state, 'is_updating'):
+            self.dashboard_state.is_updating = False
         
         # Add update event periodically
         if update_num % 10 == 0:
@@ -291,39 +306,42 @@ class DashboardCallback(BaseCallback):
             return
         
         # Update trade stats
-        self.dashboard_state.total_trades += 1
+        self.dashboard_state.session_total_trades += 1
         
         pnl = trade_result.get('pnl', 0.0)
         self.dashboard_state.realized_pnl += pnl
         
         if pnl > 0:
-            self.dashboard_state.winning_trades += 1
+            self.dashboard_state.session_winning_trades += 1
         
         # Update win rate
-        self.dashboard_state.win_rate = (self.dashboard_state.winning_trades / 
-                                       max(1, self.dashboard_state.total_trades))
+        self.dashboard_state.win_rate = (self.dashboard_state.session_winning_trades / 
+                                       max(1, self.dashboard_state.session_total_trades))
         
-        # Add trade to recent trades
-        if hasattr(self.dashboard_state, 'recent_trades'):
-            self.dashboard_state.recent_trades.append({
-                'timestamp': datetime.now(),
-                'symbol': trade_result.get('symbol', 'UNKNOWN'),
-                'side': trade_result.get('side', 'unknown'),
-                'pnl': pnl,
-                'return_pct': trade_result.get('return_pct', 0.0),
-            })
+        # Add trade to recent trades (initialize if needed)
+        if not hasattr(self.dashboard_state, 'recent_trades'):
+            self.dashboard_state.recent_trades = deque(maxlen=20)
+            
+        self.dashboard_state.recent_trades.append({
+            'timestamp': datetime.now(),
+            'symbol': trade_result.get('symbol', 'UNKNOWN'),
+            'side': trade_result.get('side', 'unknown'),
+            'pnl': pnl,
+            'return_pct': trade_result.get('return_pct', 0.0),
+        })
     
     def on_model_forward(self, forward_data: Dict[str, Any]) -> None:
         """Update model internals display."""
         if not self.enabled or not self.dashboard_state:
             return
         
-        # Update action probabilities
-        if 'action_probs' in forward_data:
+        # Update action probabilities (if attribute exists)
+        if 'action_probs' in forward_data and hasattr(self.dashboard_state, 'action_probabilities'):
             self.dashboard_state.action_probabilities = forward_data['action_probs'].tolist()
         
-        # Update feature stats periodically
-        if self.total_episodes % 100 == 0 and 'feature_stats' in forward_data:
+        # Update feature stats periodically (if attribute exists)
+        if (self.total_episodes % 100 == 0 and 'feature_stats' in forward_data and 
+            hasattr(self.dashboard_state, 'feature_stats')):
             self.dashboard_state.feature_stats = forward_data['feature_stats']
     
     def on_momentum_day_change(self, day_info: Dict[str, Any]) -> None:
@@ -332,13 +350,20 @@ class DashboardCallback(BaseCallback):
             return
         
         # Update momentum info
-        self.dashboard_state.current_momentum_day = day_info.get('date', '').strftime('%Y-%m-%d')
-        self.dashboard_state.momentum_quality_score = day_info.get('quality_score', 0.0)
-        self.dashboard_state.curriculum_stage = day_info.get('curriculum_stage', 1)
+        date_obj = day_info.get('date')
+        if hasattr(date_obj, 'strftime'):
+            momentum_day = date_obj.strftime('%Y-%m-%d')
+        else:
+            momentum_day = str(date_obj) if date_obj else ''
+        
+        self.dashboard_state.current_momentum_day_date = momentum_day
+        self.dashboard_state.current_momentum_day_quality = day_info.get('quality_score', 0.0)
+        self.dashboard_state.curriculum_stage = str(day_info.get('curriculum_stage', 1))
         
         # Add event
+        date_str = momentum_day if momentum_day else 'Unknown'
         self._add_training_event(
-            f"Switched to {day_info.get('date', '')}: quality={day_info.get('quality_score', 0):.3f}",
+            f"Switched to {date_str}: quality={day_info.get('quality_score', 0):.3f}",
             "info"
         )
     
@@ -397,10 +422,13 @@ class DashboardCallback(BaseCallback):
     
     def _add_training_event(self, message: str, event_type: str = "info") -> None:
         """Add event to training event log."""
-        if hasattr(self.dashboard_state, 'training_events'):
-            event = {
-                'timestamp': datetime.now(),
-                'message': message,
-                'type': event_type,  # success, info, warning, danger
-            }
-            self.dashboard_state.training_events.append(event)
+        # Initialize training_events if it doesn't exist
+        if not hasattr(self.dashboard_state, 'training_events'):
+            self.dashboard_state.training_events = deque(maxlen=50)
+            
+        event = {
+            'timestamp': datetime.now(),
+            'message': message,
+            'type': event_type,  # success, info, warning, danger
+        }
+        self.dashboard_state.training_events.append(event)
