@@ -28,7 +28,7 @@ env:
       symbols: ["MLGO"]
       date_range: ["2025-02-21", "2025-02-21"]
       day_score_range: [0.7, 1.0]
-      roc_range: [0.0, 1.0]
+      roc_range: [-1.0, 1.0]
       activity_range: [0.0, 1.0]
       max_updates: null    # Ensure at least 25 updates = 5 evaluations
       max_episodes: null
