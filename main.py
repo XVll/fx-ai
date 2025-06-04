@@ -51,10 +51,16 @@ def signal_handler(signum, frame):
     
     training_interrupted = True
     console.print("\n" + "=" * 50)
-    console.print("[bold red]INTERRUPT SIGNAL RECEIVED[/bold red]")
-    console.print("Attempting graceful shutdown...")
+    console.print("[bold red]INTERRUPT SIGNAL RECEIVED - STOPPING IMMEDIATELY[/bold red]")
+    console.print("Shutting down training components...")
     console.print("Press Ctrl+C again to force exit")
     console.print("=" * 50)
+    
+    # Set immediate stop flag on trainer if available
+    if 'trainer' in current_components:
+        trainer = current_components['trainer']
+        trainer.stop_training = True
+        console.print("✅ Training loop stopped")
     
     # Stop callbacks immediately if running
     if 'callback_manager' in current_components:
@@ -64,16 +70,26 @@ def signal_handler(signum, frame):
             callback_manager.disable_all()
             # Trigger cleanup for each callback
             callback_manager.trigger('on_training_end', {'interrupted': True})
+            console.print("✅ Callbacks stopped")
         except:
             pass
     
+    # Start immediate cleanup in background thread
+    def immediate_cleanup():
+        time.sleep(1)  # Give main thread a moment to finish current operation
+        cleanup_resources()
+    
+    cleanup_thread = threading.Thread(target=immediate_cleanup, daemon=True)
+    cleanup_thread.start()
+    
+    # Much shorter timeout for force exit
     def force_exit():
-        time.sleep(5)
+        time.sleep(3)  # Reduced from 10 to 3 seconds
         if training_interrupted and not cleanup_called:
             console.print("\n[bold red]Graceful shutdown timeout. Force exiting...[/bold red]")
             os._exit(1)
     
-    timer = threading.Timer(10, force_exit)
+    timer = threading.Timer(3, force_exit)
     timer.daemon = True
     timer.start()
 
@@ -89,6 +105,15 @@ def cleanup_resources():
     try:
         logging.info("Starting resource cleanup...")
         
+        # Immediately finish W&B if running
+        try:
+            import wandb
+            if wandb.run is not None:
+                wandb.finish(quiet=True)
+                logging.info("W&B run finished")
+        except Exception as e:
+            logging.warning(f"Error finishing W&B: {e}")
+        
         # Stop callbacks first to prevent further processing
         if 'callback_manager' in current_components:
             callback_manager = current_components['callback_manager']
@@ -98,7 +123,7 @@ def cleanup_resources():
                 logging.info("Stopped callbacks")
                 # Give threads time to stop
                 import time
-                time.sleep(0.5)
+                time.sleep(0.2)  # Reduced from 0.5 to 0.2
             except Exception as e:
                 logging.error(f"Error stopping callbacks: {e}")
         
@@ -319,9 +344,7 @@ def create_callback_manager(config: Config, log: logging.Logger, model: torch.nn
     else:
         logging.info("📊 No callbacks enabled")
     
-    # Start training lifecycle
-    callback_manager.trigger('on_training_start', config_dict)
-    
+    # Note: on_training_start will be triggered by PPO trainer when training actually begins
     return callback_manager
 
 
@@ -406,6 +429,24 @@ def create_training_callbacks(config: Config, model_manager, output_dir: str,
         momentum_callback = MomentumTrackingCallback(log_frequency=10)
         callbacks.append(momentum_callback)
         logging.info("🎯 Momentum tracking callback added")
+    
+    # Attribution callback for SHAP analysis
+    if hasattr(config.model, 'enable_attribution') and config.model.enable_attribution:
+        try:
+            from agent.attribution_callback import AttributionCallback
+            
+            # Get SHAP configuration or use defaults
+            shap_config = getattr(config.model, 'shap_config', {})
+            if isinstance(shap_config, dict):
+                attribution_callback = AttributionCallback(shap_config)
+                callbacks.append(attribution_callback)
+                logging.info(f"🔍 SHAP attribution callback added (frequency: {shap_config.get('update_frequency', 10)})")
+            else:
+                logging.warning("Invalid SHAP config format, skipping attribution callback")
+        except ImportError:
+            logging.warning("SHAP attribution dependencies not available, skipping attribution callback")
+        except Exception as e:
+            logging.error(f"Failed to initialize attribution callback: {e}")
     
     return callbacks
 
@@ -572,13 +613,7 @@ def train(config: Config):
             logger.info(f"✅ Initial momentum day set: {current_day['date'].strftime('%Y-%m-%d')} "
                        f"(quality: {current_day.get('quality_score', 0):.3f})")
         
-        # Trigger training start
-        if callback_manager:
-            callback_manager.trigger('on_training_start', {
-                'config': config,
-                'model': model,
-                'device': device
-            })
+        # Note: on_training_start will be triggered by PPO trainer.train() method
         
         # Main training loop - curriculum-driven
         logger.info(f"🚀 Starting curriculum-driven training")

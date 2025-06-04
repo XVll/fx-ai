@@ -76,28 +76,41 @@ class WandBCallback(BaseCallback):
         if not self.enabled:
             return
         
+        # Check if a run is already active
+        if self.run is not None or wandb.run is not None:
+            self.logger.info("W&B run already active, skipping initialization")
+            self.run = wandb.run
+            return
+        
+        # Use full_config if available, otherwise use the passed config
+        wandb_config = config.get('full_config', config)
+        
         # Initialize W&B run
         self.run = wandb.init(
             project=self.config.get('project', 'fx-ai'),
             name=self.config.get('name', config.get('experiment_name', 'training')),
             tags=self.config.get('tags', []),
             notes=self.config.get('notes', ''),
-            config=config,
+            config=wandb_config,
             resume=self.config.get('resume', 'allow'),
-            mode=self.config.get('mode', 'online')
+            mode=self.config.get('mode', 'online'),
+            reinit=False  # Prevent reinitialization if run exists
         )
         
-        # Define custom metrics
-        wandb.define_metric("episode")
-        wandb.define_metric("update")
-        wandb.define_metric("global_step")
-        
-        # Set step metrics
-        wandb.define_metric("episode/*", step_metric="episode")
-        wandb.define_metric("update/*", step_metric="update")
-        wandb.define_metric("step/*", step_metric="global_step")
-        
-        self.logger.info(f"W&B run initialized: {self.run.name}")
+        # Define custom metrics only if this is a new run
+        if self.run:
+            wandb.define_metric("episode")
+            wandb.define_metric("update")
+            wandb.define_metric("global_step")
+            
+            # Set step metrics
+            wandb.define_metric("episode/*", step_metric="episode")
+            wandb.define_metric("update/*", step_metric="update")
+            wandb.define_metric("step/*", step_metric="global_step")
+            
+            self.logger.info(f"W&B run initialized: {self.run.name}")
+        else:
+            self.logger.warning("Failed to initialize W&B run")
     
     def on_episode_start(self, episode_num: int, reset_info: Dict[str, Any]) -> None:
         """Track episode start."""
@@ -107,9 +120,16 @@ class WandBCallback(BaseCallback):
         self.total_episodes = episode_num
         
         # Log reset info
+        date_str = ''
+        if 'date' in reset_info and reset_info['date'] is not None:
+            try:
+                date_str = reset_info['date'].strftime('%Y-%m-%d')
+            except (AttributeError, TypeError):
+                date_str = str(reset_info['date'])
+        
         wandb.log({
             'episode/symbol': reset_info.get('symbol', 'UNKNOWN'),
-            'episode/date': reset_info.get('date', '').strftime('%Y-%m-%d') if 'date' in reset_info else '',
+            'episode/date': date_str,
             'episode/reset_time': reset_info.get('reset_time', ''),
             'episode': episode_num
         })
@@ -410,14 +430,28 @@ class WandBCallback(BaseCallback):
     
     def on_momentum_day_change(self, day_info: Dict[str, Any]) -> None:
         """Track momentum day changes."""
-        if not self.enabled:
+        if not self.enabled or not self.run:
             return
         
+        # Extract day_info from event data structure (handle both formats)
+        if 'day_info' in day_info:
+            actual_day_info = day_info['day_info']
+        else:
+            actual_day_info = day_info
+        
+        # Safe date handling
+        date_str = ''
+        if 'date' in actual_day_info and actual_day_info['date'] is not None:
+            try:
+                date_str = actual_day_info['date'].strftime('%Y-%m-%d')
+            except (AttributeError, TypeError):
+                date_str = str(actual_day_info['date'])
+        
         wandb.log({
-            'momentum/day': day_info.get('date', '').strftime('%Y-%m-%d') if 'date' in day_info else '',
-            'momentum/quality_score': day_info.get('quality_score', 0.0),
-            'momentum/activity_score': day_info.get('activity_score', 0.0),
-            'momentum/stage': day_info.get('curriculum_stage', 0),
+            'momentum/day': date_str,
+            'momentum/quality_score': actual_day_info.get('quality_score', 0.0),
+            'momentum/activity_score': actual_day_info.get('activity_score', 0.0),
+            'momentum/stage': actual_day_info.get('curriculum_stage', 0),
             'episode': self.total_episodes
         })
     
@@ -435,37 +469,59 @@ class WandBCallback(BaseCallback):
     
     def on_training_end(self, final_stats: Dict[str, Any]) -> None:
         """Log final summary and close W&B run."""
-        if not self.enabled:
+        if not self.enabled or not self.run:
             return
         
-        # Log final summary
-        summary = {
-            'total_episodes': self.total_episodes,
-            'total_steps': self.total_steps,
-            'total_updates': self.total_updates,
-            'total_trades': self.portfolio_stats['total_trades'],
-            'final_win_rate': (self.portfolio_stats['winning_trades'] / 
-                              max(1, self.portfolio_stats['total_trades'])),
-            'total_pnl': self.portfolio_stats['total_pnl'],
-            'max_drawdown': self.portfolio_stats['max_drawdown'],
-            'best_episode_reward': max([ep['reward'] for ep in self.episode_buffer], default=0.0),
-            'final_mean_reward': np.mean([ep['reward'] for ep in self.episode_buffer]) if self.episode_buffer else 0.0,
-        }
+        try:
+            # Check if this is an interruption - if so, finish immediately
+            is_interrupted = final_stats.get('interrupted', False)
+            
+            if is_interrupted:
+                # For interruptions, just mark as interrupted and finish quickly
+                wandb.run.summary['interrupted'] = True
+                wandb.run.summary['final_status'] = 'interrupted'
+                wandb.finish(quiet=True)
+                self.logger.info("W&B run interrupted and closed")
+                return
+            
+            # For normal completion, do full logging
+            # Log final summary
+            summary = {
+                'total_episodes': self.total_episodes,
+                'total_steps': self.total_steps,
+                'total_updates': self.total_updates,
+                'total_trades': self.portfolio_stats['total_trades'],
+                'final_win_rate': (self.portfolio_stats['winning_trades'] / 
+                                  max(1, self.portfolio_stats['total_trades'])),
+                'total_pnl': self.portfolio_stats['total_pnl'],
+                'max_drawdown': self.portfolio_stats['max_drawdown'],
+                'best_episode_reward': max([ep['reward'] for ep in self.episode_buffer], default=0.0),
+                'final_mean_reward': np.mean([ep['reward'] for ep in self.episode_buffer]) if self.episode_buffer else 0.0,
+                'final_status': 'completed'
+            }
+            
+            # Add any additional final stats
+            summary.update(final_stats)
+            
+            # Update W&B summary
+            for key, value in summary.items():
+                wandb.run.summary[key] = value
+            
+            # Log final trade table
+            if self.trade_history:
+                wandb.log({'final_trades_table': wandb.Table(
+                    columns=list(self.trade_history[0].keys()),
+                    data=[list(t.values()) for t in self.trade_history]
+                )})
+            
+            # Finish the run
+            wandb.finish()
+            self.logger.info("W&B run completed and closed")
         
-        # Add any additional final stats
-        summary.update(final_stats)
-        
-        # Update W&B summary
-        for key, value in summary.items():
-            wandb.run.summary[key] = value
-        
-        # Log final trade table
-        if self.trade_history:
-            wandb.log({'final_trades_table': wandb.Table(
-                columns=list(self.trade_history[0].keys()),
-                data=[list(t.values()) for t in self.trade_history]
-            )})
-        
-        # Finish the run
-        wandb.finish()
-        self.logger.info("W&B run completed and closed")
+        except Exception as e:
+            # If anything fails during cleanup, force finish
+            self.logger.warning(f"Error during W&B cleanup: {e}")
+            try:
+                wandb.finish(quiet=True)
+            except:
+                pass

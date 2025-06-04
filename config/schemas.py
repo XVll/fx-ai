@@ -87,7 +87,7 @@ class TrainingConfig(BaseModel):
     """PPO training configuration"""
     
     # Core settings
-    device: str = Field("cuda", description="Training device")
+    device: str = Field("mps", description="Training device")
     seed: int = Field(42, description="Random seed")
     
     # PPO hyperparameters
