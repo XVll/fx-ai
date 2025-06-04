@@ -251,10 +251,15 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
     
     callbacks = []
     
-    # Add Optuna callback if in Optuna trial
-    if config.get("optuna_trial"):
+    # Add Optuna callback if in Optuna trial (including subprocess mode)
+    if config.get("optuna_trial") is not None or config.get("optuna_trial_info"):
+        trial_obj = config.get("optuna_trial")  # Could be None for subprocess mode
+        optuna_info = config.get("optuna_trial_info", {})
+        metric_name = optuna_info.get("metric_name", "mean_reward")
+        
         callbacks.append(OptunaCallback(
-            trial=config["optuna_trial"],
+            trial=trial_obj,  # None for subprocess mode
+            metric_name=metric_name,
             enabled=True
         ))
     

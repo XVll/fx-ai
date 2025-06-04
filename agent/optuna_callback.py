@@ -52,6 +52,11 @@ class OptunaCallback(BaseCallback):
         self.report_frequency = report_frequency
         self.pruning_warmup_steps = pruning_warmup_steps
         
+        # Check if this is a subprocess trial (no real trial object)
+        self.is_subprocess = trial is None
+        if self.is_subprocess:
+            self.logger.info("Optuna callback running in subprocess mode (no trial object)")
+        
         # Tracking
         self.step = 0
         self.episode_rewards: List[float] = []
@@ -75,7 +80,7 @@ class OptunaCallback(BaseCallback):
     
     def on_episode_end(self, episode_num: int, episode_data: Dict[str, Any]) -> None:
         """Track episode metrics and report to Optuna."""
-        if not self.enabled or not self.trial:
+        if not self.enabled:
             return
         
         self.episodes_completed += 1
@@ -93,22 +98,26 @@ class OptunaCallback(BaseCallback):
             # Update best reward
             self.best_reward = max(self.best_reward, mean_reward)
             
-            # Report to Optuna
-            self.step += 1
-            self.trial.report(mean_reward, self.step)
-            
-            # Check for pruning (after warmup)
-            if self.step > self.pruning_warmup_steps:
-                if self.trial.should_prune():
-                    self.logger.info(
-                        f"Trial {self.trial.number} pruned at step {self.step} "
-                        f"(reward: {mean_reward:.4f})"
-                    )
-                    raise optuna.TrialPruned()
+            # Report to Optuna (only if we have a real trial object)
+            if not self.is_subprocess and self.trial:
+                self.step += 1
+                self.trial.report(mean_reward, self.step)
+                
+                # Check for pruning (after warmup)
+                if self.step > self.pruning_warmup_steps:
+                    if self.trial.should_prune():
+                        self.logger.info(
+                            f"Trial {self.trial.number} pruned at step {self.step} "
+                            f"(reward: {mean_reward:.4f})"
+                        )
+                        raise optuna.TrialPruned()
+            else:
+                # In subprocess mode, just track the step
+                self.step += 1
     
     def on_update_end(self, update_num: int, update_metrics: Dict[str, Any]) -> None:
         """Track update metrics for more granular reporting."""
-        if not self.enabled or not self.trial:
+        if not self.enabled:
             return
         
         self.updates_completed += 1
@@ -117,8 +126,8 @@ class OptunaCallback(BaseCallback):
         if 'mean_reward' in update_metrics:
             self.update_rewards.append(update_metrics['mean_reward'])
             
-            # Also report update-level metrics to Optuna
-            if self.metric_name == 'mean_reward':
+            # Also report update-level metrics to Optuna (only if real trial)
+            if self.metric_name == 'mean_reward' and not self.is_subprocess and self.trial:
                 self.trial.report(update_metrics['mean_reward'], self.step)
                 self.step += 1
                 
@@ -129,39 +138,49 @@ class OptunaCallback(BaseCallback):
                         f"(reward: {update_metrics['mean_reward']:.4f})"
                     )
                     raise optuna.TrialPruned()
+            elif self.is_subprocess:
+                self.step += 1
     
     def on_evaluation_end(self, eval_results: Dict[str, Any]) -> None:
         """Track evaluation metrics - these are often most reliable for optimization."""
-        if not self.enabled or not self.trial:
+        if not self.enabled:
             return
         
         eval_reward = eval_results.get('mean_reward', 0.0)
         self.eval_rewards.append(eval_reward)
         
-        # Evaluation metrics are high quality - always report them
-        self.trial.report(eval_reward, self.step)
-        self.step += 1
-        
-        # Update best
-        self.best_reward = max(self.best_reward, eval_reward)
-        
-        # Check for pruning
-        if self.step > self.pruning_warmup_steps and self.trial.should_prune():
+        # Evaluation metrics are high quality - always report them (if real trial)
+        if not self.is_subprocess and self.trial:
+            self.trial.report(eval_reward, self.step)
+            self.step += 1
+            
+            # Check for pruning
+            if self.step > self.pruning_warmup_steps and self.trial.should_prune():
+                self.logger.info(
+                    f"Trial {self.trial.number} pruned after evaluation "
+                    f"(reward: {eval_reward:.4f})"
+                )
+                raise optuna.TrialPruned()
+            
+            # Log progress
             self.logger.info(
-                f"Trial {self.trial.number} pruned after evaluation "
-                f"(reward: {eval_reward:.4f})"
+                f"Trial {self.trial.number} - Eval reward: {eval_reward:.4f} "
+                f"(best: {self.best_reward:.4f})"
             )
-            raise optuna.TrialPruned()
+        else:
+            # In subprocess mode, just track
+            self.step += 1
+            self.logger.info(
+                f"Subprocess - Eval reward: {eval_reward:.4f} "
+                f"(best: {self.best_reward:.4f})"
+            )
         
-        # Log progress
-        self.logger.info(
-            f"Trial {self.trial.number} - Eval reward: {eval_reward:.4f} "
-            f"(best: {self.best_reward:.4f})"
-        )
+        # Update best regardless of mode
+        self.best_reward = max(self.best_reward, eval_reward)
     
     def on_training_end(self, final_stats: Dict[str, Any]) -> None:
         """Report final metrics and compute optimization objective."""
-        if not self.enabled or not self.trial:
+        if not self.enabled:
             return
         
         import time
@@ -182,28 +201,62 @@ class OptunaCallback(BaseCallback):
             # Custom metric from final_stats
             final_metric = final_stats.get(self.metric_name, float('-inf'))
         
-        # Set trial user attributes for analysis
-        self.trial.set_user_attr('episodes_completed', self.episodes_completed)
-        self.trial.set_user_attr('updates_completed', self.updates_completed)
-        self.trial.set_user_attr('training_duration', training_duration)
-        self.trial.set_user_attr('best_reward', self.best_reward)
-        self.trial.set_user_attr('final_metric', final_metric)
-        
-        # Log summary
-        self.logger.info(
-            f"Trial {self.trial.number} completed - "
-            f"Final {self.metric_name}: {final_metric:.4f}, "
-            f"Episodes: {self.episodes_completed}, "
-            f"Duration: {training_duration:.1f}s"
-        )
+        # Set trial user attributes for analysis (only if real trial)
+        if not self.is_subprocess and self.trial:
+            self.trial.set_user_attr('episodes_completed', self.episodes_completed)
+            self.trial.set_user_attr('updates_completed', self.updates_completed)
+            self.trial.set_user_attr('training_duration', training_duration)
+            self.trial.set_user_attr('best_reward', self.best_reward)
+            self.trial.set_user_attr('final_metric', final_metric)
+            
+            # Log summary
+            self.logger.info(
+                f"Trial {self.trial.number} completed - "
+                f"Final {self.metric_name}: {final_metric:.4f}, "
+                f"Episodes: {self.episodes_completed}, "
+                f"Duration: {training_duration:.1f}s"
+            )
+        else:
+            # In subprocess mode, save metrics for parent process to read
+            subprocess_results = {
+                'final_metric': final_metric,
+                'metric_name': self.metric_name,
+                'episodes_completed': self.episodes_completed,
+                'updates_completed': self.updates_completed,
+                'training_duration': training_duration,
+                'best_reward': self.best_reward,
+                'eval_rewards': self.eval_rewards,
+                'update_rewards': self.update_rewards,
+                'episode_rewards': self.episode_rewards[-50:]  # Last 50 episodes
+            }
+            
+            # Save to a file that parent process can read
+            import os
+            results_file = os.environ.get('OPTUNA_RESULTS_FILE', 'optuna_subprocess_results.json')
+            try:
+                import json
+                with open(results_file, 'w') as f:
+                    json.dump(subprocess_results, f)
+                self.logger.info(f"Subprocess results saved to {results_file}")
+            except Exception as e:
+                self.logger.error(f"Failed to save subprocess results: {e}")
+            
+            # Log summary
+            self.logger.info(
+                f"Subprocess completed - "
+                f"Final {self.metric_name}: {final_metric:.4f}, "
+                f"Episodes: {self.episodes_completed}, "
+                f"Duration: {training_duration:.1f}s"
+            )
     
     def on_custom_event(self, event_name: str, event_data: Dict[str, Any]) -> None:
         """Handle custom optimization events."""
-        if not self.enabled or not self.trial:
+        if not self.enabled:
             return
         
         # Track any custom metrics that might be relevant for optimization
         if event_name == "custom_metric" and self.metric_name in event_data:
             metric_value = event_data[self.metric_name]
-            self.trial.report(metric_value, self.step)
+            if not self.is_subprocess and self.trial:
+                self.trial.report(metric_value, self.step)
             self.step += 1

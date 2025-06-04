@@ -291,6 +291,15 @@ def create_callback_manager(config: Config, log: logging.Logger, model: torch.nn
         "simulation": config.simulation.__dict__ if hasattr(config.simulation, '__dict__') else config.simulation,
     }
     
+    # Check for Optuna trial info (subprocess mode)
+    optuna_trial_info = getattr(config, 'optuna_trial_info', None)
+    if optuna_trial_info and optuna_trial_info.get('is_optuna_trial', False):
+        # This is an Optuna trial running in subprocess mode
+        # Set a None trial to trigger subprocess mode in OptunaCallback
+        config_dict["optuna_trial"] = None
+        config_dict["optuna_trial_info"] = optuna_trial_info
+        log.info(f"🔍 Detected Optuna trial {optuna_trial_info.get('trial_number', 'unknown')} - running in subprocess mode")
+    
     # Add feature names for attribution callbacks
     if model:
         config_dict['feature_names'] = get_feature_names_from_config()
