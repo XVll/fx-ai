@@ -309,9 +309,16 @@ class CurriculumStageConfig(BaseModel):
     max_episodes: Optional[int] = Field(None, description="Max episodes before transition")
     max_cycles: Optional[int] = Field(None, description="Max cycles before transition")
     
-    @field_validator('roc_range', 'activity_range', 'day_score_range', mode='before')  # noinspection PyNestedDecorators
+    @field_validator('roc_range', mode='before')  # noinspection PyNestedDecorators
     @classmethod
-    def validate_ranges(cls, v: Any) -> Any:
+    def validate_roc_range(cls, v: Any) -> Any:
+        if len(v) != 2 or v[0] >= v[1] or not (-1 <= v[0] <= 1) or not (-1 <= v[1] <= 1):
+            raise ValueError("ROC range must be [min, max] with -1 <= min < max <= 1")
+        return v
+    
+    @field_validator('activity_range', 'day_score_range', mode='before')  # noinspection PyNestedDecorators
+    @classmethod
+    def validate_other_ranges(cls, v: Any) -> Any:
         if len(v) != 2 or v[0] >= v[1] or not (0 <= v[0] <= 1) or not (0 <= v[1] <= 1):
             raise ValueError("Range must be [min, max] with 0 <= min < max <= 1")
         return v
