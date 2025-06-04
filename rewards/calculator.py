@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 from config.schemas import RewardConfig
+from agent.callbacks import CallbackManager
 from rewards.core import RewardState
 from rewards.components import (
     PnLReward,
@@ -40,9 +41,9 @@ class RewardSystem:
     Clean percentage-based reward system without clipping or smoothing
     """
     
-    def __init__(self, config: RewardConfig, metrics_integrator=None, logger: Optional[logging.Logger] = None):
+    def __init__(self, config: RewardConfig, callback_manager: Optional[CallbackManager] = None, logger: Optional[logging.Logger] = None):
         self.config = config
-        self.metrics_integrator = metrics_integrator
+        self.callback_manager = callback_manager or CallbackManager([])
         self.logger = logger or logging.getLogger(__name__)
         
         # Initialize components based on new config
@@ -246,14 +247,16 @@ class RewardSystem:
         # Update episode total
         self.episode_total_reward += total_reward
         
-        # Send to external metrics integrator if available
-        if self.metrics_integrator:
-            self.metrics_integrator.record_environment_step(
-                reward=total_reward,
-                action=str(decoded_action.get('type', 'unknown')),
-                is_invalid=bool(decoded_action.get('invalid_reason')),
-                reward_components=component_rewards
-            )
+        # Trigger callback with reward component data
+        self.callback_manager.trigger('on_custom_event', 'reward_calculation', {
+            'reward': total_reward,
+            'reward_components': component_rewards,
+            'component_totals': self.component_totals.copy(),
+            'action': str(decoded_action.get('type', 'unknown')),
+            'is_invalid': bool(decoded_action.get('invalid_reason')),
+            'step_count': self.step_count,
+            'episode_total_reward': self.episode_total_reward
+        })
         
         self.step_count += 1
         return total_reward

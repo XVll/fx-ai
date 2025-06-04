@@ -78,11 +78,11 @@ class TradingEnvironment(gym.Env):
     metadata = {'render_modes': ['human', 'logs', 'none'], 'render_fps': 10}
 
     def __init__(self, config: Config, data_manager: DataManager, logger: Optional[logging.Logger] = None,
-                 metrics_integrator=None):
+                 callback_manager=None):
         super().__init__()
         self.config = config
         self.data_manager = data_manager
-        self.metrics_integrator = metrics_integrator
+        self.callback_manager = callback_manager
         
         # Logger setup
         if logger is None:
@@ -408,7 +408,7 @@ class TradingEnvironment(gym.Env):
         # Reward system
         self.reward_calculator = RewardSystem(
             config=self.config.env.reward,
-            metrics_integrator=self.metrics_integrator,
+            callback_manager=self.callback_manager,
             logger=logging.getLogger(f"{__name__}.RewardSystem")
         )
 
@@ -417,8 +417,7 @@ class TradingEnvironment(gym.Env):
             logger=logging.getLogger(f"{__name__}.ExecSim"),
             simulation_config=self.config.simulation,
             np_random=self.np_random,
-            market_simulator=self.market_simulator,
-            metrics_integrator=self.metrics_integrator
+            market_simulator=self.market_simulator
         )
 
         # Action masking system
@@ -552,9 +551,16 @@ class TradingEnvironment(gym.Env):
             market_close_utc
         )
 
-        # Start metrics tracking
-        if self.metrics_integrator:
-            self.metrics_integrator.start_episode()
+        # Start episode tracking
+        if self.callback_manager:
+            self.callback_manager.trigger('on_episode_start', 
+                                        episode_num=self.episode_number,
+                                        reset_info={
+                                            'symbol': self.primary_asset,
+                                            'date': self.current_session_date,
+                                            'start_time': self.episode_start_time_utc,
+                                            'reset_point': reset_point
+                                        })
             
         # Reset dashboard episode counters
         try:
@@ -650,12 +656,16 @@ class TradingEnvironment(gym.Env):
 
         self._last_portfolio_state_before_action = self.portfolio_manager.get_portfolio_state(current_sim_time)
         
-        # Start visualization tracking
-        if self.metrics_integrator and hasattr(self.metrics_integrator, 'metrics_manager'):
+        # Trigger episode visualization start
+        if self.callback_manager:
             episode_date = current_sim_time.strftime('%Y-%m-%d')
-            self.metrics_integrator.metrics_manager.start_episode_visualization(
-                self.episode_number, self.primary_asset, episode_date
-            )
+            self.callback_manager.trigger('on_custom_event',
+                                        event_name='episode_visualization_start',
+                                        event_data={
+                                            'episode_number': self.episode_number,
+                                            'symbol': self.primary_asset,
+                                            'date': episode_date
+                                        })
 
         initial_info = self._get_current_info(
             reward=0.0,
@@ -1054,9 +1064,9 @@ class TradingEnvironment(gym.Env):
             is_truncated=truncated
         )
 
-        # Update metrics
-        if self.metrics_integrator:
-            self._update_metrics(portfolio_state_next_t, market_state_next_t, reward, fill_details_list)
+        # Update callbacks with step data
+        if self.callback_manager:
+            self._trigger_step_callbacks(portfolio_state_next_t, market_state_next_t, reward, fill_details_list)
 
         # Episode end handling
         if terminated or truncated:
@@ -1064,60 +1074,54 @@ class TradingEnvironment(gym.Env):
 
         return observation_next_t, reward, terminated, truncated, info
 
-    def _update_metrics(self, portfolio_state: PortfolioState, market_state: Optional[Dict], 
-                       reward: float, fill_details_list: List[FillDetails]):
-        """Update all metrics systems."""
-        if not self.metrics_integrator:
+    def _trigger_step_callbacks(self, portfolio_state: PortfolioState, market_state: Optional[Dict], 
+                               reward: float, fill_details_list: List[FillDetails]):
+        """Trigger callbacks for environment step."""
+        if not self.callback_manager:
             return
 
-        # Environment step metrics (invalid actions no longer tracked due to action masking)
+        # Get action info
         action_name = self._last_decoded_action.get('action_type', 'UNKNOWN') if self._last_decoded_action else 'UNKNOWN'
-        # is_invalid = not self._last_decoded_action.get('is_valid', True) if self._last_decoded_action else False
+        
+        # Trigger episode step callback
+        self.callback_manager.trigger('on_episode_step', {
+            'state': self._last_observation,
+            'action': action_name,
+            'reward': reward,
+            'next_state': None,  # Not needed for current callbacks
+            'info': {
+                'reward_components': self.reward_calculator.get_last_reward_components(),
+                'episode_reward': self.episode_total_reward,
+                'current_step': self.current_step,
+                'max_steps': self.max_steps,
+                'episode_number': self.episode_number
+            },
+            'step_num': self.current_step
+        })
 
-        self.metrics_integrator.record_environment_step(
-            reward=reward,
-            action=action_name,
-            is_invalid=False,  # Action masking prevents invalid actions
-            reward_components=self.reward_calculator.get_last_reward_components(),
-            episode_reward=self.episode_total_reward,
-            current_step=self.current_step,
-            max_steps=self.max_steps,
-            episode_number=self.episode_number
-        )
+        # Trigger portfolio update callback
+        self.callback_manager.trigger('on_portfolio_update', {
+            'timestamp': portfolio_state.get('timestamp'),
+            'equity': portfolio_state['total_equity'],
+            'cash': portfolio_state['cash'],
+            'unrealized_pnl': portfolio_state['unrealized_pnl'],
+            'realized_pnl': portfolio_state['realized_pnl_session'],
+            'session_metrics': portfolio_state['session_metrics'],
+            'positions': portfolio_state['positions']
+        })
 
-        # Portfolio metrics
-        self.metrics_integrator.update_portfolio(
-            equity=portfolio_state['total_equity'],
-            cash=portfolio_state['cash'],
-            unrealized_pnl=portfolio_state['unrealized_pnl'],
-            realized_pnl=portfolio_state['realized_pnl_session'],
-            total_commission=portfolio_state['session_metrics'].get('total_commissions_session', 0.0),
-            total_slippage=portfolio_state['session_metrics'].get('total_slippage_cost_session', 0.0),
-            total_fees=portfolio_state['session_metrics'].get('total_fees_session', 0.0)
-        )
-
-        # Position metrics
-        if self.primary_asset and market_state:
-            pos_data = portfolio_state['positions'].get(self.primary_asset, {})
-            current_price = market_state.get('current_price', 0.0)
-
-            self.metrics_integrator.update_position(
-                quantity=pos_data.get('quantity', 0.0),
-                side=pos_data.get('current_side', PositionSideEnum.FLAT).value,
-                avg_entry_price=pos_data.get('avg_entry_price', 0.0),
-                market_value=pos_data.get('market_value', 0.0),
-                unrealized_pnl=pos_data.get('unrealized_pnl', 0.0),
-                current_price=current_price
-            )
-
-        # Fill metrics
+        # Trigger fill callbacks
         for fill in fill_details_list:
-            self.metrics_integrator.record_fill({
+            self.callback_manager.trigger('on_order_filled', {
+                'symbol': fill.symbol,
                 'executed_quantity': fill.executed_quantity,
                 'executed_price': fill.executed_price,
                 'commission': fill.commission,
                 'fees': fill.fees,
-                'slippage_cost_total': fill.slippage_cost_total
+                'slippage_cost_total': fill.slippage_cost_total,
+                'fill_timestamp': fill.fill_timestamp,
+                'order_side': fill.order_side.name,
+                'order_type': fill.order_type.name
             })
             
         # Update dashboard with candle data every 5 steps for more responsive charts
@@ -1204,10 +1208,17 @@ class TradingEnvironment(gym.Env):
             except (TypeError, AttributeError):
                 pass  # Skip if info is a mock
 
-        # End metrics tracking
-        if self.metrics_integrator:
-            self.metrics_integrator.end_episode(self.episode_total_reward, self.current_step)
-            self.metrics_integrator.record_episode_end(self.episode_total_reward, self.action_counts)
+        # End episode tracking
+        if self.callback_manager:
+            self.callback_manager.trigger('on_episode_end',
+                                        episode_num=self.episode_number,
+                                        episode_data={
+                                            'total_reward': self.episode_total_reward,
+                                            'episode_length': self.current_step,
+                                            'action_counts': self.action_counts,
+                                            'final_portfolio_state': portfolio_state,
+                                            'episode_summary': episode_summary
+                                        })
 
         # Episode summary logging
         pnl = episode_summary.get('session_net_profit_equity_change', 0.0)
@@ -1462,12 +1473,12 @@ class TradingEnvironment(gym.Env):
             elif pnl < 0:
                 self.win_loss_counts['losses'] += 1
                 
-            # Record trade in metrics system for profit factor calculation
-            if self.metrics_integrator:
+            # Trigger position closed callback for completed trades
+            if self.callback_manager:
                 try:
-                    self.metrics_integrator.record_trade(trade)
+                    self.callback_manager.trigger('on_position_closed', trade)
                 except Exception as e:
-                    self.logger.warning(f"Error recording trade in metrics: {e}")
+                    self.logger.warning(f"Error in position closed callback: {e}")
                 
             # Emit completed trade to dashboard
             from dashboard.event_stream import event_stream

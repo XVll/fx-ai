@@ -13,7 +13,7 @@ from envs.trading_environment import TradingEnvironment
 from ai.transformer import MultiBranchTransformer
 from agent.utils import ReplayBuffer, convert_state_dict_to_tensors
 from agent.base_callbacks import TrainingCallback
-from metrics.factory import MetricsIntegrator
+from agent.callbacks import CallbackManager
 
 
 class PPOTrainer:
@@ -21,7 +21,7 @@ class PPOTrainer:
             self,
             env: TradingEnvironment,
             model: MultiBranchTransformer,
-            metrics_integrator: MetricsIntegrator,
+            callback_manager: CallbackManager,
             config: Any,
             device: Optional[Union[str, torch.device]] = None,
             output_dir: str = "./ppo_output",
@@ -30,7 +30,7 @@ class PPOTrainer:
         self.env = env
         self.model = model
         self.config = config  # Store full config for curriculum access
-        self.metrics = metrics_integrator
+        self.callback_manager = callback_manager
 
         self.logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ class PPOTrainer:
         # Training control
         self.stop_training = False
 
-        self.logger.info(f"🤖 PPOTrainer initialized with metrics integration. Device: {self.device}")
+        self.logger.info(f"🤖 PPOTrainer initialized with callback system. Device: {self.device}")
 
     def _select_next_momentum_day(self) -> bool:
         """Select next momentum day based on curriculum strategy."""
@@ -185,50 +185,49 @@ class PPOTrainer:
         self.logger.info(f"📅 Selected momentum day: {momentum_day_info['date'].strftime('%Y-%m-%d')} "
                         f"(quality: {momentum_day_info.get('quality_score', 0):.3f})")
         
-        # Emit momentum day change event with tracking information and reset points
-        if hasattr(self.metrics, 'metrics_manager'):
-            # Get reset points data from environment for this day (includes early fixed supplements)
-            reset_points_data = []
-            if hasattr(self.env, 'reset_points') and self.env.reset_points:
-                # Use environment's actual reset points (includes momentum + early fixed supplements)
-                for reset_point in self.env.reset_points:
-                    # Convert environment reset point format to dashboard format
-                    reset_points_data.append({
-                        'timestamp': reset_point['timestamp'],
-                        'price': reset_point.get('price', 0),  # May not be available for early fixed points
-                        'activity_score': reset_point.get('activity_score', 0.5),
-                        'roc_score': reset_point.get('roc_score', 0.0),
-                        'combined_score': reset_point.get('combined_score', 0.5),
-                        'reset_type': reset_point.get('reset_type', 'momentum')
-                    })
-            elif hasattr(self.env, 'data_manager'):
-                # Fallback to data manager if environment reset points not available
-                reset_points_df = self.env.data_manager.get_reset_points(
-                    momentum_day_info['symbol'], 
-                    momentum_day_info['date']
-                )
-                if not reset_points_df.empty:
-                    reset_points_data = reset_points_df.to_dict('records')
-            
-            # Enhance momentum_day_info with tracking data
-            enhanced_info = momentum_day_info.copy()
-            enhanced_info.update({
-                'day_date': momentum_day_info['date'].strftime('%Y-%m-%d'),
-                'day_quality': momentum_day_info.get('quality_score', 0.0),
-                'episodes_on_day': self.episodes_completed_on_current_day,
-                'cycles_completed': self.reset_point_cycles_completed,
-                'total_days_used': len(self.used_momentum_days)
-            })
-            
-            # Get filtered reset points for dashboard using current curriculum settings
-            filtered_reset_points_data = self._get_filtered_reset_points_for_dashboard(reset_points_data)
-            
-            # Emit event with both day info and filtered reset points
-            momentum_event_data = {
-                'day_info': enhanced_info,
-                'reset_points': filtered_reset_points_data
-            }
-            self.metrics.metrics_manager.emit_event('momentum_day_change', momentum_event_data)
+        # Trigger momentum day change callback with tracking information and reset points
+        # Get reset points data from environment for this day (includes early fixed supplements)
+        reset_points_data = []
+        if hasattr(self.env, 'reset_points') and self.env.reset_points:
+            # Use environment's actual reset points (includes momentum + early fixed supplements)
+            for reset_point in self.env.reset_points:
+                # Convert environment reset point format to dashboard format
+                reset_points_data.append({
+                    'timestamp': reset_point['timestamp'],
+                    'price': reset_point.get('price', 0),  # May not be available for early fixed points
+                    'activity_score': reset_point.get('activity_score', 0.5),
+                    'roc_score': reset_point.get('roc_score', 0.0),
+                    'combined_score': reset_point.get('combined_score', 0.5),
+                    'reset_type': reset_point.get('reset_type', 'momentum')
+                })
+        elif hasattr(self.env, 'data_manager'):
+            # Fallback to data manager if environment reset points not available
+            reset_points_df = self.env.data_manager.get_reset_points(
+                momentum_day_info['symbol'], 
+                momentum_day_info['date']
+            )
+            if not reset_points_df.empty:
+                reset_points_data = reset_points_df.to_dict('records')
+        
+        # Enhance momentum_day_info with tracking data
+        enhanced_info = momentum_day_info.copy()
+        enhanced_info.update({
+            'day_date': momentum_day_info['date'].strftime('%Y-%m-%d'),
+            'day_quality': momentum_day_info.get('quality_score', 0.0),
+            'episodes_on_day': self.episodes_completed_on_current_day,
+            'cycles_completed': self.reset_point_cycles_completed,
+            'total_days_used': len(self.used_momentum_days)
+        })
+        
+        # Get filtered reset points for dashboard using current curriculum settings
+        filtered_reset_points_data = self._get_filtered_reset_points_for_dashboard(reset_points_data)
+        
+        # Trigger callback with both day info and filtered reset points
+        momentum_event_data = {
+            'day_info': enhanced_info,
+            'reset_points': filtered_reset_points_data
+        }
+        self.callback_manager.trigger('on_momentum_day_change', momentum_event_data)
         
         return True
 
@@ -344,26 +343,24 @@ class PPOTrainer:
                          f"{reset_point.get('timestamp', 'unknown')} "
                          f"(roc: {roc_score:.3f}, activity: {activity_score:.3f})")
         
-        # Emit reset point selection tracking for dashboard
-        if hasattr(self.metrics, 'metrics_manager'):
-            total_available = len(quality_filtered_indices)
-            points_used = len(self.used_reset_point_indices)
-            points_remaining = total_available - points_used
-            
-
-            reset_point_tracking = {
-                'selected_index': selected_idx,
-                'selected_timestamp': str(reset_point.get('timestamp', 'unknown')),
-                'total_available_points': total_available,
-                'points_used_in_cycle': points_used,
-                'points_remaining_in_cycle': points_remaining,
-                'roc_score': roc_score,
-                'activity_score': activity_score,
-                'roc_range': stage.roc_range if stage else [0.0, 1.0],
-                'activity_range': stage.activity_range if stage else [0.0, 1.0],
-                'curriculum_stage': stage_name
-            }
-            self.metrics.metrics_manager.emit_event('reset_point_selection', reset_point_tracking)
+        # Trigger reset point selection callback for tracking
+        total_available = len(quality_filtered_indices)
+        points_used = len(self.used_reset_point_indices)
+        points_remaining = total_available - points_used
+        
+        reset_point_tracking = {
+            'selected_index': selected_idx,
+            'selected_timestamp': str(reset_point.get('timestamp', 'unknown')),
+            'total_available_points': total_available,
+            'points_used_in_cycle': points_used,
+            'points_remaining_in_cycle': points_remaining,
+            'roc_score': roc_score,
+            'activity_score': activity_score,
+            'roc_range': stage.roc_range if stage else [0.0, 1.0],
+            'activity_range': stage.activity_range if stage else [0.0, 1.0],
+            'curriculum_stage': stage_name
+        }
+        self.callback_manager.trigger('on_reset_point_selected', reset_point_tracking)
 
         return selected_idx
 
@@ -505,93 +502,90 @@ class PPOTrainer:
                     callback.on_curriculum_complete(self)
     
     def _emit_curriculum_progress(self):
-        """Emit curriculum progress event to dashboard."""
-        if hasattr(self.metrics, 'metrics_manager'):
-            stage = self._get_curriculum_stage_info()
+        """Trigger curriculum progress callback."""
+        stage = self._get_curriculum_stage_info()
+        
+        # Calculate stage progress percentage
+        stage_progress = 0.0
+        stage_name = 'unknown'
+        if self.global_episode_counter < 2000:
+            stage_progress = min(100.0, (self.global_episode_counter / 2000) * 100)
+            stage_name = 'stage_1'
+        elif self.global_episode_counter < 5000:
+            stage_progress = min(100.0, ((self.global_episode_counter - 2000) / 3000) * 100)
+            stage_name = 'stage_2'
+        else:
+            stage_progress = min(100.0, ((self.global_episode_counter - 5000) / 3000) * 100)
+            stage_name = 'stage_3'
             
-            # Calculate stage progress percentage
-            stage_progress = 0.0
-            stage_name = 'unknown'
-            if self.global_episode_counter < 2000:
-                stage_progress = min(100.0, (self.global_episode_counter / 2000) * 100)
-                stage_name = 'stage_1'
-            elif self.global_episode_counter < 5000:
-                stage_progress = min(100.0, ((self.global_episode_counter - 2000) / 3000) * 100)
-                stage_name = 'stage_2'
-            else:
-                stage_progress = min(100.0, ((self.global_episode_counter - 5000) / 3000) * 100)
-                stage_name = 'stage_3'
-                
-            curriculum_data = {
-                'progress': self.curriculum_progress,
-                'stage': stage_name,
-                'roc_range': stage.roc_range if stage else [0.0, 1.0],
-                'activity_range': stage.activity_range if stage else [0.0, 1.0],
-                'total_episodes': self.global_episode_counter,
-                'stage_progress': stage_progress
-            }
-            self.metrics.metrics_manager.emit_event('curriculum_progress', curriculum_data)
-            
-            # Also emit the detailed curriculum tracking
-            self._emit_curriculum_detail()
+        curriculum_data = {
+            'progress': self.curriculum_progress,
+            'stage': stage_name,
+            'roc_range': stage.roc_range if stage else [0.0, 1.0],
+            'activity_range': stage.activity_range if stage else [0.0, 1.0],
+            'total_episodes': self.global_episode_counter,
+            'stage_progress': stage_progress
+        }
+        self.callback_manager.trigger('on_custom_event', 'curriculum_progress', curriculum_data)
+        
+        # Also emit the detailed curriculum tracking
+        self._emit_curriculum_detail()
     
     def _emit_curriculum_detail(self):
-        """Emit detailed curriculum tracking for dashboard."""
-        if hasattr(self.metrics, 'metrics_manager'):
-            stage = self._get_curriculum_stage_info()
-            
-            # Calculate episodes needed for next stage
+        """Trigger detailed curriculum tracking callback."""
+        stage = self._get_curriculum_stage_info()
+        
+        # Calculate episodes needed for next stage
+        episodes_to_next_stage = 0
+        next_stage_name = ""
+        current_stage_name = ""
+        total_episodes = self.global_episode_counter
+
+        if total_episodes < 2000:
+            episodes_to_next_stage = 2000 - total_episodes
+            next_stage_name = "Intermediate"
+            current_stage_name = "Beginner"
+        elif total_episodes < 5000:
+            episodes_to_next_stage = 5000 - total_episodes
+            next_stage_name = "Advanced"
+            current_stage_name = "Intermediate"
+        elif total_episodes < 8000:
+            episodes_to_next_stage = 8000 - total_episodes
+            next_stage_name = "Specialization"
+            current_stage_name = "Advanced"
+        else:
             episodes_to_next_stage = 0
-            next_stage_name = ""
-            current_stage_name = ""
-            total_episodes = self.global_episode_counter
+            next_stage_name = "Maximum"
+            current_stage_name = "Specialization"
 
-            if total_episodes < 2000:
-                episodes_to_next_stage = 2000 - total_episodes
-                next_stage_name = "Intermediate"
-                current_stage_name = "Beginner"
-            elif total_episodes < 5000:
-                episodes_to_next_stage = 5000 - total_episodes
-                next_stage_name = "Advanced"
-                current_stage_name = "Intermediate"
-            elif total_episodes < 8000:
-                episodes_to_next_stage = 8000 - total_episodes
-                next_stage_name = "Specialization"
-                current_stage_name = "Advanced"
-            else:
-                episodes_to_next_stage = 0
-                next_stage_name = "Maximum"
-                current_stage_name = "Specialization"
-
-            curriculum_detail = {
-                'current_stage': current_stage_name,
-                'roc_range': stage.roc_range if stage else [0.0, 1.0],
-                'activity_range': stage.activity_range if stage else [0.0, 1.0],
-                'total_episodes': self.global_episode_counter,
-                'episodes_to_next_stage': episodes_to_next_stage,
-                'next_stage_name': next_stage_name,
-                'episodes_per_day_config': self.episodes_per_day,
-                'curriculum_method': self.curriculum_method
-            }
-            self.metrics.metrics_manager.emit_event('curriculum_detail', curriculum_detail)
+        curriculum_detail = {
+            'current_stage': current_stage_name,
+            'roc_range': stage.roc_range if stage else [0.0, 1.0],
+            'activity_range': stage.activity_range if stage else [0.0, 1.0],
+            'total_episodes': self.global_episode_counter,
+            'episodes_to_next_stage': episodes_to_next_stage,
+            'next_stage_name': next_stage_name,
+            'episodes_per_day_config': self.episodes_per_day,
+            'curriculum_method': self.curriculum_method
+        }
+        self.callback_manager.trigger('on_custom_event', 'curriculum_detail', curriculum_detail)
     
     def _emit_initial_curriculum_detail(self):
         """Emit initial curriculum detail at training start."""
         self._emit_curriculum_detail()
         
     def _emit_initial_cycle_tracking(self):
-        """Emit initial cycle tracking after day setup."""
-        if hasattr(self.metrics, 'metrics_manager'):
-            # Initial cycle tracking with zero values
-            cycle_tracking = {
-                'cycles_completed': self.reset_point_cycles_completed,
-                'target_cycles_per_day': self.episodes_per_day,
-                'cycles_remaining_for_day_switch': self.episodes_per_day - self.reset_point_cycles_completed,
-                'episodes_on_current_day': self.episodes_completed_on_current_day,
-                'day_switch_progress_pct': 0.0,
-                'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown'
-            }
-            self.metrics.metrics_manager.emit_event('cycle_completion', cycle_tracking)
+        """Trigger initial cycle tracking after day setup."""
+        # Initial cycle tracking with zero values
+        cycle_tracking = {
+            'cycles_completed': self.reset_point_cycles_completed,
+            'target_cycles_per_day': self.episodes_per_day,
+            'cycles_remaining_for_day_switch': self.episodes_per_day - self.reset_point_cycles_completed,
+            'episodes_on_current_day': self.episodes_completed_on_current_day,
+            'day_switch_progress_pct': 0.0,
+            'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown'
+        }
+        self.callback_manager.trigger('on_custom_event', 'cycle_completion', cycle_tracking)
 
     def _update_curriculum_progress(self):
         """Update curriculum progress based on training performance."""
@@ -659,7 +653,7 @@ class PPOTrainer:
                     self.reset_point_cycles_completed = 0
                     self.used_reset_point_indices.clear()
                     
-                    # Emit initial cycle tracking after day setup
+                    # Trigger initial cycle tracking after day setup
                     self._emit_initial_cycle_tracking()
                     
             # Select reset point and reset environment
@@ -674,28 +668,27 @@ class PPOTrainer:
                 self.used_reset_point_indices.clear()
                 self.logger.info(f"🔄 Completed cycle {self.reset_point_cycles_completed} through reset points")
             
-            # Always emit cycle tracking after each episode for real-time dashboard updates
-            if hasattr(self.metrics, 'metrics_manager'):
-                cycles_remaining = self.episodes_per_day - self.reset_point_cycles_completed
-                progress_pct = (self.reset_point_cycles_completed / self.episodes_per_day) * 100
-                
-                # Calculate more detailed progress within current cycle
-                total_available_points = len(self.env.available_reset_points) if hasattr(self.env, 'available_reset_points') else 0
-                points_used_in_cycle = len(self.used_reset_point_indices)
-                points_remaining_in_cycle = max(0, total_available_points - points_used_in_cycle)
+            # Always trigger cycle tracking callback after each episode for real-time updates
+            cycles_remaining = self.episodes_per_day - self.reset_point_cycles_completed
+            progress_pct = (self.reset_point_cycles_completed / self.episodes_per_day) * 100
+            
+            # Calculate more detailed progress within current cycle
+            total_available_points = len(self.env.available_reset_points) if hasattr(self.env, 'available_reset_points') else 0
+            points_used_in_cycle = len(self.used_reset_point_indices)
+            points_remaining_in_cycle = max(0, total_available_points - points_used_in_cycle)
 
-                cycle_tracking = {
-                    'cycles_completed': self.reset_point_cycles_completed,
-                    'target_cycles_per_day': self.episodes_per_day,
-                    'cycles_remaining_for_day_switch': cycles_remaining,
-                    'episodes_on_current_day': self.episodes_completed_on_current_day,
-                    'day_switch_progress_pct': progress_pct,
-                    'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown',
-                    'total_available_points': total_available_points,
-                    'points_used_in_cycle': points_used_in_cycle,
-                    'points_remaining_in_cycle': points_remaining_in_cycle
-                }
-                self.metrics.metrics_manager.emit_event('cycle_completion', cycle_tracking)
+            cycle_tracking = {
+                'cycles_completed': self.reset_point_cycles_completed,
+                'target_cycles_per_day': self.episodes_per_day,
+                'cycles_remaining_for_day_switch': cycles_remaining,
+                'episodes_on_current_day': self.episodes_completed_on_current_day,
+                'day_switch_progress_pct': progress_pct,
+                'current_day_date': self.current_momentum_day['date'].strftime('%Y-%m-%d') if self.current_momentum_day else 'unknown',
+                'total_available_points': total_available_points,
+                'points_used_in_cycle': points_used_in_cycle,
+                'points_remaining_in_cycle': points_remaining_in_cycle
+            }
+            self.callback_manager.trigger('on_custom_event', 'cycle_completion', cycle_tracking)
 
             # Note: momentum day progress tracking is done via metrics, 
             # reset points data is only sent on actual day changes
@@ -747,21 +740,29 @@ class PPOTrainer:
         self.logger.info(f"   ℹ️  Episodes will reset automatically when they complete")
         self.buffer.clear()
         
-        # Update dashboard that we're in rollout phase
-        if hasattr(self.metrics, "metrics_manager"):
-            training_data = {
-                'mode': 'Training',
-                'stage': 'Collecting Rollout',
-                'updates': self.global_update_counter,
-                'global_steps': self.global_step_counter,
-                'total_episodes': self.global_episode_counter,
-                'stage_status': f"Collecting {self.rollout_steps} steps...",
-                'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
-                'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
-            }
-            self.metrics.metrics_manager.emit_event("training_update", training_data)
+        # Trigger training update callback that we're in rollout phase
+        training_data = {
+            'mode': 'Training',
+            'stage': 'Collecting Rollout',
+            'updates': self.global_update_counter,
+            'global_steps': self.global_step_counter,
+            'total_episodes': self.global_episode_counter,
+            'stage_status': f"Collecting {self.rollout_steps} steps...",
+            'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+            'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
+        }
+        self.callback_manager.trigger('on_custom_event', 'training_update', training_data)
 
         current_env_state_np, _ = self._reset_environment_with_momentum()
+        
+        # Trigger initial episode start
+        reset_info = {
+            'symbol': self.env.symbol if hasattr(self.env, 'symbol') else 'UNKNOWN',
+            'date': self.env.date if hasattr(self.env, 'date') else None,
+            'momentum_day': self.current_momentum_day,
+            'reset_point_idx': 0
+        }
+        self.callback_manager.trigger('on_episode_start', self.global_episode_counter + 1, reset_info)
 
         for callback in self.callbacks:
             callback.on_rollout_start(self)
@@ -783,8 +784,8 @@ class PPOTrainer:
                     self.logger.warning(f"Training interrupted during rollout collection at step {collected_steps}")
                     break
             
-            # Update rollout progress periodically
-            if collected_steps % 100 == 0 and hasattr(self.metrics, "metrics_manager"):
+            # Trigger rollout progress callback periodically
+            if collected_steps % 100 == 0:
                 training_data = {
                     'mode': 'Training',
                     'stage': 'Collecting Rollouts',
@@ -797,7 +798,7 @@ class PPOTrainer:
                     'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
                     'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
                 }
-                self.metrics.metrics_manager.emit_event("training_update", training_data)
+                self.callback_manager.trigger('on_custom_event', 'training_update', training_data)
             single_step_tensors = {
                 k: torch.as_tensor(v, dtype=torch.float32).to(self.device)
                 for k, v in current_env_state_np.items()
@@ -821,22 +822,27 @@ class PPOTrainer:
 
             env_action = self._convert_action_for_env(action_tensor)
             
-            # Track model internals
+            # Trigger model forward callback with internals
+            forward_data = {
+                'features': current_model_state_torch_batched,
+                'action': action_tensor,
+                'action_info': action_info,
+                'step_num': collected_steps
+            }
+            
+            # Add attention weights if available
             if hasattr(self.model, 'get_last_attention_weights'):
                 attention_weights = self.model.get_last_attention_weights()
                 if attention_weights is not None:
-                    self.metrics.update_attention_weights(attention_weights)
+                    forward_data['attention_weights'] = attention_weights
             
+            # Add action probabilities if available
             if hasattr(self.model, 'get_last_action_probabilities'):
                 action_probs = self.model.get_last_action_probabilities()
                 if action_probs is not None:
-                    self.metrics.update_action_probabilities(action_probs)
-            
-            # Track feature statistics and attribution data
-            if collected_steps % 100 == 0:
-                self.metrics.update_feature_statistics(current_env_state_np)
-                # Store state for feature attribution analysis
-                self.metrics.update_state_for_attribution(current_model_state_torch_batched)
+                    forward_data['action_probabilities'] = action_probs
+                    
+            self.callback_manager.trigger('on_model_forward', forward_data)
 
             try:
                 next_env_state_np, reward, terminated, truncated, info = self.env.step(env_action)
@@ -868,7 +874,7 @@ class PPOTrainer:
 
             # Update step tracking
             self.global_step_counter += 1
-            self.metrics.update_step(self.global_step_counter)
+            # Step tracking is now handled by callbacks via on_step
 
             for callback in self.callbacks:
                 callback.on_step(self, current_model_state_torch_batched, action_tensor, reward, next_env_state_np, info)
@@ -894,8 +900,19 @@ class PPOTrainer:
                     'trades': info.get('total_trades', 0)
                 })
 
-                # Record episode metrics
-                self.metrics.end_episode(current_episode_reward, current_episode_length)
+                # Trigger episode end callback
+                episode_data = {
+                    'episode_num': self.global_episode_counter,
+                    'reward': current_episode_reward,
+                    'length': current_episode_length,
+                    'final_equity': info.get('portfolio_equity', 0),
+                    'termination_reason': info.get('termination_reason', 'UNKNOWN'),
+                    'truncated': info.get('truncated', False),
+                    'pnl': info.get('total_pnl', 0),
+                    'win_rate': info.get('win_rate', 0),
+                    'trades': info.get('total_trades', 0)
+                }
+                self.callback_manager.trigger('on_episode_end', self.global_episode_counter, episode_data)
                 
                 # Update recent episode rewards for dashboard
                 self.recent_episode_rewards.append(current_episode_reward)
@@ -949,12 +966,32 @@ class PPOTrainer:
                                    f"Steps collected: {collected_steps}/{self.rollout_steps} | "
                                    f"Remaining: {remaining_steps}")
 
-                # Start new episode tracking
-                self.metrics.start_episode()
+                # Trigger new episode start callback
+                reset_info = {
+                    'symbol': self.env.symbol if hasattr(self.env, 'symbol') else 'UNKNOWN',
+                    'date': self.env.date if hasattr(self.env, 'date') else None,
+                    'momentum_day': self.current_momentum_day,
+                    'reset_point_idx': len(self.used_reset_point_indices) - 1
+                }
+                self.callback_manager.trigger('on_episode_start', self.global_episode_counter + 1, reset_info)
 
                 if collected_steps >= self.rollout_steps:
                     break
 
+        # Prepare rollout data for callbacks
+        rollout_data = {
+            'collected_steps': collected_steps,
+            'num_episodes': len(episode_rewards_in_rollout),
+            'episode_rewards': episode_rewards_in_rollout,
+            'episode_lengths': episode_lengths_in_rollout,
+            'mean_reward': mean_episode_reward,
+            'std_reward': std_episode_reward,
+            'rollout_time': rollout_duration
+        }
+        
+        # Trigger rollout end callback
+        self.callback_manager.trigger('on_rollout_end', rollout_data)
+        
         for callback in self.callbacks:
             callback.on_rollout_end(self)
 
@@ -962,7 +999,7 @@ class PPOTrainer:
 
         # Calculate comprehensive rollout metrics
         rollout_duration = self._end_timer("rollout")
-        self.metrics.record_rollout_time(rollout_duration)
+        # Rollout time is now included in rollout_data below
 
         steps_per_second = collected_steps / rollout_duration if rollout_duration > 0 else 0
         mean_episode_reward = np.mean(episode_rewards_in_rollout) if episode_rewards_in_rollout else 0
@@ -1070,52 +1107,37 @@ class PPOTrainer:
 
         self.logger.info(f"🔄 UPDATE START: Update #{self.global_update_counter + 1}")
 
-        # Start update timing
-        self.metrics.start_update()
+        # Trigger update start callback
+        self.callback_manager.trigger('on_update_start', self.global_update_counter)
         
-        # Run periodic feature attribution analysis
+        # Run periodic feature attribution analysis via callback
         # Get attribution frequency from config or use default of 10
         attribution_frequency = getattr(self.config, 'attribution_update_frequency', 10)
         
         if self.global_update_counter % attribution_frequency == 0:
-            self.logger.info(f"🔍 Attempting SHAP attribution analysis at update {self.global_update_counter}")
-            try:
-                attribution_results = self.metrics.run_periodic_shap_analysis()
-                if attribution_results:
-                    if 'error' not in attribution_results:
-                        self.logger.info("✅ SHAP attribution analysis completed successfully")
-                        # Log summary of top features if available
-                        if 'top_features' in attribution_results:
-                            top_3 = attribution_results['top_features'][:3]
-                            self.logger.info(f"🏆 Top features: {[(f.get('name', 'unknown'), f.get('importance', 0)) for f in top_3]}")
-                    else:
-                        self.logger.warning(f"🔍 Attribution analysis had error: {attribution_results.get('error')}")
-                else:
-                    self.logger.warning("🔍 Attribution analysis returned None - check conditions or errors")
-            except Exception as e:
-                self.logger.error(f"🔍 Feature attribution analysis failed: {e}", exc_info=True)
+            self.logger.info(f"🔍 Triggering feature attribution analysis at update {self.global_update_counter}")
+            # Attribution is now handled by callbacks that implement it
         
-        # Update dashboard that we're in update phase
-        if hasattr(self.metrics, "metrics_manager"):
-            # Calculate current performance metrics
-            current_time = time.time()
-            elapsed_time = current_time - self.training_start_time
-            steps_per_second = self.global_step_counter / elapsed_time if elapsed_time > 0 else 0
-            episodes_per_hour = (self.global_episode_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
-            
-            training_data = {
-                'mode': 'Training',
-                'stage': 'Updating Policy',
-                'updates': self.global_update_counter,
-                'global_steps': self.global_step_counter,
-                'total_episodes': self.global_episode_counter,
-                'stage_status': f"PPO Update {self.global_update_counter + 1}...",
-                'steps_per_second': steps_per_second,
-                'episodes_per_hour': episodes_per_hour,
-                'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
-                'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
-            }
-            self.metrics.metrics_manager.emit_event("training_update", training_data)
+        # Trigger training update callback that we're in update phase
+        # Calculate current performance metrics
+        current_time = time.time()
+        elapsed_time = current_time - self.training_start_time
+        steps_per_second = self.global_step_counter / elapsed_time if elapsed_time > 0 else 0
+        episodes_per_hour = (self.global_episode_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
+        
+        training_data = {
+            'mode': 'Training',
+            'stage': 'Updating Policy',
+            'updates': self.global_update_counter,
+            'global_steps': self.global_step_counter,
+            'total_episodes': self.global_episode_counter,
+            'stage_status': f"PPO Update {self.global_update_counter + 1}...",
+            'steps_per_second': steps_per_second,
+            'episodes_per_hour': episodes_per_hour,
+            'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
+            'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
+        }
+        self.callback_manager.trigger('on_custom_event', 'training_update', training_data)
 
         self._compute_advantages_and_returns()
 
@@ -1178,22 +1200,21 @@ class PPOTrainer:
                     batch_progress = (current_batch / total_batches) * 100
                     self.logger.info(f"   📦 Batch {current_batch}/{total_batches} ({batch_progress:.1f}%)")
                 
-                # Update dashboard with epoch/batch progress
-                if hasattr(self.metrics, "metrics_manager"):
-                    training_data = {
-                        'mode': 'Training',
-                        'stage': 'PPO Update',
-                        'updates': self.global_update_counter,
-                        'global_steps': self.global_step_counter,
-                        'total_episodes': self.global_episode_counter,
-                        'current_epoch': epoch + 1,
-                        'total_epochs': self.ppo_epochs,
-                        'current_batch': current_batch,
-                        'total_batches': total_batches,
-                        'batch_size': self.batch_size,
-                        'stage_status': f"Epoch {epoch + 1}/{self.ppo_epochs}, Batch {current_batch}/{total_batches}"
-                    }
-                    self.metrics.metrics_manager.emit_event("training_update", training_data)
+                # Trigger training update callback with epoch/batch progress
+                training_data = {
+                    'mode': 'Training',
+                    'stage': 'PPO Update',
+                    'updates': self.global_update_counter,
+                    'global_steps': self.global_step_counter,
+                    'total_episodes': self.global_episode_counter,
+                    'current_epoch': epoch + 1,
+                    'total_epochs': self.ppo_epochs,
+                    'current_batch': current_batch,
+                    'total_batches': total_batches,
+                    'batch_size': self.batch_size,
+                    'stage_status': f"Epoch {epoch + 1}/{self.ppo_epochs}, Batch {current_batch}/{total_batches}"
+                }
+                self.callback_manager.trigger('on_custom_event', 'training_update', training_data)
                 # Ensure batch indices don't exceed available samples
                 end_idx = min(start_idx + self.batch_size, num_samples)
                 batch_indices = indices[start_idx:end_idx]
@@ -1304,31 +1325,27 @@ class PPOTrainer:
         avg_explained_variance = total_explained_variance / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
         avg_gradient_norm = total_gradient_norm / num_updates_in_epoch if num_updates_in_epoch > 0 else 0
 
-        # Record metrics
-        self.metrics.record_model_losses(avg_actor_loss, avg_critic_loss, avg_entropy)
-        self.metrics.record_ppo_metrics(avg_clipfrac, avg_approx_kl, avg_explained_variance)
         # Get actual learning rate from optimizer in case it has been modified by scheduler
         current_lr = self.optimizer.param_groups[0]['lr']
-        self.metrics.record_learning_rate(current_lr)
+        
+        # All metrics are now included in update_metrics dict for callbacks
 
-        # Update dashboard with PPO metrics
-        if hasattr(self.metrics, "metrics_manager"):
-            mean_reward = np.mean(self.recent_episode_rewards) if len(self.recent_episode_rewards) > 0 else 0
-            ppo_data = {
-                'learning_rate': current_lr,
-                'mean_episode_reward': mean_reward,
-                'policy_loss': avg_actor_loss,
-                'value_loss': avg_critic_loss,
-                'entropy': avg_entropy,
-                'total_loss': avg_actor_loss + avg_critic_loss,
-                'clip_fraction': avg_clipfrac,
-                'kl_divergence': avg_approx_kl,
-                'explained_variance': avg_explained_variance
-            }
-            self.metrics.metrics_manager.emit_event("ppo_metrics", ppo_data)
+        # Trigger PPO metrics callback
+        mean_reward = np.mean(self.recent_episode_rewards) if len(self.recent_episode_rewards) > 0 else 0
+        ppo_data = {
+            'learning_rate': current_lr,
+            'mean_episode_reward': mean_reward,
+            'policy_loss': avg_actor_loss,
+            'value_loss': avg_critic_loss,
+            'entropy': avg_entropy,
+            'total_loss': avg_actor_loss + avg_critic_loss,
+            'clip_fraction': avg_clipfrac,
+            'kl_divergence': avg_approx_kl,
+            'explained_variance': avg_explained_variance
+        }
+        self.callback_manager.trigger('on_custom_event', 'ppo_metrics', ppo_data)
 
         # End update timing
-        self.metrics.end_update()
         update_duration = self._end_timer("update")
         
         # Track update timing
@@ -1346,7 +1363,9 @@ class PPOTrainer:
             "gradient_norm": avg_gradient_norm,
             "global_step_counter": self.global_step_counter,
             "global_episode_counter": self.global_episode_counter,
-            "global_update_counter": self.global_update_counter
+            "global_update_counter": self.global_update_counter,
+            "update_time": update_duration,
+            "learning_rate": current_lr
         }
 
         # Comprehensive update summary with interpretation hints
@@ -1365,11 +1384,13 @@ class PPOTrainer:
         if avg_explained_variance < 0.5:
             self.logger.warning("   ⚠️  Low explained variance - value function may need tuning")
 
+        # Trigger update end callback
+        self.callback_manager.trigger('on_update_end', self.global_update_counter, update_metrics)
+        
         for callback in self.callbacks:
             callback.on_update_end(self, update_metrics)
         
-        # Reset dashboard stage progress after update completes
-        # Emit training update event
+        # Trigger training update callback after update completes
         training_data = {
             'mode': 'Training',
             'stage': 'Preparing Next Rollout',
@@ -1381,7 +1402,7 @@ class PPOTrainer:
             'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
             'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
         }
-        self.metrics.metrics_manager.emit_event('training_update', training_data)
+        self.callback_manager.trigger('on_custom_event', 'training_update', training_data)
 
         return update_metrics
 
@@ -1398,15 +1419,24 @@ class PPOTrainer:
         else:
             self.logger.warning("   ⚠️ No active curriculum stage found!")
 
-        # Start training metrics
-        self.metrics.start_training()
+        # Start training
         self.training_start_time = time.time()
+        
+        # Trigger training start callback
+        training_config = {
+            'rollout_steps': self.rollout_steps,
+            'batch_size': self.batch_size,
+            'ppo_epochs': self.ppo_epochs,
+            'learning_rate': self.lr,
+            'curriculum_stage': self._get_current_curriculum_stage(),
+            'momentum_training': self.episode_selection_mode == "momentum_days"
+        }
+        self.callback_manager.trigger('on_training_start', training_config)
 
         for callback in self.callbacks:
             callback.on_training_start(self)
             
-        # Initialize dashboard training state
-        # Emit training update event
+        # Initialize training state
         training_data = {
             'mode': 'Training',
             'stage': 'Initializing',
@@ -1420,27 +1450,26 @@ class PPOTrainer:
             'time_per_update': 0.0,
             'time_per_episode': 0.0
         }
-        self.metrics.metrics_manager.emit_event('training_update', training_data)
+        self.callback_manager.trigger('on_custom_event', 'training_update', training_data)
         
         # Emit initial curriculum progress and tracking
         self._emit_curriculum_progress()
         self._emit_initial_curriculum_detail()
         
-        # Emit initial reset point tracking (with default values)
-        if hasattr(self.metrics, 'metrics_manager'):
-            initial_reset_tracking = {
-                'selected_index': 0,
-                'selected_timestamp': 'Initial Training Start',
-                'total_available_points': 0,
-                'points_used_in_cycle': 0,
-                'points_remaining_in_cycle': 0,
-                'roc_score': 0.0,
-                'activity_score': 0.0,
-                'roc_range': [0.8, 1.0],
-                'activity_range': [0.5, 1.0],
-                'curriculum_stage': 'stage_1'
-            }
-            self.metrics.metrics_manager.emit_event('reset_point_selection', initial_reset_tracking)
+        # Trigger initial reset point tracking (with default values)
+        initial_reset_tracking = {
+            'selected_index': 0,
+            'selected_timestamp': 'Initial Training Start',
+            'total_available_points': 0,
+            'points_used_in_cycle': 0,
+            'points_remaining_in_cycle': 0,
+            'roc_score': 0.0,
+            'activity_score': 0.0,
+            'roc_range': [0.8, 1.0],
+            'activity_range': [0.5, 1.0],
+            'curriculum_stage': 'stage_1'
+        }
+        self.callback_manager.trigger('on_reset_point_selected', initial_reset_tracking)
 
         best_eval_reward = -float('inf')
 
@@ -1494,22 +1523,21 @@ class PPOTrainer:
                 elif stage.max_cycles is not None:
                     stage_progress = min(100.0, (self.stage_cycles_completed / stage.max_cycles) * 100)
 
-            # Always update dashboard with training progress (not just every 5 updates)
-            if hasattr(self.metrics, "metrics_manager"):
-                training_data = {
-                    'mode': 'Training',
-                    'stage': 'Active Training',
-                    'updates': self.global_update_counter,
-                    'global_steps': self.global_step_counter,
-                    'total_episodes': self.global_episode_counter,
-                    'overall_progress': stage_progress,
-                    'stage_progress': stage_progress,
-                    'stage_status': f"{stage_name} - Update {self.global_update_counter}",
-                    'steps_per_second': steps_per_hour / 3600 if steps_per_hour > 0 else 0,
-                    'time_per_update': update_metrics.get('update_time', 0) if 'update_metrics' in locals() else 0,
-                    'time_per_episode': rollout_info.get('rollout_time', 0) / max(1, rollout_info.get('num_episodes_in_rollout', 1)) if 'rollout_info' in locals() else 0
-                }
-                self.metrics.metrics_manager.emit_event("training_update", training_data)
+            # Always trigger training progress callback (not just every 5 updates)
+            training_data = {
+                'mode': 'Training',
+                'stage': 'Active Training',
+                'updates': self.global_update_counter,
+                'global_steps': self.global_step_counter,
+                'total_episodes': self.global_episode_counter,
+                'overall_progress': stage_progress,
+                'stage_progress': stage_progress,
+                'stage_status': f"{stage_name} - Update {self.global_update_counter}",
+                'steps_per_second': steps_per_hour / 3600 if steps_per_hour > 0 else 0,
+                'time_per_update': update_metrics.get('update_time', 0) if 'update_metrics' in locals() else 0,
+                'time_per_episode': rollout_info.get('rollout_time', 0) / max(1, rollout_info.get('num_episodes_in_rollout', 1)) if 'rollout_info' in locals() else 0
+            }
+            self.callback_manager.trigger('on_custom_event', 'training_update', training_data)
 
             if self.global_update_counter % 5 == 0:  # Log every 5 updates
                 # Calculate recent performance trends
@@ -1560,6 +1588,9 @@ class PPOTrainer:
         self.logger.info(
             f"   📊 Final stats: {self.global_step_counter:,} steps | {self.global_episode_counter} episodes | {self.global_update_counter} updates")
 
+        # Trigger training end callback
+        self.callback_manager.trigger('on_training_end', final_stats)
+        
         for callback in self.callbacks:
             callback.on_training_end(self, final_stats)
 
@@ -1570,8 +1601,8 @@ class PPOTrainer:
         self.logger.info(f"🔍 EVALUATION START: {n_episodes} episodes")
         self._start_timer("evaluation")
 
-        # Start evaluation metrics
-        self.metrics.start_evaluation()
+        # Trigger evaluation start callback
+        self.callback_manager.trigger('on_evaluation_start')
 
         self.model.eval()
         self.is_evaluating = True
@@ -1618,8 +1649,15 @@ class PPOTrainer:
                 'final_equity': info.get('portfolio_equity', 0)
             })
 
-        # End evaluation metrics
-        self.metrics.end_evaluation(episode_rewards, episode_lengths)
+        # Trigger evaluation end callback
+        eval_results = {
+            'episode_rewards': episode_rewards,
+            'episode_lengths': episode_lengths,
+            'mean_reward': np.mean(episode_rewards) if episode_rewards else 0,
+            'std_reward': np.std(episode_rewards) if episode_rewards else 0,
+            'n_episodes': len(episode_rewards)
+        }
+        self.callback_manager.trigger('on_evaluation_end', eval_results)
 
         self.model.train()
         self.is_evaluating = False
