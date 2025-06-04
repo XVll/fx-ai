@@ -103,8 +103,8 @@ studies:
         max_episode_steps: 256   # Longer episodes for meaningful trading
         curriculum:
           stage_1:
-            max_cycles: 2          # More cycles per trial for meaningful training
-            max_updates: null         # Quick stage for faster optimization
+            enabled: true          # Only stage 1 for foundation
+            max_cycles: 1          # More cycles per trial for meaningful training 143 reset points 17 updates 1cycle
           
           stage_2:
             enabled: false         # Single stage for foundation

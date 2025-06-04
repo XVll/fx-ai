@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List, Union, Callable
+from typing import Dict, Any, Optional, List, Union
 from enum import Enum
 import time
 from collections import defaultdict, deque
@@ -11,6 +11,7 @@ import threading
 
 class MetricType(Enum):
     """Types of metrics for categorization"""
+
     COUNTER = "counter"  # Incremental counters
     GAUGE = "gauge"  # Current values
     HISTOGRAM = "histogram"  # Distribution of values
@@ -23,6 +24,7 @@ class MetricType(Enum):
 
 class MetricCategory(Enum):
     """Categories for organizing metrics"""
+
     MODEL = "model"  # Model architecture, parameters, gradients
     TRAINING = "training"  # Training process, episodes, performance
     TRADING = "trading"  # Trading performance, P&L, positions
@@ -34,6 +36,7 @@ class MetricCategory(Enum):
 @dataclass
 class MetricMetadata:
     """Metadata for metrics with clear categorization"""
+
     category: MetricCategory
     metric_type: MetricType
     description: str
@@ -47,6 +50,7 @@ class MetricMetadata:
 @dataclass
 class MetricValue:
     """Container for metric values with timestamp"""
+
     value: Union[float, int, bool, str]
     timestamp: float = field(default_factory=time.time)
     step: Optional[int] = None
@@ -114,7 +118,9 @@ class MetricAggregator:
         with self._lock:
             self._buffers[metric_name].append(value)
 
-    def get_aggregated(self, metric_name: str, aggregation: str = "last") -> Optional[float]:
+    def get_aggregated(
+        self, metric_name: str, aggregation: str = "last"
+    ) -> Optional[float]:
         """Get aggregated value for a metric"""
         with self._lock:
             buffer = self._buffers.get(metric_name)

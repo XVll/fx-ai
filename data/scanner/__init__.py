@@ -2,4 +2,4 @@
 
 from .momentum_scanner import MomentumScanner
 
-__all__ = ['MomentumScanner']
+__all__ = ["MomentumScanner"]

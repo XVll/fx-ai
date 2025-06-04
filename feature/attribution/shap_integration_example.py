@@ -7,23 +7,22 @@ This shows how to integrate the analyzer with PPO training callbacks.
 import logging
 from typing import Dict, List, Any, Optional
 import torch
-import numpy as np
 from feature.attribution import ComprehensiveSHAPAnalyzer, AttributionConfig
 
 
 class SHAPAnalysisCallback:
     """Callback to run SHAP analysis during training"""
-    
+
     def __init__(
         self,
         model: torch.nn.Module,
         feature_names: Dict[str, List[str]],
         branch_configs: Dict[str, tuple],
         update_frequency: int = 10,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
     ):
         self.logger = logger or logging.getLogger(__name__)
-        
+
         # Configure SHAP analyzer
         config = AttributionConfig(
             update_frequency=update_frequency,
@@ -36,21 +35,21 @@ class SHAPAnalysisCallback:
             use_gpu=torch.cuda.is_available(),
             save_plots=True,
             plot_dir="outputs/shap_plots",
-            dashboard_update_freq=5
+            dashboard_update_freq=5,
         )
-        
+
         # Initialize analyzer
         self.analyzer = ComprehensiveSHAPAnalyzer(
             model=model,
             feature_names=feature_names,
             branch_configs=branch_configs,
             config=config,
-            logger=logger
+            logger=logger,
         )
-        
+
         self.update_count = 0
         self.background_setup = False
-        
+
     def on_episode_end(self, episode_data: Dict[str, Any]):
         """Collect background data from episodes"""
         if not self.background_setup and len(episode_data.get("states", [])) > 0:
@@ -59,53 +58,53 @@ class SHAPAnalysisCallback:
             self.analyzer.setup_background(states)
             self.background_setup = True
             self.logger.info("✅ SHAP background data collected")
-            
+
     def on_update_end(self, update_data: Dict[str, Any]):
         """Run SHAP analysis after PPO updates"""
         self.update_count += 1
-        
+
         # Check if it's time to run analysis
         if self.update_count % self.analyzer.config.update_frequency != 0:
             return
-            
+
         if not self.background_setup:
             self.logger.warning("SHAP analysis skipped - no background data yet")
             return
-            
+
         # Get recent rollout data
         states = update_data.get("states", [])
         actions = update_data.get("actions", [])
         rewards = update_data.get("rewards", [])
-        
+
         if not states:
             return
-            
+
         self.logger.info(f"🔍 Running SHAP analysis (update {self.update_count})")
-        
+
         # Run comprehensive analysis
         results = self.analyzer.analyze_features(
             states=states[-50:],  # Last 50 states
             actions=actions[-50:] if actions else None,
-            rewards=rewards[-50:] if rewards else None
+            rewards=rewards[-50:] if rewards else None,
         )
-        
+
         # Log results
         if "error" not in results:
             # Log to WandB
             if update_data.get("wandb_step"):
                 self.analyzer.log_to_wandb(results, step=update_data["wandb_step"])
-                
+
             # Send to dashboard
             if update_data.get("dashboard_queue"):
                 dashboard_data = {
                     "type": "shap_analysis",
-                    "data": self.analyzer.get_summary_for_logging()
+                    "data": self.analyzer.get_summary_for_logging(),
                 }
                 update_data["dashboard_queue"].put(dashboard_data)
-                
+
             # Log summary
             self._log_analysis_summary(results)
-            
+
     def _log_analysis_summary(self, results: Dict[str, Any]):
         """Log a summary of SHAP analysis results"""
         # Top features
@@ -116,21 +115,21 @@ class SHAPAnalysisCallback:
                     f"  {feat['rank']}. {feat['full_name']}: "
                     f"{feat['importance']:.4f} (±{feat['importance_std']:.4f})"
                 )
-                
+
         # Branch importance
         if "branch_importance" in results:
             self.logger.info("🌳 Branch Importance:")
             sorted_branches = sorted(
                 results["branch_importance"].items(),
                 key=lambda x: x[1]["mean"],
-                reverse=True
+                reverse=True,
             )
             for branch, stats in sorted_branches:
                 self.logger.info(
-                    f"  {branch}: {stats['proportion']*100:.1f}% "
+                    f"  {branch}: {stats['proportion'] * 100:.1f}% "
                     f"(μ={stats['mean']:.4f})"
                 )
-                
+
         # Dead features
         if "dead_features" in results:
             dead_info = results["dead_features"]
@@ -138,13 +137,18 @@ class SHAPAnalysisCallback:
                 f"💀 Dead Features: {dead_info['total_dead']}/{self.analyzer.total_features} "
                 f"({dead_info['dead_percentage']:.1f}%)"
             )
-            
+
         # Feature interactions
-        if results.get("feature_interactions") and "top_interactions" in results["feature_interactions"]:
+        if (
+            results.get("feature_interactions")
+            and "top_interactions" in results["feature_interactions"]
+        ):
             interactions = results["feature_interactions"]["top_interactions"]
             if interactions:
-                self.logger.info(f"🔗 Top Feature Interactions: {len(interactions)} strong correlations found")
-                
+                self.logger.info(
+                    f"🔗 Top Feature Interactions: {len(interactions)} strong correlations found"
+                )
+
         # Performance
         self.logger.info(
             f"⏱️ Analysis completed in {results['analysis_time']:.2f}s "

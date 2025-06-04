@@ -1,4 +1,3 @@
-
 import os
 import time
 import json
@@ -14,14 +13,14 @@ class ContinuousTrainingCallback(TrainingCallback):
     """Clean continuous training callback with minimal logging"""
 
     def __init__(
-            self,
-            model_manager: ModelManager,
-            reward_metric: str = "mean_reward",
-            checkpoint_sync_frequency: int = 2,
-            lr_annealing: Optional[Dict[str, Any]] = None,
-            best_model_criterion: str = "mean_reward",
-            best_model_mode: str = "max",
-            load_metadata: Optional[Dict[str, Any]] = None
+        self,
+        model_manager: ModelManager,
+        reward_metric: str = "mean_reward",
+        checkpoint_sync_frequency: int = 2,
+        lr_annealing: Optional[Dict[str, Any]] = None,
+        best_model_criterion: str = "mean_reward",
+        best_model_mode: str = "max",
+        load_metadata: Optional[Dict[str, Any]] = None,
     ):
         self.model_manager = model_manager
         self.reward_metric = reward_metric
@@ -34,19 +33,21 @@ class ContinuousTrainingCallback(TrainingCallback):
         self.logger = logging.getLogger(__name__)
 
         # Initialize tracking
-        self.best_reward = float('-inf') if best_model_mode == "max" else float('inf')
+        self.best_reward = float("-inf") if best_model_mode == "max" else float("inf")
         self.best_model_path = None
         self.session_start_time = None
         self.last_sync_time = None
         self.last_sync_update = 0
 
         # Load the previous best reward if continuing
-        if load_metadata and 'metrics' in load_metadata:
-            prev_metrics = load_metadata.get('metrics', {})
+        if load_metadata and "metrics" in load_metadata:
+            prev_metrics = load_metadata.get("metrics", {})
             prev_reward = prev_metrics.get(self.reward_metric)
             if prev_reward is not None:
                 self.best_reward = prev_reward
-                self.logger.info(f"Continuing from previous best {self.reward_metric}: {self.best_reward:.4f}")
+                self.logger.info(
+                    f"Continuing from previous best {self.reward_metric}: {self.best_reward:.4f}"
+                )
 
     def on_training_start(self, trainer):
         """Initialize continuous training session"""
@@ -54,46 +55,56 @@ class ContinuousTrainingCallback(TrainingCallback):
         self.last_sync_time = self.session_start_time
 
         # Apply learning rate annealing if this is a continuation
-        if self.lr_annealing.get('enabled', False) and self.load_metadata:
+        if self.lr_annealing.get("enabled", False) and self.load_metadata:
             self._apply_lr_annealing(trainer)
 
     def _apply_lr_annealing(self, trainer):
         """Apply learning rate decay for continued training"""
-        if not hasattr(trainer, 'optimizer'):
+        if not hasattr(trainer, "optimizer"):
             self.logger.warning("No optimizer found for LR annealing")
             return
 
-        current_lr = trainer.optimizer.param_groups[0]['lr']
-        min_lr = self.lr_annealing.get('min_lr', 1e-5)
-        decay_factor = self.lr_annealing.get('decay_factor', 0.7)
+        current_lr = trainer.optimizer.param_groups[0]["lr"]
+        min_lr = self.lr_annealing.get("min_lr", 1e-5)
+        decay_factor = self.lr_annealing.get("decay_factor", 0.7)
 
         new_lr = max(current_lr * decay_factor, min_lr)
 
         for param_group in trainer.optimizer.param_groups:
-            param_group['lr'] = new_lr
+            param_group["lr"] = new_lr
 
         self.logger.info(f"LR annealing applied: {current_lr:.6f} → {new_lr:.6f}")
 
-    def on_update_iteration_end(self, trainer, update_iter, update_metrics, rollout_stats):
+    def on_update_iteration_end(
+        self, trainer, update_iter, update_metrics, rollout_stats
+    ):
         """Check for the new best model and periodic sync"""
         # Get reward value with robust error handling
         raw_reward = rollout_stats.get(self.reward_metric)
-        if raw_reward is None or not isinstance(raw_reward, (int, float, np.number)) or not np.isfinite(raw_reward):
+        if (
+            raw_reward is None
+            or not isinstance(raw_reward, (int, float, np.number))
+            or not np.isfinite(raw_reward)
+        ):
             # Log the issue for debugging
-            self.logger.warning(f"Invalid reward value for {self.reward_metric}: {raw_reward} (type: {type(raw_reward)}). "
-                              f"Available keys: {list(rollout_stats.keys())}")
-            current_reward = -float('inf')
+            self.logger.warning(
+                f"Invalid reward value for {self.reward_metric}: {raw_reward} (type: {type(raw_reward)}). "
+                f"Available keys: {list(rollout_stats.keys())}"
+            )
+            current_reward = -float("inf")
         else:
             current_reward = float(raw_reward)
-        
+
         # For model saving, always use the actual metric value if available
         save_reward = current_reward
-        if current_reward == -float('inf') and self.reward_metric in rollout_stats:
+        if current_reward == -float("inf") and self.reward_metric in rollout_stats:
             try:
                 # Try to extract the raw value and convert it directly
                 save_reward = float(rollout_stats[self.reward_metric])
                 if np.isfinite(save_reward):
-                    self.logger.info(f"Using fallback reward extraction: {save_reward:.4f}")
+                    self.logger.info(
+                        f"Using fallback reward extraction: {save_reward:.4f}"
+                    )
                 else:
                     save_reward = current_reward
             except (ValueError, TypeError):
@@ -110,7 +121,7 @@ class ContinuousTrainingCallback(TrainingCallback):
 
         # Always save the first update as initial model
         is_first_update = update_iter == 1
-        
+
         if is_best or is_first_update:
             if is_best:
                 self.best_reward = current_reward
@@ -118,7 +129,7 @@ class ContinuousTrainingCallback(TrainingCallback):
             # Save checkpoint
             checkpoint_path = os.path.join(
                 trainer.model_dir,
-                f"checkpoint_iter{update_iter}_{self.reward_metric}{current_reward:.4f}.pt"
+                f"checkpoint_iter{update_iter}_{self.reward_metric}{current_reward:.4f}.pt",
             )
             trainer.save_model(checkpoint_path)
             self.best_model_path = checkpoint_path
@@ -128,19 +139,19 @@ class ContinuousTrainingCallback(TrainingCallback):
                 **update_metrics,
                 **rollout_stats,
                 "update_iter": update_iter,
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
 
-            self.model_manager.save_best_model(
-                checkpoint_path,
-                metrics,
-                save_reward
-            )
+            self.model_manager.save_best_model(checkpoint_path, metrics, save_reward)
 
             if is_best:
-                self.logger.info(f"New best model: iter {update_iter}, {self.reward_metric}={current_reward:.4f}")
+                self.logger.info(
+                    f"New best model: iter {update_iter}, {self.reward_metric}={current_reward:.4f}"
+                )
             elif is_first_update:
-                self.logger.info(f"Initial model saved: iter {update_iter}, {self.reward_metric}={current_reward:.4f}")
+                self.logger.info(
+                    f"Initial model saved: iter {update_iter}, {self.reward_metric}={current_reward:.4f}"
+                )
 
         # Periodic sync
         if (update_iter - self.last_sync_update) >= self.checkpoint_sync_frequency:
@@ -151,8 +162,7 @@ class ContinuousTrainingCallback(TrainingCallback):
 
                 # Save periodic checkpoint
                 latest_checkpoint_path = os.path.join(
-                    trainer.model_dir,
-                    f"latest_checkpoint_iter{update_iter}.pt"
+                    trainer.model_dir, f"latest_checkpoint_iter{update_iter}.pt"
                 )
                 trainer.save_model(latest_checkpoint_path)
 
@@ -161,20 +171,18 @@ class ContinuousTrainingCallback(TrainingCallback):
                     **rollout_stats,
                     "update_iter": update_iter,
                     "timestamp": time.time(),
-                    "is_periodic_sync": True
+                    "is_periodic_sync": True,
                 }
 
                 self.model_manager.save_best_model(
-                    latest_checkpoint_path,
-                    metrics,
-                    save_reward
+                    latest_checkpoint_path, metrics, save_reward
                 )
-                
+
         # Check if training should stop (e.g., curriculum complete)
-        if hasattr(trainer, 'stop_training') and trainer.stop_training:
+        if hasattr(trainer, "stop_training") and trainer.stop_training:
             self.logger.info("Training stop requested - ending training loop")
             return True  # Signal to stop training
-            
+
     def on_curriculum_complete(self, trainer):
         """Called when all curriculum stages are completed."""
         self.logger.info("🎉 All curriculum stages completed - stopping training")
@@ -190,7 +198,7 @@ class ContinuousTrainingCallback(TrainingCallback):
             "session_duration": session_duration,
             "best_reward": self.best_reward,
             "is_final": True,
-            "timestamp": time.time()
+            "timestamp": time.time(),
         }
 
         # Save the final model
@@ -201,21 +209,25 @@ class ContinuousTrainingCallback(TrainingCallback):
         if self.best_model_path != final_checkpoint_path:
             # Get final reward with validation
             final_raw_reward = stats.get(self.reward_metric)
-            if final_raw_reward is None or not isinstance(final_raw_reward, (int, float, np.number)) or not np.isfinite(final_raw_reward):
+            if (
+                final_raw_reward is None
+                or not isinstance(final_raw_reward, (int, float, np.number))
+                or not np.isfinite(final_raw_reward)
+            ):
                 final_reward = self.best_reward  # Use best reward as fallback
             else:
                 final_reward = float(final_raw_reward)
-                
+
             self.model_manager.save_best_model(
-                final_checkpoint_path,
-                final_stats,
-                final_reward
+                final_checkpoint_path, final_stats, final_reward
             )
 
-        self.logger.info(f"Training session ended. Duration: {session_duration:.1f}s, "
-                         f"Best {self.reward_metric}: {self.best_reward:.4f}")
+        self.logger.info(
+            f"Training session ended. Duration: {session_duration:.1f}s, "
+            f"Best {self.reward_metric}: {self.best_reward:.4f}"
+        )
 
         # Save session summary
         summary_path = os.path.join(trainer.output_dir, "session_summary.json")
-        with open(summary_path, 'w') as f:
+        with open(summary_path, "w") as f:
             json.dump(final_stats, f, indent=2)

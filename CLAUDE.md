@@ -78,6 +78,21 @@ poetry run pytest tests/test_portfolio_simulator.py -v
 poetry run pytest tests/test_trading_environment.py -v
 ```
 
+### Code Quality & Type Checking
+When working on code, ensure to maintain code quality and type safety using the following commands:
+```bash
+# Type checking with pyright
+poetry run pyright
+
+# Linting and formatting with ruff
+poetry run ruff check                      # Check for linting issues
+poetry run ruff format                     # Auto-format code
+poetry run ruff check --fix               # Auto-fix linting issues where possible
+
+# Run both type checking and linting
+poetry run pyright && poetry run ruff check
+```
+
 ## Architecture Overview
 
 FxAIv2 is a reinforcement learning-based algorithmic trading system specializing in high-frequency momentum trading of low-float stocks. The system uses:
