@@ -39,24 +39,16 @@ class MultiBranchTransformer(nn.Module):
         else:
             self.device = device
 
-        # Store continuous/discrete action selection
-        self.continuous_action = model_config.continuous_action
+        # System only uses discrete actions
+        self.continuous_action = False
 
-        # Handle action dimensions (support both single int and tuple/list)
-        if self.continuous_action:
-            if isinstance(model_config.action_dim, (list, tuple)):
-                # For continuous actions, use the first dimension
-                self.action_dim = model_config.action_dim[0]
-            else:
-                self.action_dim = model_config.action_dim
+        # Handle discrete action dimensions
+        if isinstance(model_config.action_dim, (list, tuple)):
+            self.action_types = int(model_config.action_dim[0])
+            self.action_sizes = int(model_config.action_dim[1])
         else:
-            # For discrete actions, we need to handle tuples
-            if isinstance(model_config.action_dim, (list, tuple)):
-                self.action_types = int(model_config.action_dim[0])
-                self.action_sizes = int(model_config.action_dim[1])
-            else:
-                self.action_types = model_config.action_dim
-                self.action_sizes = None
+            self.action_types = model_config.action_dim
+            self.action_sizes = None
 
         # Store model config and dimensions for reference
         self.model_config = model_config
@@ -118,20 +110,14 @@ class MultiBranchTransformer(nn.Module):
         # Fusion Layer - 5 inputs: HF, MF, LF, Portfolio, Cross-attention
         self.fusion = AttentionFusion(model_config.d_model, 5, model_config.d_fused, 4)
 
-        # Output layers - different depending on continuous vs. discrete
-        if model_config.continuous_action:
-            # For continuous actions
-            self.actor_mean = nn.Linear(model_config.d_fused, self.action_dim)
-            self.actor_log_std = nn.Parameter(torch.zeros(self.action_dim))
+        # Output layers for discrete actions only
+        if self.action_sizes is not None:
+            # Separate outputs for action type and size
+            self.action_type_head = nn.Linear(model_config.d_fused, self.action_types)
+            self.action_size_head = nn.Linear(model_config.d_fused, self.action_sizes)
         else:
-            # For discrete tuple actions
-            if self.action_sizes is not None:
-                # Separate outputs for action type and size
-                self.action_type_head = nn.Linear(model_config.d_fused, self.action_types)
-                self.action_size_head = nn.Linear(model_config.d_fused, self.action_sizes)
-            else:
-                # Single discrete output
-                self.action_head = nn.Linear(model_config.d_fused, self.action_types)
+            # Single discrete output
+            self.action_head = nn.Linear(model_config.d_fused, self.action_types)
 
         # Critic Network (value function)
         self.critic = nn.Sequential(
@@ -335,25 +321,16 @@ class MultiBranchTransformer(nn.Module):
         # Shape: (batch_size, d_fused)
         fused = self.fusion(features_to_fuse)
 
-        # Output action parameters based on an action space type
-        if self.continuous_action:
-            # For continuous action space, output mean and log_std
-            mean = self.actor_mean(fused)
-            # Expand log_std to match the batch size
-            batch_size = fused.size(0)
-            log_std = self.actor_log_std.expand(batch_size, -1)
-            action_params = (mean, log_std)
+        # Output action parameters for discrete action space
+        if self.action_sizes is not None:
+            # Output separate logits for action type and size
+            action_type_logits = self.action_type_head(fused)
+            action_size_logits = self.action_size_head(fused)
+            action_params = (action_type_logits, action_size_logits)
         else:
-            # For discrete action space
-            if self.action_sizes is not None:
-                # Output separate logits for action type and size
-                action_type_logits = self.action_type_head(fused)
-                action_size_logits = self.action_size_head(fused)
-                action_params = (action_type_logits, action_size_logits)
-            else:
-                # Single discrete output
-                logits = self.action_head(fused)
-                action_params = (logits,)
+            # Single discrete output
+            logits = self.action_head(fused)
+            action_params = (logits,)
 
         # Get value estimate
         value = self.critic(fused)
@@ -362,8 +339,8 @@ class MultiBranchTransformer(nn.Module):
         if hasattr(self.fusion, 'get_branch_importance'):
             self._last_branch_importance = self.fusion.get_branch_importance()
         
-        # Store action probabilities for analysis
-        if not self.continuous_action and len(action_params) == 2:
+        # Store action probabilities for analysis (discrete actions only)
+        if len(action_params) == 2:
             # Convert logits to probabilities
             type_probs = torch.softmax(action_params[0], dim=-1)
             size_probs = torch.softmax(action_params[1], dim=-1)
@@ -383,73 +360,49 @@ class MultiBranchTransformer(nn.Module):
         with torch.no_grad():
             action_params, value = self.forward(state_dict)
 
-            if self.continuous_action:
-                mean, log_std = action_params
-                std = torch.exp(log_std)
-                normal = torch.distributions.Normal(mean, std)
+            # For discrete actions only
+            if len(action_params) == 2:
+                action_type_logits, action_size_logits = action_params
 
                 if deterministic:
-                    action = torch.tanh(mean)
-                    # Still calculate log_prob
-                    x_t = mean
+                    action_type = torch.argmax(action_type_logits, dim=-1)
+                    action_size = torch.argmax(action_size_logits, dim=-1)
                 else:
-                    x_t = normal.rsample()
-                    action = torch.tanh(x_t)
+                    action_type_dist = torch.distributions.Categorical(logits=action_type_logits)
+                    action_size_dist = torch.distributions.Categorical(logits=action_size_logits)
+                    action_type = action_type_dist.sample()
+                    action_size = action_size_dist.sample()
 
-                # Calculate log_prob including tanh squashing correction
-                log_prob = normal.log_prob(x_t) - torch.log(1 - action.pow(2) + 1e-6)
-                log_prob = log_prob.sum(1, keepdim=True)
+                action = torch.stack([action_type, action_size], dim=-1)
+
+                # Calculate combined log probability
+                type_log_prob = torch.distributions.Categorical(logits=action_type_logits).log_prob(action_type)
+                size_log_prob = torch.distributions.Categorical(logits=action_size_logits).log_prob(action_size)
+                log_prob = (type_log_prob + size_log_prob).unsqueeze(1)
 
                 action_info = {
-                    'mean': mean,
-                    'log_std': log_std,
+                    'action_type_logits': action_type_logits,
+                    'action_size_logits': action_size_logits,
                     'value': value,
                     'log_prob': log_prob  # Always include log_prob
                 }
             else:
-                # For discrete actions (tuple in your case)
-                if len(action_params) == 2:
-                    action_type_logits, action_size_logits = action_params
+                # For a single discrete action
+                logits = action_params[0]
+                dist = torch.distributions.Categorical(logits=logits)
 
-                    if deterministic:
-                        action_type = torch.argmax(action_type_logits, dim=-1)
-                        action_size = torch.argmax(action_size_logits, dim=-1)
-                    else:
-                        action_type_dist = torch.distributions.Categorical(logits=action_type_logits)
-                        action_size_dist = torch.distributions.Categorical(logits=action_size_logits)
-                        action_type = action_type_dist.sample()
-                        action_size = action_size_dist.sample()
-
-                    action = torch.stack([action_type, action_size], dim=-1)
-
-                    # Calculate combined log probability
-                    type_log_prob = torch.distributions.Categorical(logits=action_type_logits).log_prob(action_type)
-                    size_log_prob = torch.distributions.Categorical(logits=action_size_logits).log_prob(action_size)
-                    log_prob = (type_log_prob + size_log_prob).unsqueeze(1)
-
-                    action_info = {
-                        'action_type_logits': action_type_logits,
-                        'action_size_logits': action_size_logits,
-                        'value': value,
-                        'log_prob': log_prob  # Always include log_prob
-                    }
+                if deterministic:
+                    action = torch.argmax(logits, dim=-1)
                 else:
-                    # For a single discrete action
-                    logits = action_params[0]
-                    dist = torch.distributions.Categorical(logits=logits)
+                    action = dist.sample()
 
-                    if deterministic:
-                        action = torch.argmax(logits, dim=-1)
-                    else:
-                        action = dist.sample()
+                log_prob = dist.log_prob(action).unsqueeze(1)
 
-                    log_prob = dist.log_prob(action).unsqueeze(1)
-
-                    action_info = {
-                        'logits': logits,
-                        'value': value,
-                        'log_prob': log_prob  # Always include log_prob
-                    }
+                action_info = {
+                    'logits': logits,
+                    'value': value,
+                    'log_prob': log_prob  # Always include log_prob
+                }
 
             return action, action_info
     

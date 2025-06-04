@@ -377,10 +377,10 @@ class PPOTrainer:
     def _get_current_curriculum_stage(self):
         """Get current active curriculum stage."""
         stages = [
-            self.config.curriculum.stage_1_beginner,
-            self.config.curriculum.stage_2_intermediate,
-            self.config.curriculum.stage_3_advanced,
-            self.config.curriculum.stage_4_specialization
+            self.config.env.curriculum.stage_1,
+            self.config.env.curriculum.stage_2,
+            self.config.env.curriculum.stage_3,
+            self.config.env.curriculum.stage_4_specialization
         ]
         
         # Return current stage if valid
@@ -491,10 +491,10 @@ class PPOTrainer:
     def _advance_to_next_stage(self):
         """Advance to next enabled curriculum stage."""
         stages = [
-            self.config.curriculum.stage_1_beginner,
-            self.config.curriculum.stage_2_intermediate,
-            self.config.curriculum.stage_3_advanced,
-            self.config.curriculum.stage_4_specialization
+            self.config.env.curriculum.stage_1,
+            self.config.env.curriculum.stage_2,
+            self.config.env.curriculum.stage_3,
+            self.config.env.curriculum.stage_4_specialization
         ]
         
         # Find next enabled stage
@@ -523,13 +523,13 @@ class PPOTrainer:
             stage_name = 'unknown'
             if self.global_episode_counter < 2000:
                 stage_progress = min(100.0, (self.global_episode_counter / 2000) * 100)
-                stage_name = 'stage_1_beginner'
+                stage_name = 'stage_1'
             elif self.global_episode_counter < 5000:
                 stage_progress = min(100.0, ((self.global_episode_counter - 2000) / 3000) * 100)
-                stage_name = 'stage_2_intermediate'
+                stage_name = 'stage_2'
             elif self.global_episode_counter < 8000:
                 stage_progress = min(100.0, ((self.global_episode_counter - 5000) / 3000) * 100)
-                stage_name = 'stage_3_advanced'
+                stage_name = 'stage_3'
             else:
                 stage_progress = 100.0
                 stage_name = 'stage_4_specialization'
@@ -731,14 +731,11 @@ class PPOTrainer:
 
     def _convert_action_for_env(self, action_tensor: torch.Tensor) -> Any:
         """Converts model's action tensor to environment-compatible format."""
-        if self.model.continuous_action:
-            action_np = action_tensor.cpu().numpy().squeeze()
-            return np.array([action_np], dtype=np.float32) if np.isscalar(action_np) else action_np.astype(np.float32)
+        # System only uses discrete actions
+        if action_tensor.ndim > 0 and action_tensor.shape[-1] == 2:
+            return action_tensor.cpu().numpy().squeeze().astype(int)
         else:
-            if action_tensor.ndim > 0 and action_tensor.shape[-1] == 2:
-                return action_tensor.cpu().numpy().squeeze().astype(int)
-            else:
-                return action_tensor.cpu().numpy().item()
+            return action_tensor.cpu().numpy().item()
 
     def collect_rollout_data(self) -> Dict[str, Any]:
         """Collect rollout data with comprehensive logging.
@@ -1237,22 +1234,20 @@ class PPOTrainer:
                 elif batch_advantages.ndim == 1:
                     batch_advantages = batch_advantages.unsqueeze(1)
 
-                if self.model.continuous_action:
-                    pass  # Handle continuous actions if needed
-                else:
-                    action_type_logits, action_size_logits = action_params
+                # System only uses discrete actions
+                action_type_logits, action_size_logits = action_params
 
-                    action_types_taken = batch_actions[:, 0].long()
-                    action_sizes_taken = batch_actions[:, 1].long()
+                action_types_taken = batch_actions[:, 0].long()
+                action_sizes_taken = batch_actions[:, 1].long()
 
-                    type_dist = torch.distributions.Categorical(logits=action_type_logits)
-                    size_dist = torch.distributions.Categorical(logits=action_size_logits)
+                type_dist = torch.distributions.Categorical(logits=action_type_logits)
+                size_dist = torch.distributions.Categorical(logits=action_size_logits)
 
-                    new_type_log_probs = type_dist.log_prob(action_types_taken)
-                    new_size_log_probs = size_dist.log_prob(action_sizes_taken)
-                    new_log_probs = (new_type_log_probs + new_size_log_probs).unsqueeze(1)
+                new_type_log_probs = type_dist.log_prob(action_types_taken)
+                new_size_log_probs = size_dist.log_prob(action_sizes_taken)
+                new_log_probs = (new_type_log_probs + new_size_log_probs).unsqueeze(1)
 
-                    entropy = (type_dist.entropy() + size_dist.entropy()).unsqueeze(1)
+                entropy = (type_dist.entropy() + size_dist.entropy()).unsqueeze(1)
 
                 ratio = torch.exp(new_log_probs - batch_old_log_probs)
 
@@ -1455,7 +1450,7 @@ class PPOTrainer:
                 'activity_score': 0.0,
                 'roc_range': [0.8, 1.0],
                 'activity_range': [0.5, 1.0],
-                'curriculum_stage': 'stage_1_beginner'
+                'curriculum_stage': 'stage_1'
             }
             self.metrics.metrics_manager.emit_event('reset_point_selection', initial_reset_tracking)
 

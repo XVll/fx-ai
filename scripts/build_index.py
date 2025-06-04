@@ -19,9 +19,9 @@ data_dir = f"{config.data.data_dir}/{config.data.symbols[0].lower()}"
 scanner = MomentumScanner(
     data_dir=data_dir,
     output_dir=f"{config.data.index_dir}/momentum_index",
-    momentum_config=config.momentum_scanning,
-    scoring_config=config.momentum_scoring,
-    session_config=config.session_volume,
+    momentum_config=config.scanner,
+    scoring_config=config.scanner,
+    session_config=config.scanner,
     logger=logger
 )
 

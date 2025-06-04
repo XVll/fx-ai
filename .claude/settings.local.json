@@ -66,7 +66,12 @@
       "Bash([ -d /Users/fx/Repositories/FxAIv2/scripts ])",
       "Bash(chmod:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(git rm -r --cached cache/features/)"
+      "Bash(git rm -r --cached cache/features/)",
+      "Bash(poetry --version)",
+      "Bash(poetry:*)",
+      "Bash(sudo apt:*)",
+      "Bash(sudo apt install:*)",
+      "Bash(pip install:*)"
     ],
     "deny": []
   },

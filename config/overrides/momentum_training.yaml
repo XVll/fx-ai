@@ -2,25 +2,26 @@ training:
   eval_frequency: 5  # Evaluate every 5 updates instead of default 25
   eval_episodes: 5   # Run 5 evaluation episodes
 
-curriculum:
-  stage_1_beginner:
-    enabled: true
-    symbols: ["MLGO"]
-    date_range: ["2025-02-21", "2025-02-21"]
-    day_score_range: [0.7, 1.0]
-    roc_range: [0.05, 1.0]
-    activity_range: [0.0, 1.0]
-    max_updates: null    # Ensure at least 25 updates = 5 evaluations
-    max_episodes: null
-    max_cycles: 1   # Remove cycle limit to let max_updates control duration
-  
-  stage_2_intermediate:
-    enabled: false  # Disable other stages for now
-    symbols: []
-    date_range: [null, null]
-    day_score_range: [0.5, 0.9]
-    roc_range: [0.6, 1.0]
-    activity_range: [0.3, 1.0]
-    max_updates: 800
-    max_episodes: null
-    max_cycles: 10
+env:
+  curriculum:
+    stage_1:
+      enabled: true
+      symbols: ["MLGO"]
+      date_range: ["2025-02-21", "2025-02-21"]
+      day_score_range: [0.7, 1.0]
+      roc_range: [0.05, 1.0]
+      activity_range: [0.0, 1.0]
+      max_updates: null    # Ensure at least 25 updates = 5 evaluations
+      max_episodes: null
+      max_cycles: 1   # Remove cycle limit to let max_updates control duration
+    
+    stage_2:
+      enabled: false  # Disable other stages for now
+      symbols: []
+      date_range: [null, null]
+      day_score_range: [0.5, 0.9]
+      roc_range: [0.6, 1.0]
+      activity_range: [0.3, 1.0]
+      max_updates: 800
+      max_episodes: null
+      max_cycles: 10

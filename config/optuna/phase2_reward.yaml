@@ -120,18 +120,16 @@ studies:
         # n_layers: [SET BY TRANSFER]
         # dropout: [SET BY TRANSFER]
         
-      curriculum:
-        stage_1_beginner:
-          max_cycles: 8          # More cycles for reward testing
-        
-        stage_2_intermediate:
-          enabled: false
-        
-        stage_3_advanced:
-          enabled: false
-        
-        stage_4_specialization:
-          enabled: false
+      env:
+        curriculum:
+          stage_1:
+            max_cycles: 8          # More cycles for reward testing
+          
+          stage_2:
+            enabled: false
+          
+          stage_3:
+            enabled: false
       
       wandb:
         enabled: true

@@ -337,7 +337,7 @@ class DashboardTransmitter(MetricTransmitter):
             elif event_name == 'curriculum_progress':
                 # Handle curriculum learning progression
                 curriculum_data = {
-                    'curriculum_stage': event_data.get('stage', 'stage_1_beginner'),
+                    'curriculum_stage': event_data.get('stage', 'stage_1'),
                     'curriculum_progress': event_data.get('stage_progress', event_data.get('progress', 0.0)),
                     'curriculum_min_quality': event_data.get('min_quality', 0.8),
                     'total_episodes_for_curriculum': event_data.get('total_episodes', 0),

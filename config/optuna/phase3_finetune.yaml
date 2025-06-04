@@ -65,24 +65,15 @@ studies:
         type: categorical
         choices: [4, 8, 16]
       
-      - name: model.ff_multiplier
-        type: int
-        low: 2
-        high: 6
-      
-      - name: model.activation
-        type: categorical
-        choices: ["relu", "gelu", "swish"]
-      
-      - name: env.reward.action_efficiency_coefficient
+      - name: simulation.commission_rate
         type: float
-        low: 5.0
-        high: 25.0
+        low: 0.0005
+        high: 0.002
       
-      - name: env.reward.risk_penalty_coefficient
+      - name: simulation.slippage_rate
         type: float
-        low: 8.0
-        high: 40.0
+        low: 0.0001
+        high: 0.001
     
     n_trials: 50
     timeout: null
@@ -130,20 +121,16 @@ studies:
           # activity_bonus_per_trade: [SET BY TRANSFER]
           # hold_penalty_per_step: [SET BY TRANSFER]
           # max_holding_time_steps: [SET BY TRANSFER]
-        
-      curriculum:
-        stage_1_beginner:
-          max_cycles: 12         # Extended cycles for fine-tuning validation
-        
-        stage_2_intermediate:
-          enabled: true          # Enable intermediate stage for fine-tuning
-          max_cycles: 8
-        
-        stage_3_advanced:
-          enabled: false
-        
-        stage_4_specialization:
-          enabled: false
+        curriculum:
+          stage_1:
+            max_cycles: 12         # Extended cycles for fine-tuning validation
+          
+          stage_2:
+            enabled: true          # Enable intermediate stage for fine-tuning
+            max_cycles: 8
+          
+          stage_3:
+            enabled: false
       
       wandb:
         enabled: true
