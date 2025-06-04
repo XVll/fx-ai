@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from simulators.portfolio_simulator import (
     PortfolioSimulator, FillDetails, OrderTypeEnum, OrderSideEnum, PositionSideEnum
 )
-from config.schemas import EnvConfig, SimulationConfig, ModelConfig
+from config.schemas import EnvironmentConfig, SimulationConfig, ModelConfig
 from dashboard.event_stream import event_stream, EventType, TradingEvent
 from dashboard.shared_state import dashboard_state
 
@@ -19,28 +19,16 @@ logger = logging.getLogger(__name__)
 
 def create_test_configs():
     """Create test configurations."""
-    env_config = EnvConfig(
-        initial_capital=25000.0
-        # symbol removed - symbols now come from curriculum stages
-    )
+    env_config = EnvironmentConfig()
     
     simulation_config = SimulationConfig(
         max_position_value_ratio=1.0,
         allow_shorting=False,
         max_position_holding_seconds=3600,
-        initial_cash=25000.0
+        initial_capital=25000.0
     )
     
-    model_config = ModelConfig(
-        portfolio_seq_len=5,
-        portfolio_feat_dim=5,
-        hf_seq_len=60,
-        hf_feat_dim=10,
-        mf_seq_len=10,
-        mf_feat_dim=8,
-        lf_seq_len=5,
-        lf_feat_dim=6
-    )
+    model_config = ModelConfig()
     
     return env_config, simulation_config, model_config
 

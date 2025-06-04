@@ -71,7 +71,17 @@
       "Bash(poetry:*)",
       "Bash(sudo apt:*)",
       "Bash(sudo apt install:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python scripts/validate_pnl_flow.py)",
+      "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -m pytest tests/test_portfolio_simulator.py::TestPortfolioInitialization::test_initial_state -v)",
+      "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -m pytest tests/test_execution_simulator.py::TestActionDecoding::test_decode_valid_tuple_action -v)",
+      "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -c \"from config.schemas import EnvironmentConfig, SimulationConfig, ModelConfig, RewardConfig; print('All configs import successfully!')\")",
+      "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -c \"from data.scanner.momentum_scanner import MomentumScanner; from config.schemas import ScannerConfig; s = ScannerConfig(); m = MomentumScanner(s); print('MomentumScanner imports successfully!')\")",
+      "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -c \"from data.scanner.momentum_scanner import MomentumScanner; from config.schemas import ScannerConfig; print('Imports work correctly')\")",
+      "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -c \"\nfrom config.schemas import EnvironmentConfig, SimulationConfig, ModelConfig, RewardConfig, ScannerConfig, DataConfig, TrainingConfig\nfrom simulators.portfolio_simulator import PortfolioSimulator\nfrom simulators.execution_simulator import ExecutionSimulator\nfrom data.scanner.momentum_scanner import MomentumScanner\nfrom rewards.calculator import RewardCalculator\n\nprint('✅ All main imports successful!')\nprint('✅ Config restructuring complete!')\n\")",
+      "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -c \"\nfrom config.schemas import EnvironmentConfig, SimulationConfig, ModelConfig, RewardConfig, ScannerConfig, DataConfig, TrainingConfig\nfrom simulators.portfolio_simulator import PortfolioSimulator\nfrom simulators.execution_simulator import ExecutionSimulator\nfrom data.scanner.momentum_scanner import MomentumScanner\nfrom rewards.calculator import RewardSystem\n\nprint('All main imports successful!')\nprint('Config restructuring complete!')\n\")",
+      "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -m pytest tests/test_portfolio_simulator.py::TestPortfolioInitialization -v)",
+      "Bash(setxkbmap:*)"
     ],
     "deny": []
   },

@@ -119,10 +119,7 @@ class RewardSystem:
             clean_trade_config = {
                 'base_multiplier': self.config.base_multiplier,
                 'max_mae_threshold': self.config.max_mae_threshold,
-                'min_gain_threshold': self.config.min_gain_threshold,
-                # Keep legacy parameters for backward compatibility
-                'clean_trade_coefficient': self.config.clean_trade_coefficient,
-                'max_clean_drawdown_percent': self.config.max_clean_drawdown_percent
+                'min_gain_threshold': self.config.min_gain_threshold
             }
             components.append(CleanTradeBonus(clean_trade_config, self.logger))
             self.logger.info(f"Enabled clean trade bonus (base_multiplier: {self.config.base_multiplier}, max_mae_threshold: {self.config.max_mae_threshold}, min_gain_threshold: {self.config.min_gain_threshold})")

@@ -23,7 +23,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from config.schemas import EnvConfig, SimulationConfig, ModelConfig
+from config.schemas import EnvironmentConfig, SimulationConfig, ModelConfig
 from dashboard.event_stream import event_stream, EventType
 
 
@@ -156,7 +156,7 @@ class PortfolioSimulator:
 
     def __init__(self, 
                  logger: logging.Logger,
-                 env_config: EnvConfig,
+                 env_config: EnvironmentConfig,
                  simulation_config: SimulationConfig,
                  model_config: ModelConfig,
                  tradable_assets: List[str],
@@ -180,7 +180,7 @@ class PortfolioSimulator:
         self.trade_callback = trade_callback
 
         # Portfolio configuration
-        self.initial_capital = env_config.initial_capital
+        self.initial_capital = simulation_config.initial_capital
         self.max_position_ratio = simulation_config.max_position_value_ratio
         self.allow_shorting = simulation_config.allow_shorting
         self.max_holding_seconds = simulation_config.max_position_holding_seconds

@@ -198,9 +198,7 @@ def create_data_components(config: Config, log: logging.Logger):
     momentum_scanner = MomentumScanner(
         data_dir=str(Path(config.data.data_dir) / "mlgo"),
         output_dir=f"{config.data.index_dir}/momentum_index",
-        momentum_config=config.scanner,
-        scoring_config=config.scanner,
-        session_config=config.scanner,
+        scanner_config=config.scanner,
         logger=log
     )
     
@@ -275,8 +273,7 @@ def get_curriculum_symbols(config):
     stages = [
         config.env.curriculum.stage_1,
         config.env.curriculum.stage_2, 
-        config.env.curriculum.stage_3,
-        config.env.curriculum.stage_4_specialization
+        config.env.curriculum.stage_3
     ]
     for stage in stages:
         if stage.enabled:
@@ -599,46 +596,15 @@ def train(config: Config):
             config, model_manager, str(output_dir), loaded_metadata
         )
         
-        # Extract training parameters for PPO
-        training_params = {
-            "lr": config.training.learning_rate,
-            "gamma": config.training.gamma,
-            "gae_lambda": config.training.gae_lambda,
-            "clip_eps": config.training.clip_epsilon,
-            "critic_coef": config.training.value_coef,
-            "entropy_coef": config.training.entropy_coef,
-            "max_grad_norm": config.training.max_grad_norm,
-            "ppo_epochs": config.training.n_epochs,
-            "batch_size": config.training.batch_size,
-            "rollout_steps": config.training.rollout_steps
-        }
-        
-        # Enable momentum-based training with curriculum learning
-        training_params.update({
-            "curriculum_method": "quality_based",
-            "min_quality_threshold": 0.3,
-            "episode_selection_mode": "momentum_days"
-        })
-        
-        # Add day selection configuration if available
-        if hasattr(config, 'day_selection'):
-            training_params.update({
-                "episodes_per_day": config.day_selection.episodes_per_day,
-                "reset_point_quality_range": config.day_selection.reset_point_quality_range,
-                "day_switching_strategy": config.day_selection.day_switching_strategy
-            })
-        
-        # Create trainer
+        # Create trainer with simplified config-based constructor
         trainer = PPOTrainer(
             env=env,
             model=model,
             metrics_integrator=metrics_integrator,
-            model_config=config.model,
-            config=config,  # Pass full config for curriculum access
+            config=config,  # Pass full config - trainer will extract needed parameters
             device=device,
             output_dir=str(output_dir),
-            callbacks=callbacks,
-            **training_params
+            callbacks=callbacks
         )
         current_components['trainer'] = trainer
         
@@ -745,8 +711,7 @@ def main():
             stages = [
                 config.env.curriculum.stage_1,
                 config.env.curriculum.stage_2,
-                config.env.curriculum.stage_3,
-                config.env.curriculum.stage_4_specialization
+                config.env.curriculum.stage_3
             ]
             for stage in stages:
                 if stage.enabled:
