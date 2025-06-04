@@ -19,7 +19,7 @@ from envs.trading_environment import (
     PositionSizeTypeEnum, 
     TerminationReasonEnum
 )
-from config.schemas import Config, ModelConfig, EnvConfig, SimulationConfig, RewardConfig
+from config.schemas import Config, ModelConfig, EnvironmentConfig, SimulationConfig, RewardConfig
 from data.data_manager import DataManager
 from simulators.portfolio_simulator import PortfolioState, FillDetails, PositionSideEnum
 from simulators.market_simulator import MarketSimulator
@@ -47,17 +47,14 @@ class TestTradingEnvironment:
         config.model.portfolio_feat_dim = 5
         
         # Environment config
-        config.env = Mock(spec=EnvConfig)
-        config.env.initial_capital = 100000.0
-        config.env.max_steps = 1000
+        config.env = Mock(spec=EnvironmentConfig)
         config.env.max_episode_steps = 1000
-        config.env.max_training_steps = None
-        config.env.invalid_action_limit = 10
         config.env.early_stop_loss_threshold = 0.95
         config.env.reward = Mock(spec=RewardConfig)
         
         # Simulation config
         config.simulation = Mock(spec=SimulationConfig)
+        config.simulation.initial_capital = 100000.0
         config.simulation.min_commission_per_order = 1.0
         config.simulation.commission_per_share = 0.005
         
@@ -669,61 +666,14 @@ class TestTradingEnvironment:
             assert terminated
             assert info.get('termination_reason') == TerminationReasonEnum.MAX_LOSS_REACHED.value
     
-    def test_termination_invalid_action_limit(self, trading_env):
-        """Test invalid action limit termination."""
-        # Setup
-        trading_env.primary_asset = 'MLGO'
-        trading_env._last_observation = {'hf': np.zeros((60, 7))}
-        trading_env.max_invalid_actions_per_episode = 2
-        trading_env.invalid_action_count_episode = 2  # At limit
-        trading_env.episode_end_time_utc = datetime.now() + timedelta(hours=1)
-        trading_env.initial_capital_for_session = 100000.0
-        
-        # Mock components
-        market_state = {'timestamp': datetime(2025, 1, 1, 9, 30), 'current_price': 10.0}
-        trading_env.market_simulator = Mock()
-        trading_env.market_simulator.get_current_market_data.return_value = market_state
-        trading_env.market_simulator.step.return_value = True
-        
-        execution_result = Mock()
-        execution_result.fill_details = None
-        execution_result.action_decode_result = Mock()
-        execution_result.action_decode_result.action_type = "BUY"
-        execution_result.action_decode_result.is_valid = False  # Invalid action
-        execution_result.action_decode_result.to_dict.return_value = {'action_type': 'BUY', 'is_valid': False}
-        trading_env.execution_manager = Mock()
-        trading_env.execution_manager.execute_action.return_value = execution_result
-        
-        portfolio_state = {
-            'timestamp': datetime(2025, 1, 1, 9, 30),
-            'total_equity': 100000.0,
-            'positions': {}
-        }
-        trading_env.portfolio_manager = Mock()
-        trading_env.portfolio_manager.get_portfolio_state.return_value = portfolio_state
-        
-        trading_env.reward_calculator = Mock()
-        trading_env.reward_calculator.calculate.return_value = 0.0
-        trading_env.reward_calculator.get_last_reward_components.return_value = {}
-        
-        with patch.object(trading_env, '_get_observation') as mock_obs, \
-             patch.object(trading_env, '_update_metrics'):
-            
-            mock_obs.return_value = {'hf': np.zeros((60, 7))}
-            
-            action = np.array([1, 0])  # BUY action that will be invalid
-            _, _, terminated, _, info = trading_env.step(action)
-            
-            assert terminated
-            assert info.get('termination_reason') == TerminationReasonEnum.INVALID_ACTION_LIMIT_REACHED.value
-            assert trading_env.invalid_action_count_episode == 3  # Incremented
+    # Invalid action limit tests removed - action masking prevents invalid actions
     
     def test_termination_max_steps(self, trading_env):
-        """Test max training steps termination (with penalty)."""
+        """Test max episode steps termination (natural end)."""
         # Setup
         trading_env.primary_asset = 'MLGO'
         trading_env._last_observation = {'hf': np.zeros((60, 7))}
-        trading_env.max_training_steps = 10
+        trading_env.config.env.max_episode_steps = 10
         trading_env.current_step = 9  # Next step will reach limit
         trading_env.episode_end_time_utc = datetime.now() + timedelta(hours=1)
         trading_env.initial_capital_for_session = 100000.0
@@ -1171,23 +1121,7 @@ class TestTradingEnvironment:
         for key in required_keys:
             assert obs_space[key].dtype == np.float32
     
-    def test_invalid_action_limit_none(self, mock_config, mock_data_manager):
-        """Test environment with no invalid action limit."""
-        # Set invalid action limit to None
-        mock_config.env.invalid_action_limit = None
-        
-        with patch('envs.trading_environment.MarketSimulator'), \
-             patch('envs.trading_environment.PortfolioSimulator'), \
-             patch('envs.trading_environment.ExecutionSimulator'), \
-             patch('envs.trading_environment.RewardSystem'):
-            
-            env = TradingEnvironment(
-                config=mock_config,
-                data_manager=mock_data_manager,
-                logger=logging.getLogger('test')
-            )
-        
-        assert env.max_invalid_actions_per_episode == 1000  # Default fallback
+    # Invalid action limit tests removed - action masking prevents invalid actions
     
     def test_episode_end_handling(self, trading_env):
         """Test episode end handling and summary creation."""

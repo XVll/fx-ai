@@ -198,9 +198,9 @@ def create_data_components(config: Config, log: logging.Logger):
     momentum_scanner = MomentumScanner(
         data_dir=str(Path(config.data.data_dir) / "mlgo"),
         output_dir=f"{config.data.index_dir}/momentum_index",
-        momentum_config=config.momentum_scanning,
-        scoring_config=config.momentum_scoring,
-        session_config=config.session_volume,
+        momentum_config=config.scanner,
+        scoring_config=config.scanner,
+        session_config=config.scanner,
         logger=log
     )
     
@@ -273,10 +273,10 @@ def get_curriculum_symbols(config):
     """Extract all symbols from enabled curriculum stages"""
     symbols = set()
     stages = [
-        config.curriculum.stage_1_beginner,
-        config.curriculum.stage_2_intermediate, 
-        config.curriculum.stage_3_advanced,
-        config.curriculum.stage_4_specialization
+        config.env.curriculum.stage_1,
+        config.env.curriculum.stage_2, 
+        config.env.curriculum.stage_3,
+        config.env.curriculum.stage_4_specialization
     ]
     for stage in stages:
         if stage.enabled:
@@ -300,7 +300,7 @@ def create_metrics_components(config: Config, log: logging.Logger, model: torch.
             wandb_run_name="minimal",
             wandb_tags=["minimal"],
             symbol=primary_symbol,
-            initial_capital=config.env.initial_capital,
+            initial_capital=config.simulation.initial_capital,
             enable_dashboard=False,
             dashboard_port=8050,  # Default port even if disabled
             transmit_interval=1.0
@@ -349,7 +349,7 @@ def create_metrics_components(config: Config, log: logging.Logger, model: torch.
         wandb_run_name=run_name,
         wandb_tags=wandb_tags,
         symbol=primary_symbol,
-        initial_capital=config.env.initial_capital,
+        initial_capital=config.simulation.initial_capital,
         enable_dashboard=config.dashboard.enabled,
         dashboard_port=config.dashboard.port,
         transmit_interval=0.5  # More frequent for trading
@@ -743,10 +743,10 @@ def main():
         if args.symbol:
             # Override all curriculum stages to use this symbol
             stages = [
-                config.curriculum.stage_1_beginner,
-                config.curriculum.stage_2_intermediate,
-                config.curriculum.stage_3_advanced,
-                config.curriculum.stage_4_specialization
+                config.env.curriculum.stage_1,
+                config.env.curriculum.stage_2,
+                config.env.curriculum.stage_3,
+                config.env.curriculum.stage_4_specialization
             ]
             for stage in stages:
                 if stage.enabled:

@@ -100,21 +100,17 @@ studies:
         n_epochs: 4              # Fewer epochs for speed
       
       env:
-        max_episode_steps: 512   # Longer episodes for meaningful trading
-        
-      curriculum:
-        stage_1_beginner:
-          max_cycles: 2          # More cycles per trial for meaningful training
-          max_updates: null         # Quick stage for faster optimization
-        
-        stage_2_intermediate:
-          enabled: false         # Single stage for foundation
-        
-        stage_3_advanced:
-          enabled: false
-        
-        stage_4_specialization:
-          enabled: false
+        max_episode_steps: 256   # Longer episodes for meaningful trading
+        curriculum:
+          stage_1:
+            max_cycles: 2          # More cycles per trial for meaningful training
+            max_updates: null         # Quick stage for faster optimization
+          
+          stage_2:
+            enabled: false         # Single stage for foundation
+          
+          stage_3:
+            enabled: false
       
       wandb:
         enabled: false           # Disable W&B for faster trials  

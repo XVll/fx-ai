@@ -163,7 +163,7 @@ class SharedDashboardState:
     current_activity_score: float = 0.0
     
     # Curriculum learning metrics
-    curriculum_stage: str = "stage_1_beginner"
+    curriculum_stage: str = "stage_1"
     curriculum_progress: float = 0.0
     curriculum_min_quality: float = 0.8
     total_episodes_for_curriculum: int = 0

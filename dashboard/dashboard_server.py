@@ -774,7 +774,7 @@ class DashboardServer:
             volume_ratio = getattr(state, 'volume_ratio', 1.0)
             halt_count = getattr(state, 'halt_count', 0)
             # 3-Component Sniper Curriculum
-            curriculum_stage = getattr(state, 'curriculum_stage', 'stage_1_beginner')
+            curriculum_stage = getattr(state, 'curriculum_stage', 'stage_1')
             total_episodes_curriculum = getattr(state, 'total_episodes_for_curriculum', state.total_episodes)
             
             # 2-component scores from current reset point
@@ -789,15 +789,15 @@ class DashboardServer:
             
             # Determine curriculum stage color
             stage_colors = {
-                'stage_1_beginner': DARK_THEME['accent_green'],
-                'stage_2_intermediate': DARK_THEME['accent_blue'],
-                'stage_3_advanced': DARK_THEME['accent_orange'],
+                'stage_1': DARK_THEME['accent_green'],
+                'stage_2': DARK_THEME['accent_blue'],
+                'stage_3': DARK_THEME['accent_orange'],
                 'stage_4_specialization': DARK_THEME['accent_purple']
             }
             stage_names = {
-                'stage_1_beginner': 'Beginner',
-                'stage_2_intermediate': 'Intermediate', 
-                'stage_3_advanced': 'Advanced',
+                'stage_1': 'Beginner',
+                'stage_2': 'Intermediate', 
+                'stage_3': 'Advanced',
                 'stage_4_specialization': 'Master'
             }
             stage_display = stage_names.get(curriculum_stage, curriculum_stage.replace('_', ' ').title())
@@ -808,9 +808,9 @@ class DashboardServer:
             if progress_pct == 0.0:
                 # Fallback calculation if not received from agent
                 stage_thresholds = {
-                    'stage_1_beginner': 2000,
-                    'stage_2_intermediate': 5000, 
-                    'stage_3_advanced': 8000,
+                    'stage_1': 2000,
+                    'stage_2': 5000, 
+                    'stage_3': 8000,
                     'stage_4_specialization': float('inf')
                 }
                 current_threshold = stage_thresholds.get(curriculum_stage, float('inf'))

@@ -1,10 +1,16 @@
 """
-Pydantic configuration schemas - Single source of truth for all configs
+Cleaned and organized configuration schemas for fx-ai trading system.
+Single source of truth with removed duplicates and unused parameters.
 """
+
+from typing import Dict, List, Optional, Literal, Any
 from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import List, Dict, Any, Optional, Literal
 from enum import Enum
 
+
+# =============================================================================
+# CORE ENUMS
+# =============================================================================
 
 class ActionType(str, Enum):
     """Trading action types"""
@@ -21,304 +27,380 @@ class SessionType(str, Enum):
     CLOSED = "CLOSED"
 
 
+
+
+# =============================================================================
+# MODEL CONFIGURATION
+# =============================================================================
+
 class ModelConfig(BaseModel):
-    """Transformer model configuration"""
+    """Multi-branch transformer model configuration"""
     model_config = ConfigDict(protected_namespaces=())
     
-    # Architecture - optimized for momentum trading
-    d_model: int = 128
-    d_fused: int = 512
-    n_heads: int = 8
-    n_layers: int = 6
-    d_ff: int = 2048
-    dropout: float = 0.1
+    # Core architecture
+    d_model: int = Field(128, description="Model dimension")
+    d_fused: int = Field(512, description="Fused representation dimension")
+    n_heads: int = Field(8, description="Attention heads")
+    n_layers: int = Field(6, description="Transformer layers")
+    d_ff: int = Field(2048, description="Feed-forward dimension")
+    dropout: float = Field(0.1, ge=0.0, le=1.0, description="Dropout rate")
     
-    # Branch-specific heads and layers - balanced for multi-timeframe analysis
-    hf_layers: int = 3
-    mf_layers: int = 3
-    lf_layers: int = 2
-    portfolio_layers: int = 2
-
-    hf_heads: int = 8
-    lf_heads: int = 4
-    mf_heads: int = 8
-    portfolio_heads: int = 4
-
-    # Feature dimensions
-    hf_seq_len: int = 60
-    hf_feat_dim: int = 7  # High-frequency features (1s timeframe) - removed 5 velocity features, added 3 aggregated
-    mf_seq_len: int = 30
-    mf_feat_dim: int = 43  # MF features - using professional pandas/ta library instead of manual calculations (net -2)
-    lf_seq_len: int = 30   # Low-frequency sequence length (daily/session timeframe)
-    lf_feat_dim: int = 19  # LF features - original + LULD + adaptive + session/time context (moved from misnamed "static")
-    portfolio_seq_len: int = 5  # Portfolio history length
-    portfolio_feat_dim: int = 10  # Portfolio features (position, P&L, risk metrics, MFE/MAE)
+    # Branch-specific configuration
+    hf_layers: int = Field(3, description="High-frequency branch layers")
+    mf_layers: int = Field(3, description="Medium-frequency branch layers")
+    lf_layers: int = Field(2, description="Low-frequency branch layers")
+    portfolio_layers: int = Field(2, description="Portfolio branch layers")
     
-    # Action space - Single source of truth
-    action_dim: List[int] = Field(default=[3, 4], description="[action_types, position_sizes]")
-    continuous_action: bool = False
+    hf_heads: int = Field(8, description="High-frequency attention heads")
+    mf_heads: int = Field(8, description="Medium-frequency attention heads")
+    lf_heads: int = Field(4, description="Low-frequency attention heads")
+    portfolio_heads: int = Field(4, description="Portfolio attention heads")
     
-    @field_validator('action_dim')
+    # Feature dimensions (aligned with actual implementation)
+    hf_seq_len: int = Field(60, description="High-frequency sequence length")
+    hf_feat_dim: int = Field(9, description="High-frequency features (corrected)")
+    mf_seq_len: int = Field(30, description="Medium-frequency sequence length")
+    mf_feat_dim: int = Field(43, description="Medium-frequency features")
+    lf_seq_len: int = Field(30, description="Low-frequency sequence length")
+    lf_feat_dim: int = Field(19, description="Low-frequency features")
+    portfolio_seq_len: int = Field(5, description="Portfolio sequence length")
+    portfolio_feat_dim: int = Field(10, description="Portfolio features")
+    
+    # Action space
+    action_dim: List[int] = Field([3, 4], description="[action_types, position_sizes]")
+    
+    @field_validator('action_dim', mode='before')  # noinspection PyNestedDecorators
     @classmethod
-    def validate_action_dim(cls, v):
+    def validate_action_dim(cls, v: Any) -> Any:
         if len(v) != 2:
-            raise ValueError("action_dim must have exactly 2 elements [action_types, position_sizes]")
-        if v[0] != 3:  # BUY, SELL, HOLD
-            raise ValueError("action_types must be 3")
+            raise ValueError("action_dim must have exactly 2 elements")
+        if v[0] != 3:
+            raise ValueError("action_types must be 3 (BUY, SELL, HOLD)")
         return v
 
 
-class RewardConfig(BaseModel):
-    """Percentage-based reward system configuration - all rewards as % of account value"""
-    
-    # Core P&L reward (most important)
-    pnl_coefficient: float = Field(default=100.0, description="P&L scaling: 1% profit = coefficient reward (default: 1% = 1.0 reward)")
-    
-    # Risk management penalties
-    holding_penalty_coefficient: float = Field(default=2.0, description="Holding time penalty: max holding = -coefficient penalty")
-    drawdown_penalty_coefficient: float = Field(default=5.0, description="Drawdown penalty: 1% drawdown = -coefficient penalty") 
-    bankruptcy_penalty_coefficient: float = Field(default=50.0, description="Bankruptcy penalty: fixed large penalty")
-    
-    # MFE/MAE based penalties
-    profit_giveback_penalty_coefficient: float = Field(default=2.0, description="Penalty for giving back MFE profits (reduced from 10.0)")
-    profit_giveback_threshold: float = Field(default=0.3, description="Threshold for profit giveback penalty (30%)")
-    max_drawdown_penalty_coefficient: float = Field(default=15.0, description="Penalty for exceeding MAE thresholds")
-    max_drawdown_threshold_percent: float = Field(default=0.01, description="MAE threshold as % of account (1%)")
-    
-    # Trading behavior bonuses
-    profit_closing_bonus_coefficient: float = Field(default=100.0, description="Bonus for closing profitable trades, scales with profit")
-    
-    # Clean trade bonus (exponential scaling configuration)
-    clean_trade_coefficient: float = Field(default=20.0, description="DEPRECATED: Legacy parameter, use base_multiplier instead")
-    max_clean_drawdown_percent: float = Field(default=0.01, description="DEPRECATED: Legacy parameter, use max_mae_threshold instead")
-    base_multiplier: float = Field(default=5000, description="Base scaling multiplier for clean trade bonus")
-    max_mae_threshold: float = Field(default=0.02, description="Maximum allowed MAE drawdown (2%)")
-    min_gain_threshold: float = Field(default=0.01, description="Minimum gain required for clean trade bonus (1%)")
-    
-    # Trading activity incentives
-    activity_bonus_per_trade: float = Field(default=0.025, description="Bonus for each trading action to encourage activity")
-    hold_penalty_per_step: float = Field(default=0.01, description="Small penalty per HOLD action to create opportunity cost")
-    
-    # Thresholds and limits
-    max_holding_time_steps: int = Field(default=180, description="Maximum holding time before penalties (3 minutes)")
-    
-    # Component enable/disable flags
-    enable_pnl_reward: bool = Field(default=True, description="Enable P&L reward component")
-    enable_holding_penalty: bool = Field(default=True, description="Enable holding time penalty")
-    enable_drawdown_penalty: bool = Field(default=True, description="Enable drawdown penalty")
-    enable_profit_giveback_penalty: bool = Field(default=True, description="Enable profit giveback penalty (MFE protection)")
-    enable_max_drawdown_penalty: bool = Field(default=True, description="Enable max drawdown penalty (MAE protection)")
-    enable_profit_closing_bonus: bool = Field(default=True, description="Enable profit closing bonus")
-    enable_clean_trade_bonus: bool = Field(default=True, description="Enable clean trade bonus")
-    enable_trading_activity_bonus: bool = Field(default=True, description="Enable trading activity bonus")
-    enable_inactivity_penalty: bool = Field(default=True, description="Enable inactivity penalty")
-
-
-class EnvConfig(BaseModel):
-    """Trading environment configuration"""
-    # Note: symbol is now determined by curriculum stages, not configured here
-    
-    # Capital and risk - optimized for momentum trading
-    initial_capital: float = Field(default=25000.0, description="Starting capital")
-    max_position_size: float = Field(default=1.0, description="Max position as fraction of capital")
-    leverage: float = Field(default=1.0, description="Trading leverage")
-    
-    # Trading costs - realistic for retail trading
-    commission_rate: float = Field(default=0.001, description="Trading commission rate")
-    slippage_rate: float = Field(default=0.0005, description="Slippage rate")
-    min_transaction_amount: float = Field(default=100.0, description="Minimum trade size")
-    
-    # Risk limits - appropriate for momentum strategies
-    max_drawdown: float = Field(default=0.3, description="Maximum allowed drawdown")
-    stop_loss_pct: float = Field(default=0.15, description="Stop loss percentage")
-    daily_loss_limit: float = Field(default=0.25, description="Daily loss limit as fraction of capital")
-    
-    # Invalid action handling
-    invalid_action_limit: Optional[int] = Field(default=None, description="Max invalid actions before termination")
-    max_invalid_actions_per_episode: Optional[int] = Field(default=None, description="Alias for invalid_action_limit")
-    
-    # Reward configuration
-    reward: RewardConfig = Field(default_factory=RewardConfig)
-    
-    # Features (for feature manager)
-    feature_update_interval: int = Field(default=1, description="Steps between feature updates")
-    
-    # Episode settings - optimized for momentum patterns
-    max_episode_steps: int = Field(default=256, description="Natural episode length - no penalty when reached")
-    max_training_steps: Optional[int] = Field(default=None, description="Training step limit with penalty if reached")
-    max_steps: int = Field(default=1000, description="Legacy alias - maps to max_episode_steps")
-    early_stop_loss_threshold: float = Field(default=0.85, description="Stop if equity < threshold * initial")
-    random_reset: bool = Field(default=True, description="Random episode start within session")
-    max_episode_loss_percent: float = Field(default=0.15, description="Max loss percentage before termination")
-    bankruptcy_threshold_factor: float = Field(default=0.01, description="Bankruptcy threshold as fraction of initial capital")
-    
-    # Environment settings
-    render_mode: Literal["human", "logs", "none"] = Field(default="none", description="Rendering mode")
-    training_mode: bool = Field(default=True, description="Whether in training mode")
-    
-    @field_validator('max_invalid_actions_per_episode', mode='before')
-    @classmethod
-    def sync_invalid_action_limit(cls, v, info):
-        """Keep max_invalid_actions_per_episode in sync with invalid_action_limit"""
-        if v is None and info.data.get('invalid_action_limit') is not None:
-            return info.data['invalid_action_limit']
-        return v
-    
-    @field_validator('max_steps', mode='before')
-    @classmethod
-    def sync_max_steps(cls, v, info):
-        """Keep max_steps in sync with max_episode_steps (legacy compatibility)"""
-        # max_steps is legacy alias for max_episode_steps
-        if v is None:
-            return info.data.get('max_episode_steps', 2048)
-        return v
-
-
-class DataConfig(BaseModel):
-    """Data source configuration"""
-    provider: Literal["databento"] = "databento"
-    
-    # Databento specific
-    data_dir: str = Field(default="dnb", description="Data directory")
-    # Note: symbols are now determined by curriculum stages, not configured here
-    
-    # Data types to load
-    load_trades: bool = True
-    load_quotes: bool = True
-    load_order_book: bool = True
-    load_ohlcv: bool = True
-    
-    # Date range
-    start_date: Optional[str] = Field(default=None, description="Start date YYYY-MM-DD")
-    end_date: Optional[str] = Field(default=None, description="End date YYYY-MM-DD")
-    
-    # Performance
-    cache_enabled: bool = True
-    cache_dir: str = "cache"
-    preload_days: int = Field(default=2, description="Days to preload for session features")
-    
-    # Index configuration
-    index_dir: str = Field(default="cache/indices", description="Directory for momentum indices")
-    auto_build_index: bool = Field(default=True, description="Auto-build index if missing")
-
+# =============================================================================
+# TRAINING CONFIGURATION
+# =============================================================================
 
 class TrainingConfig(BaseModel):
-    """Training configuration"""
-    # Basic settings
-    device: str = Field(default="cuda", description="Training device")
-    seed: int = Field(default=42, description="Random seed")
+    """PPO training configuration"""
     
-    # PPO hyperparameters - optimized for momentum trading
-    learning_rate: float = 1.5e-4
-    batch_size: int = 64
-    n_epochs: int = 8
-    gamma: float = 0.99
-    gae_lambda: float = 0.95
-    clip_epsilon: float = 0.15
-    value_coef: float = 0.5
-    entropy_coef: float = 0.01
-    max_grad_norm: float = 0.3
+    # Core settings
+    device: str = Field("cuda", description="Training device")
+    seed: int = Field(42, description="Random seed")
     
-    # Rollout settings - larger for stability
-    rollout_steps: int = Field(default=2048, description="Steps per rollout")
+    # PPO hyperparameters
+    learning_rate: float = Field(1.5e-4, gt=0.0, description="Learning rate")
+    batch_size: int = Field(64, gt=0, description="Batch size")
+    n_epochs: int = Field(8, gt=0, description="Training epochs per update")
+    gamma: float = Field(0.99, ge=0.0, le=1.0, description="Discount factor")
+    gae_lambda: float = Field(0.95, ge=0.0, le=1.0, description="GAE lambda")
+    clip_epsilon: float = Field(0.15, gt=0.0, description="PPO clip range")
+    value_coef: float = Field(0.5, ge=0.0, description="Value function coefficient")
+    entropy_coef: float = Field(0.01, ge=0.0, description="Entropy coefficient")
+    max_grad_norm: float = Field(0.3, gt=0.0, description="Gradient clipping")
     
-    # Learning rate schedule
-    use_lr_annealing: bool = True
-    lr_annealing_factor: float = 0.7
-    lr_annealing_patience: int = 50
-    min_learning_rate: float = 1e-6
+    # Rollout settings
+    rollout_steps: int = Field(2048, gt=0, description="Steps per rollout")
     
-    # Continuous training - production ready
-    continue_training: bool = False
-    checkpoint_interval: int = Field(default=50, description="Updates between checkpoints")
-    keep_best_n_models: int = Field(default=5, description="Number of best models to keep")
+    # Learning rate scheduling
+    use_lr_annealing: bool = Field(True, description="Enable LR annealing")
+    lr_annealing_factor: float = Field(0.7, description="LR decay factor")
+    lr_annealing_patience: int = Field(50, description="Patience for LR decay")
+    min_learning_rate: float = Field(1e-6, description="Minimum learning rate")
     
-    # Early stopping - more patient for momentum learning
-    early_stop_patience: int = Field(default=300, description="Updates without improvement before stopping")
-    early_stop_min_delta: float = Field(default=0.01, description="Minimum improvement to reset patience")
+    # Model management
+    continue_training: bool = Field(False, description="Continue from best model")
+    checkpoint_interval: int = Field(50, description="Updates between checkpoints")
+    keep_best_n_models: int = Field(5, description="Number of best models to keep")
+    
+    # Early stopping
+    early_stop_patience: int = Field(300, description="Updates without improvement")
+    early_stop_min_delta: float = Field(0.01, description="Minimum improvement")
     
     # Evaluation
-    eval_frequency: int = Field(default=5, description="Updates between evaluations")
-    eval_episodes: int = Field(default=10, description="Episodes for evaluation")
-    
-    # Model selection metric
-    best_model_metric: str = Field(default="mean_reward", description="Metric for model selection")
+    eval_frequency: int = Field(5, description="Updates between evaluations")
+    eval_episodes: int = Field(10, description="Episodes for evaluation")
+    best_model_metric: str = Field("mean_reward", description="Model selection metric")
 
+
+# =============================================================================
+# REWARD SYSTEM CONFIGURATION
+# =============================================================================
+
+class RewardConfig(BaseModel):
+    """Modular reward system configuration"""
+    
+    # Core PnL rewards
+    pnl_coefficient: float = Field(100.0, description="P&L scaling coefficient")
+    
+    # Risk management
+    holding_penalty_coefficient: float = Field(2.0, description="Holding time penalty")
+    drawdown_penalty_coefficient: float = Field(5.0, description="Drawdown penalty")
+    bankruptcy_penalty_coefficient: float = Field(50.0, description="Bankruptcy penalty")
+    
+    # MFE/MAE penalties
+    profit_giveback_penalty_coefficient: float = Field(2.0, description="Profit giveback penalty")
+    profit_giveback_threshold: float = Field(0.3, description="Giveback threshold")
+    max_drawdown_penalty_coefficient: float = Field(15.0, description="Max drawdown penalty")
+    max_drawdown_threshold_percent: float = Field(0.01, description="MAE threshold")
+    
+    # Trading bonuses
+    profit_closing_bonus_coefficient: float = Field(100.0, description="Profit closing bonus")
+    base_multiplier: float = Field(5000, description="Clean trade base multiplier")
+    max_mae_threshold: float = Field(0.02, description="Max allowed MAE")
+    min_gain_threshold: float = Field(0.01, description="Min gain for clean trade")
+    
+    # Activity incentives
+    activity_bonus_per_trade: float = Field(0.025, description="Trading activity bonus")
+    hold_penalty_per_step: float = Field(0.01, description="Hold action penalty")
+    
+    # Limits
+    max_holding_time_steps: int = Field(180, description="Max holding time")
+    
+    # Component toggles
+    enable_pnl_reward: bool = Field(True, description="Enable P&L reward")
+    enable_holding_penalty: bool = Field(True, description="Enable holding penalty")
+    enable_drawdown_penalty: bool = Field(True, description="Enable drawdown penalty")
+    enable_profit_giveback_penalty: bool = Field(True, description="Enable giveback penalty")
+    enable_max_drawdown_penalty: bool = Field(True, description="Enable max drawdown penalty")
+    enable_profit_closing_bonus: bool = Field(True, description="Enable profit bonus")
+    enable_clean_trade_bonus: bool = Field(True, description="Enable clean trade bonus")
+    enable_trading_activity_bonus: bool = Field(True, description="Enable activity bonus")
+    enable_inactivity_penalty: bool = Field(True, description="Enable inactivity penalty")
+
+
+# =============================================================================
+# ENVIRONMENT CONFIGURATION
+# =============================================================================
+
+class EnvironmentConfig(BaseModel):
+    """Trading environment settings"""
+    
+    # Episode control
+    max_episode_steps: int = Field(256, gt=0, description="Maximum steps per episode")
+    
+    # Termination conditions
+    early_stop_loss_threshold: float = Field(0.85, description="Early stop threshold")
+    max_episode_loss_percent: float = Field(0.15, description="Max episode loss")
+    bankruptcy_threshold_factor: float = Field(0.01, description="Bankruptcy threshold")
+    
+    # Environment settings
+    random_reset: bool = Field(True, description="Random episode start")
+    render_mode: Literal["human", "logs", "none"] = Field("none", description="Render mode")
+    feature_update_interval: int = Field(1, description="Feature update interval")
+    
+    # Reward system
+    reward: RewardConfig = Field(default_factory=RewardConfig)
+    
+    # Curriculum learning
+    curriculum: 'CurriculumConfig' = Field(default_factory=lambda: CurriculumConfig())
+
+
+# =============================================================================
+# DATA CONFIGURATION
+# =============================================================================
+
+class DataConfig(BaseModel):
+    """Data source and processing configuration"""
+    
+    # Provider settings
+    provider: Literal["databento"] = Field("databento", description="Data provider")
+    data_dir: str = Field("dnb", description="Data directory")
+    
+    # Data types
+    load_trades: bool = Field(True, description="Load trade data")
+    load_quotes: bool = Field(True, description="Load quote data")
+    load_order_book: bool = Field(True, description="Load order book data")
+    load_ohlcv: bool = Field(True, description="Load OHLCV data")
+    
+    # Caching
+    cache_enabled: bool = Field(True, description="Enable data caching")
+    cache_dir: str = Field("cache", description="Cache directory")
+    preload_days: int = Field(2, description="Days to preload")
+    
+    # Index configuration
+    index_dir: str = Field("cache/indices", description="Index directory")
+    auto_build_index: bool = Field(True, description="Auto-build index")
+
+
+# =============================================================================
+# SIMULATION CONFIGURATION
+# =============================================================================
 
 class SimulationConfig(BaseModel):
-    """Market simulation configuration"""
-    # Execution simulation - realistic for retail momentum trading
-    execution_delay_ms: int = Field(default=100, description="Order execution delay")
-    partial_fill_probability: float = Field(default=0.0, description="Probability of partial fills")
-    allow_shorting: bool = Field(default=False, description="Allow short selling (default: long-only)")
+    """Market simulation and trading parameters"""
     
-    # Latency simulation - realistic retail latency
-    mean_latency_ms: float = Field(default=100.0, description="Mean execution latency")
-    latency_std_dev_ms: float = Field(default=20.0, description="Latency standard deviation")
+    # Capital settings
+    initial_capital: float = Field(25000.0, gt=0.0, description="Starting capital")
+    max_position_value_ratio: float = Field(1.0, ge=0.0, le=1.0, description="Max position as fraction of equity")
+    leverage: float = Field(1.0, gt=0.0, description="Trading leverage")
     
-    # Slippage parameters - appropriate for low-float stocks
-    base_slippage_bps: float = Field(default=10.0, description="Base slippage in basis points")
-    size_impact_slippage_bps_per_unit: float = Field(default=0.2, description="Size impact slippage")
-    max_total_slippage_bps: float = Field(default=100.0, description="Max total slippage")
+    # Trading costs
+    commission_rate: float = Field(0.001, ge=0.0, description="Commission rate")
+    slippage_rate: float = Field(0.0005, ge=0.0, description="Slippage rate")
+    min_transaction_amount: float = Field(100.0, ge=0.0, description="Min trade size")
     
-    # Cost parameters - realistic retail trading costs
-    commission_per_share: float = Field(default=0.005, description="Commission per share")
-    fee_per_share: float = Field(default=0.001, description="Fee per share")
-    min_commission_per_order: float = Field(default=1.0, description="Minimum commission per order")
-    max_commission_pct_of_value: float = Field(default=0.5, description="Max commission as % of trade value")
+    # Risk limits
+    max_drawdown: float = Field(0.3, ge=0.0, le=1.0, description="Max allowed drawdown")
+    stop_loss_pct: float = Field(0.15, ge=0.0, le=1.0, description="Stop loss percentage")
+    daily_loss_limit: float = Field(0.25, ge=0.0, le=1.0, description="Daily loss limit")
+    
+    # Execution settings
+    execution_delay_ms: int = Field(100, description="Order execution delay")
+    partial_fill_probability: float = Field(0.0, description="Partial fill probability")
+    allow_shorting: bool = Field(False, description="Allow short selling")
+    
+    # Latency simulation
+    mean_latency_ms: float = Field(100.0, description="Mean execution latency")
+    latency_std_dev_ms: float = Field(20.0, description="Latency std dev")
+    
+    # Slippage parameters
+    base_slippage_bps: float = Field(10.0, description="Base slippage (bps)")
+    size_impact_slippage_bps_per_unit: float = Field(0.2, description="Size impact slippage")
+    max_total_slippage_bps: float = Field(100.0, description="Max total slippage")
+    
+    # Cost parameters
+    commission_per_share: float = Field(0.005, description="Commission per share")
+    fee_per_share: float = Field(0.001, description="Fee per share")
+    min_commission_per_order: float = Field(1.0, description="Min commission")
+    max_commission_pct_of_value: float = Field(0.5, description="Max commission %")
     
     # Market impact
-    market_impact_model: Literal["linear", "square_root", "none"] = "linear"
-    market_impact_coefficient: float = 0.0001
+    market_impact_model: Literal["linear", "square_root", "none"] = Field("linear")
+    market_impact_coefficient: float = Field(0.0001, description="Market impact coeff")
     
     # Spread modeling
-    spread_model: Literal["fixed", "dynamic", "historical"] = "historical"
-    fixed_spread_bps: float = Field(default=10.0, description="Fixed spread in basis points")
+    spread_model: Literal["fixed", "dynamic", "historical"] = Field("historical")
+    fixed_spread_bps: float = Field(10.0, description="Fixed spread (bps)")
     
-    # Random start for training - high randomization for momentum patterns
-    random_start_prob: float = Field(default=0.95, description="Probability of random episode start")
-    warmup_steps: int = Field(default=60, description="Steps to warmup features before trading")
+    # Episode randomization
+    random_start_prob: float = Field(0.95, description="Random start probability")
+    warmup_steps: int = Field(60, description="Warmup steps")
     
-    # Portfolio configuration
-    initial_cash: float = Field(default=25000.0, description="Initial portfolio cash")
-    max_position_value_ratio: float = Field(default=1.0, description="Max position value as ratio of portfolio")
-    max_position_holding_seconds: Optional[int] = Field(default=None, description="Max seconds to hold a position")
+    # Portfolio settings  
+    max_position_holding_seconds: Optional[int] = Field(None, description="Max holding time")
 
+
+# =============================================================================
+# CURRICULUM CONFIGURATION
+# =============================================================================
+
+class CurriculumStageConfig(BaseModel):
+    """Single curriculum stage configuration"""
+    
+    enabled: bool = Field(True, description="Stage enabled")
+    symbols: List[str] = Field(default_factory=list, description="Training symbols")
+    date_range: List[Optional[str]] = Field([None, None], description="Date range")
+    day_score_range: List[float] = Field([0.0, 1.0], description="Day quality range")
+    roc_range: List[float] = Field([0.0, 1.0], description="ROC score range")
+    activity_range: List[float] = Field([0.0, 1.0], description="Activity score range")
+    
+    # Stage transition conditions
+    max_updates: Optional[int] = Field(None, description="Max updates before transition")
+    max_episodes: Optional[int] = Field(None, description="Max episodes before transition")
+    max_cycles: Optional[int] = Field(None, description="Max cycles before transition")
+    
+    @field_validator('roc_range', 'activity_range', 'day_score_range', mode='before')  # noinspection PyNestedDecorators
+    @classmethod
+    def validate_ranges(cls, v: Any) -> Any:
+        if len(v) != 2 or v[0] >= v[1] or not (0 <= v[0] <= 1) or not (0 <= v[1] <= 1):
+            raise ValueError("Range must be [min, max] with 0 <= min < max <= 1")
+        return v
+
+
+class CurriculumConfig(BaseModel):
+    """Curriculum learning configuration"""
+    
+    stage_1: CurriculumStageConfig = Field(
+        default_factory=lambda: CurriculumStageConfig(
+            day_score_range=[0.7, 1.0],
+            roc_range=[0.05, 1.0],
+            max_updates=500
+        )
+    )
+    
+    stage_2: CurriculumStageConfig = Field(
+        default_factory=lambda: CurriculumStageConfig(
+            day_score_range=[0.5, 0.9],
+            roc_range=[0.6, 1.0],
+            activity_range=[0.3, 1.0],
+            max_updates=800
+        )
+    )
+    
+    stage_3: CurriculumStageConfig = Field(
+        default_factory=lambda: CurriculumStageConfig(
+            day_score_range=[0.3, 0.7],
+            roc_range=[0.4, 1.0],
+            activity_range=[0.2, 1.0]
+        )
+    )
+
+
+# =============================================================================
+# SCANNER CONFIGURATION
+# =============================================================================
+
+class ScannerConfig(BaseModel):
+    """Consolidated scanner configuration"""
+    
+    # Momentum scanning
+    min_daily_move: float = Field(0.10, description="Min 10% intraday movement")
+    min_volume_multiplier: float = Field(2.0, description="Min 2x average volume")
+    max_daily_move: Optional[float] = Field(None, description="Max daily move (uncapped)")
+    max_volume_multiplier: Optional[float] = Field(None, description="Max volume (uncapped)")
+    
+    # Momentum scoring
+    roc_lookback_minutes: int = Field(5, description="ROC calculation window")
+    activity_lookback_minutes: int = Field(10, description="Activity calculation window")
+    min_reset_points: int = Field(60, description="Min reset points per day")
+    roc_weight: float = Field(0.6, description="ROC score weight")
+    activity_weight: float = Field(0.4, description="Activity score weight")
+    
+    # Session volume calculations
+    premarket_start: str = Field("04:00", description="Pre-market start")
+    premarket_end: str = Field("09:30", description="Pre-market end")
+    regular_start: str = Field("09:30", description="Regular market start")
+    regular_end: str = Field("16:00", description="Regular market end")
+    postmarket_start: str = Field("16:00", description="Post-market start")
+    postmarket_end: str = Field("20:00", description="Post-market end")
+    volume_window_days: int = Field(10, description="Volume baseline window")
+    use_session_specific_baselines: bool = Field(True, description="Session-specific baselines")
+
+
+# =============================================================================
+# LOGGING AND MONITORING
+# =============================================================================
 
 class LoggingConfig(BaseModel):
     """Logging configuration"""
-    level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     
-    # Console output
-    console_enabled: bool = True
-    console_format: str = "simple"  # "simple" or "detailed"
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field("INFO")
+    console_enabled: bool = Field(True, description="Console logging")
+    console_format: str = Field("simple", description="Console format")
+    file_enabled: bool = Field(True, description="File logging")
+    log_dir: str = Field("logs", description="Log directory")
+    log_interval: int = Field(10, description="Metric log interval")
     
-    # File output
-    file_enabled: bool = True
-    log_dir: str = "logs"
-    
-    # Metrics logging
-    log_interval: int = Field(default=10, description="Steps between metric logs")
-    
-    # Component-specific logging
-    log_rewards: bool = True
-    log_actions: bool = True
-    log_features: bool = False  # Can be verbose
-    log_portfolio: bool = True
+    # Component logging
+    log_rewards: bool = Field(True, description="Log rewards")
+    log_actions: bool = Field(True, description="Log actions")
+    log_features: bool = Field(False, description="Log features")
+    log_portfolio: bool = Field(True, description="Log portfolio")
 
 
 class WandbConfig(BaseModel):
     """Weights & Biases configuration"""
-    enabled: bool = True
-    project: str = "fx-ai-momentum"
-    entity: Optional[str] = None
     
-    # Run settings
-    name: Optional[str] = Field(default=None, description="Run name (auto-generated if None)")
-    tags: List[str] = Field(default_factory=list)
-    notes: Optional[str] = None
+    enabled: bool = Field(True, description="Enable W&B")
+    project: str = Field("fx-ai-momentum", description="Project name")
+    entity: Optional[str] = Field(None, description="W&B entity")
+    name: Optional[str] = Field(None, description="Run name")
+    tags: List[str] = Field(default_factory=list, description="Tags")
+    notes: Optional[str] = Field(None, description="Run notes")
     
-    # Logging settings
     log_frequency: Dict[str, int] = Field(
         default_factory=lambda: {
             "training": 1,
@@ -328,186 +410,20 @@ class WandbConfig(BaseModel):
         }
     )
     
-    # What to save
-    save_code: bool = True
-    save_model: bool = True
-
-
-class MomentumScanningConfig(BaseModel):
-    """Momentum day scanning configuration - simplified without direction"""
-    # Day selection criteria
-    min_daily_move: float = Field(default=0.10, description="Minimum 10% intraday movement")
-    min_volume_multiplier: float = Field(default=2.0, description="Minimum 2x average volume")
-    max_daily_move: Optional[float] = Field(default=None, description="Remove cap - capture all volatility")
-    max_volume_multiplier: Optional[float] = Field(default=None, description="Remove cap - capture all volume spikes")
-
-
-
-
-class SessionVolumeConfig(BaseModel):
-    """Session-aware volume calculations"""
-    # Market sessions for volume profiling
-    premarket_start: str = Field(default="04:00", description="Pre-market start time")
-    premarket_end: str = Field(default="09:30", description="Pre-market end time")
-    regular_start: str = Field(default="09:30", description="Regular market start time")
-    regular_end: str = Field(default="16:00", description="Regular market end time")
-    postmarket_start: str = Field(default="16:00", description="Post-market start time")
-    postmarket_end: str = Field(default="20:00", description="Post-market end time")
-    
-    # Volume baseline calculation
-    volume_window_days: int = Field(default=10, description="Days for volume baseline")
-    use_session_specific_baselines: bool = Field(default=True, description="Separate volume baselines per session")
-
-
-class ProgressiveEpisodeConfig(BaseModel):
-    """Progressive episode length configuration for sniper training"""
-    # Stage-based episode lengths (steps)
-    stage_1_length: int = Field(default=256, description="Stage 1: Basic entry/exit (4.3 min)")
-    stage_2_length: int = Field(default=512, description="Stage 2: Momentum riding (8.5 min)")
-    stage_3_length: int = Field(default=768, description="Stage 3: Full cycles (12.8 min)")
-    stage_4_length: int = Field(default=1024, description="Stage 4: Complex strategies (17 min)")
-    
-    # Batch sizes for each stage (reduced for more responsive training)
-    stage_1_batch_size: int = Field(default=2048, description="Stage 1 batch size (~34 min)")
-    stage_2_batch_size: int = Field(default=4096, description="Stage 2 batch size (~68 min)")
-    stage_3_batch_size: int = Field(default=6144, description="Stage 3 batch size (~102 min)")
-    stage_4_batch_size: int = Field(default=8192, description="Stage 4 batch size (~136 min)")
-    
-    # Offset strategies
-    stage_1_offset_ratio: float = Field(default=1.0, description="Stage 1: No overlap")
-    stage_2_offset_ratio: float = Field(default=1.0, description="Stage 2: No overlap")
-    stage_3_offset_ratio: float = Field(default=0.75, description="Stage 3: 25% overlap")
-    stage_4_offset_ratio: float = Field(default=0.75, description="Stage 4: 25% overlap")
-
-
-
-
-class CurriculumStageConfig(BaseModel):
-    """Configuration for a curriculum training stage with symbol/day selection"""
-    enabled: bool = Field(default=True, description="Whether this stage is enabled")
-    
-    # Symbol and date selection
-    symbols: List[str] = Field(default_factory=list, description="List of symbols to train on (empty = all)")
-    date_range: List[Optional[str]] = Field(default=[None, None], description="Date range [start, end] in YYYY-MM-DD format")
-    day_score_range: List[float] = Field(default=[0.0, 1.0], description="Day quality score range [min, max]")
-    
-    # Direct range configuration for reset point selection
-    roc_range: List[float] = Field(default=[0.0, 1.0], description="ROC score range [min, max]")
-    activity_range: List[float] = Field(default=[0.0, 1.0], description="Activity score range [min, max]")
-    
-    # Switch conditions - if any is set, switch when first condition is met
-    max_updates: Optional[int] = Field(default=None, description="Max updates before switching")
-    max_episodes: Optional[int] = Field(default=None, description="Max episodes before switching")
-    max_cycles: Optional[int] = Field(default=None, description="Max cycles (full passes through reset points)")
-    
-    @field_validator('roc_range', 'activity_range', 'day_score_range')
-    @classmethod
-    def validate_ranges(cls, v):
-        if len(v) != 2 or v[0] >= v[1] or not (0 <= v[0] <= 1) or not (0 <= v[1] <= 1):
-            raise ValueError("Range must be [min, max] with 0 <= min < max <= 1")
-        return v
-    
-    @field_validator('date_range')
-    @classmethod
-    def validate_date_range(cls, v):
-        if len(v) != 2:
-            raise ValueError("Date range must be [start, end]")
-        # Allow None values for open-ended ranges
-        return v
-
-
-
-
-class MomentumScoringConfig(BaseModel):
-    """Configuration for momentum scoring system - directional ROC and activity scores"""
-    
-    # ROC scoring  
-    roc_lookback_minutes: int = Field(default=5, description="Minutes for ROC calculation")
-    
-    # Activity scoring
-    activity_lookback_minutes: int = Field(default=10, description="Minutes for volume rolling average")
-    
-    # Reset point generation
-    min_reset_points: int = Field(default=60, description="Minimum reset points per day")
-    
-    # Weights for combined scoring
-    roc_weight: float = Field(default=0.6, description="ROC score weight")
-    activity_weight: float = Field(default=0.4, description="Activity score weight")
-
-
-class CurriculumConfig(BaseModel):
-    """Range-based curriculum learning configuration"""
-    
-    # Momentum scoring configuration
-    scoring: MomentumScoringConfig = Field(default_factory=MomentumScoringConfig)
-    
-    # Training stages with direct range assignments
-    stage_1_beginner: CurriculumStageConfig = Field(
-        default=CurriculumStageConfig(
-            enabled=True,
-            symbols=[],  # Empty = all symbols
-            date_range=[None, None],  # None = all dates
-            day_score_range=[0.7, 1.0],  # High quality days for beginners
-            roc_range=[0.05, 1.0],
-            activity_range=[0.0, 1.0],
-            max_updates=500,  # 500 updates then switch
-            max_episodes=None,
-            max_cycles=None
-        )
-    )
-    stage_2_intermediate: CurriculumStageConfig = Field(
-        default=CurriculumStageConfig(
-            enabled=True,
-            symbols=[],
-            date_range=[None, None],
-            day_score_range=[0.5, 0.9],  # Medium quality days
-            roc_range=[0.6, 1.0],
-            activity_range=[0.3, 1.0],
-            max_updates=800,
-            max_episodes=None,
-            max_cycles=None
-        )
-    )
-    stage_3_advanced: CurriculumStageConfig = Field(
-        default=CurriculumStageConfig(
-            enabled=True,
-            symbols=[],
-            date_range=[None, None],
-            day_score_range=[0.3, 0.7],  # Lower quality, more challenging
-            roc_range=[0.4, 1.0],
-            activity_range=[0.2, 1.0],
-            max_updates=None,  # No limit - train indefinitely
-            max_episodes=None,
-            max_cycles=None
-        )
-    )
-    stage_4_specialization: CurriculumStageConfig = Field(
-        default=CurriculumStageConfig(
-            enabled=False,  # Disabled by default
-            symbols=[],
-            date_range=[None, None],
-            day_score_range=[0.0, 1.0],  # All days
-            roc_range=[0.0, 1.0],
-            activity_range=[0.0, 1.0],
-            max_updates=None,
-            max_episodes=None,
-            max_cycles=None
-        )
-    )
+    save_code: bool = Field(True, description="Save code")
+    save_model: bool = Field(True, description="Save model")
 
 
 class DashboardConfig(BaseModel):
     """Live dashboard configuration"""
-    enabled: bool = True
-    port: int = 8051
-    update_interval: float = Field(default=1.0, description="Seconds between updates")
     
-    # Display settings
-    max_episodes_shown: int = 20
-    max_trades_shown: int = 100
-    chart_height: int = 400
+    enabled: bool = Field(True, description="Enable dashboard")
+    port: int = Field(8051, description="Dashboard port")
+    update_interval: float = Field(1.0, description="Update interval")
+    max_episodes_shown: int = Field(20, description="Max episodes displayed")
+    max_trades_shown: int = Field(100, description="Max trades displayed")
+    chart_height: int = Field(400, description="Chart height")
     
-    # Features to show in heatmap
     heatmap_features: List[str] = Field(
         default_factory=lambda: [
             "price_velocity", "tape_imbalance", "spread_compression",
@@ -516,44 +432,42 @@ class DashboardConfig(BaseModel):
     )
 
 
+# =============================================================================
+# MAIN CONFIGURATION
+# =============================================================================
+
 class Config(BaseModel):
-    """Root configuration object"""
-    model_config = ConfigDict(extra="forbid")  # Fail on unknown fields
+    """Main configuration container"""
+    model_config = ConfigDict(extra="forbid")
     
-    # All sub-configs
+    # Core components
     model: ModelConfig = Field(default_factory=ModelConfig)
-    env: EnvConfig = Field(default_factory=EnvConfig)
-    data: DataConfig = Field(default_factory=DataConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
+    env: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
+    data: DataConfig = Field(default_factory=DataConfig)
     simulation: SimulationConfig = Field(default_factory=SimulationConfig)
+    
+    # Scanner configuration
+    scanner: ScannerConfig = Field(default_factory=ScannerConfig)
+    
+    # Monitoring
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     wandb: WandbConfig = Field(default_factory=WandbConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     
-    # Momentum scanning configurations
-    momentum_scanning: MomentumScanningConfig = Field(default_factory=MomentumScanningConfig)
-    momentum_scoring: MomentumScoringConfig = Field(default_factory=MomentumScoringConfig)
-    session_volume: SessionVolumeConfig = Field(default_factory=SessionVolumeConfig)
-    progressive_episodes: ProgressiveEpisodeConfig = Field(default_factory=ProgressiveEpisodeConfig)
-    curriculum: CurriculumConfig = Field(default_factory=CurriculumConfig)
-    
-    # Experiment settings
-    experiment_name: str = Field(default="momentum_training", description="Experiment identifier")
-    mode: Literal["train", "eval", "backtest"] = "train"
+    # Runtime settings
+    experiment_name: str = Field("momentum_training", description="Experiment name")
+    mode: Literal["train", "eval", "backtest"] = Field("train", description="Execution mode")
     
     @classmethod
     def load(cls, overrides_path: Optional[str] = None) -> "Config":
         """Load config with optional YAML overrides"""
-        # Start with default config
         config = cls()
         
-        # Apply overrides if provided
         if overrides_path:
             import yaml
             with open(overrides_path) as f:
                 overrides = yaml.safe_load(f)
-            
-            # Update config with overrides
             config = config.model_copy(update=overrides, deep=True)
         
         return config

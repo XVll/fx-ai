@@ -93,14 +93,7 @@ class TradingEnvironment(gym.Env):
         # Environment configuration
         env_cfg = self.config.env
         self.primary_asset: Optional[str] = None
-        # Set invalid action limit with explicit None check
-        if hasattr(env_cfg, 'invalid_action_limit') and env_cfg.invalid_action_limit is not None:
-            self.max_invalid_actions_per_episode: int = env_cfg.invalid_action_limit
-        else:
-            self.max_invalid_actions_per_episode: int = 1000
-        
-        # Debug log to ensure it's set correctly
-        # self.logger.debug(f"max_invalid_actions_per_episode set to: {self.max_invalid_actions_per_episode}")
+        # Action masking eliminates invalid actions, so no limit needed
         self.bankruptcy_threshold_factor: float = 0.1
         # Fixed max loss threshold - 25% loss (6.25k out of 25k)
         self.max_session_loss_percentage: float = 0.25
@@ -137,7 +130,7 @@ class TradingEnvironment(gym.Env):
         self.max_steps: int = config.env.max_episode_steps  # Legacy compatibility
         self.invalid_action_count_episode: int = 0
         self.episode_total_reward: float = 0.0
-        self.initial_capital_for_session: float = self.config.env.initial_capital  # Initialize with config value
+        self.initial_capital_for_session: float = self.config.simulation.initial_capital  # Initialize with config value
         self.episode_number: int = 0
         self.episode_start_time: float = 0.0
 
@@ -637,7 +630,7 @@ class TradingEnvironment(gym.Env):
         # Ensure initial_capital_for_session is not None
         if self.initial_capital_for_session is None:
             # self.logger.debug(f"DEBUG: Initial capital was None, using config value")
-            self.initial_capital_for_session = self.config.env.initial_capital
+            self.initial_capital_for_session = self.config.simulation.initial_capital
         # self.logger.debug(f"DEBUG: Setting episode peak equity to {self.initial_capital_for_session}")
         self.episode_peak_equity = self.initial_capital_for_session
         # self.logger.debug(f"DEBUG: Episode peak equity set")
@@ -999,13 +992,6 @@ class TradingEnvironment(gym.Env):
         elif not market_advanced:
             terminated = True
             termination_reason = TerminationReasonEnum.END_OF_SESSION_DATA
-
-        # Invalid action limit (skip check if no limit is set)
-        elif (hasattr(self, 'max_invalid_actions_per_episode') and 
-              self.max_invalid_actions_per_episode is not None and 
-              self.invalid_action_count_episode >= self.max_invalid_actions_per_episode):
-            terminated = True
-            termination_reason = TerminationReasonEnum.INVALID_ACTION_LIMIT_REACHED
 
         # Natural episode end (no penalty)
         elif self.max_episode_steps is not None and self.max_episode_steps > 0 and self.current_step >= self.max_episode_steps:
