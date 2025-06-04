@@ -82,6 +82,10 @@ class DashboardCallback(BaseCallback):
         # Update frequency control
         self.update_frequency = config.get("update_frequency", 1)
 
+        # Initialize profit factor tracking
+        self.total_winning_pnl = 0.0
+        self.total_losing_pnl = 0.0
+
         # Initialize critical dashboard state attributes if they don't exist
         if self.enabled and self.dashboard_state is not None:
             self._initialize_dashboard_attributes()
@@ -185,6 +189,24 @@ class DashboardCallback(BaseCallback):
         if not hasattr(self.dashboard_state, "session_reward_components"):
             self.dashboard_state.session_reward_components = {}
 
+        # Profit factor tracking attributes
+        if not hasattr(self.dashboard_state, "profit_factor"):
+            self.dashboard_state.profit_factor = 0.0
+        if not hasattr(self.dashboard_state, "total_winning_pnl"):
+            self.dashboard_state.total_winning_pnl = 0.0
+        if not hasattr(self.dashboard_state, "total_losing_pnl"):
+            self.dashboard_state.total_losing_pnl = 0.0
+        
+        # Initialize episode and session reward component counts
+        if not hasattr(self.dashboard_state, "episode_reward_component_counts"):
+            self.dashboard_state.episode_reward_component_counts = {}
+        if not hasattr(self.dashboard_state, "session_reward_component_counts"):
+            self.dashboard_state.session_reward_component_counts = {}
+
+        # Evaluation tracking attributes
+        if not hasattr(self.dashboard_state, "is_evaluating"):
+            self.dashboard_state.is_evaluating = False
+
     def on_training_start(self, config: Dict[str, Any]) -> None:
         """Initialize dashboard for training session."""
         if not self.enabled or not self.dashboard_state:
@@ -240,11 +262,13 @@ class DashboardCallback(BaseCallback):
         self.dashboard_state.current_step = 0
         self.dashboard_state.cumulative_reward = 0.0
 
-        # Reset episode reward components
+        # Reset episode reward components and counts
         if hasattr(self.dashboard_state, "episode_reward_components"):
             self.dashboard_state.episode_reward_components = {}
         if hasattr(self.dashboard_state, "reward_components"):
             self.dashboard_state.reward_components = {}
+        if hasattr(self.dashboard_state, "episode_reward_component_counts"):
+            self.dashboard_state.episode_reward_component_counts = {}
 
         # Initialize episode data
         self.current_episode_data = {
@@ -315,9 +339,9 @@ class DashboardCallback(BaseCallback):
             self.dashboard_state.position_side = "FLAT"
             self.dashboard_state.position_qty = 0
 
-        # Update portfolio with proper P&L tracking
-        self.dashboard_state.total_equity = info.get("total_equity", 100000.0)
-        self.dashboard_state.cash_balance = info.get("cash", 100000.0)
+        # Update portfolio with proper P&L tracking - use correct initial capital
+        self.dashboard_state.total_equity = info.get("total_equity", 25000.0)
+        self.dashboard_state.cash_balance = info.get("cash", 25000.0)
         self.dashboard_state.unrealized_pnl = info.get("unrealized_pnl", 0.0)
 
         # Update session P&L from multiple possible sources
@@ -497,9 +521,9 @@ class DashboardCallback(BaseCallback):
         self.dashboard_state.explained_variance = update_metrics.get(
             "explained_variance", 0.0
         )
-        self.dashboard_state.mean_episode_reward = update_metrics.get(
-            "mean_episode_reward", 0.0
-        )
+        # Always use PPO agent's calculated mean reward as single source of truth
+        if "mean_episode_reward" in update_metrics:
+            self.dashboard_state.mean_episode_reward = update_metrics["mean_episode_reward"]
 
         # Initialize and update PPO metric histories
         if not hasattr(self.dashboard_state, "policy_loss_history"):
@@ -541,22 +565,34 @@ class DashboardCallback(BaseCallback):
             self.dashboard_state.mean_episode_reward
         )
 
-        # Calculate performance metrics
-        if self.training_start_time:
+        # Use performance metrics from PPO agent (single source of truth)
+        # Prioritize metrics from update_metrics if available
+        if "steps_per_second" in update_metrics:
+            self.dashboard_state.steps_per_second = update_metrics["steps_per_second"]
+        if "episodes_per_hour" in update_metrics:
+            self.dashboard_state.episodes_per_hour = update_metrics["episodes_per_hour"]
+        if "updates_per_hour" in update_metrics:
+            self.dashboard_state.updates_per_hour = update_metrics["updates_per_hour"]
+        elif "updates_per_second" in update_metrics:
+            self.dashboard_state.updates_per_hour = update_metrics["updates_per_second"] * 3600
+        
+        # Fallback calculation only if metrics not provided
+        if self.training_start_time and "steps_per_second" not in update_metrics:
             elapsed = (datetime.now() - self.training_start_time).total_seconds()
             total_steps = update_metrics.get("total_steps", 0)
 
-            # Update performance metrics
             if elapsed > 0:
                 self.dashboard_state.steps_per_second = total_steps / elapsed
-                self.dashboard_state.episodes_per_hour = (
-                    (self.total_episodes / elapsed) * 3600
-                    if self.total_episodes > 0
-                    else 0.0
-                )
-                self.dashboard_state.updates_per_hour = (
-                    (update_num / elapsed) * 3600 if update_num > 0 else 0.0
-                )
+                if "episodes_per_hour" not in update_metrics:
+                    self.dashboard_state.episodes_per_hour = (
+                        (self.total_episodes / elapsed) * 3600
+                        if self.total_episodes > 0
+                        else 0.0
+                    )
+                if "updates_per_hour" not in update_metrics:
+                    self.dashboard_state.updates_per_hour = (
+                        (update_num / elapsed) * 3600 if update_num > 0 else 0.0
+                    )
 
         if hasattr(self.dashboard_state, "is_updating"):
             self.dashboard_state.is_updating = False
@@ -574,6 +610,11 @@ class DashboardCallback(BaseCallback):
         self.dashboard_state.eval_mean_reward = eval_results.get("mean_reward", 0.0)
         self.dashboard_state.eval_win_rate = eval_results.get("win_rate", 0.0)
         self.dashboard_state.eval_sharpe_ratio = eval_results.get("sharpe_ratio", 0.0)
+        
+        # Update training stage to show evaluation completed
+        self.dashboard_state.stage = "Training"
+        self.dashboard_state.stage_status = f"Evaluation completed: {eval_results.get('mean_reward', 0):.2f}"
+        self.dashboard_state.is_evaluating = False
 
         # Add evaluation event
         self._add_training_event(
@@ -623,28 +664,28 @@ class DashboardCallback(BaseCallback):
             / max(1, self.dashboard_state.session_total_trades)
         )
 
-        # Calculate profit factor
-        if not hasattr(self, "total_winning_pnl"):
-            self.total_winning_pnl = 0.0
-        if not hasattr(self, "total_losing_pnl"):
-            self.total_losing_pnl = 0.0
-
+        # Update profit factor tracking (both instance and dashboard state)
         if pnl > 0:
             self.total_winning_pnl += pnl
+            self.dashboard_state.total_winning_pnl += pnl
         elif pnl < 0:
             self.total_losing_pnl += abs(pnl)
+            self.dashboard_state.total_losing_pnl += abs(pnl)
 
         # Calculate and update profit factor
-        if self.total_losing_pnl > 0:
-            profit_factor = self.total_winning_pnl / self.total_losing_pnl
+        if self.dashboard_state.total_losing_pnl > 0:
+            profit_factor = self.dashboard_state.total_winning_pnl / self.dashboard_state.total_losing_pnl
         else:
             profit_factor = (
-                self.total_winning_pnl if self.total_winning_pnl > 0 else 0.0
+                self.dashboard_state.total_winning_pnl if self.dashboard_state.total_winning_pnl > 0 else 0.0
             )
 
-        if not hasattr(self.dashboard_state, "profit_factor"):
-            self.dashboard_state.profit_factor = 0.0
         self.dashboard_state.profit_factor = profit_factor
+        
+        # Log profit factor calculation for debugging
+        self.logger.debug(f"Trade completed: PnL=${pnl:.2f}, Profit Factor={profit_factor:.2f} "
+                         f"(Wins: ${self.dashboard_state.total_winning_pnl:.2f}, "
+                         f"Losses: ${self.dashboard_state.total_losing_pnl:.2f})")
 
         # Note: Don't add trades to recent_trades here as they're already added
         # by the event stream system to prevent duplicates. The callback system
@@ -752,6 +793,10 @@ class DashboardCallback(BaseCallback):
             self.dashboard_state.global_steps = event_data.get("global_steps", 0)
             self.dashboard_state.total_episodes = event_data.get("total_episodes", 0)
             self.dashboard_state.stage_status = event_data.get("stage_status", "")
+            
+            # Handle evaluation mode
+            if "is_evaluating" in event_data:
+                self.dashboard_state.is_evaluating = event_data["is_evaluating"]
 
             # Update performance metrics with actual values (convert updates_per_second to updates_per_hour)
             self.dashboard_state.steps_per_second = event_data.get(
@@ -784,9 +829,9 @@ class DashboardCallback(BaseCallback):
             self.dashboard_state.explained_variance = event_data.get(
                 "explained_variance", 0.0
             )
-            self.dashboard_state.mean_episode_reward = event_data.get(
-                "mean_episode_reward", 0.0
-            )
+            # Always use single source of truth for mean episode reward
+            if "mean_episode_reward" in event_data:
+                self.dashboard_state.mean_episode_reward = event_data["mean_episode_reward"]
 
             # Update PPO metric histories for charts
             if not hasattr(self.dashboard_state, "policy_loss_history"):

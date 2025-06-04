@@ -416,6 +416,46 @@ class PPOTrainer:
     def _get_curriculum_stage_info(self):
         """Legacy method for backward compatibility."""
         return self._get_current_curriculum_stage()
+    
+    def _get_next_curriculum_stage(self):
+        """Get the next curriculum stage after current one."""
+        stages = [
+            self.config.env.curriculum.stage_1,
+            self.config.env.curriculum.stage_2,
+            self.config.env.curriculum.stage_3,
+        ]
+        
+        # Find current stage index
+        current_stage_idx = -1
+        for i, stage in enumerate(stages):
+            if stage.enabled:
+                if i == self.current_stage_idx:
+                    current_stage_idx = i
+                    break
+        
+        # Return next enabled stage
+        for i in range(current_stage_idx + 1, len(stages)):
+            if stages[i].enabled:
+                return stages[i]
+                
+        return None  # No next stage
+    
+    def _get_stage_name(self, stage):
+        """Get display name for a curriculum stage."""
+        if not stage:
+            return "Unknown"
+            
+        stages = [
+            self.config.env.curriculum.stage_1,
+            self.config.env.curriculum.stage_2,
+            self.config.env.curriculum.stage_3,
+        ]
+        
+        for i, s in enumerate(stages):
+            if s is stage:
+                return f"stage_{i + 1}"
+                
+        return "Unknown"
 
     def _get_stage_filtered_momentum_days(self, stage):
         """Get momentum days filtered by stage criteria."""
@@ -551,19 +591,34 @@ class PPOTrainer:
         # Calculate stage progress percentage
         stage_progress = 0.0
         stage_name = "unknown"
-        if self.global_episode_counter < 2000:
-            stage_progress = min(100.0, (self.global_episode_counter / 2000) * 100)
-            stage_name = "stage_1"
-        elif self.global_episode_counter < 5000:
-            stage_progress = min(
-                100.0, ((self.global_episode_counter - 2000) / 3000) * 100
-            )
-            stage_name = "stage_2"
+        # Calculate stage progress percentage based on actual curriculum config
+        current_stage = self._get_current_curriculum_stage()
+        
+        if current_stage:
+            stage_name = self._get_stage_name(current_stage)
+            total_episodes = self.global_episode_counter
+            total_updates = self.global_update_counter
+            total_cycles = self.reset_point_cycles_completed
+            
+            # Calculate progress based on the primary completion criteria
+            max_progress = 0.0
+            
+            if current_stage.max_episodes is not None:
+                episode_progress = min(100.0, (total_episodes / current_stage.max_episodes) * 100)
+                max_progress = max(max_progress, episode_progress)
+                
+            if current_stage.max_updates is not None:
+                update_progress = min(100.0, (total_updates / current_stage.max_updates) * 100)
+                max_progress = max(max_progress, update_progress)
+                
+            if current_stage.max_cycles is not None:
+                cycle_progress = min(100.0, (total_cycles / current_stage.max_cycles) * 100)
+                max_progress = max(max_progress, cycle_progress)
+                
+            stage_progress = max_progress
         else:
-            stage_progress = min(
-                100.0, ((self.global_episode_counter - 5000) / 3000) * 100
-            )
-            stage_name = "stage_3"
+            stage_progress = 100.0
+            stage_name = "stage_complete"
 
         curriculum_data = {
             "progress": self.curriculum_progress,
@@ -590,22 +645,50 @@ class PPOTrainer:
         current_stage_name = ""
         total_episodes = self.global_episode_counter
 
-        if total_episodes < 2000:
-            episodes_to_next_stage = 2000 - total_episodes
-            next_stage_name = "Intermediate"
-            current_stage_name = "Beginner"
-        elif total_episodes < 5000:
-            episodes_to_next_stage = 5000 - total_episodes
-            next_stage_name = "Advanced"
-            current_stage_name = "Intermediate"
-        elif total_episodes < 8000:
-            episodes_to_next_stage = 8000 - total_episodes
-            next_stage_name = "Specialization"
-            current_stage_name = "Advanced"
+        # Calculate episodes needed for next stage based on actual curriculum config
+        current_stage = self._get_current_curriculum_stage()
+        if current_stage:
+            current_stage_name = self._get_stage_name(current_stage)
+            
+            # Calculate remaining based on configured completion criteria
+            remaining = float('inf')
+            completion_type = "none"
+            
+            if current_stage.max_episodes is not None:
+                episodes_remaining = current_stage.max_episodes - total_episodes
+                if episodes_remaining < remaining:
+                    remaining = episodes_remaining
+                    completion_type = "episodes"
+                    
+            if current_stage.max_updates is not None:
+                updates_remaining = current_stage.max_updates - self.global_update_counter
+                if updates_remaining < remaining:
+                    remaining = updates_remaining
+                    completion_type = "updates"
+                    
+            if current_stage.max_cycles is not None:
+                cycles_remaining = current_stage.max_cycles - self.reset_point_cycles_completed
+                if cycles_remaining < remaining:
+                    remaining = cycles_remaining
+                    completion_type = "cycles"
+            
+            # Set episodes_to_next_stage based on completion type
+            if completion_type == "episodes":
+                episodes_to_next_stage = max(0, int(remaining))
+            elif completion_type == "updates":
+                episodes_to_next_stage = max(0, int(remaining))  # Show updates as count
+            elif completion_type == "cycles":
+                episodes_to_next_stage = max(0, int(remaining))  # Show cycles as count
+            else:
+                episodes_to_next_stage = 0  # No completion criteria set
+                
+            # Get next stage name
+            next_stage = self._get_next_curriculum_stage()
+            next_stage_name = self._get_stage_name(next_stage) if next_stage else "Complete"
         else:
+            current_stage_name = "Unknown"
+            next_stage_name = "Unknown"
             episodes_to_next_stage = 0
-            next_stage_name = "Maximum"
-            current_stage_name = "Specialization"
 
         curriculum_detail = {
             "current_stage": current_stage_name,
@@ -737,7 +820,7 @@ class PPOTrainer:
             # Always trigger cycle tracking callback after each episode for real-time updates
             cycles_remaining = self.episodes_per_day - self.reset_point_cycles_completed
             progress_pct = (
-                self.reset_point_cycles_completed / self.episodes_per_day
+                self.reset_point_cycles_completed / max(1, self.episodes_per_day)
             ) * 100
 
             # Calculate more detailed progress within current cycle
@@ -1625,6 +1708,22 @@ class PPOTrainer:
         if len(self.update_times) > 20:  # Keep last 20 updates
             self.update_times.pop(0)
 
+        # Calculate performance metrics for dashboard
+        current_time = time.time()
+        elapsed_time = current_time - self.training_start_time
+        steps_per_second = (
+            self.global_step_counter / elapsed_time if elapsed_time > 0 else 0
+        )
+        episodes_per_hour = (
+            (self.global_episode_counter / elapsed_time) * 3600
+            if elapsed_time > 0
+            else 0
+        )
+        updates_per_second = (
+            self.global_update_counter / elapsed_time if elapsed_time > 0 else 0
+        )
+        updates_per_hour = updates_per_second * 3600
+
         update_metrics = {
             # Use consistent naming with ppo_data
             "policy_loss": avg_actor_loss,
@@ -1642,6 +1741,11 @@ class PPOTrainer:
             "update_time": update_duration,
             "learning_rate": current_lr,
             "total_steps": self.global_step_counter,  # Add for performance metrics
+            # Add performance metrics for dashboard
+            "steps_per_second": steps_per_second,
+            "episodes_per_hour": episodes_per_hour,
+            "updates_per_second": updates_per_second,
+            "updates_per_hour": updates_per_hour,
             # Add batch data for attribution analysis
             "batch_data": {
                 "states": getattr(self, "_last_batch_states", None),
@@ -1994,8 +2098,20 @@ class PPOTrainer:
         self.logger.info(f"🔍 EVALUATION START: {n_episodes} episodes")
         self._start_timer("evaluation")
 
-        # Trigger evaluation start callback
+        # Trigger evaluation start callback and training update
         self.callback_manager.trigger("on_evaluation_start")
+        
+        # Update training stage to show evaluation in progress
+        eval_training_data = {
+            "mode": "Evaluation",
+            "stage": "Running Evaluation",
+            "updates": self.global_update_counter,
+            "global_steps": self.global_step_counter,
+            "total_episodes": self.global_episode_counter,
+            "stage_status": f"Evaluating model with {n_episodes} episodes...",
+            "is_evaluating": True,
+        }
+        self.callback_manager.trigger("on_custom_event", "training_update", eval_training_data)
 
         self.model.eval()
         self.is_evaluating = True
@@ -2014,6 +2130,20 @@ class PPOTrainer:
                     f"Training interrupted during evaluation at episode {i}"
                 )
                 break
+            
+            # Update evaluation progress
+            eval_progress = (i / n_episodes) * 100
+            eval_training_data = {
+                "mode": "Evaluation",
+                "stage": "Running Evaluation",
+                "updates": self.global_update_counter,
+                "global_steps": self.global_step_counter,
+                "total_episodes": self.global_episode_counter,
+                "stage_status": f"Evaluating episode {i+1}/{n_episodes} ({eval_progress:.1f}%)",
+                "stage_progress": eval_progress,
+                "is_evaluating": True,
+            }
+            self.callback_manager.trigger("on_custom_event", "training_update", eval_training_data)
 
             env_state_np, _ = self._reset_environment_with_momentum()
             current_episode_reward = 0.0

@@ -38,9 +38,9 @@ class SharedDashboardState:
     position_hold_time_seconds: int = 0
     position_entry_timestamp: Optional[datetime] = None
 
-    # Portfolio data (from metrics)
-    total_equity: float = 100000.0
-    cash_balance: float = 100000.0
+    # Portfolio data (from metrics) - use correct initial capital
+    total_equity: float = 25000.0
+    cash_balance: float = 25000.0
     session_pnl: float = 0.0
     realized_pnl: float = 0.0
     unrealized_pnl: float = 0.0
@@ -694,17 +694,15 @@ class DashboardStateManager:
                         self._state.session_reward_components[component] = 0.0
                     self._state.session_reward_components[component] += value
 
-                    # Track component counts (only if value is non-zero)
-                    if (
-                        abs(value) > 1e-8
-                    ):  # Small threshold to avoid counting tiny floating point errors
-                        if component not in self._state.episode_reward_component_counts:
-                            self._state.episode_reward_component_counts[component] = 0
-                        self._state.episode_reward_component_counts[component] += 1
+                    # Track component counts (for any reward component activity)
+                    # Count all components that are actively calculated, not just non-zero values
+                    if component not in self._state.episode_reward_component_counts:
+                        self._state.episode_reward_component_counts[component] = 0
+                    self._state.episode_reward_component_counts[component] += 1
 
-                        if component not in self._state.session_reward_component_counts:
-                            self._state.session_reward_component_counts[component] = 0
-                        self._state.session_reward_component_counts[component] += 1
+                    if component not in self._state.session_reward_component_counts:
+                        self._state.session_reward_component_counts[component] = 0
+                    self._state.session_reward_component_counts[component] += 1
 
             # Action tracking from metrics (session-level from execution collector)
             action_updated = False

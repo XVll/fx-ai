@@ -1296,7 +1296,8 @@ class DashboardServer:
                         "To Next Stage",
                         f"{episodes_to_next:,} eps"
                         if episodes_to_next > 0
-                        else "Max Stage",
+                        else "∞" if episodes_to_next == 0 and next_stage_name != "Complete"
+                        else "Complete",
                         color=DARK_THEME["accent_orange"]
                         if episodes_to_next > 0
                         else DARK_THEME["accent_green"],
@@ -1322,7 +1323,7 @@ class DashboardServer:
                     ),
                     self._info_row(
                         "Cycle Progress",
-                        f"{cycles_completed}/{target_cycles}",
+                        f"{cycles_completed}/{target_cycles if target_cycles > 0 else '∞'}",
                         color=DARK_THEME["accent_blue"],
                     ),
                     self._info_row(
@@ -1354,14 +1355,14 @@ class DashboardServer:
                     ),
                     self._info_row(
                         "ROC",
-                        f"{current_roc_score:.2f}",
+                        f"{current_roc_score:.3f}",
                         color=DARK_THEME["accent_blue"]
                         if roc_range[0] <= current_roc_score <= roc_range[1]
                         else DARK_THEME["text_muted"],
                     ),
                     self._info_row(
                         "Activity",
-                        f"{current_activity_score:.2f}",
+                        f"{current_activity_score:.3f}",
                         color=DARK_THEME["accent_orange"]
                         if activity_range[0]
                         <= current_activity_score
@@ -1370,12 +1371,12 @@ class DashboardServer:
                     ),
                     self._info_row(
                         "ROC Range",
-                        f"[{roc_range[0]:.2f}, {roc_range[1]:.2f}]",
+                        f"[{roc_range[0]:.3f}, {roc_range[1]:.3f}]",
                         color=DARK_THEME["text_muted"],
                     ),
                     self._info_row(
                         "Activity Range",
-                        f"[{activity_range[0]:.2f}, {activity_range[1]:.2f}]",
+                        f"[{activity_range[0]:.3f}, {activity_range[1]:.3f}]",
                         color=DARK_THEME["text_muted"],
                     ),
                 ]

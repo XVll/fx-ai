@@ -2,6 +2,10 @@ training:
   eval_frequency: 5  # Evaluate every 5 updates instead of default 25
   eval_episodes: 5   # Run 5 evaluation episodes
 
+# Day selection config to match curriculum max_cycles: 1
+day_selection:
+  episodes_per_day: 1  # Match curriculum stage max_cycles: 1
+
 # Enable SHAP attribution analysis
 model:
   enable_attribution: true
