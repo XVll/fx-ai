@@ -1,4 +1,4 @@
-"""Advanced Optuna hyperparameter optimization system for FxAI."""
+"""Standard Optuna hyperparameter optimization system for FxAI."""
 
 import argparse
 import json
@@ -57,7 +57,6 @@ from config.optuna.optuna_config import (
     DistributionType,
 )
 from config.loader import load_config
-# Training function is called via subprocess to avoid import conflicts
 from utils.logger import get_logger
 
 console = Console()
@@ -65,7 +64,7 @@ logger = get_logger(__name__)
 
 
 class OptunaOptimizer:
-    """Advanced Optuna hyperparameter optimization system."""
+    """Standard Optuna hyperparameter optimization system."""
     
     def __init__(self, spec_path: Optional[str] = None):
         """Initialize optimizer with specification."""
@@ -113,109 +112,8 @@ class OptunaOptimizer:
                             type=DistributionType.CATEGORICAL,
                             choices=[32, 64, 128, 256],
                         ),
-                        ParameterConfig(
-                            name="training.n_epochs",
-                            type=DistributionType.INT,
-                            low=4,
-                            high=16,
-                        ),
-                        ParameterConfig(
-                            name="training.gamma",
-                            type=DistributionType.FLOAT,
-                            low=0.95,
-                            high=0.999,
-                        ),
-                        ParameterConfig(
-                            name="training.gae_lambda",
-                            type=DistributionType.FLOAT,
-                            low=0.9,
-                            high=0.98,
-                        ),
-                        ParameterConfig(
-                            name="training.clip_epsilon",
-                            type=DistributionType.FLOAT,
-                            low=0.1,
-                            high=0.3,
-                        ),
-                        ParameterConfig(
-                            name="training.entropy_coef",
-                            type=DistributionType.FLOAT_LOG,
-                            low=1e-4,
-                            high=1e-1,
-                        ),
-                        ParameterConfig(
-                            name="training.value_coef",
-                            type=DistributionType.FLOAT,
-                            low=0.25,
-                            high=1.0,
-                        ),
-                        
-                        # Model parameters
-                        ParameterConfig(
-                            name="model.d_model",
-                            type=DistributionType.CATEGORICAL,
-                            choices=[64, 128, 256],
-                        ),
-                        ParameterConfig(
-                            name="model.n_layers",
-                            type=DistributionType.INT,
-                            low=4,
-                            high=12,
-                        ),
-                        ParameterConfig(
-                            name="model.dropout",
-                            type=DistributionType.FLOAT,
-                            low=0.0,
-                            high=0.3,
-                        ),
-                        
-                        # Reward parameters
-                        ParameterConfig(
-                            name="env.reward.pnl_coefficient",
-                            type=DistributionType.FLOAT,
-                            low=50.0,
-                            high=300.0,
-                        ),
-                        ParameterConfig(
-                            name="env.reward.holding_penalty_coefficient",
-                            type=DistributionType.FLOAT,
-                            low=0.5,
-                            high=5.0,
-                        ),
-                        ParameterConfig(
-                            name="env.reward.drawdown_penalty_coefficient",
-                            type=DistributionType.FLOAT,
-                            low=1.0,
-                            high=20.0,
-                        ),
-                        ParameterConfig(
-                            name="env.reward.profit_closing_bonus_coefficient",
-                            type=DistributionType.FLOAT,
-                            low=50.0,
-                            high=200.0,
-                        ),
-                        ParameterConfig(
-                            name="env.reward.base_multiplier",
-                            type=DistributionType.FLOAT,
-                            low=10.0,
-                            high=50.0,
-                        ),
                     ],
                     n_trials=100,
-                    episodes_per_trial=2000,
-                    training_config={
-                        "mode": "train",
-                        "experiment_name": "optuna_optimization",
-                        "training": {
-                            "checkpoint_interval": 20,
-                            "eval_frequency": 20,
-                            "eval_episodes": 5,
-                        },
-                        "wandb": {
-                            "enabled": True,
-                            "project": "fx-ai-optuna",
-                        },
-                    },
                 )
             ],
         )
@@ -321,442 +219,102 @@ class OptunaOptimizer:
         else:
             raise ValueError(f"Unknown distribution type: {param.type}")
     
+    def _apply_param_to_config(self, config, param_name: str, value: Any):
+        """Apply parameter value to config object using dot notation."""
+        keys = param_name.split(".")
+        target = config
+        
+        # Navigate to parent
+        for key in keys[:-1]:
+            if not hasattr(target, key):
+                # Create missing nested structure if needed
+                setattr(target, key, type('obj', (object,), {})())
+            target = getattr(target, key)
+        
+        # Set the value
+        setattr(target, keys[-1], value)
+    
+    def _apply_overrides_to_config(self, config, overrides: Dict[str, Any]):
+        """Apply override dictionary to config object."""
+        for key, value in overrides.items():
+            if isinstance(value, dict):
+                # Nested override
+                if hasattr(config, key):
+                    self._apply_overrides_to_config(getattr(config, key), value)
+            else:
+                # Direct value
+                if hasattr(config, key):
+                    setattr(config, key, value)
+    
     def _create_objective(self, study_config: StudyConfig):
-        """Create objective function for study."""
+        """Create objective function for study - STANDARD OPTUNA APPROACH."""
         def objective(trial: Trial) -> float:
-            # Store trial number for debugging
-            self._current_trial_number = trial.number
+            # Import training function directly (standard way)
+            from main import train
             
-            # Suggest parameters
+            # Load base config
+            base_config_name = study_config.base_config or "momentum_training"
+            config = load_config(base_config_name)
+            
+            console.print(f"[blue]Trial {trial.number}[/blue]: Starting...")
+            
+            # Suggest parameters and apply to config
             params = {}
             for param_config in study_config.parameters:
                 value = self._suggest_parameter(trial, param_config)
                 params[param_config.name] = value
+                self._apply_param_to_config(config, param_config.name, value)
             
-            # Simple trial start log
-            console.print(f"[blue]Trial {trial.number}[/blue]: {', '.join([f'{k}={v}' for k, v in params.items()])}")
+            # Log parameters
+            param_str = ', '.join([f'{k.split(".")[-1]}={v}' for k, v in params.items()])
+            console.print(f"[blue]Trial {trial.number}[/blue]: {param_str}")
             
-            # Create configuration with suggested parameters
-            config = self._create_trial_config(study_config, params, trial.number)
+            # Configure for optimization
+            config.experiment_name = f"optuna_trial_{trial.number}"
+            config.dashboard.enabled = False  # Disable for speed
+            config.wandb.enabled = False      # Disable for speed  
+            config.optuna_trial = trial       # Pass trial object directly (STANDARD!)
             
-            # Train agent with configuration
+            # Apply trial overrides if specified
+            if hasattr(study_config, 'trial_overrides') and study_config.trial_overrides:
+                self._apply_overrides_to_config(config, study_config.trial_overrides)
+            
             try:
-                metrics = self._train_with_config(config, trial, study_config)
+                # Call training function directly (STANDARD OPTUNA WAY!)
+                training_stats = train(config)
                 
-                # Get optimization metric
-                metric_value = metrics.get(study_config.metric_name, float('-inf'))
+                # Extract optimization metric
+                if training_stats and not training_stats.get('interrupted', False):
+                    # Look for the specified metric
+                    metric_value = training_stats.get(study_config.metric_name, float('-inf'))
+                    
+                    # Fallback to common metric names
+                    if metric_value == float('-inf'):
+                        for fallback in ['final_eval_reward', 'best_reward', 'episode_reward']:
+                            if fallback in training_stats:
+                                metric_value = training_stats[fallback]
+                                break
+                else:
+                    metric_value = float('-inf')
                 
                 # Save trial results
-                self._save_trial_results(study_config.study_name, trial, params, metrics)
+                self._save_trial_results(study_config.study_name, trial, params, {study_config.metric_name: metric_value})
                 
                 console.print(f"✅ Trial {trial.number}: {study_config.metric_name} = {metric_value:.4f}")
-                
-                # Print summary of all metrics found for debugging
-                if metrics:
-                    console.print(f"   All metrics: {metrics}")
-                
                 return metric_value
                 
+            except optuna.TrialPruned:
+                # Re-raise pruning (this is normal and expected)
+                console.print(f"✂️ Trial {trial.number}: pruned")
+                raise
             except Exception as e:
                 logger.error(f"Trial {trial.number} failed: {e}")
+                console.print(f"❌ Trial {trial.number}: failed")
                 if study_config.catch_exceptions:
                     return float('-inf') if study_config.direction == "maximize" else float('inf')
                 raise
         
         return objective
-    
-    def _create_trial_config(
-        self, 
-        study_config: StudyConfig, 
-        params: Dict[str, Any], 
-        trial_number: int
-    ) -> Dict[str, Any]:
-        """Create configuration for trial with suggested parameters."""
-        
-        # NEW: Base config reference system
-        if study_config.base_config:
-            # Load base config by name
-            config = self._load_base_config(study_config.base_config)
-            
-            # Apply trial-specific overrides
-            config = self._apply_nested_overrides(config, study_config.trial_overrides)
-            
-        else:
-            # LEGACY: Use full training_config (backward compatibility)
-            config = study_config.training_config.copy()
-        
-        # Add trial metadata
-        config["experiment_name"] = f"{study_config.study_name}_trial_{trial_number}"
-        
-        # Store Optuna parameters separately for easier handling
-        config["optuna_params"] = params
-        
-        # Apply Optuna parameter suggestions to trial_overrides
-        config = self._apply_trial_params(config, params)
-        
-        # Set training episodes based on trial configuration
-        self._configure_trial_training(config, study_config)
-        
-        return config
-    
-    def _load_base_config(self, base_config_name: str) -> Dict[str, Any]:
-        """Load base configuration by name."""
-        try:
-            # Use the existing config loader to load base config
-            base_config = load_config(base_config_name)
-            
-            # Convert Pydantic config to dict if needed
-            if hasattr(base_config, 'model_dump'):
-                return base_config.model_dump()
-            elif hasattr(base_config, 'dict'):
-                return base_config.dict()
-            else:
-                return dict(base_config) if hasattr(base_config, '__dict__') else base_config
-                
-        except Exception as e:
-            logger.warning(f"Failed to load base config '{base_config_name}': {e}")
-            logger.warning("Falling back to momentum_training config")
-            
-            # Fallback to momentum_training
-            base_config = load_config("momentum_training")
-            if hasattr(base_config, 'model_dump'):
-                return base_config.model_dump()
-            elif hasattr(base_config, 'dict'):
-                return base_config.dict()
-            else:
-                return dict(base_config) if hasattr(base_config, '__dict__') else base_config
-    
-    def _apply_nested_overrides(self, config: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply nested configuration overrides."""
-        import copy
-        result = copy.deepcopy(config)
-        
-        def _merge_nested(target: Dict[str, Any], source: Dict[str, Any]):
-            """Recursively merge nested dictionaries."""
-            for key, value in source.items():
-                if isinstance(value, dict) and key in target and isinstance(target[key], dict):
-                    _merge_nested(target[key], value)
-                else:
-                    target[key] = value
-        
-        _merge_nested(result, overrides)
-        return result
-    
-    def _apply_trial_params(self, config: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply Optuna parameter suggestions to config."""
-        for param_name, value in params.items():
-            keys = param_name.split(".")
-            target = config
-            
-            # Navigate to parent dictionary
-            for key in keys[:-1]:
-                if key not in target:
-                    target[key] = {}
-                target = target[key]
-            
-            # Set the parameter value
-            target[keys[-1]] = value
-            
-        return config
-    
-    def _configure_trial_training(self, config: Dict[str, Any], study_config: StudyConfig):
-        """Configure training-specific settings for trial."""
-        # Ensure training section exists
-        config.setdefault("training", {})
-        
-        # Remove total_updates if present - training is now curriculum-driven
-        if "total_updates" in config.get("training", {}):
-            del config["training"]["total_updates"]
-        
-        # Ensure we don't continue training from previous models
-        config["training"]["continue_training"] = False
-        
-        # Configure evaluation frequency for trials
-        if study_config.eval_frequency:
-            config["training"]["eval_frequency"] = study_config.eval_frequency
-            config["training"]["eval_episodes"] = study_config.eval_episodes
-    
-    def _train_with_config(
-        self, 
-        config: Dict[str, Any], 
-        trial: Trial,
-        study_config: StudyConfig
-    ) -> Dict[str, float]:
-        """Train agent with configuration and return metrics."""
-        import subprocess
-        
-        # Create a temporary config override file for this trial
-        trial_config_name = f"optuna_trial_{trial.number}"
-        trial_config_path = f"config/overrides/{trial_config_name}.yaml"
-        
-        # Ensure the overrides directory exists
-        os.makedirs("config/overrides", exist_ok=True)
-        
-        try:
-            # Extract trial-specific overrides
-            trial_overrides = {}
-            
-            # Copy trial_overrides from study config if present
-            if hasattr(study_config, 'trial_overrides') and study_config.trial_overrides:
-                trial_overrides.update(study_config.trial_overrides)
-            
-            # Add Optuna parameter values to the overrides
-            if 'optuna_params' in config:
-                for param_name, value in config['optuna_params'].items():
-                    keys = param_name.split('.')
-                    current = trial_overrides
-                    for key in keys[:-1]:
-                        if key not in current:
-                            current[key] = {}
-                        current = current[key]
-                    current[keys[-1]] = value
-            
-            # Add trial metadata
-            trial_overrides['experiment_name'] = config.get('experiment_name', f'optuna_trial_{trial.number}')
-            
-            # Add WandB tags for trial tracking
-            if 'wandb' not in trial_overrides:
-                trial_overrides['wandb'] = {}
-            if 'tags' not in trial_overrides['wandb']:
-                trial_overrides['wandb']['tags'] = []
-            trial_overrides['wandb']['tags'].extend(['optuna', f'trial_{trial.number}'])
-            
-            # Write the minimal override file
-            with open(trial_config_path, 'w') as f:
-                yaml.dump(trial_overrides, f, default_flow_style=False)
-            
-            # Prepare simple command that main.py understands
-            base_config = study_config.base_config or "momentum_training"
-            cmd = [
-                sys.executable,
-                "main.py",
-                "--config", trial_config_name,  # This will load the base + our overrides
-                "--no-dashboard",
-                "--optuna-trial",  # Flag to indicate this is an optuna trial
-            ]
-            
-            # Add any supported CLI arguments
-            if config.get('experiment_name'):
-                cmd.extend(["--experiment", config['experiment_name']])
-            
-            logger.debug(f"Running command: {' '.join(cmd)}")
-            logger.debug(f"Using config override: {trial_config_path}")
-            
-            # Run training subprocess with real-time output
-            console.print(f"[blue]▶ Starting Trial {trial.number} training...[/blue]")
-            
-            import time
-            
-            try:
-                # Use Popen for real-time output streaming
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    cwd=os.getcwd(),
-                    bufsize=1,  # Line buffered
-                    universal_newlines=True
-                )
-                
-                # Collect output while showing progress
-                output_lines = []
-                start_time = time.time()
-                timeout = 900  # 15 minutes
-                
-                # Track progress indicators
-                episode_count = 0
-                update_count = 0
-                
-                while True:
-                    # Check for timeout
-                    if time.time() - start_time > timeout:
-                        process.terminate()
-                        process.wait(timeout=5)
-                        raise subprocess.TimeoutExpired(cmd, timeout)
-                    
-                    # Read output with timeout
-                    line = process.stdout.readline()
-                    if line:
-                        output_lines.append(line)
-                        line = line.strip()
-                        
-                        # Show key progress indicators (immediate, not time-gated)
-                        if "Episode" in line and "Summary:" in line:
-                            episode_count += 1
-                            if episode_count % 5 == 0:  # Every 5 episodes
-                                console.print(f"[green]  📊 Episode {episode_count}[/green]")
-                        elif "UPDATE START:" in line:
-                            update_count += 1
-                            console.print(f"[cyan]  🔄 Update {update_count}[/cyan]")
-                        elif "EVALUATION COMPLETE:" in line:
-                            console.print(f"[yellow]  🔍 Evaluation done[/yellow]")
-                        elif "TRAINING COMPLETE" in line:
-                            console.print(f"[green]  🎉 Training finished[/green]")
-                    
-                    # Check if process finished
-                    if process.poll() is not None:
-                        # Read any remaining output
-                        remaining = process.stdout.read()
-                        if remaining:
-                            output_lines.extend(remaining.splitlines(keepends=True))
-                        break
-                
-                return_code = process.wait()
-                full_output = ''.join(output_lines)
-                
-                logger.debug(f"Subprocess completed with return code: {return_code}")
-                
-                if return_code != 0:
-                    logger.error(f"Training failed with return code {return_code}")
-                    logger.error(f"Command: {' '.join(cmd)}")
-                    # Show last 10 lines of output for debugging
-                    last_lines = full_output.split('\n')[-10:]
-                    logger.error(f"Last output lines: {last_lines}")
-                    raise RuntimeError(f"Training failed with code {return_code}")
-            
-            except subprocess.TimeoutExpired:
-                console.print(f"[red]⏰ Trial {trial.number} timed out after 15 minutes[/red]")
-                raise RuntimeError("Training timed out")
-            
-            console.print(f"[green]✅ Trial {trial.number} training completed[/green]")
-            
-            # Parse metrics from output
-            metrics = self._parse_metrics_from_output(full_output)
-            
-            # Report intermediate values for pruning
-            eval_steps = []
-            eval_rewards = []
-            for line in full_output.split('\n'):
-                if "eval_mean_reward" in line:
-                    try:
-                        parts = line.split()
-                        for i, part in enumerate(parts):
-                            if "eval_mean_reward" in part and i + 1 < len(parts):
-                                reward = float(parts[i + 1])
-                                eval_rewards.append(reward)
-                                eval_steps.append(len(eval_rewards))
-                    except:
-                        pass
-            
-            # Report to Optuna for pruning
-            for step, reward in zip(eval_steps, eval_rewards):
-                trial.report(reward, step)
-                if trial.should_prune():
-                    raise optuna.TrialPruned()
-            
-            return metrics
-            
-        finally:
-            # Clean up trial config file
-            if os.path.exists(trial_config_path):
-                os.unlink(trial_config_path)
-    
-    def _flatten_dict(self, d: Dict[str, Any], parent_key: str = '') -> Dict[str, Any]:
-        """Flatten nested dictionary with dot notation."""
-        items = []
-        for k, v in d.items():
-            new_key = f"{parent_key}.{k}" if parent_key else k
-            if isinstance(v, dict):
-                items.extend(self._flatten_dict(v, new_key).items())
-            else:
-                items.append((new_key, v))
-        return dict(items)
-    
-    def _parse_metrics_from_output(self, output: str) -> Dict[str, float]:
-        """Parse metrics from training output."""
-        import re
-        metrics = {}
-        
-        # Look for final metrics in output
-        lines = output.split('\n')
-        for line in lines:
-            # Parse W&B summary metrics
-            if "wandb:" in line and "Summary" in line:
-                # Start parsing summary section
-                in_summary = True
-                continue
-            
-            # Common metric patterns - prioritize evaluation metrics
-            metric_patterns = [
-                # Evaluation metrics (highest priority)
-                ("mean_reward", r"evaluation_mean_reward=(-?\d+\.?\d*(?:e[+-]?\d+)?)"),
-                ("mean_reward", r"(?:eval_mean_reward|mean_reward)[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)"),
-                # Other metrics
-                ("best_reward", r"best_reward[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)"),
-                ("final_reward", r"final_reward[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)"),
-                ("total_pnl", r"total_pnl[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)"),
-                ("win_rate", r"win_rate[:\s=]+(\d+\.?\d*(?:e[+-]?\d+)?)"),
-                ("sharpe_ratio", r"sharpe_ratio[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)"),
-                # Training episode rewards (lower priority)
-                ("episode_reward", r"Episode reward[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)"),
-                ("reward", r"[Rr]eward[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)"),
-            ]
-            
-            for metric_name, pattern in metric_patterns:
-                import re
-                match = re.search(pattern, line, re.IGNORECASE)
-                if match:
-                    try:
-                        value = float(match.group(1))
-                        metrics[metric_name] = value
-                        # Map episode_reward and reward to mean_reward if not already set
-                        if metric_name in ["episode_reward", "reward"] and "mean_reward" not in metrics:
-                            metrics["mean_reward"] = value
-                    except (ValueError, IndexError):
-                        continue
-        
-        # If no metrics found, try to get from evaluation results more thoroughly
-        if "mean_reward" not in metrics:
-            eval_rewards = []
-            # Look for evaluation results - multiple patterns
-            for line in lines:
-                for pattern in [
-                    r"eval.*reward[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)",
-                    r"evaluation.*reward[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)",
-                    r"mean.*reward[:\s=]+(-?\d+\.?\d*(?:e[+-]?\d+)?)",
-                ]:
-                    match = re.search(pattern, line, re.IGNORECASE)
-                    if match:
-                        try:
-                            reward = float(match.group(1))
-                            eval_rewards.append(reward)
-                        except (ValueError, IndexError):
-                            continue
-            
-            if eval_rewards:
-                metrics["mean_reward"] = eval_rewards[-1]  # Use last evaluation reward
-        
-        # Look for training completion indicators
-        training_completed = False
-        for line in lines:
-            if any(phrase in line.lower() for phrase in [
-                "training completed", "training finished", "🎉 training", 
-                "✅ training", "successfully completed"
-            ]):
-                training_completed = True
-                break
-        
-        # If training didn't complete, penalize heavily
-        if not training_completed and "mean_reward" in metrics:
-            logger.warning("Training appears to have been interrupted or failed")
-            metrics["mean_reward"] = float('-inf')
-        
-        # Default to negative infinity if no metrics found
-        if "mean_reward" not in metrics:
-            logger.warning("No mean_reward found in training output, defaulting to -inf")
-            # Debug: save output for inspection
-            debug_file = f"debug_output_trial_{getattr(self, '_current_trial_number', 'unknown')}.txt"
-            try:
-                with open(debug_file, 'w') as f:
-                    f.write("=== TRAINING OUTPUT ===\n")
-                    f.write(output)
-                logger.warning(f"Training output saved to {debug_file} for debugging")
-            except:
-                pass
-            metrics["mean_reward"] = float('-inf')
-        
-        return metrics
     
     def _save_trial_results(
         self,
@@ -774,7 +332,6 @@ class OptunaOptimizer:
             "params": params,
             "metrics": metrics,
             "datetime": datetime.now().isoformat(),
-            "duration": None,  # Duration calculation would need to be tracked separately
         }
         
         self.trial_results[study_name].append(result)
@@ -939,138 +496,6 @@ class OptunaOptimizer:
         console.print("\n[bold]Best parameters:[/bold]")
         for param, value in study.best_params.items():
             console.print(f"  {param}: {value}")
-    
-    def show_best_config(self, study_name: str):
-        """Show best configuration for a study."""
-        if study_name not in self.studies:
-            # Try to load from storage
-            study = optuna.load_study(
-                study_name=study_name,
-                storage=self.spec.studies[0].storage,  # Use first study's storage
-            )
-        else:
-            study = self.studies[study_name]
-        
-        # Find matching study config
-        study_config = next(
-            (s for s in self.spec.studies if s.study_name == study_name),
-            None
-        )
-        
-        if not study_config:
-            console.print(f"[red]Study config not found for {study_name}[/red]")
-            return
-        
-        # Create best configuration
-        best_config = self._create_trial_config(
-            study_config,
-            study.best_params,
-            study.best_trial.number
-        )
-        
-        # Save to file
-        best_config_file = self.results_dir / f"{study_name}_best_config.yaml"
-        with open(best_config_file, "w") as f:
-            yaml.dump(best_config, f, default_flow_style=False)
-        
-        console.print(f"\n[bold green]Best configuration saved to {best_config_file}[/bold green]")
-        console.print("\n[bold]Best configuration:[/bold]")
-        console.print(yaml.dump(best_config, default_flow_style=False))
-    
-    def show_all_results(self):
-        """Show results from all 3 phases."""
-        phases = [
-            ("Phase 1 (Foundation)", "fx_ai_foundation"),
-            ("Phase 2 (Reward)", "fx_ai_reward"),
-            ("Phase 3 (Fine-tune)", "fx_ai_finetune"),
-        ]
-        
-        console.print("\n[bold cyan]🎯 3-Phase Optimization Results Summary[/bold cyan]")
-        console.print("=" * 60)
-        
-        all_results = {}
-        
-        for phase_name, study_name in phases:
-            try:
-                study = optuna.load_study(
-                    study_name=study_name, 
-                    storage="sqlite:///optuna/studies.db"
-                )
-                
-                n_trials = len(study.trials)
-                if n_trials > 0:
-                    completed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
-                    pruned_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
-                    failed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.FAIL])
-                    
-                    best_value = study.best_value
-                    best_trial_number = study.best_trial.number
-                    
-                    console.print(f"\n[bold green]✅ {phase_name}[/bold green]")
-                    console.print(f"   Study: {study_name}")
-                    console.print(f"   Trials: {completed_trials} completed, {pruned_trials} pruned, {failed_trials} failed")
-                    console.print(f"   Best value: {best_value:.4f} (trial #{best_trial_number})")
-                    
-                    # Show top 3 parameters by importance
-                    if completed_trials >= 5:
-                        try:
-                            importances = optuna.importance.get_param_importances(study)
-                            top_params = list(importances.items())[:3]
-                            console.print("   Top parameters:")
-                            for param_name, importance in top_params:
-                                console.print(f"     {param_name}: {importance:.3f}")
-                        except Exception:
-                            pass
-                    
-                    all_results[phase_name] = {
-                        "study_name": study_name,
-                        "completed_trials": completed_trials,
-                        "best_value": best_value,
-                        "best_trial": best_trial_number,
-                        "best_params": study.best_params
-                    }
-                else:
-                    console.print(f"\n[yellow]⏳ {phase_name}[/yellow]")
-                    console.print(f"   Study: {study_name}")
-                    console.print("   Status: Not started")
-                    
-            except Exception as e:
-                console.print(f"\n[red]❌ {phase_name}[/red]")
-                console.print(f"   Study: {study_name}")
-                console.print(f"   Status: Not found ({str(e)})")
-        
-        # Show progression analysis
-        if len(all_results) >= 2:
-            console.print("\n[bold cyan]📈 Optimization Progression[/bold cyan]")
-            phase_names = list(all_results.keys())
-            for i in range(1, len(phase_names)):
-                prev_phase = phase_names[i-1]
-                curr_phase = phase_names[i]
-                
-                prev_value = all_results[prev_phase]["best_value"]
-                curr_value = all_results[curr_phase]["best_value"]
-                improvement = ((curr_value - prev_value) / abs(prev_value)) * 100
-                
-                console.print(f"   {prev_phase} → {curr_phase}: {improvement:+.1f}% improvement")
-        
-        # Show next steps
-        console.print("\n[bold cyan]🚀 Next Steps[/bold cyan]")
-        
-        if "Phase 1 (Foundation)" not in all_results:
-            console.print("   1. Start foundation optimization: poetry run poe optuna-foundation")
-        elif "Phase 2 (Reward)" not in all_results:
-            console.print("   1. Transfer foundation results: poetry run poe optuna-transfer-1to2")
-            console.print("   2. Start reward optimization: poetry run poe optuna-reward")
-        elif "Phase 3 (Fine-tune)" not in all_results:
-            console.print("   1. Transfer reward results: poetry run poe optuna-transfer-2to3")
-            console.print("   2. Start fine-tuning: poetry run poe optuna-finetune")
-        else:
-            final_phase = list(all_results.keys())[-1]
-            best_study = all_results[final_phase]["study_name"]
-            console.print(f"   ✅ All phases complete! Use best configuration from {best_study}")
-            console.print(f"   Get final config: poetry run poe optuna-best {best_study}")
-        
-        console.print("\n[dim]💡 Tip: Use 'poetry run poe optuna-dashboard' to explore detailed results[/dim]")
 
 
 def main():
@@ -1092,42 +517,11 @@ def main():
         default=1,
         help="Number of parallel jobs",
     )
-    parser.add_argument(
-        "--show-best",
-        type=str,
-        help="Show best configuration for study",
-    )
-    parser.add_argument(
-        "--show-results",
-        action="store_true",
-        help="Show results from all 3 phases",
-    )
-    parser.add_argument(
-        "--dashboard",
-        action="store_true",
-        help="Launch Optuna dashboard",
-    )
     
     args = parser.parse_args()
     
-    # Handle dashboard
-    if args.dashboard:
-        console.print("[bold]Launching Optuna dashboard...[/bold]")
-        os.system("optuna-dashboard sqlite:///optuna/studies.db")
-        return
-    
     # Create optimizer
     optimizer = OptunaOptimizer(args.spec)
-    
-    # Handle show best
-    if args.show_best:
-        optimizer.show_best_config(args.show_best)
-        return
-    
-    # Handle show results
-    if args.show_results:
-        optimizer.show_all_results()
-        return
     
     # Override n_jobs if specified
     if args.n_jobs > 1:
