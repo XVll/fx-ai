@@ -760,7 +760,8 @@ class PPOTrainer:
             'symbol': self.env.symbol if hasattr(self.env, 'symbol') else 'UNKNOWN',
             'date': self.env.date if hasattr(self.env, 'date') else None,
             'momentum_day': self.current_momentum_day,
-            'reset_point_idx': 0
+            'reset_point_idx': 0,
+            'max_steps': self.rollout_steps  # Expected max steps per episode
         }
         self.callback_manager.trigger('on_episode_start', self.global_episode_counter + 1, reset_info)
 
@@ -778,10 +779,11 @@ class PPOTrainer:
         total_invalid_actions = 0
 
         while collected_steps < self.rollout_steps:
-            # Check for training interruption every 50 steps
-            if collected_steps % 50 == 0:
-                if hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted:
+            # Check for training interruption every 10 steps for faster response
+            if collected_steps % 10 == 0 or self.stop_training:
+                if self.stop_training or (hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted):
                     self.logger.warning(f"Training interrupted during rollout collection at step {collected_steps}")
+                    self.stop_training = True
                     break
             
             # Trigger rollout progress callback periodically
@@ -848,6 +850,12 @@ class PPOTrainer:
                 next_env_state_np, reward, terminated, truncated, info = self.env.step(env_action)
                 done = terminated or truncated
 
+                # Check for interruption immediately after step
+                if self.stop_training or (hasattr(__import__('main'), 'training_interrupted') and __import__('main').training_interrupted):
+                    self.logger.warning(f"Training interrupted during step execution at step {collected_steps}")
+                    self.stop_training = True
+                    break
+
                 # Track invalid actions
                 if info.get('invalid_action_in_step', False):
                     total_invalid_actions += 1
@@ -874,7 +882,16 @@ class PPOTrainer:
 
             # Update step tracking
             self.global_step_counter += 1
-            # Step tracking is now handled by callbacks via on_step
+            
+            # Trigger episode step callback with all necessary data
+            step_data = {
+                'action': env_action,
+                'reward': reward,
+                'info': info,
+                'step': collected_steps,
+                'max_steps': getattr(self.env, 'max_episode_steps', 256)  # Use environment's max steps
+            }
+            self.callback_manager.trigger('on_episode_step', step_data)
 
             for callback in self.callbacks:
                 callback.on_step(self, current_model_state_torch_batched, action_tensor, reward, next_env_state_np, info)
@@ -971,12 +988,20 @@ class PPOTrainer:
                     'symbol': self.env.symbol if hasattr(self.env, 'symbol') else 'UNKNOWN',
                     'date': self.env.date if hasattr(self.env, 'date') else None,
                     'momentum_day': self.current_momentum_day,
-                    'reset_point_idx': len(self.used_reset_point_indices) - 1
+                    'reset_point_idx': len(self.used_reset_point_indices) - 1,
+                    'max_steps': self.rollout_steps  # Expected max steps per episode
                 }
                 self.callback_manager.trigger('on_episode_start', self.global_episode_counter + 1, reset_info)
 
                 if collected_steps >= self.rollout_steps:
                     break
+
+        # Calculate comprehensive rollout metrics
+        rollout_duration = self._end_timer("rollout")
+        steps_per_second = collected_steps / rollout_duration if rollout_duration > 0 else 0
+        mean_episode_reward = np.mean(episode_rewards_in_rollout) if episode_rewards_in_rollout else 0
+        std_episode_reward = np.std(episode_rewards_in_rollout) if len(episode_rewards_in_rollout) > 1 else 0
+        mean_episode_length = np.mean(episode_lengths_in_rollout) if episode_lengths_in_rollout else 0
 
         # Prepare rollout data for callbacks
         rollout_data = {
@@ -996,15 +1021,6 @@ class PPOTrainer:
             callback.on_rollout_end(self)
 
         self.buffer.prepare_data_for_training()
-
-        # Calculate comprehensive rollout metrics
-        rollout_duration = self._end_timer("rollout")
-        # Rollout time is now included in rollout_data below
-
-        steps_per_second = collected_steps / rollout_duration if rollout_duration > 0 else 0
-        mean_episode_reward = np.mean(episode_rewards_in_rollout) if episode_rewards_in_rollout else 0
-        std_episode_reward = np.std(episode_rewards_in_rollout) if len(episode_rewards_in_rollout) > 1 else 0
-        mean_episode_length = np.mean(episode_lengths_in_rollout) if episode_lengths_in_rollout else 0
 
         # Termination reason analysis
         termination_counts = {}
@@ -1124,6 +1140,7 @@ class PPOTrainer:
         elapsed_time = current_time - self.training_start_time
         steps_per_second = self.global_step_counter / elapsed_time if elapsed_time > 0 else 0
         episodes_per_hour = (self.global_episode_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
+        updates_per_second = self.global_update_counter / elapsed_time if elapsed_time > 0 else 0
         
         training_data = {
             'mode': 'Training',
@@ -1134,6 +1151,7 @@ class PPOTrainer:
             'stage_status': f"PPO Update {self.global_update_counter + 1}...",
             'steps_per_second': steps_per_second,
             'episodes_per_hour': episodes_per_hour,
+            'updates_per_second': updates_per_second,
             'time_per_update': np.mean(self.update_times) if self.update_times else 0.0,
             'time_per_episode': np.mean(self.episode_times) if self.episode_times else 0.0
         }
@@ -1223,6 +1241,10 @@ class PPOTrainer:
                 try:
                     batch_states = {key: tensor_val[batch_indices] for key, tensor_val in states_dict.items()}
                     batch_actions = actions[batch_indices]
+                    
+                    # Store last batch for attribution analysis
+                    self._last_batch_states = batch_states
+                    self._last_batch_actions = batch_actions
                     batch_old_log_probs = old_log_probs[batch_indices]
                     batch_advantages = advantages[batch_indices]
                     batch_returns = returns[batch_indices]
@@ -1354,18 +1376,28 @@ class PPOTrainer:
             self.update_times.pop(0)
 
         update_metrics = {
-            "actor_loss": avg_actor_loss,
-            "critic_loss": avg_critic_loss,
+            # Use consistent naming with ppo_data
+            "policy_loss": avg_actor_loss,
+            "value_loss": avg_critic_loss,
             "entropy": avg_entropy,
-            "clipfrac": avg_clipfrac,
-            "approx_kl": avg_approx_kl,
-            "value_function_explained_variance": avg_explained_variance,
+            "clip_fraction": avg_clipfrac,
+            "kl_divergence": avg_approx_kl,
+            "explained_variance": avg_explained_variance,
             "gradient_norm": avg_gradient_norm,
+            "total_loss": avg_actor_loss + avg_critic_loss,
+            "mean_episode_reward": mean_reward,
             "global_step_counter": self.global_step_counter,
             "global_episode_counter": self.global_episode_counter,
             "global_update_counter": self.global_update_counter,
             "update_time": update_duration,
-            "learning_rate": current_lr
+            "learning_rate": current_lr,
+            "total_steps": self.global_step_counter,  # Add for performance metrics
+            # Add batch data for attribution analysis
+            "batch_data": {
+                "states": getattr(self, '_last_batch_states', None),
+                "actions": getattr(self, '_last_batch_actions', None),
+                "buffer_size": self.buffer.get_size(),
+            }
         }
 
         # Comprehensive update summary with interpretation hints
@@ -1422,14 +1454,32 @@ class PPOTrainer:
         # Start training
         self.training_start_time = time.time()
         
-        # Trigger training start callback
+        # Trigger training start callback with comprehensive config
         training_config = {
+            # PPO specific parameters
             'rollout_steps': self.rollout_steps,
             'batch_size': self.batch_size,
             'ppo_epochs': self.ppo_epochs,
             'learning_rate': self.lr,
+            'gamma': self.gamma,
+            'gae_lambda': self.gae_lambda,
+            'clip_epsilon': self.clip_eps,
+            'value_coef': self.critic_coef,
+            'entropy_coef': self.entropy_coef,
+            'max_grad_norm': self.max_grad_norm,
+            
+            # Training configuration
             'curriculum_stage': self._get_current_curriculum_stage(),
-            'momentum_training': self.episode_selection_mode == "momentum_days"
+            'momentum_training': self.episode_selection_mode == "momentum_days",
+            'device': str(self.device),
+            
+            # Include full config for WandB and other callbacks that need it
+            'full_config': self.config,
+            'experiment_name': getattr(self.config, 'experiment_name', 'training'),
+            
+            # Model info
+            'model_config': self.model_config,
+            'model': self.model,  # Add model for attribution callback
         }
         self.callback_manager.trigger('on_training_start', training_config)
 
@@ -1503,7 +1553,9 @@ class PPOTrainer:
 
             # Curriculum-driven progress logging
             elapsed_time = time.time() - self.training_start_time
-            steps_per_hour = (self.global_step_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
+            steps_per_second = self.global_step_counter / elapsed_time if elapsed_time > 0 else 0
+            episodes_per_hour = (self.global_episode_counter / elapsed_time) * 3600 if elapsed_time > 0 else 0
+            updates_per_second = self.global_update_counter / elapsed_time if elapsed_time > 0 else 0
             
             # Calculate curriculum stage progress
             stage = self._get_current_curriculum_stage()
@@ -1533,7 +1585,9 @@ class PPOTrainer:
                 'overall_progress': stage_progress,
                 'stage_progress': stage_progress,
                 'stage_status': f"{stage_name} - Update {self.global_update_counter}",
-                'steps_per_second': steps_per_hour / 3600 if steps_per_hour > 0 else 0,
+                'steps_per_second': steps_per_second,
+                'episodes_per_hour': episodes_per_hour,
+                'updates_per_second': updates_per_second,
                 'time_per_update': update_metrics.get('update_time', 0) if 'update_metrics' in locals() else 0,
                 'time_per_episode': rollout_info.get('rollout_time', 0) / max(1, rollout_info.get('num_episodes_in_rollout', 1)) if 'rollout_info' in locals() else 0
             }
