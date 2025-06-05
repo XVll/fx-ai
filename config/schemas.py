@@ -384,9 +384,24 @@ class AdaptiveDataConfig(BaseModel):
     roc_range: List[float] = Field(default_factory=lambda: [0.05, 1.0], description="ROC score range")
     activity_range: List[float] = Field(default_factory=lambda: [0.0, 1.0], description="Activity score range")
     
-    # Selection behavior
-    selection_mode: Literal["sequential", "random", "quality_weighted"] = Field("quality_weighted", description="Selection mode")
-    randomize_order: bool = Field(False, description="Randomize selection order")
+    # SIMPLIFIED SELECTION MODES
+    # DAY SELECTION: How to pick which trading day to use next
+    day_selection_mode: Literal["sequential", "quality_weighted", "random"] = Field(
+        "sequential", 
+        description="Day selection: 'sequential' (chronological), 'quality_weighted' (by score), 'random'"
+    )
+    
+    # RESET POINT SELECTION: How to cycle through reset points within each day  
+    reset_point_selection_mode: Literal["sequential", "random"] = Field(
+        "sequential", 
+        description="Reset point selection: 'sequential' (by quality), 'random'"
+    )
+    
+    # BACKWARD COMPATIBILITY: Keep old fields for migration
+    selection_mode: Optional[Literal["sequential", "random", "quality_weighted"]] = Field(
+        None, description="DEPRECATED: Use day_selection_mode instead"
+    )
+    randomize_order: Optional[bool] = Field(None, description="DEPRECATED: Removed for simplicity")
 
 
 class DataCycleConfig(BaseModel):
@@ -426,17 +441,15 @@ class DataLifecycleConfig(BaseModel):
     # Data cycle management (when to switch days/reset points)
     cycles: DataCycleConfig = Field(default_factory=DataCycleConfig)
     
-    # Adaptive data selection (replaces stages)
+    # Adaptive data selection (replaces stages, includes all selection modes)
     adaptive_data: AdaptiveDataConfig = Field(default_factory=AdaptiveDataConfig)
-    
-    # Reset point management
-    reset_points: ResetPointConfig = Field(default_factory=ResetPointConfig)
-    
-    # Day selection
-    day_selection: DaySelectionConfig = Field(default_factory=DaySelectionConfig)
     
     # Preloading
     preloading: PreloadingConfig = Field(default_factory=PreloadingConfig)
+    
+    # BACKWARD COMPATIBILITY: Keep old configs for migration
+    reset_points: Optional[ResetPointConfig] = Field(None, description="DEPRECATED: Use adaptive_data instead")
+    day_selection: Optional[DaySelectionConfig] = Field(None, description="DEPRECATED: Use adaptive_data instead")
 
 
 class TrainingManagerConfig(BaseModel):
@@ -594,8 +607,8 @@ class Config(BaseModel):
     # Scanner configuration
     scanner: ScannerConfig = Field(default_factory=ScannerConfig)
 
-    # Day selection
-    day_selection: DaySelectionConfig = Field(default_factory=DaySelectionConfig)
+    # DEPRECATED: Day selection (now in env.training_manager.data_lifecycle.adaptive_data)
+    day_selection: Optional[DaySelectionConfig] = Field(None, description="DEPRECATED: Use env.training_manager.data_lifecycle.adaptive_data instead")
 
     # Monitoring
     logging: LoggingConfig = Field(default_factory=LoggingConfig)

@@ -139,7 +139,13 @@ class ResetPointCycler:
     
     def __init__(self, config):
         self.logger = logging.getLogger(__name__)
-        self.selection_mode = SelectionMode(config.selection_mode)
+        # Handle both old and new config names for backward compatibility
+        if hasattr(config, 'reset_point_selection_mode'):
+            self.selection_mode = SelectionMode(config.reset_point_selection_mode)
+        elif hasattr(config, 'selection_mode'):
+            self.selection_mode = SelectionMode(config.selection_mode)
+        else:
+            self.selection_mode = SelectionMode.SEQUENTIAL
         
         # Track state for cycling through all reset points
         self.current_cycle = 0
@@ -216,8 +222,16 @@ class DaySelector:
     
     def __init__(self, config):
         self.logger = logging.getLogger(__name__)
-        self.selection_mode = SelectionMode(config.selection_mode)
-        self.randomize_order = config.randomize_order
+        # Handle both old and new config names for backward compatibility
+        if hasattr(config, 'day_selection_mode'):
+            self.selection_mode = SelectionMode(config.day_selection_mode)
+        elif hasattr(config, 'selection_mode'):
+            self.selection_mode = SelectionMode(config.selection_mode)
+        else:
+            self.selection_mode = SelectionMode.SEQUENTIAL
+        
+        # Remove randomize_order - it was confusing and unnecessary
+        self.randomize_order = False
         
     def select_day(self, available_days: List[DayInfo], stage_config: StageConfig,
                    used_days: Set[str]) -> Optional[DayInfo]:
@@ -463,9 +477,20 @@ class DataLifecycleManager:
         self.available_days = available_days
         self.logger = logging.getLogger(__name__)
         
-        # Initialize components
-        self.reset_point_cycler = ResetPointCycler(config.reset_points)
-        self.day_selector = DaySelector(config.day_selection)
+        # Initialize components - handle both old and new config structure
+        if hasattr(config, 'reset_points'):
+            # Old config structure
+            self.reset_point_cycler = ResetPointCycler(config.reset_points)
+        else:
+            # New config structure - use adaptive_data
+            self.reset_point_cycler = ResetPointCycler(config.adaptive_data)
+            
+        if hasattr(config, 'day_selection'):
+            # Old config structure
+            self.day_selector = DaySelector(config.day_selection)
+        else:
+            # New config structure - use adaptive_data
+            self.day_selector = DaySelector(config.adaptive_data)
         
         # Initialize preloader
         self.preloader = DataPreloader(config.preloading)
@@ -619,6 +644,10 @@ class DataLifecycleManager:
         adaptive_config = self.config.adaptive_data
         
         # Create a temporary stage config for compatibility
+        # Handle both old and new config names
+        day_selection_mode = getattr(adaptive_config, 'day_selection_mode', 
+                                   getattr(adaptive_config, 'selection_mode', 'sequential'))
+        
         temp_stage = StageConfig(
             name="adaptive",
             symbols=adaptive_config.symbols,
@@ -626,8 +655,8 @@ class DataLifecycleManager:
             day_score_range=adaptive_config.day_score_range,
             roc_range=adaptive_config.roc_range,
             activity_range=adaptive_config.activity_range,
-            selection_mode=SelectionMode(adaptive_config.selection_mode),
-            randomize_order=adaptive_config.randomize_order
+            selection_mode=SelectionMode(day_selection_mode),
+            randomize_order=False  # Removed this confusing option
         )
         
         # Select next day
@@ -718,8 +747,17 @@ class DataLifecycleManager:
                     self.config.adaptive_data.roc_range = adaptive_changes['roc_range']
                 if 'activity_range' in adaptive_changes:
                     self.config.adaptive_data.activity_range = adaptive_changes['activity_range']
+                # Handle both old and new selection mode names
                 if 'selection_mode' in adaptive_changes:
-                    self.config.adaptive_data.selection_mode = adaptive_changes['selection_mode']
+                    # Map old to new if using old name
+                    if hasattr(self.config.adaptive_data, 'day_selection_mode'):
+                        self.config.adaptive_data.day_selection_mode = adaptive_changes['selection_mode']
+                    else:
+                        self.config.adaptive_data.selection_mode = adaptive_changes['selection_mode']
+                if 'day_selection_mode' in adaptive_changes:
+                    self.config.adaptive_data.day_selection_mode = adaptive_changes['day_selection_mode']
+                if 'reset_point_selection_mode' in adaptive_changes:
+                    self.config.adaptive_data.reset_point_selection_mode = adaptive_changes['reset_point_selection_mode']
                 
                 self.logger.info(f"🔄 Applied dynamic adaptation to data lifecycle: {adaptive_changes}")
             
