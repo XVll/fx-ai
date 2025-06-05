@@ -513,6 +513,98 @@ class TrainingManager:
     def _send_dashboard_update(self, trainer):
         """Send training manager updates to dashboard"""
         if hasattr(trainer, 'callback_manager'):
+            # Get data lifecycle information if available
+            data_lifecycle_info = {}
+            if self.data_lifecycle_manager:
+                lifecycle_status = self.data_lifecycle_manager.get_data_lifecycle_status()
+                
+                # Get reset point cycler status if available
+                reset_point_status = {}
+                if hasattr(self.data_lifecycle_manager, 'reset_point_cycler') and self.data_lifecycle_manager.reset_point_cycler:
+                    reset_point_status = self.data_lifecycle_manager.reset_point_cycler.get_cycle_status()
+                
+                # Always provide meaningful defaults, even if reset_point_cycler is None
+                cycle_count = lifecycle_status.get("cycle_count", 0)
+                episodes_in_day = lifecycle_status.get("episodes_in_day", 0)
+                total_reset_points = reset_point_status.get("total_reset_points", 0) if reset_point_status else 0
+                current_index = reset_point_status.get("current_index", 0) if reset_point_status else 0
+                
+                data_lifecycle_info.update({
+                    # Cycle tracking
+                    "current_cycle": reset_point_status.get("current_cycle", cycle_count) if reset_point_status else cycle_count,
+                    "cycles_completed": cycle_count,
+                    "target_cycles_per_day": 10,  # Default target cycles per day
+                    "cycle_progress": reset_point_status.get("progress_in_cycle", 0.0) if reset_point_status else 0.0,
+                    
+                    # Reset point tracking
+                    "total_available_points": total_reset_points,
+                    "points_used_in_cycle": current_index,
+                    "points_remaining_in_cycle": max(0, total_reset_points - current_index),
+                    
+                    # Day switch progress
+                    "day_switch_progress_pct": 0.0,  # Calculate based on episodes vs target
+                    "episodes_on_current_day": episodes_in_day,
+                    "cycles_remaining_for_day_switch": max(0, 10 - cycle_count),
+                })
+                
+                # Calculate day switch progress if we have episode targets
+                if episodes_in_day > 0:
+                    target_episodes_per_day = 50  # Default target
+                    data_lifecycle_info["day_switch_progress_pct"] = min(100.0, (episodes_in_day / target_episodes_per_day) * 100.0)
+                elif cycle_count > 0:
+                    # Fallback: calculate based on cycles completed
+                    data_lifecycle_info["day_switch_progress_pct"] = min(100.0, (cycle_count / 10) * 100.0)
+            else:
+                # Provide meaningful defaults when no data lifecycle manager is available
+                data_lifecycle_info.update({
+                    "current_cycle": 0,
+                    "cycles_completed": 0,
+                    "target_cycles_per_day": 10,
+                    "cycle_progress": 0.0,
+                    "total_available_points": 0,
+                    "points_used_in_cycle": 0,
+                    "points_remaining_in_cycle": 0,
+                    "day_switch_progress_pct": 0.0,
+                    "episodes_on_current_day": 0,
+                    "cycles_remaining_for_day_switch": 10,
+                })
+            
+            # Calculate meaningful progress and termination info
+            episodes_to_next = 0
+            next_stage_name = "Complete"
+            progress_pct = 0.0
+            
+            # Calculate progress based on training limits
+            if self.termination_controller.training_max_episodes != float('inf'):
+                episodes_progress = (self.state.episodes / self.termination_controller.training_max_episodes) * 100
+                episodes_to_next = max(0, self.termination_controller.training_max_episodes - self.state.episodes)
+                next_stage_name = "Episode Limit"
+                progress_pct = max(progress_pct, episodes_progress)
+            
+            if self.termination_controller.training_max_updates != float('inf'):
+                updates_progress = (self.state.updates / self.termination_controller.training_max_updates) * 100
+                updates_to_next = max(0, self.termination_controller.training_max_updates - self.state.updates)
+                if episodes_to_next == 0 or (updates_to_next > 0 and updates_to_next < episodes_to_next):
+                    episodes_to_next = updates_to_next
+                    next_stage_name = "Update Limit"
+                progress_pct = max(progress_pct, updates_progress)
+            
+            if self.termination_controller.training_max_cycles != float('inf'):
+                cycles_progress = (self.state.cycle_count / self.termination_controller.training_max_cycles) * 100
+                cycles_to_next = max(0, self.termination_controller.training_max_cycles - self.state.cycle_count)
+                if episodes_to_next == 0 or (cycles_to_next > 0 and cycles_to_next < episodes_to_next):
+                    episodes_to_next = cycles_to_next
+                    next_stage_name = "Cycle Limit"
+                progress_pct = max(progress_pct, cycles_progress)
+            
+            # Cap progress at 100%
+            progress_pct = min(100.0, progress_pct)
+            
+            # If no limits are set, show continuous training progress
+            if progress_pct == 0.0 and episodes_to_next == 0:
+                progress_pct = min(100.0, (self.state.updates % 100) * 1.0)
+                next_stage_name = "Continuous"
+
             dashboard_data = {
                 "mode": self.mode.value,
                 "current_stage": self.state.current_stage,
@@ -523,7 +615,25 @@ class TrainingManager:
                 "data_preload_ready": self.state.data_preload_ready,
                 "training_hours": self.state.training_hours,
                 "continuous_active": True,
-                "termination_reason": self.termination_reason.value if self.termination_reason else None
+                "termination_reason": self.termination_reason.value if self.termination_reason else None,
+                
+                # Training limits for progress display
+                "training_max_episodes": self.termination_controller.training_max_episodes,
+                "training_max_updates": self.termination_controller.training_max_updates, 
+                "training_max_cycles": self.termination_controller.training_max_cycles,
+                
+                # Current training state
+                "total_episodes": self.state.episodes,
+                "total_updates": self.state.updates,
+                "global_steps": self.state.global_steps,
+                
+                # Progress and termination info for dashboard display
+                "overall_progress": progress_pct,
+                "episodes_to_next_stage": episodes_to_next,
+                "next_stage_name": next_stage_name,
+                
+                # Data lifecycle information
+                **data_lifecycle_info
             }
             
             trainer.callback_manager.trigger("on_custom_event", "training_manager_update", dashboard_data)
@@ -600,16 +710,27 @@ class TrainingManager:
         return status
     
     def get_episode_config(self) -> Dict[str, Any]:
-        """Get current episode configuration from data lifecycle"""
+        """Get current episode configuration from data lifecycle (for cycle management only)"""
         if self.data_lifecycle_manager:
             cycle_config = self.data_lifecycle_manager.config.cycles
             return {
-                'max_episode_steps': cycle_config.episode_max_steps,
                 'day_max_episodes': cycle_config.day_max_episodes,
                 'day_max_updates': cycle_config.day_max_updates,
                 'day_max_cycles': cycle_config.day_max_cycles
             }
-        return {'max_episode_steps': 256}  # Fallback
+        else:
+            # Use data lifecycle config from training manager config if available
+            data_lifecycle_config_dict = self._convert_pydantic_to_dict(self.config, 'data_lifecycle', {'enabled': True})
+            if 'cycles' in data_lifecycle_config_dict:
+                cycles_config = data_lifecycle_config_dict['cycles']
+                if isinstance(cycles_config, dict):
+                    return {
+                        'day_max_episodes': cycles_config.get('day_max_episodes'),
+                        'day_max_updates': cycles_config.get('day_max_updates'),
+                        'day_max_cycles': cycles_config.get('day_max_cycles', 3)
+                    }
+            
+            return {'day_max_cycles': 3}  # Final fallback
     
     def get_current_training_data(self) -> Optional[Dict[str, Any]]:
         """Get current training data configuration"""

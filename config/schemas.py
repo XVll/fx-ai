@@ -252,7 +252,7 @@ class EnvironmentConfig(BaseModel):
     """Trading environment settings"""
 
     # Episode control
-    max_episode_steps: int = Field(256, gt=0, description="Maximum steps per episode")
+    max_steps: int = Field(256, gt=0, description="Maximum steps per episode")
     max_training_steps: Optional[int] = Field(
         None, description="Maximum training steps"
     )
@@ -456,9 +456,6 @@ class AdaptiveDataConfig(BaseModel):
 
 class DataCycleConfig(BaseModel):
     """Data cycle management - when to switch days/reset points"""
-    
-    # Episode management
-    episode_max_steps: int = Field(256, gt=0, description="Maximum steps per episode")
     
     # Day switching conditions (when ANY is met, switch to next day)
     day_max_episodes: Optional[int] = Field(None, description="Max episodes per day before switching to next day")

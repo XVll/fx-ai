@@ -1248,15 +1248,18 @@ class DashboardServer:
                 lifecycle_stage, DARK_THEME["text_muted"]
             )
 
-            # Get progress percentage from data lifecycle (transmitted from training manager)
-            progress_pct = cycle_progress
+            # Get progress percentage from training manager (overall training progress)
+            progress_pct = getattr(state, "overall_progress", 0.0)
             if progress_pct == 0.0:
-                # Fallback: show continuous training activity
-                continuous_active = getattr(state, "continuous_training_active", False)
-                if continuous_active:
-                    progress_pct = min(100.0, (state.updates % 100) * 1.0)
-                else:
-                    progress_pct = 0.0
+                # Fallback: use cycle progress if available
+                progress_pct = cycle_progress
+                if progress_pct == 0.0:
+                    # Fallback: show continuous training activity
+                    continuous_active = getattr(state, "continuous_training_active", False)
+                    if continuous_active:
+                        progress_pct = min(100.0, (state.updates % 100) * 1.0)
+                    else:
+                        progress_pct = 0.0
 
             # Determine momentum direction
 

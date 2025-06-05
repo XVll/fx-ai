@@ -121,7 +121,7 @@ studies:
         # dropout: [SET BY TRANSFER]
         
       env:
-        max_episode_steps: 256   # Longer episodes for meaningful trading
+        max_steps: 256   # Longer episodes for meaningful trading
       
       wandb:
         enabled: true

@@ -39,6 +39,7 @@ class ResetPointInfo:
     quality_score: float
     roc_score: float
     activity_score: float
+    price: float = 0.0
     used_count: int = 0
     last_used: Optional[datetime] = None
     
@@ -570,7 +571,7 @@ class DataLifecycleManager:
                 'roc_score': rp.roc_score,
                 'activity_score': rp.activity_score,
                 'combined_score': rp.quality_score,  # Use quality_score as combined
-                'price': 0.0  # Price will be filled by environment
+                'price': rp.price  # Use actual price from reset point
             }
             reset_points_formatted.append(reset_point_dict)
         

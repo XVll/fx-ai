@@ -167,13 +167,10 @@ class TradingEnvironment(gym.Env):
 
         # Episode state
         self.current_step: int = 0
-        self.max_episode_steps: int = (
-            config.env.max_episode_steps
-        )  # Natural episode length (no penalty)
+        self.max_steps: int = config.env.max_steps  # Maximum steps per episode
         self.max_training_steps: Optional[int] = (
             config.env.max_training_steps
         )  # Training limit (with penalty)
-        self.max_steps: int = config.env.max_episode_steps  # Legacy compatibility
         self.invalid_action_count_episode: int = 0
         self.episode_total_reward: float = 0.0
         self.initial_capital_for_session: float = (
@@ -966,11 +963,11 @@ class TradingEnvironment(gym.Env):
             if market_state_at_decision:
                 current_time = market_state_at_decision["timestamp"]
                 elapsed_seconds = self.current_step  # Each step is 1 second
-                # For episode progress, use max_episode_steps if set, otherwise show unbounded progress
-                if self.max_episode_steps:
-                    progress_pct = self.current_step / self.max_episode_steps * 100
+                # For episode progress, use max_steps if set, otherwise show unbounded progress
+                if self.max_steps:
+                    progress_pct = self.current_step / self.max_steps * 100
                     self.logger.info(
-                        f"📈 Episode progress: Step {self.current_step}/{self.max_episode_steps} ({progress_pct:.1f}%) | "
+                        f"📈 Episode progress: Step {self.current_step}/{self.max_steps} ({progress_pct:.1f}%) | "
                         f"Episode {self.episode_number} | Sim time: {current_time.strftime('%H:%M:%S') if hasattr(current_time, 'strftime') else str(current_time)} | "
                         f"Elapsed: {elapsed_seconds // 60}m {elapsed_seconds % 60}s"
                     )
@@ -1208,9 +1205,9 @@ class TradingEnvironment(gym.Env):
 
         # Natural episode end (no penalty)
         elif (
-            self.max_episode_steps is not None
-            and self.max_episode_steps > 0
-            and self.current_step >= self.max_episode_steps
+            self.max_steps is not None
+            and self.max_steps > 0
+            and self.current_step >= self.max_steps
         ):
             terminated = True
             termination_reason = (

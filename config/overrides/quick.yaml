@@ -1,7 +1,13 @@
 # Quick Override - Fast Development Training
 # Optimized for rapid development cycles and testing
+training:
+  rollout_steps: 256
+  n_epochs: 3
 
 env:
+  # Quick episode length for development
+  max_steps: 128
+  
   training_manager:
     mode: "production"
     
@@ -34,7 +40,6 @@ env:
       
       # Data cycle management (when to switch days/reset points)
       cycles:
-        episode_max_steps: 128            # Shorter episodes for speed
         day_max_episodes: null               # 5 episodes per day for quick testing
         day_max_updates: null            # No update limit per day
         day_max_cycles: 2                # Quick cycling for development
