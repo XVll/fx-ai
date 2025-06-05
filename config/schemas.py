@@ -35,6 +35,24 @@ class SessionType(str, Enum):
 # =============================================================================
 
 
+class SHAPConfig(BaseModel):
+    """SHAP Feature Attribution Configuration"""
+    
+    enabled: bool = Field(True, description="Enable SHAP attribution analysis")
+    update_frequency: int = Field(10, ge=1, description="Run SHAP every N updates")
+    max_samples_per_analysis: int = Field(5, ge=1, description="Max samples per analysis")
+    background_samples: int = Field(10, ge=1, description="Background samples for baseline")
+    methods: List[str] = Field(["gradient_shap"], description="Attribution methods")
+    primary_method: str = Field("gradient_shap", description="Primary attribution method")
+    top_k_features: int = Field(50, ge=1, description="Track top K features")
+    dead_feature_threshold: float = Field(0.001, ge=0.0, description="Dead feature threshold")
+    analyze_interactions: bool = Field(True, description="Analyze feature interactions")
+    save_plots: bool = Field(False, description="Save visualization plots")
+    log_to_wandb: bool = Field(True, description="Log results to W&B")
+    dashboard_update: bool = Field(True, description="Update dashboard with results")
+    use_gpu: bool = Field(True, description="Use GPU for attribution")
+
+
 class ModelConfig(BaseModel):
     """Multi-branch transformer model configuration"""
 
@@ -71,6 +89,10 @@ class ModelConfig(BaseModel):
 
     # Action space
     action_dim: List[int] = Field([3, 4], description="[action_types, position_sizes]")
+
+    # SHAP Attribution Configuration
+    enable_attribution: bool = Field(False, description="Enable SHAP feature attribution analysis")
+    shap_config: Optional[SHAPConfig] = Field(None, description="SHAP configuration")
 
     @field_validator("action_dim", mode="before")  # noinspection PyNestedDecorators
     @classmethod

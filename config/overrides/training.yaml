@@ -37,7 +37,7 @@ env:
         episode_max_steps: 256           # Steps per episode
         day_max_episodes: null           # No episode limit per day
         day_max_updates: null            # No update limit per day
-        day_max_cycles: 2                # Cycle through all reset points 3 times per day
+        day_max_cycles: 100                # Cycle through all reset points 3 times per day
       
       # Adaptive data selection
       adaptive_data:

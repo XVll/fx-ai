@@ -175,11 +175,15 @@ class PPOTrainer:
 
         # Update current momentum day from training data
         if 'day_info' in training_data:
+            prev_day = getattr(self, 'current_momentum_day', {})
+            prev_date = prev_day.get('date') if prev_day else None
+            
             self.current_momentum_day = training_data['day_info']
             day_date = self.current_momentum_day.get('date')
             quality = self.current_momentum_day.get('quality_score', 0)
             
-            if day_date:
+            # Only log when day actually changes
+            if day_date and day_date != prev_date:
                 self.logger.info(
                     f"📅 Using training day: {self._safe_date_format(day_date)} "
                     f"(quality: {quality:.3f})"
@@ -1213,13 +1217,26 @@ class PPOTrainer:
 
         # Run periodic feature attribution analysis via callback
         # Get attribution frequency from config or use default of 10
-        attribution_frequency = getattr(self.config, "attribution_update_frequency", 10)
+        attribution_frequency = 10  # default
+        if hasattr(self.config, 'model') and hasattr(self.config.model, 'shap_config'):
+            attribution_frequency = getattr(self.config.model.shap_config, 'update_frequency', 10)
+        
+        self.logger.debug(f"Attribution frequency: {attribution_frequency}")
 
         if self.global_update_counter % attribution_frequency == 0:
-            self.logger.info(
-                f"🔍 Triggering feature attribution analysis at update {self.global_update_counter}"
-            )
-            # Attribution is now handled by callbacks that implement it
+            # Trigger attribution analysis via callback system
+            try:
+                self.logger.info(f"🔍 Triggering attribution analysis callback at update {self.global_update_counter}")
+                self.callback_manager.trigger("on_attribution_analysis", {
+                    "update_num": self.global_update_counter,
+                    "model": self.model,
+                    "device": self.device
+                })
+                self.logger.info(f"✅ Attribution analysis callback triggered successfully")
+            except Exception as e:
+                self.logger.error(f"❌ Attribution analysis callback failed: {e}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
 
         # Trigger training update callback that we're in update phase
         # Calculate current performance metrics

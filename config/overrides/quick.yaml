@@ -22,7 +22,7 @@ env:
       
       # Centralized evaluation settings
       evaluation:
-        frequency: 15          # Frequent evaluations for feedback
+        frequency: 5          # Frequent evaluations for feedback
         episodes: 3            # Few episodes for speed
       
       # Quick adaptation
@@ -42,16 +42,16 @@ env:
       # Random adaptive data selection for variety in development
       adaptive_data:
         symbols: ["MLGO"]
-        date_range: [null, null]
-        day_score_range: [0.7, 1.0]
-        roc_range: [0.1, 1.0]    # Wider range for more data
+        date_range: ["2025-02-21", "2025-02-24"]  # [start_date, end_date] inclusive
+        day_score_range: [0.0, 1.0]
+        roc_range: [0.0, 1.0]    # Wider range for more data
         activity_range: [0.0, 1.0]
         
         # DAY SELECTION: Random for development variety  
-        day_selection_mode: "random"           # Options: "sequential" (chronological), "quality_weighted" (by score), "random"
+        day_selection_mode: "sequential"           # Options: "sequential" (chronological), "quality_weighted" (by score), "random"
         
         # RESET POINT SELECTION: Random for development variety
-        reset_point_selection_mode: "random"  # Options: "sequential" (by quality), "random"
+        reset_point_selection_mode: "sequential"  # Options: "sequential" (by quality), "random"
       
       preloading:
         preload_enabled: false  # Disabled for simplicity
@@ -61,7 +61,7 @@ model:
   enable_attribution: true
   shap_config:
     enabled: true
-    update_frequency: 20      # Less frequent for speed
+    update_frequency: 1      # Less frequent for speed
     max_samples_per_analysis: 3
     background_samples: 5
     methods:

@@ -3,6 +3,18 @@ import logging
 import numpy as np
 
 
+def safe_format_date(date_obj) -> str:
+    """Safely format a date object to YYYY-MM-DD string."""
+    if isinstance(date_obj, str):
+        return date_obj
+    elif hasattr(date_obj, 'strftime'):
+        return date_obj.strftime('%Y-%m-%d')
+    elif hasattr(date_obj, 'date'):
+        return date_obj.date().strftime('%Y-%m-%d')
+    else:
+        return str(date_obj)
+
+
 class TrainingCallback:
     """
     Base callback class for training events.
@@ -23,6 +35,10 @@ class TrainingCallback:
 
     def on_rollout_end(self, trainer):
         """Called after collecting rollouts."""
+        pass
+
+    def on_attribution_analysis(self, attribution_data):
+        """Called when attribution analysis should be performed."""
         pass
 
     def on_step(self, trainer, state, action, reward, next_state, info):
@@ -173,7 +189,7 @@ class MomentumTrackingCallback(TrainingCallback):
 
         # Track current momentum day performance
         if hasattr(trainer, "current_momentum_day") and trainer.current_momentum_day:
-            day_key = trainer.current_momentum_day["date"].strftime("%Y-%m-%d")
+            day_key = safe_format_date(trainer.current_momentum_day["date"])
             if day_key not in self.day_performance_stats:
                 self.day_performance_stats[day_key] = {
                     "episodes": 0,
@@ -216,7 +232,7 @@ class MomentumTrackingCallback(TrainingCallback):
         # Current momentum day info
         if hasattr(trainer, "current_momentum_day") and trainer.current_momentum_day:
             day_info = trainer.current_momentum_day
-            day_key = day_info["date"].strftime("%Y-%m-%d")
+            day_key = safe_format_date(day_info["date"])
 
             if day_key in self.day_performance_stats:
                 stats = self.day_performance_stats[day_key]

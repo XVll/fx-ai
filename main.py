@@ -485,17 +485,23 @@ def create_training_callbacks(
             from agent.attribution_callback import AttributionCallback
 
             # Get SHAP configuration or use defaults
-            shap_config = getattr(config.model, "shap_config", {})
-            if isinstance(shap_config, dict):
-                attribution_callback = AttributionCallback(shap_config)
+            shap_config = getattr(config.model, "shap_config", None)
+            if shap_config is not None:
+                # Convert Pydantic object to dict for AttributionCallback
+                if hasattr(shap_config, '__dict__'):
+                    shap_config_dict = shap_config.__dict__
+                elif hasattr(shap_config, 'dict'):
+                    shap_config_dict = shap_config.dict()
+                else:
+                    shap_config_dict = shap_config
+                    
+                attribution_callback = AttributionCallback(shap_config_dict, enabled=config.model.enable_attribution)
                 callbacks.append(attribution_callback)
                 logging.info(
-                    f"🔍 SHAP attribution callback added (frequency: {shap_config.get('update_frequency', 10)})"
+                    f"🔍 SHAP attribution callback added (frequency: {shap_config.update_frequency})"
                 )
             else:
-                logging.warning(
-                    "Invalid SHAP config format, skipping attribution callback"
-                )
+                logging.info("No SHAP config found, skipping attribution callback")
         except ImportError:
             logging.warning(
                 "SHAP attribution dependencies not available, skipping attribution callback"

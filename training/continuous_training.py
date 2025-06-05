@@ -302,7 +302,7 @@ class ContinuousTraining:
         self.updates_since_recommendation = 0
         
         # Only provide recommendations if we have recent evaluation data
-        if not self.evaluation_results or len(self.evaluation_results) < 2:
+        if not self.performance_analyzer.evaluation_history or len(self.performance_analyzer.evaluation_history) < 2:
             self.logger.debug("🔄 No sufficient evaluation data for recommendations")
             # Request evaluation if we don't have recent data
             recommendations.evaluation_request = True
@@ -337,7 +337,7 @@ class ContinuousTraining:
     
     def _analyze_evaluation_performance(self) -> PerformanceAnalysis:
         """Analyze evaluation performance instead of training performance"""
-        if not self.evaluation_results:
+        if not self.performance_analyzer.evaluation_history:
             return PerformanceAnalysis(
                 trend="unknown",
                 confidence=0.0,
@@ -348,7 +348,7 @@ class ContinuousTraining:
             )
         
         # Get evaluation rewards
-        eval_rewards = [result.mean_reward for result in self.evaluation_results]
+        eval_rewards = [result.mean_reward for result in self.performance_analyzer.evaluation_history]
         
         # Use the performance analyzer but with evaluation data
         temp_analyzer = PerformanceAnalyzer(window_size=len(eval_rewards))
@@ -359,21 +359,21 @@ class ContinuousTraining:
     
     def _should_request_checkpoint_from_evaluation(self) -> bool:
         """Determine if checkpoint should be requested based on evaluation results"""
-        if not self.evaluation_results:
+        if not self.performance_analyzer.evaluation_history:
             return False
         
         # Get recent evaluation performance
-        recent_eval = self.evaluation_results[-1]
+        recent_eval = self.performance_analyzer.evaluation_history[-1]
         
         # Check if recent evaluation shows improvement
-        if len(self.evaluation_results) >= 2:
-            previous_eval = self.evaluation_results[-2]
+        if len(self.performance_analyzer.evaluation_history) >= 2:
+            previous_eval = self.performance_analyzer.evaluation_history[-2]
             if recent_eval.mean_reward > previous_eval.mean_reward:
                 self.logger.info(f"📈 Evaluation improvement detected: {previous_eval.mean_reward:.4f} → {recent_eval.mean_reward:.4f}")
                 return True
         
         # Check if this is a new best evaluation result
-        best_eval_reward = max(result.mean_reward for result in self.evaluation_results)
+        best_eval_reward = max(result.mean_reward for result in self.performance_analyzer.evaluation_history)
         if recent_eval.mean_reward >= best_eval_reward:
             self.logger.info(f"🏆 New best evaluation result: {recent_eval.mean_reward:.4f}")
             return True
@@ -384,7 +384,7 @@ class ContinuousTraining:
         """Analyze termination conditions based on evaluation trends"""
         from training.training_manager import TerminationReason
         
-        if not self.evaluation_results or len(self.evaluation_results) < 3:
+        if not self.performance_analyzer.evaluation_history or len(self.performance_analyzer.evaluation_history) < 3:
             return None
         
         # Check for evaluation plateau

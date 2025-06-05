@@ -2,7 +2,7 @@
 Comprehensive SHAP Feature Attribution System v2
 
 A production-ready SHAP implementation optimized for 2,330+ features with:
-- Multiple SHAP explainer methods (DeepSHAP, GradientSHAP, IntegratedGradients)
+- Multiple SHAP explainer methods (DeepSHAP, GradientSHAP, TreeSHAP)
 - Feature-level attribution with proper branch mapping
 - Feature interactions and dependency analysis
 - Dead feature detection with configurable thresholds
@@ -37,16 +37,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
 try:
     import shap
     import wandb
-    from captum.attr import (
-        IntegratedGradients,
-        DeepLift,
-        GradientShap,
-        FeatureAblation,
-        Occlusion,
-        LayerConductance,
-        NeuronConductance,
-        NoiseTunnel,
-    )
 
     ATTRIBUTION_AVAILABLE = True
 except ImportError:
@@ -141,7 +131,7 @@ class ComprehensiveSHAPAnalyzer:
     ):
         if not ATTRIBUTION_AVAILABLE:
             raise ImportError(
-                "SHAP and Captum are required. Install with: pip install shap captum"
+                "SHAP is required. Install with: pip install shap"
             )
 
         self.model = model
@@ -221,45 +211,43 @@ class ComprehensiveSHAPAnalyzer:
         self.logger.info(f"📊 Initialized metadata for {self.total_features} features")
 
     def _setup_explainers(self):
-        """Setup multiple attribution methods"""
+        """Setup SHAP explainers"""
         self.explainers = {}
         self.model_wrapper = self._create_model_wrapper()
 
-        # Initialize Captum attributors
-        if "integrated_gradients" in self.config.methods:
-            self.explainers["integrated_gradients"] = IntegratedGradients(
-                self.model_wrapper
-            )
-
+        # Initialize SHAP explainers
         if "gradient_shap" in self.config.methods:
-            self.explainers["gradient_shap"] = GradientShap(self.model_wrapper)
+            self.explainers["gradient_shap"] = "gradient_shap"
 
-        if "deep_lift" in self.config.methods:
-            self.explainers["deep_lift"] = DeepLift(self.model_wrapper)
+        if "deep_shap" in self.config.methods:
+            self.explainers["deep_shap"] = "deep_shap"
 
-        if "feature_ablation" in self.config.methods:
-            self.explainers["feature_ablation"] = FeatureAblation(self.model_wrapper)
+        if "explainer" in self.config.methods:
+            self.explainers["explainer"] = "explainer"
 
-        # Add noise tunnel for robustness
-        if self.config.primary_method in self.explainers:
-            base_explainer = self.explainers[self.config.primary_method]
-            self.explainers["noise_tunnel"] = NoiseTunnel(base_explainer)
+        # Default to gradient_shap if no methods specified
+        if not self.explainers:
+            self.explainers["gradient_shap"] = "gradient_shap"
 
-        self.logger.info(f"✅ Initialized {len(self.explainers)} attribution methods")
+        self.logger.info(f"✅ Initialized {len(self.explainers)} SHAP attribution methods")
 
     def _create_model_wrapper(self):
-        """Create a wrapper for Captum compatibility"""
+        """Create a wrapper for SHAP compatibility"""
 
-        def forward_func(inputs: torch.Tensor) -> torch.Tensor:
+        def forward_func(inputs):
             """
             Wrapper that converts flattened tensor to state dict and gets predictions.
 
             Args:
-                inputs: Flattened tensor [batch_size, total_features]
+                inputs: Flattened tensor [batch_size, total_features] (numpy or torch)
 
             Returns:
-                Model predictions [batch_size, num_actions]
+                Model predictions [batch_size, num_actions] as numpy array
             """
+            # Convert to torch tensor if needed
+            if isinstance(inputs, np.ndarray):
+                inputs = torch.from_numpy(inputs).float()
+            
             # Ensure inputs are on correct device
             if not inputs.is_cuda and self.device.type == "cuda":
                 inputs = inputs.to(self.device)
@@ -273,9 +261,12 @@ class ComprehensiveSHAPAnalyzer:
 
                 # For discrete actions, return action type logits
                 if isinstance(action_params, tuple) and len(action_params) == 2:
-                    return action_params[0]  # Action type logits
+                    output = action_params[0]  # Action type logits
                 else:
-                    return action_params
+                    output = action_params
+                
+                # Convert to numpy for SHAP
+                return output.detach().cpu().numpy()
 
         return forward_func
 
@@ -412,26 +403,23 @@ class ComprehensiveSHAPAnalyzer:
             self.background_cache = None
 
     def _test_attribution_methods(self):
-        """Test each attribution method to ensure they work"""
+        """Test each SHAP attribution method to ensure they work"""
         if self.background_cache is None:
             return
 
         test_input = self.background_cache[:1]
 
-        for method_name, explainer in self.explainers.items():
+        for method_name in self.explainers.keys():
             try:
-                if method_name in ["gradient_shap", "noise_tunnel"]:
-                    # These need baselines
-                    attributions = explainer.attribute(
-                        test_input, baselines=self.background_cache[:2], target=0
+                # Test SHAP method
+                attributions = self._run_attribution_method(method_name, test_input)
+                
+                if attributions is not None:
+                    self.logger.debug(
+                        f"✓ {method_name} working: shape {attributions.shape}"
                     )
                 else:
-                    # Others just need input
-                    attributions = explainer.attribute(test_input, target=0)
-
-                self.logger.debug(
-                    f"✓ {method_name} working: shape {attributions.shape}"
-                )
+                    raise Exception("Attribution returned None")
 
             except Exception as e:
                 self.logger.warning(f"✗ {method_name} failed: {e}")
@@ -584,52 +572,41 @@ class ComprehensiveSHAPAnalyzer:
     def _run_attribution_method(
         self, method: str, inputs: torch.Tensor, actions: Optional[List[int]] = None
     ) -> Optional[np.ndarray]:
-        """Run a specific attribution method"""
+        """Run a specific SHAP attribution method"""
         try:
-            explainer = self.explainers[method]
-
-            # Determine target (action taken if available, otherwise explain all)
-            if actions:
-                targets = torch.tensor(actions, device=self.device)
+            # Convert inputs to numpy for SHAP
+            inputs_np = inputs.detach().cpu().numpy()
+            
+            # Use background for baseline
+            if self.background_cache is not None:
+                background_np = self.background_cache.detach().cpu().numpy()
             else:
-                targets = None
+                # Create zero baseline if no background available
+                background_np = np.zeros_like(inputs_np[:1])
 
-            # Run attribution
-            if method in ["gradient_shap", "noise_tunnel"]:
-                # Need baselines
-                num_baselines = min(3, len(self.background_cache))
-                baselines = self.background_cache[:num_baselines]
-
-                if targets is not None:
-                    # Explain specific actions
-                    attributions = []
-                    for i, target in enumerate(targets):
-                        attr = explainer.attribute(
-                            inputs[i : i + 1], baselines=baselines, target=int(target)
-                        )
-                        attributions.append(attr)
-                    attributions = torch.cat(attributions, dim=0)
-                else:
-                    # Explain all outputs
-                    attributions = explainer.attribute(inputs, baselines=baselines)
+            # Create SHAP explainer based on method
+            if method == "gradient_shap":
+                explainer = shap.GradientExplainer(self.model_wrapper, background_np)
+            elif method == "deep_shap":
+                explainer = shap.DeepExplainer(self.model_wrapper, background_np)
             else:
-                # No baselines needed
-                if targets is not None:
-                    attributions = []
-                    for i, target in enumerate(targets):
-                        attr = explainer.attribute(
-                            inputs[i : i + 1], target=int(target)
-                        )
-                        attributions.append(attr)
-                    attributions = torch.cat(attributions, dim=0)
-                else:
-                    attributions = explainer.attribute(inputs)
+                # Default to GradientExplainer
+                explainer = shap.GradientExplainer(self.model_wrapper, background_np)
 
-            # Convert to numpy
-            return attributions.detach().cpu().numpy()
+            # Calculate SHAP values
+            shap_values = explainer.shap_values(inputs_np)
+            
+            # Handle multiple outputs (action types and position sizes)
+            if isinstance(shap_values, list):
+                # Use first output (action types) for attribution
+                attributions = shap_values[0]
+            else:
+                attributions = shap_values
+
+            return attributions
 
         except Exception as e:
-            self.logger.warning(f"Attribution method {method} failed: {e}")
+            self.logger.warning(f"SHAP attribution method {method} failed: {e}")
             return None
 
     def _calculate_feature_importance(
