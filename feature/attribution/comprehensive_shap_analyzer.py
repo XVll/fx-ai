@@ -244,29 +244,35 @@ class ComprehensiveSHAPAnalyzer:
             Returns:
                 Model predictions [batch_size, num_actions] as numpy array
             """
-            # Convert to torch tensor if needed
-            if isinstance(inputs, np.ndarray):
-                inputs = torch.from_numpy(inputs).float()
-            
-            # Ensure inputs are on correct device
-            if not inputs.is_cuda and self.device.type == "cuda":
-                inputs = inputs.to(self.device)
-
-            # Convert to state dict
-            state_dict = self._tensor_to_state_dict(inputs)
-
-            # Get predictions
-            with torch.no_grad():
-                action_params, value = self.model(state_dict)
-
-                # For discrete actions, return action type logits
-                if isinstance(action_params, tuple) and len(action_params) == 2:
-                    output = action_params[0]  # Action type logits
-                else:
-                    output = action_params
+            try:
+                # Convert to torch tensor if needed
+                if isinstance(inputs, np.ndarray):
+                    inputs = torch.from_numpy(inputs).float()
                 
-                # Convert to numpy for SHAP
-                return output.detach().cpu().numpy()
+                # Ensure inputs are on correct device
+                if str(inputs.device) != str(self.device):
+                    inputs = inputs.to(self.device)
+
+                # Convert to state dict
+                state_dict = self._tensor_to_state_dict(inputs)
+
+                # Get predictions
+                with torch.no_grad():
+                    action_params, value = self.model(state_dict)
+
+                    # For discrete actions, return action type logits
+                    if isinstance(action_params, tuple) and len(action_params) == 2:
+                        output = action_params[0]  # Action type logits
+                    else:
+                        output = action_params
+                    
+                    # Convert to numpy for SHAP
+                    return output.detach().cpu().numpy()
+            except Exception as e:
+                self.logger.error(f"Error in forward_func: {e}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+                raise
 
         return forward_func
 
@@ -493,10 +499,32 @@ class ComprehensiveSHAPAnalyzer:
                     )
                     if method_attributions is not None:
                         all_attributions[method] = method_attributions
+                    else:
+                        # Try gradient-based fallback if SHAP method fails
+                        self.logger.info(f"Trying gradient-based fallback for {method}")
+                        try:
+                            gradient_attributions = self._calculate_gradient_attribution(
+                                input_batch[0:1], target_class=sampled_actions[0] if sampled_actions else 0
+                            )
+                            if gradient_attributions is not None:
+                                all_attributions[f"{method}_gradient"] = gradient_attributions
+                                self.logger.info(f"✅ Gradient fallback successful for {method}")
+                        except Exception as e:
+                            self.logger.warning(f"Gradient fallback failed for {method}: {e}")
 
             if not all_attributions:
-                self.logger.error("All attribution methods failed")
-                return {"error": "Attribution failed"}
+                self.logger.error("All attribution methods failed, trying pure gradient method")
+                # Last resort: use pure gradient method
+                try:
+                    gradient_attributions = self._calculate_gradient_attribution(
+                        input_batch[0:1], target_class=0
+                    )
+                    if gradient_attributions is not None:
+                        all_attributions["gradient"] = gradient_attributions
+                        self.logger.info("✅ Pure gradient attribution successful")
+                except Exception as e:
+                    self.logger.error(f"Pure gradient attribution also failed: {e}")
+                    return {"error": "All attribution methods failed"}
 
             # Use primary method for main analysis
             primary_attributions = all_attributions.get(
@@ -585,16 +613,27 @@ class ComprehensiveSHAPAnalyzer:
                 background_np = np.zeros_like(inputs_np[:1])
 
             # Create SHAP explainer based on method
+            # Use Permutation explainer which is more stable with complex models
             if method == "gradient_shap":
-                explainer = shap.GradientExplainer(self.model_wrapper, background_np)
+                try:
+                    explainer = shap.GradientExplainer(self.model_wrapper, background_np)
+                    shap_values = explainer.shap_values(inputs_np)
+                except:
+                    # Fallback to permutation explainer if gradient fails
+                    explainer = shap.Explainer(self.model_wrapper, background_np)
+                    shap_values = explainer(inputs_np).values
             elif method == "deep_shap":
-                explainer = shap.DeepExplainer(self.model_wrapper, background_np)
+                try:
+                    explainer = shap.DeepExplainer(self.model_wrapper, background_np)
+                    shap_values = explainer.shap_values(inputs_np)
+                except:
+                    # Fallback to permutation explainer if deep fails
+                    explainer = shap.Explainer(self.model_wrapper, background_np)
+                    shap_values = explainer(inputs_np).values
             else:
-                # Default to GradientExplainer
-                explainer = shap.GradientExplainer(self.model_wrapper, background_np)
-
-            # Calculate SHAP values
-            shap_values = explainer.shap_values(inputs_np)
+                # Use more stable permutation explainer as default
+                explainer = shap.Explainer(self.model_wrapper, background_np)
+                shap_values = explainer(inputs_np).values
             
             # Handle multiple outputs (action types and position sizes)
             if isinstance(shap_values, list):
@@ -607,6 +646,53 @@ class ComprehensiveSHAPAnalyzer:
 
         except Exception as e:
             self.logger.warning(f"SHAP attribution method {method} failed: {e}")
+            return None
+
+    def _calculate_gradient_attribution(self, inputs_tensor: torch.Tensor, target_class: int = 0) -> np.ndarray:
+        """
+        Calculate feature attribution using gradient-based method.
+        This is a fallback when SHAP methods fail due to tensor issues.
+        """
+        try:
+            # Ensure model is in eval mode
+            self.model.eval()
+            
+            # Clone input and enable gradients
+            inputs_grad = inputs_tensor.clone().detach().requires_grad_(True)
+            
+            # Forward pass
+            state_dict = self._tensor_to_state_dict(inputs_grad)
+            
+            with torch.enable_grad():
+                action_params, value = self.model(state_dict)
+                
+                # Get target output for gradient computation
+                if isinstance(action_params, tuple) and len(action_params) == 2:
+                    target_output = action_params[0]  # Action type logits
+                else:
+                    target_output = action_params
+                
+                # Use target class or max class for gradient computation
+                if target_class < target_output.shape[1]:
+                    target_score = target_output[:, target_class].sum()
+                else:
+                    target_score = target_output.max(dim=1)[0].sum()
+                
+                # Compute gradients
+                gradients = torch.autograd.grad(
+                    outputs=target_score,
+                    inputs=inputs_grad,
+                    create_graph=False,
+                    retain_graph=False
+                )[0]
+                
+                # Use input * gradient for attribution (similar to integrated gradients)
+                attributions = (inputs_grad * gradients).detach()
+                
+                return attributions.cpu().numpy()
+                
+        except Exception as e:
+            self.logger.warning(f"Gradient attribution failed: {e}")
             return None
 
     def _calculate_feature_importance(

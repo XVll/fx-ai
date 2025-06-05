@@ -107,7 +107,7 @@ studies:
         # dropout: [SET BY TRANSFER]
         
       env:
-        max_episode_steps: 256   # Longer episodes for meaningful trading
+        max_steps: 256   # Longer episodes for meaningful trading
         
         reward:
           # FIXED parameters from previous phases (populated by transfer script)

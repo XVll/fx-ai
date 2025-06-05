@@ -92,6 +92,8 @@ class PPOTrainer:
 
         # Callbacks
         self.callbacks = callbacks if callbacks else []
+        
+        # Callbacks registered
 
         # Training state
         self.global_step_counter = 0
@@ -911,7 +913,7 @@ class PPOTrainer:
                 "info": info,
                 "step": collected_steps,
                 "max_steps": getattr(
-                    self.env, "max_episode_steps", 256
+                    self.env, "max_steps", 256
                 ),  # Use environment's max steps
             }
             self.callback_manager.trigger("on_episode_step", step_data)
@@ -1224,15 +1226,18 @@ class PPOTrainer:
         self.logger.debug(f"Attribution frequency: {attribution_frequency}")
 
         if self.global_update_counter % attribution_frequency == 0:
-            # Trigger attribution analysis via callback system
+            # Trigger attribution analysis on callbacks
             try:
-                self.logger.info(f"🔍 Triggering attribution analysis callback at update {self.global_update_counter}")
-                self.callback_manager.trigger("on_attribution_analysis", {
+                attribution_data = {
                     "update_num": self.global_update_counter,
                     "model": self.model,
                     "device": self.device
-                })
-                self.logger.info(f"✅ Attribution analysis callback triggered successfully")
+                }
+                for callback in self.callbacks:
+                    if hasattr(callback, 'on_attribution_analysis'):
+                        # Check if callback is enabled (some callbacks don't have enabled attribute)
+                        if getattr(callback, 'enabled', True):
+                            callback.on_attribution_analysis(attribution_data)
             except Exception as e:
                 self.logger.error(f"❌ Attribution analysis callback failed: {e}")
                 import traceback
@@ -1724,7 +1729,8 @@ class PPOTrainer:
                             timestamp=rp_row['timestamp'],
                             quality_score=rp_row.get('combined_score', 0.5),
                             roc_score=rp_row.get('roc_score', 0.0),
-                            activity_score=rp_row.get('activity_score', 0.5)
+                            activity_score=rp_row.get('activity_score', 0.5),
+                            price=rp_row.get('price', 0.0)
                         )
                         reset_points.append(reset_point)
                 
@@ -1744,13 +1750,8 @@ class PPOTrainer:
         
         self.logger.info(f"🎯 Starting training with TrainingManager in {mode} mode")
         
-        # Set up episode configuration from training manager
-        episode_config = training_manager.get_episode_config()
-        if hasattr(self.env, 'set_episode_config'):
-            self.env.set_episode_config(episode_config)
-        else:
-            # Environment doesn't support episode config - use defaults
-            self.logger.debug("Environment doesn't support set_episode_config, using defaults")
+        # Episode configuration is now handled directly via env.max_steps config
+        self.logger.info(f"🎯 Using episode configuration: max_steps={self.env.max_steps}")
         
         # The training manager will call our training step methods
         # We need to implement the interface it expects

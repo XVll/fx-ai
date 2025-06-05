@@ -100,7 +100,7 @@ studies:
         n_epochs: 4              # Fewer epochs for speed
       
       env:
-        max_episode_steps: 256   # Longer episodes for meaningful trading
+        max_steps: 256   # Longer episodes for meaningful trading
       
       wandb:
         enabled: false           # Disable W&B for faster trials  

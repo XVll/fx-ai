@@ -55,12 +55,14 @@ class BaseCallback(ABC):
         """
         pass
 
-    def on_episode_end(self, episode_num: int, episode_data: Dict[str, Any]) -> None:
+    def on_episode_end(self, trainer, episode_reward: float, episode_length: int, info: Dict[str, Any]) -> None:
         """Called at the end of each episode.
 
         Args:
-            episode_num: Current episode number
-            episode_data: Episode summary including reward, length, final portfolio state
+            trainer: The PPO trainer instance
+            episode_reward: Total reward for the episode
+            episode_length: Number of steps in the episode
+            info: Additional episode information
         """
         pass
 
@@ -72,13 +74,26 @@ class BaseCallback(ABC):
         """
         pass
 
+    def on_step(self, trainer, state, action, reward, next_state, info) -> None:
+        """Called after each training step.
+
+        Args:
+            trainer: The PPO trainer instance
+            state: Current state
+            action: Action taken
+            reward: Reward received
+            next_state: Next state
+            info: Additional step information
+        """
+        pass
+
     # ========== PPO Training ==========
 
-    def on_rollout_start(self) -> None:
+    def on_rollout_start(self, trainer) -> None:
         """Called before collecting rollouts."""
         pass
 
-    def on_rollout_end(self, rollout_data: Dict[str, Any]) -> None:
+    def on_rollout_end(self, trainer) -> None:
         """Called after collecting rollouts.
 
         Args:
@@ -86,16 +101,27 @@ class BaseCallback(ABC):
         """
         pass
 
-    def on_update_start(self, update_num: int) -> None:
+    def on_update_start(self, trainer) -> None:
         """Called before PPO update."""
         pass
 
-    def on_update_end(self, update_num: int, update_metrics: Dict[str, Any]) -> None:
+    def on_update_end(self, trainer, update_metrics: Dict[str, Any]) -> None:
         """Called after PPO update.
 
         Args:
-            update_num: Current update number
+            trainer: The PPO trainer instance
             update_metrics: Losses, gradients, learning rate, etc.
+        """
+        pass
+
+    def on_update_iteration_end(self, trainer, update_num: int, update_metrics: Dict[str, Any], rollout_info: Dict[str, Any]) -> None:
+        """Called after each update iteration.
+
+        Args:
+            trainer: The PPO trainer instance
+            update_num: Current update number
+            update_metrics: Update performance metrics
+            rollout_info: Information about the rollout
         """
         pass
 

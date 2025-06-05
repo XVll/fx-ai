@@ -856,17 +856,14 @@ class DashboardCallback(BaseCallback):
             if "is_evaluating" in event_data:
                 self.dashboard_state.is_evaluating = event_data["is_evaluating"]
 
-            # Update performance metrics with actual values (convert updates_per_second to updates_per_hour)
-            self.dashboard_state.steps_per_second = event_data.get(
-                "steps_per_second", 0.0
-            )
-            self.dashboard_state.episodes_per_hour = event_data.get(
-                "episodes_per_hour", 0.0
-            )
-            updates_per_second = event_data.get("updates_per_second", 0.0)
-            self.dashboard_state.updates_per_hour = (
-                updates_per_second * 3600 if updates_per_second > 0 else 0.0
-            )
+            # Update performance metrics only when actually present (don't overwrite with defaults)
+            if "steps_per_second" in event_data:
+                self.dashboard_state.steps_per_second = event_data["steps_per_second"]
+            if "episodes_per_hour" in event_data:
+                self.dashboard_state.episodes_per_hour = event_data["episodes_per_hour"]
+            if "updates_per_second" in event_data:
+                updates_per_second = event_data["updates_per_second"]
+                self.dashboard_state.updates_per_hour = updates_per_second * 3600
 
             # Progress tracking
             self.dashboard_state.rollout_steps = event_data.get("rollout_steps", 0)
@@ -994,6 +991,12 @@ class DashboardCallback(BaseCallback):
                 self.dashboard_state.data_lifecycle_stage = "unknown"
             if not hasattr(self.dashboard_state, "continuous_training_active"):
                 self.dashboard_state.continuous_training_active = False
+            if not hasattr(self.dashboard_state, "overall_progress"):
+                self.dashboard_state.overall_progress = 0.0
+            if not hasattr(self.dashboard_state, "episodes_to_next_stage"):
+                self.dashboard_state.episodes_to_next_stage = 0
+            if not hasattr(self.dashboard_state, "next_stage_name"):
+                self.dashboard_state.next_stage_name = ""
                 
             # Update from training manager state
             self.dashboard_state.training_mode = event_data.get("mode", "production")
@@ -1004,6 +1007,65 @@ class DashboardCallback(BaseCallback):
             else:
                 self.dashboard_state.data_lifecycle_stage = "unknown"
             self.dashboard_state.continuous_training_active = event_data.get("continuous_active", False)
+            
+            # Update progress and termination info
+            self.dashboard_state.overall_progress = event_data.get("overall_progress", 0.0)
+            self.dashboard_state.episodes_to_next_stage = event_data.get("episodes_to_next_stage", 0)
+            self.dashboard_state.next_stage_name = event_data.get("next_stage_name", "")
+            
+            # Update training limits for progress display
+            if not hasattr(self.dashboard_state, "training_max_episodes"):
+                self.dashboard_state.training_max_episodes = float('inf')
+            if not hasattr(self.dashboard_state, "training_max_updates"):
+                self.dashboard_state.training_max_updates = float('inf')
+            if not hasattr(self.dashboard_state, "training_max_cycles"):
+                self.dashboard_state.training_max_cycles = float('inf')
+                
+            self.dashboard_state.training_max_episodes = event_data.get("training_max_episodes", float('inf'))
+            self.dashboard_state.training_max_updates = event_data.get("training_max_updates", float('inf'))
+            self.dashboard_state.training_max_cycles = event_data.get("training_max_cycles", float('inf'))
+            
+            # Update current training state
+            if "total_episodes" in event_data:
+                self.dashboard_state.total_episodes = event_data["total_episodes"]
+            if "total_updates" in event_data:
+                self.dashboard_state.total_updates = event_data["total_updates"]
+            if "global_steps" in event_data:
+                self.dashboard_state.global_steps = event_data["global_steps"]
+            
+            # Update data lifecycle tracking
+            if not hasattr(self.dashboard_state, "current_cycle"):
+                self.dashboard_state.current_cycle = 0
+            if not hasattr(self.dashboard_state, "cycles_completed"):
+                self.dashboard_state.cycles_completed = 0
+            if not hasattr(self.dashboard_state, "target_cycles_per_day"):
+                self.dashboard_state.target_cycles_per_day = 0
+            if not hasattr(self.dashboard_state, "cycle_progress"):
+                self.dashboard_state.cycle_progress = 0.0
+            if not hasattr(self.dashboard_state, "total_available_points"):
+                self.dashboard_state.total_available_points = 0
+            if not hasattr(self.dashboard_state, "points_used_in_cycle"):
+                self.dashboard_state.points_used_in_cycle = 0
+            if not hasattr(self.dashboard_state, "points_remaining_in_cycle"):
+                self.dashboard_state.points_remaining_in_cycle = 0
+            if not hasattr(self.dashboard_state, "day_switch_progress_pct"):
+                self.dashboard_state.day_switch_progress_pct = 0.0
+            if not hasattr(self.dashboard_state, "episodes_on_current_day"):
+                self.dashboard_state.episodes_on_current_day = 0
+            if not hasattr(self.dashboard_state, "cycles_remaining_for_day_switch"):
+                self.dashboard_state.cycles_remaining_for_day_switch = 0
+                
+            # Update data lifecycle values
+            self.dashboard_state.current_cycle = event_data.get("current_cycle", 0)
+            self.dashboard_state.cycles_completed = event_data.get("cycles_completed", 0)
+            self.dashboard_state.target_cycles_per_day = event_data.get("target_cycles_per_day", 0)
+            self.dashboard_state.cycle_progress = event_data.get("cycle_progress", 0.0)
+            self.dashboard_state.total_available_points = event_data.get("total_available_points", 0)
+            self.dashboard_state.points_used_in_cycle = event_data.get("points_used_in_cycle", 0)
+            self.dashboard_state.points_remaining_in_cycle = event_data.get("points_remaining_in_cycle", 0)
+            self.dashboard_state.day_switch_progress_pct = event_data.get("day_switch_progress_pct", 0.0)
+            self.dashboard_state.episodes_on_current_day = event_data.get("episodes_on_current_day", 0)
+            self.dashboard_state.cycles_remaining_for_day_switch = event_data.get("cycles_remaining_for_day_switch", 0)
             
             # Update termination status
             termination_reason = event_data.get("termination_reason")

@@ -621,6 +621,8 @@ def train(config: Config):
         callbacks = create_training_callbacks(
             config, model_manager, str(output_dir), loaded_metadata
         )
+        
+        # Callbacks created
 
         # Create trainer with simplified config-based constructor
         trainer = PPOTrainer(

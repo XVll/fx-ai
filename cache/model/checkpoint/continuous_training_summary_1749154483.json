@@ -1,0 +1,32 @@
+{
+  "termination_reason": "user_interrupt",
+  "total_episodes": 18,
+  "total_updates": 9,
+  "total_steps": 2304,
+  "training_hours": 0.08699604638888889,
+  "final_performance": 0.0,
+  "best_performance": 0.0,
+  "continuous_training_session_duration": 353.8681609630585,
+  "continuous_training_best_reward": 0.0,
+  "continuous_training_adaptations": 0,
+  "continuous_training_evaluations": 2,
+  "continuous_training_mode": "production",
+  "adaptation_history": [],
+  "evaluation_history": [
+    {
+      "mean_reward": -3.601870515640757,
+      "timestamp": "2025-06-05T23:12:51.251505",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -6.428182686447871,
+      "timestamp": "2025-06-05T23:14:42.256029",
+      "evaluation_episodes": 0
+    }
+  ],
+  "final_quality_range": [
+    0.7,
+    1.0
+  ],
+  "timestamp": "2025-06-05T23:14:43.068559"
+}

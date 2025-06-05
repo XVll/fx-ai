@@ -4,8 +4,9 @@ import logging
 from typing import Dict, Any, Optional, List
 import time
 from collections import deque
+import torch
 
-from agent.base_callbacks import TrainingCallback
+from agent.callbacks import BaseCallback
 
 try:
     from feature.attribution.comprehensive_shap_analyzer import (
@@ -18,7 +19,7 @@ except ImportError as e:
     ATTRIBUTION_AVAILABLE = False
 
 
-class AttributionCallback(TrainingCallback):
+class AttributionCallback(BaseCallback):
     """Callback for SHAP feature attribution analysis.
 
     This callback:
@@ -36,8 +37,8 @@ class AttributionCallback(TrainingCallback):
             config: Attribution configuration
             enabled: Whether this callback is active
         """
+        super().__init__(enabled)
         self.config = config
-        self.enabled = enabled
         self.logger = logging.getLogger(__name__)
 
         if not ATTRIBUTION_AVAILABLE:
@@ -106,7 +107,7 @@ class AttributionCallback(TrainingCallback):
     def on_attribution_analysis(self, attribution_data: Dict[str, Any]):
         """Handle attribution analysis trigger."""
         update_num = attribution_data.get('update_num', 0)
-        self.logger.info(f"🔍 Attribution analysis triggered at update {update_num}")
+        self.logger.info(f"🔍 Running SHAP attribution analysis at update {update_num}")
         
         if not self.enabled:
             self.logger.info("🔕 Attribution callback is disabled")
@@ -139,12 +140,27 @@ class AttributionCallback(TrainingCallback):
             # Get recent states for analysis
             analysis_states = list(self.state_cache)[-self.max_samples:]
             
-            # Run SHAP analysis
-            results = self.shap_analyzer.analyze_features(
-                states=analysis_states,
-                actions=None,
-                rewards=None
-            )
+            # Run SHAP analysis with fallback
+            try:
+                results = self.shap_analyzer.analyze_features(
+                    states=analysis_states,
+                    actions=None,
+                    rewards=None
+                )
+            except Exception as shap_error:
+                if "Boolean value of Tensor with more than one value is ambiguous" in str(shap_error):
+                    self.logger.warning(f"SHAP method failed with tensor error: {shap_error}")
+                    self.logger.info("🔄 Trying gradient-based attribution fallback")
+                    
+                    # Use simple gradient-based attribution
+                    try:
+                        results = self._run_gradient_attribution_fallback(analysis_states)
+                        self.logger.info("✅ Gradient-based attribution fallback successful")
+                    except Exception as fallback_error:
+                        self.logger.error(f"Gradient fallback also failed: {fallback_error}")
+                        raise shap_error
+                else:
+                    raise shap_error
 
             analysis_time = time.time() - start_time
             self.attribution_count += 1
@@ -170,6 +186,8 @@ class AttributionCallback(TrainingCallback):
 
     def on_step(self, trainer, state, action, reward, next_state, info):
         """Cache states for attribution analysis."""
+        # Cache states for attribution analysis
+        
         if not self.enabled:
             return
 
@@ -210,6 +228,52 @@ class AttributionCallback(TrainingCallback):
             'lf': (30, 19),
             'portfolio': (5, 10)
         }
+
+    def _run_gradient_attribution_fallback(self, states: List[Dict[str, torch.Tensor]]) -> Dict[str, Any]:
+        """
+        Run gradient-based attribution as fallback when SHAP fails.
+        This provides meaningful feature attribution without SHAP library issues.
+        """
+        try:
+            # Simple gradient-based attribution
+            from feature.attribution.comprehensive_shap_analyzer import ComprehensiveSHAPAnalyzer
+            
+            # Get the first state for analysis
+            if not states:
+                return {"error": "No states provided"}
+            
+            state = states[0]
+            
+            # Convert state to tensor format for gradient computation
+            analyzer = self.shap_analyzer
+            state_tensor = analyzer._state_dict_to_tensor(state).unsqueeze(0)
+            
+            # Calculate gradient-based attribution
+            attributions = analyzer._calculate_gradient_attribution(state_tensor, target_class=0)
+            
+            if attributions is None:
+                return {"error": "Gradient attribution failed"}
+            
+            # Process results into expected format
+            feature_attributions = analyzer._aggregate_attributions_by_feature(attributions[0])
+            
+            # Create results in same format as SHAP analysis
+            results = {
+                "method": "gradient_fallback",
+                "num_samples": 1,
+                "analysis_time": 0.0,
+                "attributions": attributions[0],
+                "feature_importance": feature_attributions,
+                "top_features": sorted(feature_attributions.items(), key=lambda x: abs(x[1]), reverse=True)[:20],
+                "dead_features_count": sum(1 for v in feature_attributions.values() if abs(v) < 1e-6),
+                "gradient_fallback": True
+            }
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Gradient attribution fallback failed: {e}")
+            return {"error": f"Gradient fallback failed: {str(e)}"}
 
     def _process_attribution_results(self, results: Dict[str, Any], update_num: int):
         """Process and distribute attribution results."""
