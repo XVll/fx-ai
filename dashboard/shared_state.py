@@ -192,13 +192,19 @@ class SharedDashboardState:
     current_roc_score: float = 0.0
     current_activity_score: float = 0.0
 
-    # Curriculum learning metrics
-    curriculum_stage: str = "stage_1"
-    curriculum_progress: float = 0.0
-    curriculum_min_quality: float = 0.8
-    total_episodes_for_curriculum: int = 0
+    # Adaptive data lifecycle metrics (replaces curriculum)
+    adaptive_data_mode: str = "adaptive"
+    day_progress: float = 0.0
+    day_score_range: List[float] = field(default_factory=lambda: [0.0, 1.0])
     roc_range: List[float] = field(default_factory=lambda: [0.0, 1.0])
     activity_range: List[float] = field(default_factory=lambda: [0.0, 1.0])
+    selection_mode: str = "adaptive"
+    
+    # Cycle status from reset point cycler
+    current_cycle: int = 0
+    current_reset_point_index: int = 0
+    total_reset_points: int = 0
+    cycle_progress: float = 0.0
 
     # Momentum day tracking
     current_momentum_day_date: str = ""
@@ -789,14 +795,18 @@ class DashboardStateManager:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
 
-            # Update curriculum metrics if provided
+            # Update adaptive data lifecycle metrics if provided
             for key in [
-                "curriculum_stage",
-                "curriculum_progress",
-                "curriculum_min_quality",
-                "total_episodes_for_curriculum",
+                "adaptive_data_mode",
+                "day_progress",
+                "day_score_range",
                 "roc_range",
                 "activity_range",
+                "selection_mode",
+                "current_cycle",
+                "current_reset_point_index",
+                "total_reset_points",
+                "cycle_progress",
             ]:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])

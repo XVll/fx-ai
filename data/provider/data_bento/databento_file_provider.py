@@ -381,7 +381,7 @@ class DatabentoFileProvider(HistoricalDataProvider):
                 f"gen_{idx.strftime('%Y%m%d%H%M%S%f')}" for idx in std_df.index
             ]
 
-        self._log(f"Loaded {len(std_df)} trades for {symbol}")
+        self.logger.debug(f"Loaded {len(std_df)} trades for {symbol}")
         return std_df
 
     def get_quotes(
@@ -473,7 +473,7 @@ class DatabentoFileProvider(HistoricalDataProvider):
         else:
             std_df["exchange"] = "UNKNOWN"  # Default
 
-        self._log(f"Loaded {len(std_df)} quotes for {symbol}")
+        self.logger.debug(f"Loaded {len(std_df)} quotes for {symbol}")
         return std_df
 
     def get_bars(
@@ -513,7 +513,7 @@ class DatabentoFileProvider(HistoricalDataProvider):
                 return direct_5m
 
             # If not available, try to build from 1m
-            self._log(f"No direct 5m bars found for {symbol}, building from 1m bars")
+            self.logger.debug(f"No direct 5m bars found for {symbol}, building from 1m bars")
             return self._build_5m_bars_from_1m(symbol, start_utc, end_utc)
 
         # For other timeframes, get directly
@@ -527,7 +527,7 @@ class DatabentoFileProvider(HistoricalDataProvider):
         files = self._find_dbn_files(schema, symbol, start_utc, end_utc)
 
         if not files:
-            self._log(f"No {timeframe} bar files found for {symbol}")
+            self.logger.debug(f"No {timeframe} bar files found for {symbol}")
             return pd.DataFrame()
 
         # Load and combine data
@@ -576,7 +576,8 @@ class DatabentoFileProvider(HistoricalDataProvider):
         # Add timeframe column
         std_df["timeframe"] = timeframe
 
-        self._log(f"Loaded {len(std_df)} {timeframe} bars for {symbol}")
+        # Log at debug level to reduce verbosity - summary is handled by DataManager
+        self.logger.debug(f"Loaded {len(std_df)} {timeframe} bars for {symbol}")
         return std_df
 
     def _build_5m_bars_from_1m(
@@ -616,7 +617,7 @@ class DatabentoFileProvider(HistoricalDataProvider):
         # Add timeframe column
         bars_5m["timeframe"] = "5m"
 
-        self._log(f"Built {len(bars_5m)} 5m bars from 1m bars for {symbol}")
+        self.logger.debug(f"Built {len(bars_5m)} 5m bars from 1m bars for {symbol}")
         return bars_5m
 
     def get_status(
@@ -748,5 +749,5 @@ class DatabentoFileProvider(HistoricalDataProvider):
             else:
                 std_df["is_short_sell_restricted"] = False  # Default
 
-        self._log(f"Loaded {len(std_df)} status records for {symbol}")
+        self.logger.debug(f"Loaded {len(std_df)} status records for {symbol}")
         return std_df

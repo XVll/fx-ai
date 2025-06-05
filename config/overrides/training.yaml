@@ -37,24 +37,24 @@ env:
         episode_max_steps: 256           # Steps per episode
         day_max_episodes: null           # No episode limit per day
         day_max_updates: null            # No update limit per day
-        day_max_cycles: 3                # Cycle through all reset points 3 times per day
+        day_max_cycles: 2                # Cycle through all reset points 3 times per day
       
       # Adaptive data selection
       adaptive_data:
         symbols: ["MLGO"]
-        date_range: [null, null]
-        day_score_range: [0.7, 1.0]
-        roc_range: [0.05, 1.0]
-        activity_range: [0.0, 1.0]
-        selection_mode: "quality_weighted"
-        randomize_order: false
+        date_range: ["2025-02-21", "2025-02-24"]  # [start_date, end_date] inclusive
+        day_score_range: [0.0, 1.0]               # [min_quality, max_quality] filter
+        roc_range: [0.00, 1.0]                    # [min_roc, max_roc] momentum filter
+        activity_range: [0.0, 1.0]                # [min_activity, max_activity] filter
+        selection_mode: "sequential"               # Options: "sequential", "quality_weighted", "random"
+        randomize_order: false                     # Randomize selection within mode
       
       reset_points:
-        selection_mode: "sequential"     # Order by quality score
+        selection_mode: "sequential"     # Options: "sequential", "random" - how to cycle through reset points
       
       day_selection:
-        selection_mode: "quality_weighted"
-        randomize_order: false
+        selection_mode: "sequential"     # Options: "sequential", "quality_weighted", "random" - how to pick days
+        randomize_order: false           # Whether to randomize the selection order
       
       preloading:
         preload_enabled: true

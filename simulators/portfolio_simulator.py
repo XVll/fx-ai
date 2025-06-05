@@ -276,7 +276,7 @@ class PortfolioSimulator:
 
         # self.logger.debug(f"DEBUG: Feature history initialized with {len(self.feature_history)} entries")
 
-        self.logger.info(f"📊 Portfolio reset - Capital: ${self.initial_capital:,.2f}")
+        self.logger.debug(f"📊 Portfolio reset - Capital: ${self.initial_capital:,.2f}")
 
     def process_fill(self, fill: FillDetails) -> FillDetails:
         """

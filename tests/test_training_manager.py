@@ -3,7 +3,7 @@ Test Training Manager and Continuous Training Integration
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 from training.training_manager import TrainingManager, TrainingMode, TerminationReason, TrainingState
 from training.continuous_training import ContinuousTraining
 

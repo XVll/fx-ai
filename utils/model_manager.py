@@ -76,6 +76,37 @@ class ModelManager:
             "version": metadata.get("version", 0),
         }
 
+    def get_best_model_info(self) -> Optional[Dict[str, Any]]:
+        """Get best model info - alias for find_best_model for backward compatibility"""
+        best_model = self.find_best_model()
+        if not best_model:
+            return None
+        
+        # Extract reward from metadata or filename
+        reward = 0.0
+        if 'metadata' in best_model and 'reward' in best_model['metadata']:
+            reward = best_model['metadata']['reward']
+        else:
+            # Try to extract from filename pattern
+            filename = os.path.basename(best_model['path'])
+            try:
+                if '_reward' in filename:
+                    reward_part = filename.split('_reward')[1].split('_')[0]
+                    # Handle negative rewards (marked as 'n')
+                    if reward_part.startswith('n'):
+                        reward = -float(reward_part[1:])
+                    else:
+                        reward = float(reward_part)
+            except (ValueError, IndexError):
+                pass
+        
+        return {
+            'path': best_model['path'],
+            'reward': reward,
+            'version': best_model.get('version', 0),
+            'metadata': best_model.get('metadata', {})
+        }
+
     def save_best_model(
         self,
         model_path: str,

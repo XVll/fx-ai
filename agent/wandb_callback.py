@@ -118,7 +118,7 @@ class WandBCallback(BaseCallback):
 
     def on_episode_start(self, episode_num: int, reset_info: Dict[str, Any]) -> None:
         """Track episode start."""
-        if not self.enabled:
+        if not self.enabled or not wandb.run:
             return
 
         self.total_episodes = episode_num
@@ -142,7 +142,7 @@ class WandBCallback(BaseCallback):
 
     def on_episode_end(self, episode_num: int, episode_data: Dict[str, Any]) -> None:
         """Log episode metrics."""
-        if not self.enabled:
+        if not self.enabled or not wandb.run:
             return
 
         # Extract episode metrics
@@ -184,7 +184,7 @@ class WandBCallback(BaseCallback):
 
     def on_episode_step(self, step_data: Dict[str, Any]) -> None:
         """Track step-level metrics."""
-        if not self.enabled:
+        if not self.enabled or not wandb.run:
             return
 
         self.total_steps += 1
@@ -245,7 +245,7 @@ class WandBCallback(BaseCallback):
 
     def on_update_end(self, update_num: int, update_metrics: Dict[str, Any]) -> None:
         """Log PPO update metrics."""
-        if not self.enabled:
+        if not self.enabled or not wandb.run:
             return
 
         import time
@@ -276,7 +276,7 @@ class WandBCallback(BaseCallback):
 
     def on_evaluation_end(self, eval_results: Dict[str, Any]) -> None:
         """Log evaluation results."""
-        if not self.enabled:
+        if not self.enabled or not wandb.run:
             return
 
         metrics = {
@@ -293,7 +293,7 @@ class WandBCallback(BaseCallback):
 
     def on_order_filled(self, fill_data: Dict[str, Any]) -> None:
         """Track order execution metrics."""
-        if not self.enabled:
+        if not self.enabled or not wandb.run:
             return
 
         # Log execution quality
@@ -367,7 +367,7 @@ class WandBCallback(BaseCallback):
 
     def on_portfolio_update(self, portfolio_state: Dict[str, Any]) -> None:
         """Track portfolio state."""
-        if not self.enabled:
+        if not self.enabled or not wandb.run:
             return
 
         equity = portfolio_state.get("total_equity", 10000.0)

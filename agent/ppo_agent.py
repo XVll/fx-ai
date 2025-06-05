@@ -7,6 +7,7 @@ import torch.optim as optim
 from typing import Dict, List, Union, Any, Optional
 import torch.nn.functional as nnf
 import time
+from datetime import datetime
 
 from envs.trading_environment import TradingEnvironment
 from ai.transformer import MultiBranchTransformer
@@ -16,6 +17,17 @@ from agent.callbacks import CallbackManager
 
 
 class PPOTrainer:
+    def _safe_date_format(self, date_obj) -> str:
+        """Safely format a date object to YYYY-MM-DD string"""
+        if isinstance(date_obj, str):
+            return date_obj  # Already a string
+        elif hasattr(date_obj, 'strftime'):
+            return date_obj.strftime('%Y-%m-%d')
+        elif hasattr(date_obj, 'date'):
+            return date_obj.date().strftime('%Y-%m-%d')
+        else:
+            return str(date_obj)
+
     def __init__(
         self,
         env: TradingEnvironment,
@@ -130,6 +142,9 @@ class PPOTrainer:
         self.episodes_completed_on_current_day = 0
         self.reset_point_cycles_completed = 0
 
+        # Training Manager integration for data lifecycle
+        self.training_manager = None  # Will be set by TrainingManager
+
         # Training control
         self.stop_training = False
 
@@ -137,320 +152,85 @@ class PPOTrainer:
             f"🤖 PPOTrainer initialized with callback system. Device: {self.device}"
         )
 
-    def _select_next_momentum_day(self) -> bool:
-        """Select next momentum day based on curriculum strategy."""
+    def set_training_manager(self, training_manager):
+        """Set the training manager for data lifecycle integration."""
+        self.training_manager = training_manager
+
+    def get_current_training_data(self) -> Optional[Dict[str, Any]]:
+        """Get current training data from TrainingManager."""
+        if self.training_manager:
+            return self.training_manager.get_current_training_data()
+        return None
+
+    def _update_current_momentum_day(self) -> bool:
+        """Update current momentum day from TrainingManager data lifecycle."""
         if self.episode_selection_mode != "momentum_days":
             return False
 
-        # Get current stage config
-        stage = self._get_current_curriculum_stage()
-        if not stage or not stage.enabled:
-            self.logger.warning("No active curriculum stage")
+        # Get current training data from TrainingManager
+        training_data = self.get_current_training_data()
+        if not training_data:
+            self.logger.warning("🔄 No current training data from TrainingManager")
             return False
 
-        # Get momentum days filtered by stage criteria
-        filtered_days = self._get_stage_filtered_momentum_days(stage)
-
-        if not filtered_days:
-            self.logger.warning("No momentum days match stage criteria")
-            return False
-
-        # Select from filtered days excluding already used ones
-        available_days = [
-            d for d in filtered_days if d["date"] not in self.used_momentum_days
-        ]
-
-        if not available_days:
-            self.logger.info("All stage-filtered days used, resetting")
-            self.used_momentum_days.clear()
-            available_days = filtered_days
-
-        # Select based on curriculum method
-        if self.curriculum_method == "quality_based":
-            # Sort by quality score and select based on curriculum progress
-            available_days.sort(key=lambda d: d.get("quality_score", 0), reverse=True)
-            idx = int(self.curriculum_progress * (len(available_days) - 1))
-            momentum_day_info = available_days[idx]
-        else:
-            # Random selection
-            import random
-
-            momentum_day_info = random.choice(available_days)
-
-        self.current_momentum_day = momentum_day_info
-        self.used_momentum_days.add(momentum_day_info["date"])
-        self.used_reset_point_indices.clear()
-
-        self.logger.info(
-            f"📅 Selected momentum day: {momentum_day_info['date'].strftime('%Y-%m-%d')} "
-            f"(quality: {momentum_day_info.get('quality_score', 0):.3f})"
-        )
-
-        # Trigger momentum day change callback with tracking information and reset points
-        # Get reset points data from environment for this day (includes early fixed supplements)
-        reset_points_data = []
-        if hasattr(self.env, "reset_points") and self.env.reset_points:
-            # Use environment's actual reset points (includes momentum + early fixed supplements)
-            for reset_point in self.env.reset_points:
-                # Convert environment reset point format to dashboard format
-                reset_points_data.append(
-                    {
-                        "timestamp": reset_point["timestamp"],
-                        "price": reset_point.get(
-                            "price", 0
-                        ),  # May not be available for early fixed points
-                        "activity_score": reset_point.get("activity_score", 0.5),
-                        "roc_score": reset_point.get("roc_score", 0.0),
-                        "combined_score": reset_point.get("combined_score", 0.5),
-                        "reset_type": reset_point.get("reset_type", "momentum"),
-                    }
+        # Update current momentum day from training data
+        if 'day_info' in training_data:
+            self.current_momentum_day = training_data['day_info']
+            day_date = self.current_momentum_day.get('date')
+            quality = self.current_momentum_day.get('quality_score', 0)
+            
+            if day_date:
+                self.logger.info(
+                    f"📅 Using training day: {self._safe_date_format(day_date)} "
+                    f"(quality: {quality:.3f})"
                 )
-        elif hasattr(self.env, "data_manager"):
-            # Fallback to data manager if environment reset points not available
-            reset_points_df = self.env.data_manager.get_reset_points(
-                momentum_day_info["symbol"], momentum_day_info["date"]
-            )
-            if not reset_points_df.empty:
-                reset_points_data = reset_points_df.to_dict("records")
 
-        # Enhance momentum_day_info with tracking data
-        enhanced_info = momentum_day_info.copy()
-        enhanced_info.update(
-            {
-                "day_date": momentum_day_info["date"].strftime("%Y-%m-%d"),
-                "day_quality": momentum_day_info.get("quality_score", 0.0),
+            # Trigger momentum day change callback
+            enhanced_info = self.current_momentum_day.copy()
+            enhanced_info.update({
+                "day_date": self._safe_date_format(day_date) if day_date else "unknown",
+                "day_quality": quality,
                 "episodes_on_day": self.episodes_completed_on_current_day,
                 "cycles_completed": self.reset_point_cycles_completed,
-                "total_days_used": len(self.used_momentum_days),
+            })
+
+            momentum_event_data = {
+                "day_info": enhanced_info,
+                "reset_points": training_data.get('reset_points', []),
             }
-        )
-
-        # Get filtered reset points for dashboard using current curriculum settings
-        filtered_reset_points_data = self._get_filtered_reset_points_for_dashboard(
-            reset_points_data
-        )
-
-        # Trigger callback with both day info and filtered reset points
-        momentum_event_data = {
-            "day_info": enhanced_info,
-            "reset_points": filtered_reset_points_data,
-        }
-        self.callback_manager.trigger("on_momentum_day_change", momentum_event_data)
-
-        return True
+            self.callback_manager.trigger("on_momentum_day_change", momentum_event_data)
+            
+            return True
+        else:
+            self.logger.warning("🔄 Training data missing day_info")
+            return False
 
     def _get_filtered_reset_points_for_dashboard(
         self, reset_points_data: List[Dict]
     ) -> List[Dict]:
-        """Filter reset points for dashboard display using current curriculum settings"""
+        """Filter reset points for dashboard display."""
         if not reset_points_data:
             return reset_points_data
 
-        # Get current curriculum stage
-        stage = self._get_curriculum_stage_info()
+        # Simple filtering - just return the data as-is since TrainingManager handles filtering
+        return reset_points_data
 
-        if not stage:
-            return reset_points_data  # Return unfiltered if no config
-
-        # Apply range-based filtering
-        filtered_points = []
-        for reset_point in reset_points_data:
-            roc_score = reset_point.get("roc_score", 0.0)
-            activity_score = reset_point.get("activity_score", 0.0)
-
-            # Apply range-based thresholds
-            passes_roc = stage.roc_range[0] <= roc_score <= stage.roc_range[1]
-            passes_activity = (
-                stage.activity_range[0] <= activity_score <= stage.activity_range[1]
-            )
-
-            if passes_roc and passes_activity:
-                filtered_points.append(reset_point)
-
-        return filtered_points
-
-    def _select_reset_point(self) -> int:
-        """Select next reset point based on curriculum range filtering."""
-        # Get current reset points from environment
-        if not hasattr(self.env, "reset_points") or not self.env.reset_points:
+    def _get_current_reset_point(self) -> Optional[int]:
+        """Get current reset point from TrainingManager."""
+        if not self.training_manager:
+            # Fallback for when TrainingManager is not set - use first reset point
             return 0
 
-        reset_points = self.env.reset_points
-
-        # Filter reset points by curriculum stage ranges
-        stage = self._get_curriculum_stage_info()
-
-        # Filter reset points using curriculum stage ranges
-        range_filtered_indices = []
-        if stage:
-            for idx, reset_point in enumerate(reset_points):
-                roc_score = reset_point.get("roc_score", 0.0)
-                activity_score = reset_point.get("activity_score", 0.0)
-
-                # Apply range-based thresholds
-                passes_roc = stage.roc_range[0] <= roc_score <= stage.roc_range[1]
-                passes_activity = (
-                    stage.activity_range[0] <= activity_score <= stage.activity_range[1]
-                )
-
-                if passes_roc and passes_activity:
-                    range_filtered_indices.append(idx)
-        else:
-            # Fallback if no stage config - use all points
-            range_filtered_indices = list(range(len(reset_points)))
-
-        if reset_points:
-            sample_count = min(3, len(reset_points))
-            for i in range(sample_count):
-                rp = reset_points[i]
-
-        # Use range filtered indices
-        quality_filtered_indices = range_filtered_indices
-
-        # Final fallback to all points if no filtering worked
-        if not quality_filtered_indices:
-            quality_filtered_indices = list(range(len(reset_points)))
-
-        if not quality_filtered_indices:
-            # If no reset points match range criteria, use all
-            self.logger.warning("No reset points match curriculum ranges, using all")
-            quality_filtered_indices = list(range(len(reset_points)))
-
-        # Filter by used indices
-        available_indices = [
-            i
-            for i in quality_filtered_indices
-            if i not in self.used_reset_point_indices
-        ]
-
-        if not available_indices:
-            # Reset used indices when all quality-filtered points are exhausted
-            self.used_reset_point_indices.clear()
-            available_indices = quality_filtered_indices
-            self.stage_cycles_completed += 1
-            self._check_stage_completion()
-
-        if self.curriculum_method == "quality_based":
-            # Start with easier (lower activity) reset points, progress to harder ones
-            sorted_indices = sorted(
-                available_indices,
-                key=lambda i: reset_points[i].get("activity_score", 0),
-            )
-
-            # Select based on curriculum progress
-            progress_idx = int(self.curriculum_progress * len(sorted_indices))
-            progress_idx = min(progress_idx, len(sorted_indices) - 1)
-            selected_idx = sorted_indices[progress_idx]
-
-        elif self.curriculum_method == "random":
-            selected_idx = np.random.choice(available_indices)
-        else:
-            # Sequential
-            selected_idx = available_indices[0]
-
-        self.used_reset_point_indices.add(selected_idx)
-
-        reset_point = reset_points[selected_idx]
-        roc_score = reset_point.get("roc_score", 0)
-        activity_score = reset_point.get("activity_score", 0)
-
-        stage_name = stage.__class__.__name__ if stage else "unknown"
-        self.logger.debug(
-            f"🎯 Selected reset point {selected_idx} with ranges ROC:{stage.roc_range if stage else 'N/A'}, Activity:{stage.activity_range if stage else 'N/A'}: "
-            f"{reset_point.get('timestamp', 'unknown')} "
-            f"(roc: {roc_score:.3f}, activity: {activity_score:.3f})"
-        )
-
-        # Trigger reset point selection callback for tracking
-        total_available = len(quality_filtered_indices)
-        points_used = len(self.used_reset_point_indices)
-        points_remaining = total_available - points_used
-
-        reset_point_tracking = {
-            "selected_index": selected_idx,
-            "selected_timestamp": str(reset_point.get("timestamp", "unknown")),
-            "total_available_points": total_available,
-            "points_used_in_cycle": points_used,
-            "points_remaining_in_cycle": points_remaining,
-            "roc_score": roc_score,
-            "activity_score": activity_score,
-            "roc_range": stage.roc_range if stage else [0.0, 1.0],
-            "activity_range": stage.activity_range if stage else [0.0, 1.0],
-            "curriculum_stage": stage_name,
-        }
-        self.callback_manager.trigger("on_reset_point_selected", reset_point_tracking)
-
-        return selected_idx
-
-    def _get_current_curriculum_stage(self):
-        """Get current active curriculum stage."""
-        stages = [
-            self.config.env.curriculum.stage_1,
-            self.config.env.curriculum.stage_2,
-            self.config.env.curriculum.stage_3,
-        ]
-
-        # Return current stage if valid
-        if 0 <= self.current_stage_idx < len(stages):
-            stage = stages[self.current_stage_idx]
-            if stage.enabled:
-                return stage
-
-        # Find next enabled stage
-        for i in range(self.current_stage_idx + 1, len(stages)):
-            if stages[i].enabled:
-                self.current_stage_idx = i
-                self._on_stage_change()
-                return stages[i]
-
-        # No enabled stages found
-        return None
-
-    def _get_curriculum_stage_info(self):
-        """Legacy method for backward compatibility."""
-        return self._get_current_curriculum_stage()
-    
-    def _get_next_curriculum_stage(self):
-        """Get the next curriculum stage after current one."""
-        stages = [
-            self.config.env.curriculum.stage_1,
-            self.config.env.curriculum.stage_2,
-            self.config.env.curriculum.stage_3,
-        ]
+        training_data = self.training_manager.get_current_training_data()
+        if training_data and 'reset_point_index' in training_data:
+            return training_data['reset_point_index']
         
-        # Find current stage index
-        current_stage_idx = -1
-        for i, stage in enumerate(stages):
-            if stage.enabled:
-                if i == self.current_stage_idx:
-                    current_stage_idx = i
-                    break
-        
-        # Return next enabled stage
-        for i in range(current_stage_idx + 1, len(stages)):
-            if stages[i].enabled:
-                return stages[i]
-                
-        return None  # No next stage
-    
-    def _get_stage_name(self, stage):
-        """Get display name for a curriculum stage."""
-        if not stage:
-            return "Unknown"
-            
-        stages = [
-            self.config.env.curriculum.stage_1,
-            self.config.env.curriculum.stage_2,
-            self.config.env.curriculum.stage_3,
-        ]
-        
-        for i, s in enumerate(stages):
-            if s is stage:
-                return f"stage_{i + 1}"
-                
-        return "Unknown"
+        # Fallback to first reset point
+        return 0
 
-    def _get_stage_filtered_momentum_days(self, stage):
+    # Curriculum methods removed - now handled by TrainingManager with DataLifecycleManager
+
+    def _should_switch_day(self) -> bool:
         """Get momentum days filtered by stage criteria."""
         if not hasattr(self.env, "data_manager"):
             return []
@@ -500,6 +280,14 @@ class PPOTrainer:
             filtered_days.append(day_info)
 
         return filtered_days
+
+    def _get_current_curriculum_stage(self):
+        """Placeholder for legacy curriculum stage - returns None since we use adaptive data lifecycle."""
+        return None
+
+    def _get_curriculum_stage_info(self):
+        """Placeholder for legacy curriculum stage info - returns empty dict since we use adaptive data lifecycle."""
+        return {}
 
     def _on_stage_change(self):
         """Called when curriculum stage changes."""
@@ -711,7 +499,7 @@ class PPOTrainer:
             - self.reset_point_cycles_completed,
             "episodes_on_current_day": self.episodes_completed_on_current_day,
             "day_switch_progress_pct": 0.0,
-            "current_day_date": self.current_momentum_day["date"].strftime("%Y-%m-%d")
+            "current_day_date": self._safe_date_format(self.current_momentum_day["date"])
             if self.current_momentum_day
             else "unknown",
         }
@@ -753,51 +541,98 @@ class PPOTrainer:
     def _reset_environment_with_momentum(self):
         """Reset environment using momentum-based training with configurable day switching."""
         if self.episode_selection_mode == "momentum_days":
-            # Check if we need to switch to a new momentum day
-            should_switch_day = False
-
-            if self.current_momentum_day is None:
-                should_switch_day = True
-                self.logger.info("🔄 No current momentum day, selecting new day")
-            elif self._should_switch_day():
-                should_switch_day = True
-                date_str = self.current_momentum_day["date"].strftime("%Y-%m-%d")
-                self.logger.info(
-                    f"🔄 Completed {self.episodes_completed_on_current_day} episodes "
-                    f"({self.reset_point_cycles_completed} cycles) on {date_str}, switching day"
-                )
-
-            # Switch to new momentum day if needed
-            if should_switch_day:
-                if not self._select_next_momentum_day():
-                    self.logger.warning(
-                        "No more momentum days available, reusing current day"
-                    )
-                    if self.current_momentum_day is None:
-                        return self.env.reset()
-                else:
-                    # Set up environment with new momentum day
-                    current_day = self.current_momentum_day
-                    if current_day is not None:
+            # If TrainingManager is in control, use its data
+            if self.training_manager:
+                # TrainingManager controls day/reset point selection
+                # Just update our local state with current data
+                if not self._update_current_momentum_day():
+                    self.logger.warning("Failed to get current training data from TrainingManager")
+                    return self.env.reset()
+                
+                # Set up environment if day changed
+                current_day = self.current_momentum_day
+                if current_day is not None:
+                    # Only set up session if it's different from current
+                    current_symbol = getattr(self.env, 'primary_asset', None)
+                    current_date = getattr(self.env, 'current_session_date', None)
+                    
+                    # Normalize dates for comparison (handle both string and datetime)
+                    new_date_str = self._safe_date_format(current_day["date"])
+                    current_date_str = self._safe_date_format(current_date) if current_date else None
+                    
+                    if (current_symbol != current_day["symbol"] or 
+                        current_date_str != new_date_str):
                         self.logger.info(
-                            f"📅 Switching to momentum day: {current_day['date'].strftime('%Y-%m-%d')} "
-                            f"(quality: {current_day.get('quality_score', 0):.3f})"
+                            f"📅 Setting up NEW session: {current_day['symbol']} on {new_date_str} "
+                            f"(quality: {current_day.get('quality_score', 0):.3f}) "
+                            f"[previous: {current_symbol} {current_date_str}]"
                         )
-
                         self.env.setup_session(
                             symbol=current_day["symbol"], date=current_day["date"]
                         )
+                    else:
+                        self.logger.debug(
+                            f"📅 Reusing session: {current_day['symbol']} on {new_date_str} "
+                            f"(no session setup needed)"
+                        )
+            else:
+                # Legacy mode: PPOTrainer manages days independently
+                should_switch_day = False
 
-                    # Reset day tracking
-                    self.episodes_completed_on_current_day = 0
-                    self.reset_point_cycles_completed = 0
-                    self.used_reset_point_indices.clear()
+                if self.current_momentum_day is None:
+                    should_switch_day = True
+                    self.logger.info("🔄 No current momentum day, selecting new day")
+                elif self._should_switch_day():
+                    should_switch_day = True
+                    date_str = self._safe_date_format(self.current_momentum_day["date"])
+                    self.logger.info(
+                        f"🔄 Completed {self.episodes_completed_on_current_day} episodes "
+                        f"({self.reset_point_cycles_completed} cycles) on {date_str}, switching day"
+                    )
 
-                    # Trigger initial cycle tracking after day setup
-                    self._emit_initial_cycle_tracking()
+                # Switch to new momentum day if needed
+                if should_switch_day:
+                    if not self._update_current_momentum_day():
+                        self.logger.warning(
+                            "No more momentum days available, reusing current day"
+                        )
+                        if self.current_momentum_day is None:
+                            return self.env.reset()
+                    else:
+                        # Set up environment with new momentum day
+                        current_day = self.current_momentum_day
+                        if current_day is not None:
+                            self.logger.info(
+                                f"📅 Switching to momentum day: {self._safe_date_format(current_day['date'])} "
+                                f"(quality: {current_day.get('quality_score', 0):.3f})"
+                            )
+
+                            # Only setup session if actually different
+                            current_symbol = getattr(self.env, 'primary_asset', None)
+                            current_date = getattr(self.env, 'current_session_date', None)
+                            new_date_str = self._safe_date_format(current_day["date"])
+                            current_date_str = self._safe_date_format(current_date) if current_date else None
+                            
+                            if (current_symbol != current_day["symbol"] or 
+                                current_date_str != new_date_str):
+                                self.env.setup_session(
+                                    symbol=current_day["symbol"], date=current_day["date"]
+                                )
+                            else:
+                                self.logger.debug(f"📅 Reusing existing session for {current_day['symbol']} {new_date_str}")
+
+                        # Reset day tracking
+                        self.episodes_completed_on_current_day = 0
+                        self.reset_point_cycles_completed = 0
+                        self.used_reset_point_indices.clear()
+
+                        # Trigger initial cycle tracking after day setup
+                        self._emit_initial_cycle_tracking()
 
             # Select reset point and reset environment
-            reset_point_idx = self._select_reset_point()
+            reset_point_idx = self._get_current_reset_point()
+            if reset_point_idx is None:
+                reset_point_idx = 0  # Safety fallback
 
             # Track episode completion
             self.episodes_completed_on_current_day += 1
@@ -833,9 +668,7 @@ class PPOTrainer:
                 "cycles_remaining_for_day_switch": cycles_remaining,
                 "episodes_on_current_day": self.episodes_completed_on_current_day,
                 "day_switch_progress_pct": progress_pct,
-                "current_day_date": self.current_momentum_day["date"].strftime(
-                    "%Y-%m-%d"
-                )
+                "current_day_date": self._safe_date_format(self.current_momentum_day["date"])
                 if self.current_momentum_day
                 else "unknown",
                 "total_available_points": total_available_points,
@@ -943,17 +776,16 @@ class PPOTrainer:
         total_invalid_actions = 0
 
         while collected_steps < self.rollout_steps:
-            # Check for training interruption every 10 steps for faster response
-            if collected_steps % 10 == 0 or self.stop_training:
-                if self.stop_training or (
-                    hasattr(__import__("main"), "training_interrupted")
-                    and __import__("main").training_interrupted
-                ):
-                    self.logger.warning(
-                        f"Training interrupted during rollout collection at step {collected_steps}"
-                    )
-                    self.stop_training = True
-                    break
+            # Check for training interruption EVERY step for immediate response
+            if self.stop_training or (
+                hasattr(__import__("main"), "training_interrupted")
+                and __import__("main").training_interrupted
+            ):
+                self.logger.warning(
+                    f"Training interrupted during rollout collection at step {collected_steps}"
+                )
+                self.stop_training = True
+                break
 
             # Trigger rollout progress callback periodically
             if collected_steps % 100 == 0:
@@ -1037,6 +869,7 @@ class PPOTrainer:
                         f"Training interrupted during step execution at step {collected_steps}"
                     )
                     self.stop_training = True
+                    # Return incomplete rollout data immediately
                     break
 
                 # Track invalid actions
@@ -1131,13 +964,8 @@ class PPOTrainer:
                 # Update recent episode rewards for dashboard
                 self.recent_episode_rewards.append(current_episode_reward)
 
-                # Update curriculum progress based on performance
-                self._update_curriculum_progress()
                 if len(self.recent_episode_rewards) > 10:  # Keep only last 10 episodes
                     self.recent_episode_rewards.pop(0)
-
-                # Check stage completion by episodes
-                self._check_stage_completion()
 
                 # Track episode timing
                 self.episode_times.append(episode_duration)
@@ -1368,6 +1196,14 @@ class PPOTrainer:
 
     def update_policy(self) -> Dict[str, float]:
         """PPO policy update with detailed logging."""
+        # Check for interruption before starting update
+        if self.stop_training or (
+            hasattr(__import__("main"), "training_interrupted")
+            and __import__("main").training_interrupted
+        ):
+            self.logger.warning("Training interrupted before policy update")
+            return {"interrupted": True}
+
         self._start_timer("update")
 
         self.logger.info(f"🔄 UPDATE START: Update #{self.global_update_counter + 1}")
@@ -1469,14 +1305,21 @@ class PPOTrainer:
 
         for epoch in range(self.ppo_epochs):
             # Check for training interruption before each epoch
-            if (
+            if self.stop_training or (
                 hasattr(__import__("main"), "training_interrupted")
                 and __import__("main").training_interrupted
             ):
                 self.logger.warning(
                     f"Training interrupted during policy update at epoch {epoch}"
                 )
-                break
+                # Return partial update results immediately
+                avg_actor_loss = total_actor_loss / max(1, num_updates_in_epoch)
+                avg_critic_loss = total_critic_loss / max(1, num_updates_in_epoch)
+                return {
+                    "policy_loss": avg_actor_loss,
+                    "value_loss": avg_critic_loss,
+                    "interrupted": True
+                }
 
             np.random.shuffle(indices)
 
@@ -1639,8 +1482,6 @@ class PPOTrainer:
 
         self.global_update_counter += 1
 
-        # Check if curriculum stage should be completed
-        self._check_stage_completion()
 
         # Calculate averages
         avg_actor_loss = (
@@ -1816,8 +1657,73 @@ class PPOTrainer:
         training_manager_config = self.config.env.training_manager
         mode = training_manager_config.mode
         
-        # Initialize TrainingManager
-        training_manager = TrainingManager(training_manager_config.__dict__, mode)
+        # Get available momentum days for data lifecycle with adaptive data filtering
+        available_days = []
+        if hasattr(self.env, 'data_manager') and hasattr(self.env.data_manager, 'get_all_momentum_days'):
+            # Extract date range and symbols from adaptive data configuration
+            adaptive_data_config = training_manager_config.data_lifecycle.adaptive_data
+            symbols = adaptive_data_config.symbols if adaptive_data_config.symbols else None
+            
+            # Parse date range from config
+            start_date = None
+            end_date = None
+            start_date_str = None
+            end_date_str = None
+            
+            if adaptive_data_config.date_range and len(adaptive_data_config.date_range) >= 2:
+                start_date_str = adaptive_data_config.date_range[0]
+                end_date_str = adaptive_data_config.date_range[1]
+                
+                if start_date_str:
+                    start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+                if end_date_str:
+                    end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+            
+            self.logger.info(f"🔍 Loading momentum days with filters:")
+            self.logger.info(f"   📊 Symbols: {symbols}")
+            self.logger.info(f"   📅 Date range: {start_date_str or 'None'} to {end_date_str or 'None'}")
+            
+            momentum_days_dicts = self.env.data_manager.get_all_momentum_days(
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                min_activity=0.0  # No activity filtering here, let data lifecycle handle it
+            )
+            
+            self.logger.info(f"   📊 Found {len(momentum_days_dicts)} momentum days after filtering")
+            
+            # Convert dictionary format to DayInfo objects for DataLifecycleManager
+            from training.data_lifecycle_manager import DayInfo, ResetPointInfo
+            for day_dict in momentum_days_dicts:
+                # Get reset points for this day
+                reset_points = []
+                if hasattr(self.env.data_manager, 'get_reset_points'):
+                    reset_points_df = self.env.data_manager.get_reset_points(
+                        day_dict['symbol'], day_dict['date']
+                    )
+                    # Convert reset points to ResetPointInfo objects
+                    for _, rp_row in reset_points_df.iterrows():
+                        reset_point = ResetPointInfo(
+                            timestamp=rp_row['timestamp'],
+                            quality_score=rp_row.get('combined_score', 0.5),
+                            roc_score=rp_row.get('roc_score', 0.0),
+                            activity_score=rp_row.get('activity_score', 0.5)
+                        )
+                        reset_points.append(reset_point)
+                
+                # Convert date to string format for DayInfo
+                date_str = self._safe_date_format(day_dict['date'])
+                
+                day_info = DayInfo(
+                    date=date_str,
+                    symbol=day_dict['symbol'],
+                    day_score=day_dict.get('quality_score', 0.5),
+                    reset_points=reset_points
+                )
+                available_days.append(day_info)
+            
+        # Initialize TrainingManager with available days
+        training_manager = TrainingManager(training_manager_config.__dict__, mode, available_days)
         
         self.logger.info(f"🎯 Starting training with TrainingManager in {mode} mode")
         
@@ -1825,6 +1731,9 @@ class PPOTrainer:
         episode_config = training_manager.get_episode_config()
         if hasattr(self.env, 'set_episode_config'):
             self.env.set_episode_config(episode_config)
+        else:
+            # Environment doesn't support episode config - use defaults
+            self.logger.debug("Environment doesn't support set_episode_config, using defaults")
         
         # The training manager will call our training step methods
         # We need to implement the interface it expects
@@ -1871,6 +1780,11 @@ class PPOTrainer:
             # Update policy
             update_metrics = self.update_policy()
             
+            # Check if update was interrupted
+            if update_metrics.get("interrupted", False):
+                self.logger.warning("Policy update was interrupted")
+                return False
+            
             # Check for interruption after update
             if (
                 hasattr(__import__("main"), "training_interrupted")
@@ -1886,7 +1800,7 @@ class PPOTrainer:
                 )
             
             # Check if TrainingManager wants us to stop
-            if hasattr(self, 'training_manager'):
+            if hasattr(self, 'training_manager') and self.training_manager is not None:
                 return not self.training_manager.should_stop
             
             return True  # Continue training
@@ -1976,9 +1890,7 @@ class PPOTrainer:
             "on_custom_event", "training_update", training_data
         )
 
-        # Emit initial curriculum progress and tracking
-        self._emit_curriculum_progress()
-        self._emit_initial_curriculum_detail()
+        # Initial training setup (curriculum system removed)
 
         # Trigger initial reset point tracking (with default values)
         initial_reset_tracking = {
@@ -2008,12 +1920,12 @@ class PPOTrainer:
 
             rollout_info = self.collect_rollout_data()
 
-            # Check for interruption after rollout collection
-            if (
+            # Check if rollout was interrupted
+            if self.stop_training or (
                 hasattr(__import__("main"), "training_interrupted")
                 and __import__("main").training_interrupted
             ):
-                self.logger.warning("Training interrupted after rollout collection")
+                self.logger.warning("Training interrupted during or after rollout collection")
                 break
 
             if (
@@ -2028,12 +1940,12 @@ class PPOTrainer:
 
             update_metrics = self.update_policy()
 
-            # Check for interruption after policy update
-            if (
+            # Check if update was interrupted
+            if update_metrics.get("interrupted", False) or self.stop_training or (
                 hasattr(__import__("main"), "training_interrupted")
                 and __import__("main").training_interrupted
             ):
-                self.logger.warning("Training interrupted after policy update")
+                self.logger.warning("Training interrupted during or after policy update")
                 break
 
             for callback in self.callbacks:
