@@ -235,6 +235,21 @@ class SharedDashboardState:
     episodes_per_day_config: int = 10
     curriculum_strategy: str = "quality_based"
     curriculum_episode_length: int = 256
+    
+    # Training Manager specific attributes
+    training_mode: str = "production"
+    data_lifecycle_stage: str = "unknown"
+    continuous_training_active: bool = False
+    
+    # Additional training lifecycle attributes
+    is_collecting_rollout: bool = False
+    rollout_size: int = 0
+    rollout_reward_mean: float = 0.0
+    
+    # Evaluation attributes
+    eval_mean_reward: float = 0.0
+    eval_win_rate: float = 0.0
+    eval_sharpe_ratio: float = 0.0
 
 
 class DashboardStateManager:

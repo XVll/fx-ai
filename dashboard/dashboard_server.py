@@ -454,12 +454,21 @@ class DashboardServer:
             minutes, seconds = divmod(remainder, 60)
             session_time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-            # Header info with momentum day
+            # Header info with training manager and data lifecycle info
+            lifecycle_info = ""
+            if hasattr(state, 'data_lifecycle_stage') and state.data_lifecycle_stage and state.data_lifecycle_stage != "unknown":
+                lifecycle_info = f" | Stage: {state.data_lifecycle_stage}"
+            
             momentum_day_info = ""
             if state.current_momentum_day_date:
                 momentum_day_info = f" | Day: {state.current_momentum_day_date} (Q: {state.current_momentum_day_quality:.2f})"
+
+            training_mode_info = ""
+            if hasattr(state, 'training_mode') and state.training_mode:
+                training_mode_info = f" | Mode: {state.training_mode}"
+
             header_info = (
-                f"Model: {state.model_name} | Symbol: {state.symbol}{momentum_day_info}"
+                f"Model: {state.model_name} | Symbol: {state.symbol}{training_mode_info}{lifecycle_info}{momentum_day_info}"
             )
 
             # Market info
@@ -1185,56 +1194,58 @@ class DashboardServer:
             avg_spread = getattr(state, "avg_spread", getattr(state, "spread", 0.001))
             volume_ratio = getattr(state, "volume_ratio", 1.0)
             halt_count = getattr(state, "halt_count", 0)
-            # 3-Component Sniper Curriculum
-            curriculum_stage = getattr(state, "curriculum_stage", "stage_1")
-            total_episodes_curriculum = getattr(
-                state, "total_episodes_for_curriculum", state.total_episodes
-            )
-
+            # Adaptive Data Lifecycle (replaces curriculum)
+            lifecycle_stage = getattr(state, "data_lifecycle_stage", "adaptive")
+            # Ensure lifecycle_stage is not None
+            if lifecycle_stage is None:
+                lifecycle_stage = "adaptive"
+            current_cycle = getattr(state, "current_cycle", 0)
+            cycle_progress = getattr(state, "cycle_progress", 0.0)
+            
             # 2-component scores from current reset point
             current_roc_score = getattr(state, "current_roc_score", 0.0)
             current_activity_score = getattr(state, "current_activity_score", 0.0)
 
-            # Curriculum ranges (match PPO agent field names)
+            # Adaptive data ranges (from data lifecycle manager)
             roc_range = getattr(state, "roc_range", [0.0, 1.0])
             activity_range = getattr(state, "activity_range", [0.0, 1.0])
+            day_score_range = getattr(state, "day_score_range", [0.0, 1.0])
 
             episode_length = getattr(state, "curriculum_episode_length", 256)
 
-            # Determine curriculum stage color
+            # Determine lifecycle stage color and display
             stage_colors = {
-                "stage_1": DARK_THEME["accent_green"],
-                "stage_2": DARK_THEME["accent_blue"],
-                "stage_3": DARK_THEME["accent_orange"],
+                "adaptive": DARK_THEME["accent_blue"],
+                "foundation": DARK_THEME["accent_green"], 
+                "intermediate": DARK_THEME["accent_orange"],
+                "advanced": DARK_THEME["accent_red"],
+                "production": DARK_THEME["accent_purple"],
+                "unknown": DARK_THEME["text_muted"],
             }
             stage_names = {
-                "stage_1": "Beginner",
-                "stage_2": "Intermediate",
-                "stage_3": "Advanced",
+                "adaptive": "Adaptive Data",
+                "foundation": "Foundation",
+                "intermediate": "Intermediate", 
+                "advanced": "Advanced",
+                "production": "Production",
+                "unknown": "Unknown",
             }
             stage_display = stage_names.get(
-                curriculum_stage, curriculum_stage.replace("_", " ").title()
+                lifecycle_stage, lifecycle_stage.replace("_", " ").title() if lifecycle_stage else "Unknown"
             )
-            curriculum_color = stage_colors.get(
-                curriculum_stage, DARK_THEME["text_muted"]
+            lifecycle_color = stage_colors.get(
+                lifecycle_stage, DARK_THEME["text_muted"]
             )
 
-            # Get progress percentage from curriculum system (transmitted from agent)
-            progress_pct = getattr(state, "curriculum_progress", 0.0)
+            # Get progress percentage from data lifecycle (transmitted from training manager)
+            progress_pct = cycle_progress
             if progress_pct == 0.0:
-                # Fallback calculation if not received from agent
-                stage_thresholds = {
-                    "stage_1": 2000,
-                    "stage_2": 5000,
-                    "stage_3": float("inf"),
-                }
-                current_threshold = stage_thresholds.get(curriculum_stage, float("inf"))
-                progress_pct = (
-                    (total_episodes_curriculum / current_threshold * 100)
-                    if current_threshold != float("inf")
-                    else 100
-                )
-                progress_pct = min(100, progress_pct)
+                # Fallback: show continuous training activity
+                continuous_active = getattr(state, "continuous_training_active", False)
+                if continuous_active:
+                    progress_pct = min(100.0, (state.updates % 100) * 1.0)
+                else:
+                    progress_pct = 0.0
 
             # Determine momentum direction
 
@@ -1292,9 +1303,9 @@ class DashboardServer:
             env_content = html.Div(
                 [
                     # Training Manager Progress
-                    self._info_row("Mode", stage_display, color=curriculum_color),
+                    self._info_row("Mode", stage_display, color=lifecycle_color),
                     self._info_row(
-                        "Progress", f"{progress_pct:.1f}%", color=curriculum_color
+                        "Progress", f"{progress_pct:.1f}%", color=lifecycle_color
                     ),
                     self._info_row(
                         "Termination",

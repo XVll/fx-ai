@@ -301,37 +301,48 @@ class ContinuousTraining:
         
         self.updates_since_recommendation = 0
         
-        # Only provide recommendations if we have recent evaluation data
-        if not self.performance_analyzer.evaluation_history or len(self.performance_analyzer.evaluation_history) < 2:
-            self.logger.debug("🔄 No sufficient evaluation data for recommendations")
+        # Check for evaluation data - if insufficient, still allow training-based recommendations
+        has_sufficient_evaluation_data = (
+            self.performance_analyzer.evaluation_history and 
+            len(self.performance_analyzer.evaluation_history) >= 2
+        )
+        
+        if not has_sufficient_evaluation_data:
+            self.logger.debug("🔄 No sufficient evaluation data for evaluation-based recommendations")
             # Request evaluation if we don't have recent data
             recommendations.evaluation_request = True
-            return recommendations
+            # Continue to allow training-based recommendations below
         
-        # Analyze evaluation performance (NOT training performance)
-        analysis = self._analyze_evaluation_performance()
+        # Evaluation-based recommendations (only if we have sufficient data)
+        if has_sufficient_evaluation_data:
+            # Analyze evaluation performance (NOT training performance)
+            analysis = self._analyze_evaluation_performance()
+            
+            # Data difficulty recommendations (based on evaluation results)
+            if self.mode == "production":  # Only adapt in production mode
+                difficulty_change = self.difficulty_manager.adapt_difficulty(analysis)
+                if difficulty_change:
+                    recommendations.data_difficulty_change = difficulty_change
+                    self.logger.info(f"📊 Recommending difficulty change based on evaluation: {difficulty_change['adaptation_record']['reason']}")
+            
+            # Evaluation-based checkpoint recommendations
+            if self._should_request_checkpoint_from_evaluation():
+                recommendations.checkpoint_request = True
+            
+            # Termination recommendations (based on evaluation trends only)
+            if self.mode == "production":
+                termination_reason = self._analyze_termination_from_evaluation(analysis, training_state)
+                if termination_reason:
+                    recommendations.termination_suggestion = termination_reason
+                    self.logger.info(f"🛑 Recommending termination based on evaluation: {termination_reason.value}")
         
-        # Data difficulty recommendations (based on evaluation results)
-        if self.mode == "production":  # Only adapt in production mode
-            difficulty_change = self.difficulty_manager.adapt_difficulty(analysis)
-            if difficulty_change:
-                recommendations.data_difficulty_change = difficulty_change
-                self.logger.info(f"📊 Recommending difficulty change based on evaluation: {difficulty_change['adaptation_record']['reason']}")
-        
-        # Checkpoint recommendations (based on evaluation improvement)
-        if self._should_request_checkpoint_from_evaluation():
+        # Training-based recommendations (always available)
+        if self._should_request_checkpoint_from_training(training_state):
             recommendations.checkpoint_request = True
         
         # Evaluation recommendations (schedule next evaluation)
         if self._should_request_evaluation(training_state):
             recommendations.evaluation_request = True
-        
-        # Termination recommendations (based on evaluation trends only)
-        if self.mode == "production":
-            termination_reason = self._analyze_termination_from_evaluation(analysis, training_state)
-            if termination_reason:
-                recommendations.termination_suggestion = termination_reason
-                self.logger.info(f"🛑 Recommending termination based on evaluation: {termination_reason.value}")
         
         return recommendations
     
@@ -379,6 +390,13 @@ class ContinuousTraining:
             return True
         
         return False
+    
+    def _should_request_checkpoint_from_training(self, training_state) -> bool:
+        """Determine if checkpoint should be requested based on training progress"""
+        updates_elapsed = training_state.updates - self.last_checkpoint_update
+        
+        # Request checkpoint based on training frequency
+        return updates_elapsed >= self.checkpoint_frequency
     
     def _analyze_termination_from_evaluation(self, analysis: PerformanceAnalysis, training_state) -> Optional:
         """Analyze termination conditions based on evaluation trends"""
@@ -432,6 +450,8 @@ class ContinuousTraining:
     def handle_checkpoint_request(self, trainer):
         """Handle checkpoint request from training manager"""
         current_update = getattr(trainer, 'global_update_counter', 0)
+        current_episode = getattr(trainer, 'global_episode_counter', 0)
+        current_steps = getattr(trainer, 'global_step_counter', 0)
         
         # Save current model
         checkpoint_path = os.path.join(
@@ -440,24 +460,50 @@ class ContinuousTraining:
         )
         trainer.save_model(checkpoint_path)
         
-        # Get current metrics
+        # Get comprehensive current metrics from trainer
         current_performance = getattr(trainer, 'mean_episode_reward', 0.0)
         
-        # Check if this is a new best
-        if current_performance > self.best_reward:
-            self.best_reward = current_performance
+        # Get additional training metrics
+        total_episodes = getattr(trainer, 'global_episode_counter', 0)
+        recent_rewards = getattr(trainer, 'recent_episode_rewards', [])
+        
+        # Calculate more robust performance metric
+        if len(recent_rewards) > 0:
+            recent_performance = float(np.mean(recent_rewards[-10:]))  # Last 10 episodes
+        else:
+            recent_performance = current_performance
+            
+        # Use the better of the two metrics
+        effective_performance = max(current_performance, recent_performance)
+        
+        # Always save checkpoints with meaningful training progress (not just reward improvement)
+        should_save_as_best = (
+            effective_performance > self.best_reward or 
+            (current_update > 0 and total_episodes > 0) or  # Has actual training progress
+            self.best_model_path is None  # First checkpoint
+        )
+        
+        if should_save_as_best:
+            # Update best tracking
+            if effective_performance > self.best_reward:
+                self.best_reward = effective_performance
             self.best_model_path = checkpoint_path
             
-            # Save as best model
+            # Create comprehensive metrics
             metrics = {
-                'mean_reward': current_performance,
+                'mean_reward': effective_performance,
+                'recent_reward': recent_performance,
                 'update_iter': current_update,
+                'episode_count': total_episodes,
+                'global_steps': current_steps,
                 'timestamp': time.time(),
-                'mode': self.mode
+                'mode': self.mode,
+                'recent_episodes_count': len(recent_rewards),
+                'training_active': True
             }
             
-            self.model_manager.save_best_model(checkpoint_path, metrics, current_performance)
-            self.logger.info(f"💾 New best model saved: reward={current_performance:.4f}")
+            self.model_manager.save_best_model(checkpoint_path, metrics, effective_performance)
+            self.logger.info(f"💾 Model checkpoint saved: reward={effective_performance:.4f}, episodes={total_episodes}, updates={current_update}")
         
         self.last_checkpoint_update = current_update
     

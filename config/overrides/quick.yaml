@@ -7,11 +7,11 @@ env:
     
     # Quick termination for development (for entire training)
     termination:
-      training_max_episodes: 50          # Quick episode limit for testing
-      training_max_updates: 25           # Quick update limit
-      training_max_cycles: 5             # Quick cycle limit for development
+      training_max_episodes: null         # Quick episode limit for testing
+      training_max_updates: null           # Quick update limit
+      training_max_cycles: 3             # Quick cycle limit for development
       intelligent_termination: false  # Disabled for quick tests
-      plateau_patience: 10      # Quick plateau detection
+      plateau_patience: 20      # Quick plateau detection
       degradation_threshold: 0.1  # More sensitive for quick feedback
     
     # Frequent continuous training for quick feedback
@@ -22,11 +22,11 @@ env:
       
       # Centralized evaluation settings
       evaluation:
-        frequency: 5          # Frequent evaluations for feedback
-        episodes: 3            # Few episodes for speed
+        frequency: 2          # Frequent evaluations for feedback
+        episodes: 5           # Few episodes for speed
       
       # Quick adaptation
-      adaptation_enabled: true
+      adaptation_enabled: false
     
     # Simple adaptive data for development
     data_lifecycle:
@@ -35,7 +35,7 @@ env:
       # Data cycle management (when to switch days/reset points)
       cycles:
         episode_max_steps: 128            # Shorter episodes for speed
-        day_max_episodes: 5               # 5 episodes per day for quick testing
+        day_max_episodes: null               # 5 episodes per day for quick testing
         day_max_updates: null            # No update limit per day
         day_max_cycles: 2                # Quick cycling for development
       
@@ -63,7 +63,7 @@ model:
     enabled: true
     update_frequency: 1      # Less frequent for speed
     max_samples_per_analysis: 3
-    background_samples: 5
+    background_samples: 1
     methods:
       - gradient_shap
     primary_method: gradient_shap

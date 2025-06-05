@@ -82,21 +82,8 @@ class AttributionCallback(TrainingCallback):
             feature_names = self._get_feature_names_from_config()
             branch_configs = self._get_branch_configs_from_config()
 
-            # Create SHAP analyzer configuration
-            attribution_config = AttributionConfig(
-                max_samples_per_analysis=self.max_samples,
-                background_samples=self.background_samples,
-                update_frequency=self.update_frequency,
-                dashboard_update=True,
-                log_to_wandb=True,
-                methods=self.config.get('methods', ['gradient_shap']),
-                primary_method=self.config.get('primary_method', 'gradient_shap'),
-                use_gpu=self.config.get('use_gpu', True),
-                save_plots=self.config.get('save_plots', False),
-                top_k_features=self.config.get('top_k_features', 20),
-                dead_feature_threshold=self.config.get('dead_feature_threshold', 0.001),
-                analyze_interactions=self.config.get('analyze_interactions', False)
-            )
+            # Create SHAP analyzer configuration from existing config
+            attribution_config = AttributionConfig(**self.config)
 
             # Initialize SHAP analyzer
             self.shap_analyzer = ComprehensiveSHAPAnalyzer(

@@ -1,0 +1,21 @@
+{
+  "termination_reason": "user_interrupt",
+  "total_episodes": 0,
+  "total_updates": 0,
+  "total_steps": 0,
+  "training_hours": 0.0,
+  "final_performance": 0.0,
+  "best_performance": -Infinity,
+  "continuous_training_session_duration": 1.8141498565673828,
+  "continuous_training_best_reward": 0.15,
+  "continuous_training_adaptations": 0,
+  "continuous_training_evaluations": 0,
+  "continuous_training_mode": "production",
+  "adaptation_history": [],
+  "evaluation_history": [],
+  "final_quality_range": [
+    0.7,
+    1.0
+  ],
+  "timestamp": "2025-06-05T20:12:44.360216"
+}

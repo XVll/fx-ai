@@ -36,21 +36,49 @@ class SessionType(str, Enum):
 
 
 class SHAPConfig(BaseModel):
-    """SHAP Feature Attribution Configuration"""
+    """SHAP Feature Attribution Configuration - matches comprehensive_shap_analyzer.AttributionConfig"""
     
+    # Enable/disable attribution
     enabled: bool = Field(True, description="Enable SHAP attribution analysis")
+    
+    # Analysis settings
     update_frequency: int = Field(10, ge=1, description="Run SHAP every N updates")
     max_samples_per_analysis: int = Field(5, ge=1, description="Max samples per analysis")
     background_samples: int = Field(10, ge=1, description="Background samples for baseline")
+    
+    # Methods to use
     methods: List[str] = Field(["gradient_shap"], description="Attribution methods")
     primary_method: str = Field("gradient_shap", description="Primary attribution method")
+    
+    # Feature selection
     top_k_features: int = Field(50, ge=1, description="Track top K features")
     dead_feature_threshold: float = Field(0.001, ge=0.0, description="Dead feature threshold")
-    analyze_interactions: bool = Field(True, description="Analyze feature interactions")
-    save_plots: bool = Field(False, description="Save visualization plots")
-    log_to_wandb: bool = Field(True, description="Log results to W&B")
-    dashboard_update: bool = Field(True, description="Update dashboard with results")
+    interaction_top_k: int = Field(20, description="Top K interactions")
+    
+    # Performance settings
     use_gpu: bool = Field(True, description="Use GPU for attribution")
+    batch_size: int = Field(8, description="Batch size")
+    num_workers: int = Field(2, description="Number of workers")
+    cache_background: bool = Field(True, description="Cache background data")
+    
+    # Visualization settings
+    save_plots: bool = Field(False, description="Save visualization plots")
+    plot_dir: str = Field("outputs/shap_plots", description="Plot directory")
+    plot_formats: List[str] = Field(["png"], description="Plot formats")
+    plot_dpi: int = Field(150, description="Plot DPI")
+    
+    # Tracking settings
+    history_length: int = Field(100, description="History length")
+    trend_window: int = Field(10, description="Trend window")
+    
+    # Dashboard settings
+    dashboard_update_freq: int = Field(5, description="Dashboard update frequency")
+    
+    # Advanced features
+    analyze_interactions: bool = Field(True, description="Analyze feature interactions")
+    analyze_gradients: bool = Field(True, description="Analyze gradients")
+    track_attention: bool = Field(True, description="Track attention")
+    detect_outliers: bool = Field(True, description="Detect outliers")
 
 
 class ModelConfig(BaseModel):
