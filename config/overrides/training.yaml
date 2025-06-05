@@ -56,19 +56,5 @@ env:
       preloading:
         preload_enabled: true
 
-# Enable comprehensive attribution analysis
-model:
-  enable_attribution: true
-  shap_config:
-    enabled: true
-    update_frequency: 1
-    max_samples_per_analysis: 5
-    background_samples: 10
-    methods:
-      - gradient_shap
-    primary_method: gradient_shap
-    top_k_features: 50
-    dead_feature_threshold: 0.001
-    analyze_interactions: true
-    save_plots: false
-    use_gpu: true
+# Model configuration for training
+model: {}

@@ -120,7 +120,6 @@ class MetricsFactory:
         enable_dashboard: bool = False,
         dashboard_port: int = 8050,
         feature_names: Optional[Dict[str, List[str]]] = None,
-        enable_feature_attribution: bool = True,
         model_config: Optional[Any] = None,
     ) -> MetricsManager:
         """Create a complete metrics system with all components"""
@@ -157,12 +156,11 @@ class MetricsFactory:
         # Reward collectors
         collectors.extend(MetricsFactory.create_reward_collectors())
 
-        # Model internals collectors with feature attribution
+        # Model internals collectors
         collectors.append(
             ModelInternalsCollector(
                 model=model,
                 feature_names=feature_names,
-                enable_attribution=enable_feature_attribution,
                 model_config=model_config,
             )
         )
@@ -325,19 +323,6 @@ class MetricsIntegrator:
         if collector:
             collector.update_feature_statistics(features)
 
-    # Feature attribution integration methods
-    def update_state_for_attribution(self, state_dict: Dict[str, Any]):
-        """Store state for feature attribution analysis"""
-        collector = self.get_collector("ModelInternalsCollector")
-        if collector:
-            collector.update_state_for_attribution(state_dict)
-
-    def run_periodic_shap_analysis(self) -> Optional[Dict[str, Any]]:
-        """Run periodic SHAP analysis"""
-        collector = self.get_collector("ModelInternalsCollector")
-        if collector:
-            return collector.run_periodic_shap_analysis()
-        return None
 
     def run_permutation_importance_analysis(
         self, environment, n_episodes: int = 20
@@ -359,12 +344,6 @@ class MetricsIntegrator:
             return collector.generate_feature_report(save_path)
         return {}
 
-    def get_feature_attribution_summary(self) -> Dict[str, Any]:
-        """Get feature attribution summary"""
-        collector = self.get_collector("ModelInternalsCollector")
-        if collector:
-            return collector.get_feature_attribution_summary()
-        return {"attribution_enabled": False}
 
     # Portfolio integration methods
     def update_portfolio(
@@ -638,14 +617,9 @@ class MetricsConfig:
 
         wandb_config = self.create_wandb_config(additional_config)
 
-        # Extract feature attribution parameters from additional_config
+        # Extract feature names from additional_config
         feature_names = (
             additional_config.get("feature_names") if additional_config else None
-        )
-        enable_feature_attribution = (
-            additional_config.get("enable_feature_attribution", True)
-            if additional_config
-            else True
         )
 
         manager = MetricsFactory.create_complete_metrics_system(
@@ -658,7 +632,6 @@ class MetricsConfig:
             enable_dashboard=self.enable_dashboard,
             dashboard_port=self.dashboard_port,
             feature_names=feature_names,
-            enable_feature_attribution=enable_feature_attribution,
             model_config=additional_config.get("model_config")
             if additional_config
             else None,
