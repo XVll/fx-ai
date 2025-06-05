@@ -46,6 +46,19 @@ class DashboardCallback(BaseCallback):
                 self.dashboard_state = (
                     global_state.get_state()
                 )  # Get state reference for direct access
+                
+                # Register for graceful shutdown
+                try:
+                    from utils.graceful_shutdown import get_shutdown_manager
+                    get_shutdown_manager().register_component(
+                        "Dashboard",
+                        self._shutdown_dashboard,
+                        timeout=10.0,
+                        critical=False
+                    )
+                except ImportError:
+                    pass
+                
             except ImportError:
                 self.logger.warning(
                     "Dashboard state not available. DashboardCallback disabled."
@@ -976,6 +989,17 @@ class DashboardCallback(BaseCallback):
             )
         if hasattr(self.dashboard_state, "final_stats"):
             self.dashboard_state.final_stats = final_stats
+    
+    def _shutdown_dashboard(self):
+        """Graceful shutdown of dashboard"""
+        try:
+            if hasattr(self, 'dashboard_manager') and self.dashboard_manager:
+                # Clean shutdown of dashboard state
+                if hasattr(self.dashboard_state, 'training_active'):
+                    self.dashboard_state.training_active = False
+                self.logger.info("✅ Dashboard shutdown completed")
+        except Exception as e:
+            self.logger.error(f"❌ Error shutting down dashboard: {e}")
 
     def _update_episode_chart_data(self) -> None:
         """Update episode visualization data."""

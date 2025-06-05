@@ -92,6 +92,14 @@ class WandBCallback(BaseCallback):
             mode=self.config.get("mode", "online"),
             reinit=False,  # Prevent reinitialization if run exists
         )
+        
+        # Register with graceful shutdown manager
+        try:
+            from utils.graceful_shutdown import register_wandb_for_shutdown
+            register_wandb_for_shutdown(self.run)
+        except ImportError:
+            # Graceful shutdown not available, continue without it
+            pass
 
         # Define custom metrics only if this is a new run
         if self.run:

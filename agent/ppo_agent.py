@@ -101,9 +101,7 @@ class PPOTrainer:
         self.update_times = []
         self.episode_times = []
 
-        # Momentum-based training configuration
-        self.curriculum_method = "quality_based"  # Default curriculum method
-        self.min_quality_threshold = 0.3  # Default minimum quality threshold
+        # Momentum-based training configuration (managed by TrainingManager)
         self.episode_selection_mode = "momentum_days"  # Enable momentum-based training
 
         # Day selection configuration - extract from config or use defaults
@@ -125,13 +123,8 @@ class PPOTrainer:
         self.used_momentum_days = set()
         self.current_reset_points = []
         self.used_reset_point_indices = set()
-        self.curriculum_progress = 0.3  # Start at moderate difficulty, 0.0 = easy episodes, 1.0 = hard episodes
-
-        # Curriculum stage tracking
-        self.current_stage_idx = 0  # Current curriculum stage
-        self.stage_start_update = 0  # Update count when stage started
-        self.stage_start_episode = 0  # Episode count when stage started
-        self.stage_cycles_completed = 0  # Cycles completed in current stage
+        # Data quality filtering (managed by TrainingManager)
+        self.quality_range = [0.7, 1.0]  # Default quality range
 
         # Day episode tracking
         self.episodes_completed_on_current_day = 0
@@ -1811,6 +1804,108 @@ class PPOTrainer:
         )
 
         return update_metrics
+
+    def train_with_manager(self) -> Dict[str, Any]:
+        """
+        Train using the new TrainingManager system
+        This replaces the old curriculum-based train method
+        """
+        from training.training_manager import TrainingManager
+        
+        # Get training manager configuration
+        training_manager_config = self.config.env.training_manager
+        mode = training_manager_config.mode
+        
+        # Initialize TrainingManager
+        training_manager = TrainingManager(training_manager_config.__dict__, mode)
+        
+        self.logger.info(f"🎯 Starting training with TrainingManager in {mode} mode")
+        
+        # Set up episode configuration from training manager
+        episode_config = training_manager.get_episode_config()
+        if hasattr(self.env, 'set_episode_config'):
+            self.env.set_episode_config(episode_config)
+        
+        # The training manager will call our training step methods
+        # We need to implement the interface it expects
+        self.training_manager = training_manager
+        
+        # Start training with manager (it will control the lifecycle)
+        final_stats = training_manager.start_training(self)
+        
+        return final_stats
+    
+    def run_training_step(self) -> bool:
+        """
+        Run one training step for TrainingManager integration
+        Returns True if training should continue, False to stop
+        """
+        try:
+            # Check for training interruption
+            if (
+                hasattr(__import__("main"), "training_interrupted")
+                and __import__("main").training_interrupted
+            ):
+                self.logger.warning("Training interrupted during training step")
+                return False
+            
+            # Collect rollout data
+            rollout_info = self.collect_rollout_data()
+            
+            # Check for interruption after rollout
+            if (
+                hasattr(__import__("main"), "training_interrupted")
+                and __import__("main").training_interrupted
+            ):
+                self.logger.warning("Training interrupted after rollout collection")
+                return False
+            
+            # Check buffer size
+            if (
+                self.buffer.get_size() < self.rollout_steps
+                and self.buffer.get_size() < self.batch_size
+            ):
+                if self.buffer.get_size() < self.batch_size:
+                    return True  # Continue training, just skip this update
+                    
+            # Update policy
+            update_metrics = self.update_policy()
+            
+            # Check for interruption after update
+            if (
+                hasattr(__import__("main"), "training_interrupted")
+                and __import__("main").training_interrupted
+            ):
+                self.logger.warning("Training interrupted after policy update")
+                return False
+            
+            # Trigger callbacks
+            for callback in self.callbacks:
+                callback.on_update_iteration_end(
+                    self, self.global_update_counter, update_metrics, rollout_info
+                )
+            
+            # Check if TrainingManager wants us to stop
+            if hasattr(self, 'training_manager'):
+                return not self.training_manager.should_stop
+            
+            return True  # Continue training
+            
+        except Exception as e:
+            self.logger.error(f"Error in training step: {e}")
+            return False  # Stop training on error
+    
+    def apply_data_difficulty_change(self, change: Dict[str, Any]):
+        """Apply data difficulty changes from TrainingManager"""
+        if 'quality_range' in change:
+            quality_range = change['quality_range']
+            self.logger.info(f"📊 Applying data difficulty change: {quality_range}")
+            
+            # Update data filtering if we have momentum-based training
+            if self.episode_selection_mode == "momentum_days" and hasattr(self.env, 'data_manager'):
+                # Apply quality range to data manager
+                if hasattr(self.env.data_manager, 'set_quality_filter'):
+                    self.env.data_manager.set_quality_filter(quality_range)
 
     def train(self, eval_freq_steps: Optional[int] = None):
         """Main training loop with curriculum-driven stopping."""
