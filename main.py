@@ -15,6 +15,7 @@ import wandb
 from config.loader import load_config, check_unused_configs
 from config.schemas import Config, TrainingConfig, DataConfig
 from utils.logger import console, setup_rich_logging, get_logger
+from utils.graceful_shutdown import get_shutdown_manager, register_wandb_for_shutdown
 
 # Import utilities
 from utils.model_manager import ModelManager
@@ -38,11 +39,7 @@ from agent.base_callbacks import (
 )
 from agent.continuous_training_callbacks import ContinuousTrainingCallback
 
-# Global variables for signal handling
-training_interrupted = False
-cleanup_called = False
-current_components = {}  # Store all components for cleanup
-
+# Removed old signal handling - now handled by graceful shutdown manager
 logger = logging.getLogger(__name__)
 
 
@@ -504,12 +501,6 @@ def create_training_callbacks(
                 model_manager=model_manager,
                 reward_metric=config.training.best_model_metric,
                 checkpoint_sync_frequency=config.training.checkpoint_interval,
-                lr_annealing={
-                    "enabled": config.training.use_lr_annealing,
-                    "factor": config.training.lr_annealing_factor,
-                    "patience": config.training.lr_annealing_patience,
-                    "min_lr": config.training.min_learning_rate,
-                },
                 load_metadata=loaded_metadata or {},
             )
             callbacks.append(continuous_callback)
@@ -626,11 +617,16 @@ def train(config: Config):
         model, optimizer, model_manager = create_model_components(
             config, device, str(output_dir), logger
         )
-        current_components["model_manager"] = model_manager
-
         # Callback components
         callback_manager = create_callback_manager(config, logger, model)
-        current_components["callback_manager"] = callback_manager
+
+        # Register callback manager for graceful shutdown
+        shutdown_manager.register_component(
+            "CallbackManager",
+            lambda: callback_manager.trigger("on_training_end", {"interrupted": True}),
+            timeout=30.0,
+            critical=True
+        )
 
         # Update environment with callback manager
         if callback_manager:
@@ -711,12 +707,12 @@ def train(config: Config):
             output_dir=str(output_dir),
             callbacks=callbacks,
         )
-        current_components["trainer"] = trainer
+        # Trainer initialized - graceful shutdown manager will handle cleanup
 
-        # Check for interruption
-        if training_interrupted:
-            logger.warning("Training interrupted before starting")
-            return {"interrupted": True}
+        # Check for shutdown request
+        if shutdown_manager.is_shutdown_requested():
+            logger.warning("Shutdown requested before training start")
+            return {"shutdown_requested": True}
 
         # Initialize momentum-based training by selecting first momentum day
         logger.info("🎯 Initializing momentum-based training...")
@@ -747,18 +743,16 @@ def train(config: Config):
 
         # Note: on_training_start will be triggered by PPO trainer.train() method
 
-        # Main training loop - curriculum-driven
-        logger.info("🚀 Starting curriculum-driven training")
-        logger.info("   Training will complete when all curriculum stages are finished")
+        # Main training loop - TrainingManager controlled
+        logger.info("🚀 Starting TrainingManager-controlled training")
+        logger.info("   Training will complete based on TrainingManager termination criteria")
 
         try:
-            training_stats = trainer.train(
-                eval_freq_steps=config.training.eval_frequency
-                * config.training.rollout_steps
-            )
+            # Use new TrainingManager system
+            training_stats = trainer.train_with_manager()
 
-            if training_interrupted:
-                logger.warning("⚠️ Training was interrupted by user")
+            if shutdown_manager.is_shutdown_requested():
+                logger.warning("⚠️ Training was interrupted by shutdown request")
                 training_stats["interrupted"] = True
             else:
                 logger.info("🎉 Training completed successfully!")
@@ -786,11 +780,17 @@ def train(config: Config):
 
 def main():
     """Main entry point"""
-    # Set up signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    if hasattr(signal, "SIGTERM"):
-        signal.signal(signal.SIGTERM, signal_handler)
+    # Initialize graceful shutdown manager
+    shutdown_manager = get_shutdown_manager()
 
+    # Use graceful shutdown context manager
+    with shutdown_manager:
+        main_with_shutdown(shutdown_manager)
+
+
+def main_with_shutdown(shutdown_manager):
+    """Main logic with graceful shutdown support"""
+    
     # Parse arguments
     parser = argparse.ArgumentParser(description="FX-AI Trading System")
     parser.add_argument(

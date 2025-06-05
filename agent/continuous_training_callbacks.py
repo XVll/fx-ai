@@ -17,7 +17,6 @@ class ContinuousTrainingCallback(TrainingCallback):
         model_manager: ModelManager,
         reward_metric: str = "mean_reward",
         checkpoint_sync_frequency: int = 2,
-        lr_annealing: Optional[Dict[str, Any]] = None,
         best_model_criterion: str = "mean_reward",
         best_model_mode: str = "max",
         load_metadata: Optional[Dict[str, Any]] = None,
@@ -25,7 +24,6 @@ class ContinuousTrainingCallback(TrainingCallback):
         self.model_manager = model_manager
         self.reward_metric = reward_metric
         self.checkpoint_sync_frequency = checkpoint_sync_frequency
-        self.lr_annealing = lr_annealing or {}
         self.best_model_criterion = best_model_criterion
         self.best_model_mode = best_model_mode
         self.load_metadata = load_metadata or {}
@@ -53,27 +51,6 @@ class ContinuousTrainingCallback(TrainingCallback):
         """Initialize continuous training session"""
         self.session_start_time = time.time()
         self.last_sync_time = self.session_start_time
-
-        # Apply learning rate annealing if this is a continuation
-        if self.lr_annealing.get("enabled", False) and self.load_metadata:
-            self._apply_lr_annealing(trainer)
-
-    def _apply_lr_annealing(self, trainer):
-        """Apply learning rate decay for continued training"""
-        if not hasattr(trainer, "optimizer"):
-            self.logger.warning("No optimizer found for LR annealing")
-            return
-
-        current_lr = trainer.optimizer.param_groups[0]["lr"]
-        min_lr = self.lr_annealing.get("min_lr", 1e-5)
-        decay_factor = self.lr_annealing.get("decay_factor", 0.7)
-
-        new_lr = max(current_lr * decay_factor, min_lr)
-
-        for param_group in trainer.optimizer.param_groups:
-            param_group["lr"] = new_lr
-
-        self.logger.info(f"LR annealing applied: {current_lr:.6f} → {new_lr:.6f}")
 
     def on_update_iteration_end(
         self, trainer, update_iter, update_metrics, rollout_stats

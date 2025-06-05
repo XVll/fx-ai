@@ -81,6 +81,7 @@ class SharedDashboardState:
     steps_per_second: float = 0.0
     episodes_per_hour: float = 0.0
     updates_per_second: float = 0.0
+    updates_per_hour: float = 0.0
 
     # PPO metrics (from metrics)
     policy_loss: float = 0.0
@@ -546,6 +547,7 @@ class DashboardStateManager:
                 "steps_per_second",
                 "episodes_per_hour",
                 "updates_per_second",
+                "updates_per_hour",
                 "global_steps",
                 "total_episodes",
                 "updates",

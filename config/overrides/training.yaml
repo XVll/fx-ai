@@ -1,0 +1,79 @@
+# Training Override - Regular Production Training
+# Optimized for full production training with intelligent features
+
+env:
+  training_manager:
+    mode: "production"
+    
+    # Smart termination based on performance (for entire training)
+    termination:
+      training_max_episodes: null        # No hard episode limit
+      training_max_updates: null         # No hard update limit  
+      training_max_cycles: null          # No cycle limit
+      intelligent_termination: true
+      plateau_patience: 50      # Standard patience for plateau detection
+      degradation_threshold: 0.05  # 5% degradation threshold
+    
+    # Continuous training with full adaptation
+    continuous:
+      performance_window: 50    # Full performance tracking
+      recommendation_frequency: 10  # Regular recommendations
+      checkpoint_frequency: 25  # Regular checkpoints
+      
+      # Centralized evaluation settings
+      evaluation:
+        frequency: 50          # Updates between evaluations
+        episodes: 10           # Episodes per evaluation
+      
+      # Adaptive data difficulty
+      adaptation_enabled: true
+    
+    # Adaptive data lifecycle (no fixed stages)
+    data_lifecycle:
+      enabled: true
+      
+      # Data cycle management (when to switch days/reset points)
+      cycles:
+        episode_max_steps: 256           # Steps per episode
+        day_max_episodes: null           # No episode limit per day
+        day_max_updates: null            # No update limit per day
+        day_max_cycles: 3                # Cycle through all reset points 3 times per day
+      
+      # Adaptive data selection
+      adaptive_data:
+        symbols: ["MLGO"]
+        date_range: [null, null]
+        day_score_range: [0.7, 1.0]
+        roc_range: [0.05, 1.0]
+        activity_range: [0.0, 1.0]
+        selection_mode: "quality_weighted"
+        randomize_order: false
+      
+      reset_points:
+        selection_mode: "sequential"     # Order by quality score
+      
+      day_selection:
+        selection_mode: "quality_weighted"
+        randomize_order: false
+      
+      preloading:
+        preload_enabled: true
+
+# Enable comprehensive attribution analysis
+model:
+  enable_attribution: true
+  shap_config:
+    enabled: true
+    update_frequency: 10
+    max_samples_per_analysis: 5
+    background_samples: 10
+    methods:
+      - gradient_shap
+    primary_method: gradient_shap
+    top_k_features: 50
+    dead_feature_threshold: 0.001
+    analyze_interactions: true
+    save_plots: false
+    log_to_wandb: true
+    dashboard_update: true
+    use_gpu: true

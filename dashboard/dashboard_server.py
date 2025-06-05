@@ -234,11 +234,11 @@ class DashboardServer:
                                     ],
                                     style=self._card_style(),
                                 ),
-                                # Environment/Curriculum Card
+                                # Environment/Training Manager Card
                                 html.Div(
                                     [
                                         html.H4(
-                                            "Curriculum",
+                                            "Training Manager",
                                             style={
                                                 "color": DARK_THEME["text_primary"],
                                                 "marginBottom": "4px",
@@ -881,20 +881,22 @@ class DashboardServer:
             actions_content = html.Div([actions_table])
 
             # Episode info - more compact
+            # Use curriculum_episode_length from config if max_steps is not properly set
+            effective_max_steps = state.max_steps if state.max_steps > 0 else getattr(state, 'curriculum_episode_length', 256)
             progress = (
-                (state.current_step / state.max_steps * 100)
-                if state.max_steps > 0
+                (state.current_step / effective_max_steps * 100)
+                if effective_max_steps > 0
                 else 0
             )
 
             # Handle display when values are zero or missing
             episode_display = state.episode_number if state.episode_number > 0 else "-"
             step_display = (
-                f"{state.current_step:,}/{state.max_steps:,}"
-                if state.max_steps > 0
+                f"{state.current_step:,}/{effective_max_steps:,}"
+                if effective_max_steps > 0
                 else f"{state.current_step:,}/∞"
             )
-            progress_display = f"{progress:.1f}%" if state.max_steps > 0 else "∞"
+            progress_display = f"{progress:.1f}%" if effective_max_steps > 0 else "∞"
 
             # Combine episode number with progress percentage
             episode_with_progress = f"Episode {episode_display} ({progress_display})"
@@ -955,8 +957,10 @@ class DashboardServer:
                 f"/{max_updates:,}" if max_updates > 0 else ""
             )
 
-            # Calculate updates per hour (transmitter sends updates_per_second)
-            updates_per_hour = getattr(state, "updates_per_second", 0.0) * 3600
+            # Calculate updates per hour (check both updates_per_second and updates_per_hour)
+            updates_per_hour = getattr(state, "updates_per_hour", 0.0)
+            if updates_per_hour == 0.0:
+                updates_per_hour = getattr(state, "updates_per_second", 0.0) * 3600
 
             training_children = [
                 self._info_row("Mode", state.mode, color=DARK_THEME["accent_purple"]),
@@ -1093,8 +1097,8 @@ class DashboardServer:
                         "Ep %": f"{ep_pct:.1f}%",
                         "Session": f"{session_value:.2f}",
                         "Sess %": f"{sess_pct:.1f}%",
-                        "Ep Count": f"{episode_count}",
-                        "Sess Count": f"{session_count}",
+                        "Ep Count": str(episode_count),
+                        "Sess Count": str(session_count),
                     }
                 )
 
@@ -1177,7 +1181,7 @@ class DashboardServer:
                 page_size=12,
             )
 
-            # Environment/Curriculum info with expanded details
+            # Environment/Training Manager info with expanded details
             avg_spread = getattr(state, "avg_spread", getattr(state, "spread", 0.001))
             volume_ratio = getattr(state, "volume_ratio", 1.0)
             halt_count = getattr(state, "halt_count", 0)
@@ -1287,14 +1291,14 @@ class DashboardServer:
 
             env_content = html.Div(
                 [
-                    # Curriculum Stage Progress
-                    self._info_row("Stage", stage_display, color=curriculum_color),
+                    # Training Manager Progress
+                    self._info_row("Mode", stage_display, color=curriculum_color),
                     self._info_row(
                         "Progress", f"{progress_pct:.1f}%", color=curriculum_color
                     ),
                     self._info_row(
-                        "To Next Stage",
-                        f"{episodes_to_next:,} eps"
+                        "Termination",
+                        f"{episodes_to_next:,} episodes"
                         if episodes_to_next > 0
                         else "∞" if episodes_to_next == 0 and next_stage_name != "Complete"
                         else "Complete",
@@ -1303,7 +1307,7 @@ class DashboardServer:
                         else DARK_THEME["accent_green"],
                     ),
                     self._info_row("Episode Len", f"{episode_length} steps"),
-                    # Reset Point Cycle Tracking
+                    # Data Management & Adaptation
                     html.Hr(
                         style={"margin": "4px 0", "borderColor": DARK_THEME["border"]}
                     ),
@@ -1395,7 +1399,10 @@ class DashboardServer:
 
             # Performance footer with eps/Hour moved here
             eps_per_hour = getattr(state, "episodes_per_hour", 0.0)
-            updates_per_hour = state.updates_per_second * 3600
+            # Check both updates_per_hour and updates_per_second for flexibility
+            updates_per_hour = getattr(state, "updates_per_hour", 0.0)
+            if updates_per_hour == 0.0:
+                updates_per_hour = getattr(state, "updates_per_second", 0.0) * 3600
             footer = f"Steps/sec: {state.steps_per_second:.1f} | Updates/hr: {updates_per_hour:.1f} | Episodes/hr: {eps_per_hour:.1f}"
 
             return (

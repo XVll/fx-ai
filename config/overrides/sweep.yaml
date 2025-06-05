@@ -1,0 +1,70 @@
+# Sweep Override - Hyperparameter Optimization
+# Optimized for fast, deterministic trials with minimal overhead
+
+env:
+  training_manager:
+    mode: "sweep"
+    
+    # Fixed termination for consistent trials (for entire training)
+    termination:
+      training_max_episodes: 500         # Fixed episode limit
+      training_max_updates: 100          # Fixed update limit for fast trials
+      training_max_cycles: 10           # Fixed cycle limit for consistency
+      intelligent_termination: false  # Disabled for deterministic behavior
+      plateau_patience: 999999  # Effectively disabled
+      degradation_threshold: 1.0  # Effectively disabled
+    
+    # Limited continuous training for sweep
+    continuous:
+      performance_window: 20    # Smaller window
+      recommendation_frequency: 20  # Less frequent recommendations
+      checkpoint_frequency: 50  # Less frequent checkpoints
+      
+      # Centralized evaluation settings
+      evaluation:
+        frequency: 100         # Less frequent evaluation
+        episodes: 3            # Fewer episodes for speed
+      
+      # Only safe data difficulty adaptation
+      adaptation_enabled: true  # Only data changes, no training params
+    
+    # Simplified adaptive data for sweep
+    data_lifecycle:
+      enabled: true
+      
+      # Data cycle management (when to switch days/reset points)
+      cycles:
+        episode_max_steps: 256           # Steps per episode
+        day_max_episodes: null           # No episode limit per day
+        day_max_updates: null            # No update limit per day
+        day_max_cycles: 2                # Quick cycling for sweep trials
+      
+      # Deterministic adaptive data selection
+      adaptive_data:
+        symbols: ["MLGO"]
+        date_range: [null, null]
+        day_score_range: [0.7, 1.0]
+        roc_range: [0.05, 1.0]
+        activity_range: [0.0, 1.0]
+        selection_mode: "sequential"  # Deterministic for consistency
+        randomize_order: false
+      
+      reset_points:
+        selection_mode: "sequential"     # Deterministic for consistency
+      
+      day_selection:
+        selection_mode: "sequential"  # Deterministic selection
+        randomize_order: false
+      
+      preloading:
+        preload_enabled: false  # Disabled for faster trials
+
+# Minimal attribution for speed
+model:
+  enable_attribution: false
+  shap_config:
+    enabled: false
+
+# Disable W&B for faster trials (can be overridden in sweep configs)
+wandb:
+  enabled: false

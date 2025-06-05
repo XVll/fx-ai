@@ -1,0 +1,86 @@
+# Quick Override - Fast Development Training
+# Optimized for rapid development cycles and testing
+
+env:
+  training_manager:
+    mode: "production"
+    
+    # Quick termination for development (for entire training)
+    termination:
+      training_max_episodes: 50          # Quick episode limit for testing
+      training_max_updates: 25           # Quick update limit
+      training_max_cycles: 5             # Quick cycle limit for development
+      intelligent_termination: false  # Disabled for quick tests
+      plateau_patience: 10      # Quick plateau detection
+      degradation_threshold: 0.1  # More sensitive for quick feedback
+    
+    # Frequent continuous training for quick feedback
+    continuous:
+      performance_window: 10    # Small window for quick trends
+      recommendation_frequency: 5  # Frequent recommendations
+      checkpoint_frequency: 10  # Frequent checkpoints for safety
+      
+      # Centralized evaluation settings
+      evaluation:
+        frequency: 15          # Frequent evaluations for feedback
+        episodes: 3            # Few episodes for speed
+      
+      # Quick adaptation
+      adaptation_enabled: true
+    
+    # Simple adaptive data for development
+    data_lifecycle:
+      enabled: true
+      
+      # Data cycle management (when to switch days/reset points)
+      cycles:
+        episode_max_steps: 128            # Shorter episodes for speed
+        day_max_episodes: 5               # 5 episodes per day for quick testing
+        day_max_updates: null            # No update limit per day
+        day_max_cycles: 2                # Quick cycling for development
+      
+      # Random adaptive data selection for variety
+      adaptive_data:
+        symbols: ["MLGO"]
+        date_range: [null, null]
+        day_score_range: [0.7, 1.0]
+        roc_range: [0.1, 1.0]    # Wider range for more data
+        activity_range: [0.0, 1.0]
+        selection_mode: "random"  # Random for variety in development
+        randomize_order: true
+      
+      reset_points:
+        selection_mode: "random"          # Random for development variety
+      
+      day_selection:
+        selection_mode: "random"  # Random for development variety
+        randomize_order: true
+      
+      preloading:
+        preload_enabled: false  # Disabled for simplicity
+
+# Lightweight attribution for development
+model:
+  enable_attribution: true
+  shap_config:
+    enabled: true
+    update_frequency: 20      # Less frequent for speed
+    max_samples_per_analysis: 3
+    background_samples: 5
+    methods:
+      - gradient_shap
+    primary_method: gradient_shap
+    top_k_features: 20        # Fewer features for speed
+    dead_feature_threshold: 0.01
+    analyze_interactions: false  # Disabled for speed
+    save_plots: false
+    log_to_wandb: true
+    dashboard_update: true
+    use_gpu: true
+
+# Development W&B settings
+wandb:
+  enabled: true
+  project: fx-ai-development
+  tags: [development, quick]
+  notes: "Quick development training"

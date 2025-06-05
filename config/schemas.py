@@ -108,11 +108,6 @@ class TrainingConfig(BaseModel):
     # Rollout settings
     rollout_steps: int = Field(2048, gt=0, description="Steps per rollout")
 
-    # Learning rate scheduling
-    use_lr_annealing: bool = Field(True, description="Enable LR annealing")
-    lr_annealing_factor: float = Field(0.7, description="LR decay factor")
-    lr_annealing_patience: int = Field(50, description="Patience for LR decay")
-    min_learning_rate: float = Field(1e-6, description="Minimum learning rate")
 
     # Model management
     continue_training: bool = Field(False, description="Continue from best model")
@@ -230,8 +225,8 @@ class EnvironmentConfig(BaseModel):
     # Reward system
     reward: RewardConfig = Field(default_factory=lambda: RewardConfig())
 
-    # Curriculum learning
-    curriculum: "CurriculumConfig" = Field(default_factory=lambda: CurriculumConfig())
+    # Training management  
+    training_manager: "TrainingManagerConfig" = Field(default_factory=lambda: TrainingManagerConfig())
 
 
 # =============================================================================
@@ -333,74 +328,127 @@ class SimulationConfig(BaseModel):
 
 
 # =============================================================================
-# CURRICULUM CONFIGURATION
+# TRAINING MANAGER CONFIGURATION
 # =============================================================================
 
 
-class CurriculumStageConfig(BaseModel):
-    """Single curriculum stage configuration"""
-
-    enabled: bool = Field(True, description="Stage enabled")
-    symbols: List[str] = Field(default_factory=list, description="Training symbols")
-    date_range: List[Optional[str]] = Field([None, None], description="Date range")
-    day_score_range: List[float] = Field([0.0, 1.0], description="Day quality range")
-    roc_range: List[float] = Field([0.0, 1.0], description="ROC score range")
-    activity_range: List[float] = Field([0.0, 1.0], description="Activity score range")
-
-    # Stage transition conditions
-    max_updates: Optional[int] = Field(
-        None, description="Max updates before transition"
-    )
-    max_episodes: Optional[int] = Field(
-        None, description="Max episodes before transition"
-    )
-    max_cycles: Optional[int] = Field(None, description="Max cycles before transition")
-
-    @field_validator("roc_range", mode="before")  # noinspection PyNestedDecorators
-    @classmethod
-    def validate_roc_range(cls, v: Any) -> Any:
-        if (
-            len(v) != 2
-            or v[0] >= v[1]
-            or not (-1 <= v[0] <= 1)
-            or not (-1 <= v[1] <= 1)
-        ):
-            raise ValueError("ROC range must be [min, max] with -1 <= min < max <= 1")
-        return v
-
-    @field_validator(
-        "activity_range", "day_score_range", mode="before"
-    )  # noinspection PyNestedDecorators
-    @classmethod
-    def validate_other_ranges(cls, v: Any) -> Any:
-        if len(v) != 2 or v[0] >= v[1] or not (0 <= v[0] <= 1) or not (0 <= v[1] <= 1):
-            raise ValueError("Range must be [min, max] with 0 <= min < max <= 1")
-        return v
+class TerminationConfig(BaseModel):
+    """Training termination configuration"""
+    
+    # Hard limits (always enforced) - for ending entire training
+    training_max_episodes: Optional[int] = Field(None, description="Maximum total episodes before training termination")
+    training_max_updates: Optional[int] = Field(None, description="Maximum total updates before training termination")
+    training_max_cycles: Optional[int] = Field(None, description="Maximum total data cycles before training termination")
+    
+    # Intelligent termination (production mode only)
+    intelligent_termination: bool = Field(True, description="Enable intelligent termination")
+    plateau_patience: int = Field(50, description="Updates without improvement before plateau termination")
+    degradation_threshold: float = Field(0.05, description="Performance degradation threshold (5%)")
 
 
-class CurriculumConfig(BaseModel):
-    """Curriculum learning configuration"""
+# EpisodeConfig removed - moved to data_lifecycle
 
-    stage_1: CurriculumStageConfig = Field(
-        default_factory=lambda: CurriculumStageConfig(
-            day_score_range=[0.7, 1.0], roc_range=[0.05, 1.0], max_updates=500
-        )
-    )
 
-    stage_2: CurriculumStageConfig = Field(
-        default_factory=lambda: CurriculumStageConfig(
-            day_score_range=[0.5, 0.9],
-            roc_range=[0.6, 1.0],
-            activity_range=[0.3, 1.0],
-            max_updates=800,
-        )
-    )
+class EvaluationConfig(BaseModel):
+    """Evaluation configuration"""
+    frequency: int = Field(50, description="Updates between evaluations")
+    episodes: int = Field(10, description="Episodes per evaluation")
 
-    stage_3: CurriculumStageConfig = Field(
-        default_factory=lambda: CurriculumStageConfig(
-            day_score_range=[0.3, 0.7], roc_range=[0.4, 1.0], activity_range=[0.2, 1.0]
-        )
-    )
+
+class ContinuousTrainingConfig(BaseModel):
+    """Continuous training advisor and model management configuration"""
+    
+    # Performance analysis
+    performance_window: int = Field(50, description="Performance history window size")
+    recommendation_frequency: int = Field(10, description="Episodes between recommendations")
+    
+    # Model management
+    checkpoint_frequency: int = Field(25, description="Updates between checkpoints")
+    
+    # Evaluation settings (centralized)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
+    
+    # Data difficulty adaptation
+    adaptation_enabled: bool = Field(True, description="Enable adaptive data difficulty")
+
+
+class AdaptiveDataConfig(BaseModel):
+    """Adaptive data selection configuration"""
+    
+    # Static constraints (never change)
+    symbols: List[str] = Field(default_factory=lambda: ["MLGO"], description="Trading symbols")
+    date_range: List[Optional[str]] = Field(default_factory=lambda: [None, None], description="Date range [start, end]")
+    
+    # Adaptive ranges (ContinuousTraining can modify these)
+    day_score_range: List[float] = Field(default_factory=lambda: [0.7, 1.0], description="Day quality score range")
+    roc_range: List[float] = Field(default_factory=lambda: [0.05, 1.0], description="ROC score range")
+    activity_range: List[float] = Field(default_factory=lambda: [0.0, 1.0], description="Activity score range")
+    
+    # Selection behavior
+    selection_mode: Literal["sequential", "random", "quality_weighted"] = Field("quality_weighted", description="Selection mode")
+    randomize_order: bool = Field(False, description="Randomize selection order")
+
+
+class DataCycleConfig(BaseModel):
+    """Data cycle management - when to switch days/reset points"""
+    
+    # Episode management
+    episode_max_steps: int = Field(256, gt=0, description="Maximum steps per episode")
+    
+    # Day switching conditions (when ANY is met, switch to next day)
+    day_max_episodes: Optional[int] = Field(None, description="Max episodes per day before switching to next day")
+    day_max_updates: Optional[int] = Field(None, description="Max updates per day before switching to next day")  
+    day_max_cycles: Optional[int] = Field(3, description="How many times to cycle through ALL reset points before switching to next day")
+
+
+class ResetPointConfig(BaseModel):
+    """Reset point management configuration"""
+    selection_mode: Literal["sequential", "random"] = Field("sequential", description="How to order reset points: sequential (by quality) or random")
+
+
+class DaySelectionConfig(BaseModel):
+    """Day selection configuration"""
+    selection_mode: Literal["sequential", "random", "quality_weighted", "curriculum_ordered"] = Field("quality_weighted", description="Selection mode")
+    randomize_order: bool = Field(False, description="Randomize selection order")
+
+
+class PreloadingConfig(BaseModel):
+    """Data preloading configuration"""
+    preload_enabled: bool = Field(True, description="Enable data preloading")
+
+
+class DataLifecycleConfig(BaseModel):
+    """Data lifecycle management configuration"""
+    
+    # Enable/disable data lifecycle management
+    enabled: bool = Field(True, description="Enable data lifecycle management")
+    
+    # Data cycle management (when to switch days/reset points)
+    cycles: DataCycleConfig = Field(default_factory=DataCycleConfig)
+    
+    # Adaptive data selection (replaces stages)
+    adaptive_data: AdaptiveDataConfig = Field(default_factory=AdaptiveDataConfig)
+    
+    # Reset point management
+    reset_points: ResetPointConfig = Field(default_factory=ResetPointConfig)
+    
+    # Day selection
+    day_selection: DaySelectionConfig = Field(default_factory=DaySelectionConfig)
+    
+    # Preloading
+    preloading: PreloadingConfig = Field(default_factory=PreloadingConfig)
+
+
+class TrainingManagerConfig(BaseModel):
+    """Training Manager - Central authority for training lifecycle"""
+    
+    # Core mode selection
+    mode: Literal["sweep", "production"] = Field("production", description="Training mode")
+    
+    # Core configuration sections
+    termination: TerminationConfig = Field(default_factory=TerminationConfig)
+    continuous: ContinuousTrainingConfig = Field(default_factory=ContinuousTrainingConfig)
+    data_lifecycle: DataLifecycleConfig = Field(default_factory=DataLifecycleConfig)
 
 
 # =============================================================================
