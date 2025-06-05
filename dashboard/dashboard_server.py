@@ -961,10 +961,21 @@ class DashboardServer:
             )
 
             # Training progress
-            max_updates = getattr(state, "max_updates", 0)
-            update_display = f"{state.updates:,}" + (
-                f"/{max_updates:,}" if max_updates > 0 else ""
-            )
+            # Use new training manager attributes for proper progress display
+            training_max_episodes = getattr(state, "training_max_episodes", float('inf'))
+            training_max_updates = getattr(state, "training_max_updates", float('inf'))
+            
+            # Format episode display
+            if training_max_episodes != float('inf'):
+                episode_display = f"{state.total_episodes:,}/{training_max_episodes:,}"
+            else:
+                episode_display = f"{state.total_episodes:,}"
+            
+            # Format update display
+            if training_max_updates != float('inf'):
+                update_display = f"{state.updates:,}/{training_max_updates:,}"
+            else:
+                update_display = f"{state.updates:,}"
 
             # Calculate updates per hour (check both updates_per_second and updates_per_hour)
             updates_per_hour = getattr(state, "updates_per_hour", 0.0)
@@ -974,7 +985,7 @@ class DashboardServer:
             training_children = [
                 self._info_row("Mode", state.mode, color=DARK_THEME["accent_purple"]),
                 self._info_row("Stage", state.stage),
-                self._info_row("Episodes", f"{state.total_episodes:,}"),
+                self._info_row("Episodes", episode_display),
                 self._info_row("Updates", update_display),
                 self._info_row("Global Steps", f"{state.global_steps:,}"),
                 self._info_row("Steps/sec", f"{state.steps_per_second:.1f}"),
@@ -982,13 +993,13 @@ class DashboardServer:
                 self._info_row("Updates/hour", f"{updates_per_hour:.0f}"),
             ]
 
-            # Add training completion progress bar (if max_updates is available)
-            if max_updates > 0:
+            # Add training completion progress bar (if training_max_updates is available)
+            if training_max_updates != float('inf'):
                 progress_section = self._create_progress_section(
                     "Training Progress",
                     state.updates,
-                    max_updates,
-                    f"Update {state.updates:,}/{max_updates:,}",
+                    training_max_updates,
+                    f"Update {state.updates:,}/{training_max_updates:,}",
                 )
                 if progress_section:
                     training_children.append(progress_section)

@@ -76,6 +76,11 @@ class SharedDashboardState:
     total_batches: int = 0
     stage_status: str = ""
     max_updates: int = 0  # For training completion progress
+    
+    # Training manager limits for progress display
+    training_max_episodes: float = float('inf')
+    training_max_updates: float = float('inf')
+    training_max_cycles: float = float('inf')
 
     # Performance metrics (from metrics)
     steps_per_second: float = 0.0
