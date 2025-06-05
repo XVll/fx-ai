@@ -13,7 +13,7 @@ momentum-continue = "poetry run python main.py --config training --continue"
 build-index = "poetry run python scripts/build_index.py"
 
 # Legacy Training (standard single-day training)  
-quick = "poetry run python main.py --config quick"
+quick = "poetry run python main.py --config quick.yaml"
 init = "poetry run python main.py"
 train = "poetry run python main.py --config training --continue"
 

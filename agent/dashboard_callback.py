@@ -230,9 +230,16 @@ class DashboardCallback(BaseCallback):
 
         self.training_start_time = datetime.now()
 
+        # Extract training config properly for new training manager structure
+        training_config = config
+        if hasattr(config, 'get'):
+            experiment_name = config.get("experiment_name", "training_manager")
+        else:
+            experiment_name = getattr(config, "experiment_name", "training_manager")
+
         # Update session info
         self.dashboard_state.session_start_time = self.training_start_time
-        self.dashboard_state.model_name = config.get("experiment_name", "training")
+        self.dashboard_state.model_name = experiment_name
         # Initialize attributes if they don't exist
         if not hasattr(self.dashboard_state, "total_episodes"):
             self.dashboard_state.total_episodes = 0
@@ -617,12 +624,30 @@ class DashboardCallback(BaseCallback):
         if update_num % 10 == 0:
             self._add_training_event(f"Update {update_num} completed", "info")
 
+    def on_evaluation_start(self) -> None:
+        """Handle evaluation start."""
+        if not self.enabled or not self.dashboard_state:
+            return
+            
+        self.dashboard_state.is_evaluating = True
+        self.dashboard_state.stage = "Evaluation"
+        self.dashboard_state.stage_status = "Running evaluation..."
+        
+        self._add_training_event("Evaluation started", "info")
+
     def on_evaluation_end(self, eval_results: Dict[str, Any]) -> None:
         """Update dashboard with evaluation results."""
         if not self.enabled or not self.dashboard_state:
             return
 
-        # Update evaluation metrics
+        # Update evaluation metrics with proper attribute initialization
+        if not hasattr(self.dashboard_state, "eval_mean_reward"):
+            self.dashboard_state.eval_mean_reward = 0.0
+        if not hasattr(self.dashboard_state, "eval_win_rate"):
+            self.dashboard_state.eval_win_rate = 0.0
+        if not hasattr(self.dashboard_state, "eval_sharpe_ratio"):
+            self.dashboard_state.eval_sharpe_ratio = 0.0
+            
         self.dashboard_state.eval_mean_reward = eval_results.get("mean_reward", 0.0)
         self.dashboard_state.eval_win_rate = eval_results.get("win_rate", 0.0)
         self.dashboard_state.eval_sharpe_ratio = eval_results.get("sharpe_ratio", 0.0)
@@ -961,6 +986,30 @@ class DashboardCallback(BaseCallback):
                     self.dashboard_state.session_reward_components[component] = 0.0
                 self.dashboard_state.session_reward_components[component] += value
 
+        elif event_name == "training_manager_update":
+            # Update training manager specific metrics
+            if not hasattr(self.dashboard_state, "training_mode"):
+                self.dashboard_state.training_mode = "production"
+            if not hasattr(self.dashboard_state, "data_lifecycle_stage"):
+                self.dashboard_state.data_lifecycle_stage = "unknown"
+            if not hasattr(self.dashboard_state, "continuous_training_active"):
+                self.dashboard_state.continuous_training_active = False
+                
+            # Update from training manager state
+            self.dashboard_state.training_mode = event_data.get("mode", "production")
+            # Ensure we don't set None as data_lifecycle_stage
+            current_stage = event_data.get("current_stage")
+            if current_stage is not None:
+                self.dashboard_state.data_lifecycle_stage = current_stage
+            else:
+                self.dashboard_state.data_lifecycle_stage = "unknown"
+            self.dashboard_state.continuous_training_active = event_data.get("continuous_active", False)
+            
+            # Update termination status
+            termination_reason = event_data.get("termination_reason")
+            if termination_reason:
+                self._add_training_event(f"Training terminated: {termination_reason}", "warning")
+
     def on_reset_point_selected(self, tracking_data: Dict[str, Any]) -> None:
         """Handle reset point selection tracking."""
         if not self.enabled or not self.dashboard_state:
@@ -1022,6 +1071,60 @@ class DashboardCallback(BaseCallback):
             )
         if hasattr(self.dashboard_state, "final_stats"):
             self.dashboard_state.final_stats = final_stats
+
+    def on_rollout_start(self) -> None:
+        """Handle rollout start."""
+        if not self.enabled or not self.dashboard_state:
+            return
+            
+        if not hasattr(self.dashboard_state, "is_collecting_rollout"):
+            self.dashboard_state.is_collecting_rollout = False
+            
+        self.dashboard_state.is_collecting_rollout = True
+        self.dashboard_state.stage_status = "Collecting rollout data..."
+
+    def on_rollout_end(self, rollout_data: Dict[str, Any]) -> None:
+        """Handle rollout end."""
+        if not self.enabled or not self.dashboard_state:
+            return
+            
+        self.dashboard_state.is_collecting_rollout = False
+        
+        # Update rollout metrics
+        if not hasattr(self.dashboard_state, "rollout_size"):
+            self.dashboard_state.rollout_size = 0
+        if not hasattr(self.dashboard_state, "rollout_reward_mean"):
+            self.dashboard_state.rollout_reward_mean = 0.0
+            
+        self.dashboard_state.rollout_size = rollout_data.get("rollout_size", 0)
+        self.dashboard_state.rollout_reward_mean = rollout_data.get("mean_reward", 0.0)
+        
+    def on_attribution_analysis(self, attribution_data: Dict[str, Any]) -> None:
+        """Handle SHAP attribution analysis results."""
+        if not self.enabled or not self.dashboard_state:
+            return
+            
+        # Update attribution summary for dashboard display
+        if not hasattr(self.dashboard_state, "attribution_summary"):
+            self.dashboard_state.attribution_summary = {}
+            
+        # Extract key attribution metrics
+        summary = {
+            "top_features": attribution_data.get("top_features", []),
+            "feature_importance_scores": attribution_data.get("feature_importance", {}),
+            "dead_features_count": attribution_data.get("dead_features_count", 0),
+            "analysis_timestamp": datetime.now().isoformat(),
+            "total_features": attribution_data.get("total_features", 0)
+        }
+        
+        self.dashboard_state.attribution_summary = summary
+        
+        # Add event for significant findings
+        dead_count = summary.get("dead_features_count", 0)
+        if dead_count > 0:
+            self._add_training_event(f"Attribution: {dead_count} dead features detected", "warning")
+        else:
+            self._add_training_event("Attribution analysis completed", "info")
     
     def _shutdown_dashboard(self):
         """Graceful shutdown of dashboard"""

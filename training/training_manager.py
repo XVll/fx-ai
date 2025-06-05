@@ -379,6 +379,9 @@ class TrainingManager:
                 # Process recommendations
                 self._process_recommendations(recommendations, trainer)
                 
+                # Send training manager updates to dashboard
+                self._send_dashboard_update(trainer)
+                
                 # Let trainer run one step/episode
                 should_continue = self._run_training_step(trainer)
                 if not should_continue:
@@ -431,12 +434,16 @@ class TrainingManager:
             
             # Get data lifecycle status
             data_status = self.data_lifecycle_manager.get_data_lifecycle_status()
-            self.state.current_stage = data_status.get('stage_name')
+            self.state.current_stage = data_status.get('stage_name', 'adaptive')
             self.state.cycle_count = data_status.get('cycle_count', 0)
             self.state.current_day = data_status.get('current_day')
             self.state.current_symbol = data_status.get('current_symbol')
             self.state.stage_progress = data_status.get('stage_progress', 0.0)
             self.state.data_preload_ready = data_status.get('preload_ready', False)
+        else:
+            # Set defaults when no data lifecycle manager is available
+            if self.state.current_stage is None:
+                self.state.current_stage = 'adaptive'
         
         # Update performance tracking
         performance_metrics = self._get_performance_metrics(trainer)
@@ -502,6 +509,24 @@ class TrainingManager:
         if hasattr(trainer, 'evaluate'):
             eval_results = trainer.evaluate()
             self.continuous_training.process_evaluation_results(eval_results)
+    
+    def _send_dashboard_update(self, trainer):
+        """Send training manager updates to dashboard"""
+        if hasattr(trainer, 'callback_manager'):
+            dashboard_data = {
+                "mode": self.mode.value,
+                "current_stage": self.state.current_stage,
+                "cycle_count": self.state.cycle_count,
+                "current_day": self.state.current_day,
+                "current_symbol": self.state.current_symbol,
+                "stage_progress": self.state.stage_progress,
+                "data_preload_ready": self.state.data_preload_ready,
+                "training_hours": self.state.training_hours,
+                "continuous_active": True,
+                "termination_reason": self.termination_reason.value if self.termination_reason else None
+            }
+            
+            trainer.callback_manager.trigger("on_custom_event", "training_manager_update", dashboard_data)
     
     def _run_training_step(self, trainer) -> bool:
         """Run one training step/episode"""

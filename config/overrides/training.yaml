@@ -61,7 +61,7 @@ model:
   enable_attribution: true
   shap_config:
     enabled: true
-    update_frequency: 10
+    update_frequency: 1
     max_samples_per_analysis: 5
     background_samples: 10
     methods:
@@ -71,6 +71,4 @@ model:
     dead_feature_threshold: 0.001
     analyze_interactions: true
     save_plots: false
-    log_to_wandb: true
-    dashboard_update: true
     use_gpu: true

@@ -613,49 +613,9 @@ def train(config: Config):
             else:
                 logger.info("🆕 No previous model found. Starting fresh.")
         else:
-            # Starting fresh training - save initial model
-            logger.info("🆕 Starting fresh training - saving initial model")
-            initial_metrics = {
-                "mean_reward": 0.0,
-                "episode_count": 0,
-                "update_iter": 0,
-                "timestamp": time.time(),
-                "initial_model": True,
-                "symbol": "curriculum",
-            }
-
-            # Create a temporary checkpoint to save as initial model
-            import tempfile
-
-            with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as temp_file:
-                temp_path = temp_file.name
-
-            # Save model state to temporary file
-            import torch
-
-            torch.save(
-                {
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "global_step_counter": 0,
-                    "global_episode_counter": 0,
-                    "global_update_counter": 0,
-                    "model_config": config.model.model_dump()
-                    if hasattr(config.model, "model_dump")
-                    else {},
-                },
-                temp_path,
-            )
-
-            # Save to best_models directory
-            model_manager.save_best_model(temp_path, initial_metrics, 0.0)
-
-            # Clean up temporary file
-            import os
-
-            os.unlink(temp_path)
-
-            logger.info("✅ Initial model saved to best_models directory")
+            # Starting fresh training - don't save initial model with 0 reward
+            # Let the continuous training system save models after actual training progress
+            logger.info("🆕 Starting fresh training - initial model will be saved after training progress")
 
         # Create callbacks
         callbacks = create_training_callbacks(
