@@ -94,6 +94,9 @@ class DashboardCallback(BaseCallback):
 
         # Update frequency control
         self.update_frequency = config.get("update_frequency", 1)
+        
+        # Track last day to avoid redundant reset point updates
+        self.last_reset_points_day = None
 
         # Initialize profit factor tracking
         self.total_winning_pnl = 0.0
@@ -759,17 +762,21 @@ class DashboardCallback(BaseCallback):
         self.dashboard_state.current_momentum_day_date = momentum_day
         self.dashboard_state.current_momentum_day_quality = quality_score
 
-        # Process reset points data for chart display
+        # Process reset points data for chart display - only update when day changes
         reset_points_data = event_data.get("reset_points", [])
         if reset_points_data and hasattr(self.dashboard_state, "reset_points_data"):
-            # Update dashboard state with reset points for chart markers
-            self.dashboard_state.reset_points_data = reset_points_data
-            self.logger.info(
-                f"📍 Updated dashboard with {len(reset_points_data)} reset points"
-            )
+            # Only update if day has actually changed
+            if momentum_day != self.last_reset_points_day:
+                # Update dashboard state with reset points for chart markers
+                self.dashboard_state.reset_points_data = reset_points_data
+                self.last_reset_points_day = momentum_day
+                self.logger.info(
+                    f"📍 Updated dashboard with {len(reset_points_data)} reset points"
+                )
         elif not hasattr(self.dashboard_state, "reset_points_data"):
             # Initialize if attribute doesn't exist
             self.dashboard_state.reset_points_data = reset_points_data
+            self.last_reset_points_day = momentum_day
 
         # Add event
         date_str = momentum_day if momentum_day != "N/A" else "Unknown"

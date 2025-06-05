@@ -1,14 +1,14 @@
 {
-  "version": 6,
-  "timestamp": "20250604_223302",
+  "version": 5,
+  "timestamp": "20250605_183331",
   "reward": 0.0,
   "metrics": {
     "mean_reward": 0.0,
     "episode_count": 0,
     "update_iter": 0,
-    "timestamp": 1749065582.06279,
+    "timestamp": 1749137611.058074,
     "initial_model": true,
     "symbol": "curriculum"
   },
-  "source": "/var/folders/y4/43fmm4t52fd77ng3ws5nypvh0000gn/T/tmpoy2lkvj0.pt"
+  "source": "/var/folders/y4/43fmm4t52fd77ng3ws5nypvh0000gn/T/tmpcbu44jch.pt"
 }

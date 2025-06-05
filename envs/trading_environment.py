@@ -184,6 +184,7 @@ class TradingEnvironment(gym.Env):
 
         # Episode boundaries and reset points
         self.current_session_date: Optional[datetime] = None
+        self.last_chart_data_session_date: Optional[datetime] = None  # Track when we last sent chart data
         self.episode_start_time_utc: Optional[datetime] = None
         self.episode_end_time_utc: Optional[datetime] = None
         self.reset_points: List[Dict] = []
@@ -818,7 +819,7 @@ class TradingEnvironment(gym.Env):
         # Update dashboard with quality metrics from reset point
         self._update_dashboard_quality_metrics(reset_point)
 
-        # Send initial chart data immediately at episode start to reduce display delay
+        # Send initial chart data only when session changes (not every episode)
         self._send_initial_chart_data()
 
         return self._last_observation, initial_info
@@ -1238,22 +1239,7 @@ class TradingEnvironment(gym.Env):
         if termination_reason:
             self.current_termination_reason = termination_reason.value
 
-        # Log episode completion
-        if terminated or truncated:
-            if current_sim_time_decision and self.episode_start_time_utc:
-                episode_duration = (
-                    current_sim_time_decision - self.episode_start_time_utc
-                ).total_seconds()
-                duration_str = f"Duration: {episode_duration / 60:.1f}m | "
-            else:
-                duration_str = ""
-
-            self.logger.info(
-                f"🏁 Episode {self.episode_number} completed | "
-                f"Steps: {self.current_step} | {duration_str}"
-                f"Reason: {termination_reason.value if termination_reason else 'truncated'} | "
-                f"Total reward: {self.episode_total_reward:.2f}"
-            )
+        # Episode completion logging is done in _log_episode_completion method to avoid duplication
 
         # Calculate reward
         reward = self.reward_calculator.calculate(
@@ -1790,6 +1776,11 @@ class TradingEnvironment(gym.Env):
     def _send_initial_chart_data(self):
         """Send initial chart data to dashboard immediately to reduce display delay."""
         try:
+            # Only send chart data when session date changes (not every episode)
+            if (self.current_session_date and 
+                self.last_chart_data_session_date == self.current_session_date):
+                return  # Chart data already sent for this session
+                
             if not self.market_simulator or not hasattr(
                 self.market_simulator, "combined_bars_1m"
             ):
@@ -1836,6 +1827,7 @@ class TradingEnvironment(gym.Env):
                 from dashboard.shared_state import dashboard_state
 
                 dashboard_state.update_candle_data(candle_list)
+                self.last_chart_data_session_date = self.current_session_date  # Track when we sent data
                 self.logger.info(
                     f"📊 Sent initial chart data: {len(candle_list)} candles"
                 )

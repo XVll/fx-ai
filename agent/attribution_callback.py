@@ -1,22 +1,24 @@
 """SHAP Attribution Callback for real-time feature analysis."""
 
-from typing import Dict, Any, Optional
+import logging
+from typing import Dict, Any, Optional, List
 import time
+from collections import deque
 
-from agent.callbacks import BaseCallback
+from agent.base_callbacks import TrainingCallback
 
 try:
     from feature.attribution.comprehensive_shap_analyzer import (
         ComprehensiveSHAPAnalyzer,
         AttributionConfig,
     )
-
     ATTRIBUTION_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    print(f"❌ Attribution import error: {e}")
     ATTRIBUTION_AVAILABLE = False
 
 
-class AttributionCallback(BaseCallback):
+class AttributionCallback(TrainingCallback):
     """Callback for SHAP feature attribution analysis.
 
     This callback:
@@ -34,149 +36,205 @@ class AttributionCallback(BaseCallback):
             config: Attribution configuration
             enabled: Whether this callback is active
         """
-        super().__init__(enabled)
+        self.config = config
+        self.enabled = enabled
+        self.logger = logging.getLogger(__name__)
 
-        if not ATTRIBUTION_AVAILABLE and enabled:
-            self.logger.warning(
-                "SHAP attribution dependencies not available. AttributionCallback disabled."
+        if not ATTRIBUTION_AVAILABLE:
+            self.logger.error(
+                "❌ SHAP attribution dependencies not available. AttributionCallback disabled."
             )
             self.enabled = False
             return
 
-        self.config = config
         self.shap_analyzer: Optional[ComprehensiveSHAPAnalyzer] = None
         self.model = None
         self.last_attribution_time = 0
         self.attribution_count = 0
+        self.state_cache = deque(maxlen=50)  # Cache states for background
 
         # Configuration
         self.update_frequency = config.get("update_frequency", 10)
         self.max_samples = config.get("max_samples_per_analysis", 5)
+        self.background_samples = config.get("background_samples", 10)
         self.enabled_analysis = config.get("enabled", True)
 
         self.logger.info(
-            f"Attribution callback initialized - frequency: {self.update_frequency}, max_samples: {self.max_samples}"
+            f"🔍 Attribution callback initialized - frequency: {self.update_frequency}, max_samples: {self.max_samples}"
         )
 
-    def on_training_start(self, config: Dict[str, Any]) -> None:
+    def on_training_start(self, trainer):
         """Initialize SHAP analyzer with model."""
         if not self.enabled or not self.enabled_analysis:
             return
 
-        # Get model from config if available
-        model = config.get("model")
+        # Get model from trainer
+        model = getattr(trainer, 'model', None)
         if model is None:
-            self.logger.warning("No model provided to attribution callback")
+            self.logger.warning("No model available in trainer for attribution callback")
             return
 
         self.model = model
+        device = getattr(trainer, 'device', None)
 
         try:
-            # Create SHAP analyzer configuration
-            shap_config = self.config.copy()
-            shap_config.update(
-                {
-                    "max_samples_per_analysis": self.max_samples,
-                    "update_frequency": self.update_frequency,
-                    "dashboard_update": True,
-                    "log_to_wandb": True,
-                }
-            )
+            # Extract feature info from model architecture
+            feature_names = self._get_feature_names_from_config()
+            branch_configs = self._get_branch_configs_from_config()
 
-            attribution_config = AttributionConfig(**shap_config)
+            # Create SHAP analyzer configuration
+            attribution_config = AttributionConfig(
+                max_samples_per_analysis=self.max_samples,
+                background_samples=self.background_samples,
+                update_frequency=self.update_frequency,
+                dashboard_update=True,
+                log_to_wandb=True,
+                methods=self.config.get('methods', ['gradient_shap']),
+                primary_method=self.config.get('primary_method', 'gradient_shap'),
+                use_gpu=self.config.get('use_gpu', True),
+                save_plots=self.config.get('save_plots', False),
+                top_k_features=self.config.get('top_k_features', 20),
+                dead_feature_threshold=self.config.get('dead_feature_threshold', 0.001),
+                analyze_interactions=self.config.get('analyze_interactions', False)
+            )
 
             # Initialize SHAP analyzer
             self.shap_analyzer = ComprehensiveSHAPAnalyzer(
-                model=self.model, config=attribution_config, logger=self.logger
+                model=self.model,
+                feature_names=feature_names,
+                branch_configs=branch_configs,
+                config=attribution_config,
+                device=device,
+                logger=self.logger
             )
 
             self.logger.info("✅ SHAP analyzer initialized successfully")
 
         except Exception as e:
-            self.logger.error(f"Failed to initialize SHAP analyzer: {e}")
+            self.logger.error(f"❌ Failed to initialize SHAP analyzer: {e}")
+            import traceback
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")
             self.enabled = False
 
-    def on_update_end(self, update_num: int, update_metrics: Dict[str, Any]) -> None:
-        """Run SHAP analysis at specified intervals."""
-        if not self.enabled or not self.shap_analyzer or not self.enabled_analysis:
+    def on_attribution_analysis(self, attribution_data: Dict[str, Any]):
+        """Handle attribution analysis trigger."""
+        update_num = attribution_data.get('update_num', 0)
+        self.logger.info(f"🔍 Attribution analysis triggered at update {update_num}")
+        
+        if not self.enabled:
+            self.logger.info("🔕 Attribution callback is disabled")
             return
-
-        # Check if it's time for attribution analysis
-        if update_num % self.update_frequency != 0:
+            
+        if not self.enabled_analysis:
+            self.logger.info("🔕 Attribution analysis is disabled in config")
             return
-
-        current_time = time.time()
-        self.logger.info(f"🔍 Running SHAP attribution analysis at update {update_num}")
-
+            
+        if not self.shap_analyzer:
+            self.logger.warning("❌ SHAP analyzer not initialized")
+            return
+        
         try:
-            # Get recent batch data for analysis
-            batch_data = update_metrics.get("batch_data")
-            if batch_data is None:
-                self.logger.warning("No batch data available for attribution analysis")
+            # Check if we have enough cached states for background
+            if len(self.state_cache) < self.background_samples:
+                self.logger.info(f"⏳ Not enough cached states for SHAP analysis: {len(self.state_cache)}/{self.background_samples} needed")
                 return
 
+            self.logger.info(f"🔍 Running SHAP analysis at update {update_num} with {len(self.state_cache)} cached states")
+            start_time = time.time()
+
+            # Setup background if needed
+            if not hasattr(self.shap_analyzer, '_background_ready'):
+                background_states = list(self.state_cache)[-self.background_samples:]
+                self.shap_analyzer.setup_background(background_states)
+                self.shap_analyzer._background_ready = True
+                self.logger.info("🔧 SHAP background setup completed")
+
+            # Get recent states for analysis
+            analysis_states = list(self.state_cache)[-self.max_samples:]
+            
             # Run SHAP analysis
-            analysis_start = time.time()
-
-            # Extract states from batch data
-            batch_states = batch_data.get("states")
-            if batch_states is None or not batch_states:
-                self.logger.warning(
-                    "No batch states available for attribution analysis"
-                )
-                return
-
-            # Convert batch states to list format expected by analyzer
-            if isinstance(batch_states, dict):
-                # Convert from batched dict to list of individual state dicts
-                batch_size = len(next(iter(batch_states.values())))
-                states_list = []
-                for i in range(min(batch_size, self.max_samples)):
-                    state_dict = {
-                        key: value[i : i + 1] for key, value in batch_states.items()
-                    }
-                    states_list.append(state_dict)
-            else:
-                states_list = batch_states[: self.max_samples]
-
-            batch_actions = batch_data.get("actions")
-            actions_list = (
-                batch_actions[: self.max_samples].tolist()
-                if batch_actions is not None
-                else None
+            results = self.shap_analyzer.analyze_features(
+                states=analysis_states,
+                actions=None,
+                rewards=None
             )
 
-            attribution_results = self.shap_analyzer.analyze_features(
-                states=states_list, actions=actions_list
-            )
-            analysis_time = time.time() - analysis_start
-
-            if attribution_results:
-                self.attribution_count += 1
-                self.last_attribution_time = current_time
-
+            analysis_time = time.time() - start_time
+            self.attribution_count += 1
+            
+            if results and 'error' not in results:
                 self.logger.info(f"✅ SHAP analysis completed in {analysis_time:.2f}s")
-                self.logger.info(
-                    f"📊 Found {len(attribution_results.get('top_features', []))} top features"
-                )
-                self.logger.info(
-                    f"💀 Detected {attribution_results.get('dead_features_count', 0)} dead features"
-                )
-
-                # Trigger dashboard update with attribution results
-                self._update_dashboard_attribution(attribution_results)
-
-                # Log to W&B if enabled
-                self._log_attribution_to_wandb(attribution_results, update_num)
-
+                
+                # Log key results
+                if 'top_features' in results:
+                    self.logger.info(f"📊 Top features identified: {len(results['top_features'])}")
+                if 'dead_features_count' in results:
+                    self.logger.info(f"💀 Dead features detected: {results['dead_features_count']}")
+                
+                # Process results
+                self._process_attribution_results(results, update_num)
             else:
-                self.logger.warning("SHAP analysis returned no results")
+                self.logger.warning(f"⚠️ SHAP analysis returned no valid results")
 
         except Exception as e:
-            self.logger.error(f"Error during SHAP attribution analysis: {e}")
+            self.logger.error(f"❌ Error during SHAP analysis: {e}")
             import traceback
+            self.logger.debug(f"Traceback: {traceback.format_exc()}")
 
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
+    def on_step(self, trainer, state, action, reward, next_state, info):
+        """Cache states for attribution analysis."""
+        if not self.enabled:
+            return
+
+        # Cache states occasionally to avoid memory issues
+        if len(self.state_cache) == 0 or len(self.state_cache) % 3 == 0:
+            if isinstance(state, dict):
+                try:
+                    # Clone tensors to avoid reference issues
+                    cached_state = {}
+                    for key, value in state.items():
+                        if hasattr(value, 'clone'):
+                            cached_state[key] = value.clone().detach()
+                        else:
+                            cached_state[key] = value
+                    self.state_cache.append(cached_state)
+                    
+                    # Log progress towards having enough states
+                    if len(self.state_cache) in [1, 5, 10] or len(self.state_cache) % 20 == 0:
+                        self.logger.debug(f"📦 Cached {len(self.state_cache)} states for attribution analysis")
+                except Exception as e:
+                    self.logger.warning(f"Failed to cache state for attribution: {e}")
+
+    def _get_feature_names_from_config(self) -> Dict[str, List[str]]:
+        """Extract feature names from model configuration."""
+        # This should match your actual model architecture
+        return {
+            'hf': [f'hf_feature_{i}' for i in range(60 * 9)],    # High-frequency: 60 timesteps * 9 features
+            'mf': [f'mf_feature_{i}' for i in range(30 * 43)],   # Medium-frequency: 30 timesteps * 43 features  
+            'lf': [f'lf_feature_{i}' for i in range(30 * 19)],   # Low-frequency: 30 timesteps * 19 features
+            'portfolio': [f'portfolio_feature_{i}' for i in range(5 * 10)],  # Portfolio: 5 timesteps * 10 features
+        }
+
+    def _get_branch_configs_from_config(self) -> Dict[str, tuple]:
+        """Extract branch configurations from model."""
+        return {
+            'hf': (60, 9),      # (seq_len, feat_dim)
+            'mf': (30, 43),
+            'lf': (30, 19),
+            'portfolio': (5, 10)
+        }
+
+    def _process_attribution_results(self, results: Dict[str, Any], update_num: int):
+        """Process and distribute attribution results."""
+        try:
+            # Update dashboard
+            self._update_dashboard_attribution(results)
+            
+            # Log to WandB
+            self._log_attribution_to_wandb(results, update_num)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to process attribution results: {e}")
 
     def _update_dashboard_attribution(
         self, attribution_results: Dict[str, Any]
