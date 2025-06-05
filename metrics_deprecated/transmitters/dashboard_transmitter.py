@@ -183,14 +183,6 @@ class DashboardTransmitter(MetricTransmitter):
                             dashboard_state.update_metrics(dashboard_update)
                         self._metric_buffer.clear()
 
-                # Periodically fetch attribution summary (every 5 seconds)
-                if hasattr(self, "_last_attribution_fetch"):
-                    if time.time() - self._last_attribution_fetch > 5.0:
-                        self._fetch_attribution_summary()
-                        self._last_attribution_fetch = time.time()
-                else:
-                    self._last_attribution_fetch = time.time()
-                    self._fetch_attribution_summary()
 
                 # Process events (with timeout to allow checking stop event)
                 deadline = time.time() + self.update_interval
@@ -481,27 +473,6 @@ class DashboardTransmitter(MetricTransmitter):
         except Exception as e:
             self.logger.error(f"Error processing event {event_name}: {e}")
 
-    def _fetch_attribution_summary(self):
-        """Fetch attribution summary from metrics integrator and send to dashboard"""
-        if not self.metrics_integrator:
-            return
-
-        try:
-            attribution_summary = (
-                self.metrics_integrator.get_feature_attribution_summary()
-            )
-            if attribution_summary and attribution_summary.get(
-                "attribution_enabled", False
-            ):
-                # Send attribution summary to dashboard
-                dashboard_state.update_metrics(
-                    {"attribution_summary": attribution_summary}
-                )
-                self.logger.debug(
-                    f"Updated dashboard with attribution summary: {len(attribution_summary)} keys"
-                )
-        except Exception as e:
-            self.logger.debug(f"Failed to fetch attribution summary: {e}")
 
     def close(self):
         """Close the dashboard transmitter"""

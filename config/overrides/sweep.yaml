@@ -56,11 +56,8 @@ env:
       preloading:
         preload_enabled: false  # Disabled for faster trials
 
-# Minimal attribution for speed
-model:
-  enable_attribution: false
-  shap_config:
-    enabled: false
+# Model configuration for sweep
+model: {}
 
 # Disable W&B for faster trials (can be overridden in sweep configs)
 wandb:

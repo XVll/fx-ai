@@ -133,14 +133,6 @@ class BaseCallback(ABC):
         """Called after evaluation episodes."""
         pass
 
-    def on_attribution_analysis(self, attribution_data: Dict[str, Any]) -> None:
-        """Called when attribution analysis should be performed.
-        
-        Args:
-            attribution_data: Contains update_num, model, device for analysis
-        """
-        pass
-
     # ========== Trading Events ==========
 
     def on_order_placed(self, order_data: Dict[str, Any]) -> None:

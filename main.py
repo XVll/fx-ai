@@ -374,9 +374,6 @@ def create_callback_manager(
             f"🔍 Detected Optuna trial {optuna_trial_info.get('trial_number', 'unknown')} - running in subprocess mode"
         )
 
-    # Add feature names for attribution callbacks
-    if model:
-        config_dict["feature_names"] = get_feature_names_from_config()
 
     # Add adaptive symbols for tracking
     adaptive_symbols = get_adaptive_symbols(config)
@@ -479,35 +476,6 @@ def create_training_callbacks(
         callbacks.append(momentum_callback)
         logging.info("🎯 Momentum tracking callback added")
 
-    # Attribution callback for SHAP analysis
-    if hasattr(config.model, "enable_attribution") and config.model.enable_attribution:
-        try:
-            from agent.attribution_callback import AttributionCallback
-
-            # Get SHAP configuration or use defaults
-            shap_config = getattr(config.model, "shap_config", None)
-            if shap_config is not None:
-                # Convert Pydantic object to dict for AttributionCallback
-                if hasattr(shap_config, '__dict__'):
-                    shap_config_dict = shap_config.__dict__
-                elif hasattr(shap_config, 'dict'):
-                    shap_config_dict = shap_config.dict()
-                else:
-                    shap_config_dict = shap_config
-                    
-                attribution_callback = AttributionCallback(shap_config_dict, enabled=config.model.enable_attribution)
-                callbacks.append(attribution_callback)
-                logging.info(
-                    f"🔍 SHAP attribution callback added (frequency: {shap_config.update_frequency})"
-                )
-            else:
-                logging.info("No SHAP config found, skipping attribution callback")
-        except ImportError:
-            logging.warning(
-                "SHAP attribution dependencies not available, skipping attribution callback"
-            )
-        except Exception as e:
-            logging.error(f"Failed to initialize attribution callback: {e}")
 
     return callbacks
 

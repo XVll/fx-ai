@@ -1217,31 +1217,6 @@ class PPOTrainer:
         # Trigger update start callback
         self.callback_manager.trigger("on_update_start", self.global_update_counter)
 
-        # Run periodic feature attribution analysis via callback
-        # Get attribution frequency from config or use default of 10
-        attribution_frequency = 10  # default
-        if hasattr(self.config, 'model') and hasattr(self.config.model, 'shap_config'):
-            attribution_frequency = getattr(self.config.model.shap_config, 'update_frequency', 10)
-        
-        self.logger.debug(f"Attribution frequency: {attribution_frequency}")
-
-        if self.global_update_counter % attribution_frequency == 0:
-            # Trigger attribution analysis on callbacks
-            try:
-                attribution_data = {
-                    "update_num": self.global_update_counter,
-                    "model": self.model,
-                    "device": self.device
-                }
-                for callback in self.callbacks:
-                    if hasattr(callback, 'on_attribution_analysis'):
-                        # Check if callback is enabled (some callbacks don't have enabled attribute)
-                        if getattr(callback, 'enabled', True):
-                            callback.on_attribution_analysis(attribution_data)
-            except Exception as e:
-                self.logger.error(f"❌ Attribution analysis callback failed: {e}")
-                import traceback
-                self.logger.error(f"Traceback: {traceback.format_exc()}")
 
         # Trigger training update callback that we're in update phase
         # Calculate current performance metrics
@@ -1390,7 +1365,7 @@ class PPOTrainer:
                     }
                     batch_actions = actions[batch_indices]
 
-                    # Store last batch for attribution analysis
+                    # Store last batch for monitoring
                     self._last_batch_states = batch_states
                     self._last_batch_actions = batch_actions
                     batch_old_log_probs = old_log_probs[batch_indices]
@@ -1602,7 +1577,7 @@ class PPOTrainer:
             "episodes_per_hour": episodes_per_hour,
             "updates_per_second": updates_per_second,
             "updates_per_hour": updates_per_hour,
-            # Add batch data for attribution analysis
+            # Add batch data for monitoring
             "batch_data": {
                 "states": getattr(self, "_last_batch_states", None),
                 "actions": getattr(self, "_last_batch_actions", None),

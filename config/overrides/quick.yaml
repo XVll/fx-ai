@@ -61,24 +61,8 @@ env:
       preloading:
         preload_enabled: false  # Disabled for simplicity
 
-# Lightweight attribution for development
-model:
-  enable_attribution: true
-  shap_config:
-    enabled: true
-    update_frequency: 1      # Less frequent for speed
-    max_samples_per_analysis: 3
-    background_samples: 1
-    methods:
-      - gradient_shap
-    primary_method: gradient_shap
-    top_k_features: 20        # Fewer features for speed
-    dead_feature_threshold: 0.01
-    analyze_interactions: false  # Disabled for speed
-    save_plots: false
-    log_to_wandb: true
-    dashboard_update: true
-    use_gpu: true
+# Model configuration for quick development
+model: {}
 
 # Development W&B settings
 wandb:
