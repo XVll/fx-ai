@@ -1,6 +1,5 @@
 import os
 import sys
-import signal
 import threading
 import logging
 import time
@@ -15,7 +14,7 @@ import wandb
 from config.loader import load_config, check_unused_configs
 from config.schemas import Config, TrainingConfig, DataConfig
 from utils.logger import console, setup_rich_logging, get_logger
-from utils.graceful_shutdown import get_shutdown_manager, register_wandb_for_shutdown
+from utils.graceful_shutdown import get_shutdown_manager
 
 # Import utilities
 from utils.model_manager import ModelManager
@@ -39,65 +38,13 @@ from agent.base_callbacks import (
 )
 from agent.continuous_training_callbacks import ContinuousTrainingCallback
 
-# Removed old signal handling - now handled by graceful shutdown manager
 logger = logging.getLogger(__name__)
 
-
-def signal_handler(signum, frame):
-    """Handle Ctrl+C gracefully"""
-    global training_interrupted, cleanup_called
-
-    if cleanup_called:
-        console.print("\n[bold red]Force exit...[/bold red]")
-        os._exit(1)
-
-    training_interrupted = True
-    console.print("\n" + "=" * 50)
-    console.print(
-        "[bold red]INTERRUPT SIGNAL RECEIVED - STOPPING IMMEDIATELY[/bold red]"
-    )
-    console.print("Shutting down training components...")
-    console.print("Press Ctrl+C again to force exit")
-    console.print("=" * 50)
-
-    # Set immediate stop flag on trainer if available
-    if "trainer" in current_components:
-        trainer = current_components["trainer"]
-        trainer.stop_training = True
-        console.print("✅ Training loop stopped")
-
-    # Stop callbacks immediately if running
-    if "callback_manager" in current_components:
-        callback_manager = current_components["callback_manager"]
-        try:
-            # Disable all callbacks to stop further processing
-            callback_manager.disable_all()
-            # Trigger cleanup for each callback
-            callback_manager.trigger("on_training_end", {"interrupted": True})
-            console.print("✅ Callbacks stopped")
-        except:
-            pass
-
-    # Start immediate cleanup in background thread
-    def immediate_cleanup():
-        time.sleep(1)  # Give main thread a moment to finish current operation
-        cleanup_resources()
-
-    cleanup_thread = threading.Thread(target=immediate_cleanup, daemon=True)
-    cleanup_thread.start()
-
-    # Much shorter timeout for force exit
-    def force_exit():
-        time.sleep(3)  # Reduced from 10 to 3 seconds
-        if training_interrupted and not cleanup_called:
-            console.print(
-                "\n[bold red]Graceful shutdown timeout. Force exiting...[/bold red]"
-            )
-            os._exit(1)
-
-    timer = threading.Timer(3, force_exit)
-    timer.daemon = True
-    timer.start()
+# Global variables for cleanup management
+cleanup_called = False
+current_components = {}
+_shutdown_manager = None
+training_interrupted = False  # Global flag for backward compatibility
 
 
 def cleanup_resources():
@@ -238,8 +185,23 @@ def create_data_components(config: Config, log: logging.Logger):
         logger=log,
     )
 
+    # Extract date range from config if available
+    date_range = None
+    if hasattr(config, 'env') and hasattr(config.env, 'training_manager'):
+        training_manager_config = config.env.training_manager
+        if hasattr(training_manager_config, 'data_lifecycle'):
+            data_lifecycle = training_manager_config.data_lifecycle
+            if hasattr(data_lifecycle, 'adaptive_data'):
+                date_range = data_lifecycle.adaptive_data.date_range
+                if date_range:
+                    log.info(f"📅 DataManager configured with date range: {date_range}")
+
     data_manager = DataManager(
-        provider=data_provider, momentum_scanner=momentum_scanner, logger=log
+        provider=data_provider, 
+        momentum_scanner=momentum_scanner, 
+        logger=log,
+        date_range=date_range,
+        include_weekends=False  # Exclude weekends - trading days only
     )
 
     return data_manager
@@ -365,18 +327,17 @@ def get_feature_names_from_config():
     }
 
 
-def get_curriculum_symbols(config):
-    """Extract all symbols from enabled curriculum stages"""
-    symbols = set()
-    stages = [
-        config.env.curriculum.stage_1,
-        config.env.curriculum.stage_2,
-        config.env.curriculum.stage_3,
-    ]
-    for stage in stages:
-        if stage.enabled:
-            symbols.update(stage.symbols)
-    return list(symbols)
+def get_adaptive_symbols(config):
+    """Extract symbols from adaptive data configuration"""
+    if hasattr(config, 'env') and hasattr(config.env, 'training_manager'):
+        training_manager_config = config.env.training_manager
+        if hasattr(training_manager_config, 'data_lifecycle'):
+            data_lifecycle = training_manager_config.data_lifecycle
+            if hasattr(data_lifecycle, 'adaptive_data'):
+                return data_lifecycle.adaptive_data.symbols
+    
+    # Fallback to default
+    return ["MLGO"]
 
 
 def create_callback_manager(
@@ -417,11 +378,11 @@ def create_callback_manager(
     if model:
         config_dict["feature_names"] = get_feature_names_from_config()
 
-    # Add curriculum symbols for tracking
-    curriculum_symbols = get_curriculum_symbols(config)
-    config_dict["curriculum_symbols"] = curriculum_symbols
+    # Add adaptive symbols for tracking
+    adaptive_symbols = get_adaptive_symbols(config)
+    config_dict["adaptive_symbols"] = adaptive_symbols
     config_dict["primary_symbol"] = (
-        curriculum_symbols[0] if curriculum_symbols else "curriculum"
+        adaptive_symbols[0] if adaptive_symbols else "adaptive"
     )
 
     # Create callback manager
@@ -558,11 +519,9 @@ def train(config: Config):
     logger.info("=" * 80)
     logger.info("🚀 Starting FX-AI Training System")
     logger.info(f"📊 Experiment: {config.experiment_name}")
-    # Get curriculum symbols for logging
-    curriculum_symbols = get_curriculum_symbols(config)
-    logger.info(
-        f"📈 Symbols: {curriculum_symbols if curriculum_symbols else 'from curriculum stages'}"
-    )
+    # Get adaptive symbols for logging
+    adaptive_symbols = get_adaptive_symbols(config)
+    logger.info(f"📈 Symbols: {adaptive_symbols}")
 
     # Handle both dict and object access patterns
     model_cfg = config.model
@@ -621,7 +580,7 @@ def train(config: Config):
         callback_manager = create_callback_manager(config, logger, model)
 
         # Register callback manager for graceful shutdown
-        shutdown_manager.register_component(
+        _shutdown_manager.register_component(
             "CallbackManager",
             lambda: callback_manager.trigger("on_training_end", {"interrupted": True}),
             timeout=30.0,
@@ -707,39 +666,28 @@ def train(config: Config):
             output_dir=str(output_dir),
             callbacks=callbacks,
         )
-        # Trainer initialized - graceful shutdown manager will handle cleanup
+        current_components["trainer"] = trainer
+        
+        # Register trainer for immediate shutdown
+        _shutdown_manager.register_component(
+            "PPOTrainer",
+            lambda: setattr(trainer, 'stop_training', True),
+            timeout=5.0,
+            critical=True
+        )
 
         # Check for shutdown request
-        if shutdown_manager.is_shutdown_requested():
+        if _shutdown_manager.is_shutdown_requested():
             logger.warning("Shutdown requested before training start")
             return {"shutdown_requested": True}
 
-        # Initialize momentum-based training by selecting first momentum day
-        logger.info("🎯 Initializing momentum-based training...")
+        # TrainingManager will handle all data lifecycle initialization
+        logger.info("🎯 TrainingManager will handle data lifecycle initialization...")
 
-        # Set primary asset - this will be determined by curriculum
-        curriculum_symbols = get_curriculum_symbols(config)
-        primary_symbol = curriculum_symbols[0] if curriculum_symbols else "curriculum"
+        # Set primary asset - this will be determined by adaptive data
+        adaptive_symbols = get_adaptive_symbols(config)
+        primary_symbol = adaptive_symbols[0] if adaptive_symbols else "adaptive"
         env.primary_asset = primary_symbol
-
-        if not trainer._select_next_momentum_day():
-            logger.error(
-                "Failed to select initial momentum day - curriculum stage may have no valid days"
-            )
-            logger.error(
-                "Check your curriculum configuration: symbols, date_range, day_score_range"
-            )
-            raise RuntimeError(
-                "No momentum days available for current curriculum stage"
-            )
-        else:
-            # Set up environment with the selected momentum day
-            current_day = trainer.current_momentum_day
-            env.setup_session(symbol=current_day["symbol"], date=current_day["date"])
-            logger.info(
-                f"✅ Initial momentum day set: {current_day['date'].strftime('%Y-%m-%d')} "
-                f"(quality: {current_day.get('quality_score', 0):.3f})"
-            )
 
         # Note: on_training_start will be triggered by PPO trainer.train() method
 
@@ -751,7 +699,7 @@ def train(config: Config):
             # Use new TrainingManager system
             training_stats = trainer.train_with_manager()
 
-            if shutdown_manager.is_shutdown_requested():
+            if _shutdown_manager.is_shutdown_requested():
                 logger.warning("⚠️ Training was interrupted by shutdown request")
                 training_stats["interrupted"] = True
             else:
@@ -790,6 +738,10 @@ def main():
 
 def main_with_shutdown(shutdown_manager):
     """Main logic with graceful shutdown support"""
+    
+    # Make shutdown_manager available globally 
+    global _shutdown_manager
+    _shutdown_manager = shutdown_manager
     
     # Parse arguments
     parser = argparse.ArgumentParser(description="FX-AI Trading System")
@@ -833,15 +785,13 @@ def main_with_shutdown(shutdown_manager):
         if args.experiment:
             config.experiment_name = args.experiment
         if args.symbol:
-            # Override all curriculum stages to use this symbol
-            stages = [
-                config.env.curriculum.stage_1,
-                config.env.curriculum.stage_2,
-                config.env.curriculum.stage_3,
-            ]
-            for stage in stages:
-                if stage.enabled:
-                    stage.symbols = [args.symbol]
+            # Override adaptive data symbols
+            if hasattr(config, 'env') and hasattr(config.env, 'training_manager'):
+                training_manager_config = config.env.training_manager
+                if hasattr(training_manager_config, 'data_lifecycle'):
+                    data_lifecycle = training_manager_config.data_lifecycle
+                    if hasattr(data_lifecycle, 'adaptive_data'):
+                        data_lifecycle.adaptive_data.symbols = [args.symbol]
         if args.continue_training:
             config.training.continue_training = True
         if args.device:

@@ -4,7 +4,6 @@ Single source of truth for all training decisions and termination.
 Coordinates between training lifecycle and data lifecycle management.
 """
 
-import time
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -91,10 +90,18 @@ class TerminationController:
         self.mode = mode
         self.logger = logging.getLogger(__name__)
         
-        # Termination criteria
+        # Termination criteria - handle None values from config
         self.training_max_episodes = config.get('training_max_episodes', float('inf'))
+        if self.training_max_episodes is None:
+            self.training_max_episodes = float('inf')
+            
         self.training_max_updates = config.get('training_max_updates', float('inf'))
+        if self.training_max_updates is None:
+            self.training_max_updates = float('inf')
+            
         self.training_max_cycles = config.get('training_max_cycles', float('inf'))
+        if self.training_max_cycles is None:
+            self.training_max_cycles = float('inf')
         
         # Intelligent termination (only for production mode)
         self.enable_intelligent_termination = (
@@ -202,31 +209,99 @@ class TrainingManager:
         self.should_stop = False
         self.termination_reason: Optional[TerminationReason] = None
         
-        # Controllers
+        # Controllers - ensure termination_config is always a dict
+        termination_config = self._convert_pydantic_to_dict(config, 'termination', {
+            'training_max_episodes': float('inf'),
+            'training_max_updates': float('inf'),
+            'training_max_cycles': float('inf'),
+            'intelligent_termination': False,
+            'plateau_patience': 10,
+            'degradation_threshold': 0.1,
+        })
+        
         self.termination_controller = TerminationController(
-            config.get('termination', {}), self.mode
+            termination_config, self.mode
         )
         
         # Data lifecycle manager
         self.data_lifecycle_manager = None
-        if available_days and config.get('data_lifecycle', {}).get('enabled', True):
-            from config.schemas import DataLifecycleConfig
-            data_lifecycle_config = DataLifecycleConfig(**config.get('data_lifecycle', {}))
+        
+        # Handle data lifecycle config access
+        data_lifecycle_config_dict = self._convert_pydantic_to_dict(config, 'data_lifecycle', {'enabled': True})
+        data_lifecycle_enabled = data_lifecycle_config_dict.get('enabled', True)
+            
+        if available_days and data_lifecycle_enabled:
+            # Get data lifecycle config - handle both object access and dict access
+            data_lifecycle_config = None
+            if hasattr(config, 'data_lifecycle'):
+                data_lifecycle_config = config.data_lifecycle
+            elif isinstance(config, dict) and 'data_lifecycle' in config:
+                lifecycle_data = config['data_lifecycle']
+                # Check if it's already a config object or needs to be created
+                if hasattr(lifecycle_data, '__dict__'):  # It's already a config object
+                    data_lifecycle_config = lifecycle_data
+                else:  # It's a dict, create config object
+                    from config.schemas import DataLifecycleConfig
+                    data_lifecycle_config = DataLifecycleConfig(**lifecycle_data)
+            else:
+                # Use default config
+                from config.schemas import DataLifecycleConfig
+                data_lifecycle_config = DataLifecycleConfig()
+                
             self.data_lifecycle_manager = DataLifecycleManager(
                 data_lifecycle_config,
                 available_days
             )
         
         # Continuous training advisor and model manager
+        continuous_config = self._convert_pydantic_to_dict(config, 'continuous', {})
+            
         self.continuous_training = ContinuousTraining(
-            config=config.get('continuous', {}),
+            config=continuous_config,
             mode=self.mode.value,
             enabled=True
         )
         
-        self.logger.info(f"🎯 TrainingManager initialized in {self.mode.value} mode")
+        # Initialize shutdown manager
+        self._init_shutdown_manager()
         
-        # Register for graceful shutdown
+        self.logger.info(f"🎯 TrainingManager initialized in {self.mode.value} mode")
+    
+    def _convert_pydantic_to_dict(self, config, key: str, default_values: dict) -> dict:
+        """Convert Pydantic object to dict with fallback to manual extraction"""
+        result = {}
+        
+        if hasattr(config, key):
+            # Config is object with attribute
+            obj = getattr(config, key)
+            if hasattr(obj, 'model_dump'):
+                result = obj.model_dump()
+            elif hasattr(obj, '__dict__'):
+                result = obj.__dict__
+            else:
+                # Manual extraction
+                result = {k: getattr(obj, k, v) for k, v in default_values.items()}
+        elif isinstance(config, dict):
+            # Config is dict
+            raw_obj = config.get(key, {})
+            if hasattr(raw_obj, 'model_dump'):
+                result = raw_obj.model_dump()
+            elif hasattr(raw_obj, '__dict__'):
+                result = raw_obj.__dict__
+            elif isinstance(raw_obj, dict):
+                result = raw_obj
+            else:
+                # Manual extraction
+                result = {k: getattr(raw_obj, k, v) for k, v in default_values.items()}
+        else:
+            result = default_values
+            
+        return result
+        
+    # Register for graceful shutdown
+    def _init_shutdown_manager(self):
+        """Initialize shutdown manager after all other setup is complete"""
+        from utils.graceful_shutdown import get_shutdown_manager
         self.shutdown_manager = get_shutdown_manager()
         self.shutdown_manager.register_component(
             "TrainingManager", 
@@ -240,17 +315,43 @@ class TrainingManager:
         Start training with the configured trainer
         Returns final training statistics
         """
-        self.logger.info("🚀 Training started by TrainingManager")
+        self.logger.info("🎯 TRAINING LIFECYCLE STARTUP")
+        self.logger.info("├── 🚀 TrainingManager started in %s mode", self.mode.value)
         self.state.start_time = datetime.now()
+        
+        # Set TrainingManager reference on trainer for data lifecycle integration
+        if hasattr(trainer, 'set_training_manager'):
+            trainer.set_training_manager(self)
         
         # Initialize data lifecycle
         if self.data_lifecycle_manager:
+            self.logger.info("├── 🔄 Initializing adaptive data lifecycle...")
             if not self.data_lifecycle_manager.initialize():
-                self.logger.error("❌ Failed to initialize data lifecycle")
+                self.logger.error("│   └── ❌ Failed to initialize data lifecycle")
                 return self._finalize_training(trainer)
+            else:
+                self.logger.info("│   └── ✅ Data lifecycle ready")
+        else:
+            self.logger.warning("├── ⚠️ No DataLifecycleManager - using fallback")
         
         # Initialize continuous training
         self.continuous_training.initialize(trainer)
+        
+        # Trigger trainer's on_training_start callback to initialize WandB and other callbacks
+        if hasattr(trainer, 'callback_manager'):
+            training_config = {
+                "mode": self.mode.value,
+                "full_config": self.config,
+                "experiment_name": getattr(self.config, "experiment_name", "training_manager"),
+                "model": getattr(trainer, 'model', None),
+                "model_config": getattr(trainer, 'model_config', {}),
+            }
+            trainer.callback_manager.trigger("on_training_start", training_config)
+            
+            # Also call trainer callbacks directly for compatibility
+            for callback in getattr(trainer, 'callbacks', []):
+                if hasattr(callback, 'on_training_start'):
+                    callback.on_training_start(trainer)
         
         try:
             while not self.should_stop and not self.shutdown_manager.is_shutdown_requested():

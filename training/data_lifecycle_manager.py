@@ -3,15 +3,12 @@ Data Lifecycle Manager - Authority for Training Data Management
 Handles reset point cycling, day selection, stage management, and data-related termination.
 """
 
-import time
 import random
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List, Set, Tuple
+from datetime import datetime
+from typing import Dict, Any, Optional, List, Set
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-import json
 
 
 class DataTerminationReason(Enum):
@@ -228,7 +225,15 @@ class DaySelector:
         
         # Filter by criteria
         filtered_days = []
+        self.logger.info(f"📅 Filtering {len(available_days)} available days for date range {stage_config.date_range}")
+        
+        # Show all available days first
+        all_day_dates = [day.date if isinstance(day.date, str) else (day.date.strftime('%Y-%m-%d') if hasattr(day.date, 'strftime') else str(day.date)) for day in available_days]
+        self.logger.info(f"📅 Available days in momentum index: {sorted(all_day_dates)}")
+        
         for day in available_days:
+            day_date_str = day.date if isinstance(day.date, str) else (day.date.strftime('%Y-%m-%d') if hasattr(day.date, 'strftime') else str(day.date))
+            
             # Check date range
             if self._day_in_date_range(day, stage_config.date_range):
                 # Check symbol
@@ -243,6 +248,15 @@ class DaySelector:
                         )
                         if available_rps:
                             filtered_days.append(day)
+                            self.logger.debug(f"📅 ✅ Day {day.symbol} {day_date_str} passes all filters (quality: {day.day_score:.3f}, reset_points: {len(available_rps)})")
+                        else:
+                            self.logger.debug(f"📅 ❌ Day {day.symbol} {day_date_str} has no available reset points")
+                    else:
+                        self.logger.debug(f"📅 ❌ Day {day.symbol} {day_date_str} quality {day.day_score:.3f} outside range {stage_config.day_score_range}")
+                else:
+                    self.logger.debug(f"📅 ❌ Day {day.symbol} {day_date_str} symbol not in {stage_config.symbols}")
+            else:
+                self.logger.debug(f"📅 ❌ Day {day.symbol} {day_date_str} outside date range {stage_config.date_range}")
         
         if not filtered_days:
             self.logger.warning("No days meet current stage criteria")
@@ -261,8 +275,25 @@ class DaySelector:
             weights = [day.day_score for day in filtered_days]
             selected = random.choices(filtered_days, weights=weights)[0]
         else:  # SEQUENTIAL or CURRICULUM_ORDERED
-            filtered_days.sort(key=lambda d: d.day_score, reverse=True)
+            # For sequential mode, sort by date (earliest first) to respect date range order
+            # Parse dates for proper sorting
+            def parse_date(day):
+                if isinstance(day.date, str):
+                    return datetime.strptime(day.date, "%Y-%m-%d").date()
+                elif hasattr(day.date, 'date'):
+                    return day.date.date()
+                else:
+                    return day.date
+            
+            filtered_days.sort(key=parse_date)
             selected = filtered_days[0]
+            
+            # Log the selection process
+            all_dates = [parse_date(day).strftime('%Y-%m-%d') if hasattr(parse_date(day), 'strftime') else str(parse_date(day)) for day in filtered_days]
+            self.logger.info(f"📅 Sequential selection from {len(filtered_days)} filtered days: {all_dates}")
+            selected_date = parse_date(selected)
+            selected_date_str = selected_date.strftime('%Y-%m-%d') if hasattr(selected_date, 'strftime') else str(selected_date)
+            self.logger.info(f"📅 Selected earliest date: {selected_date_str} (quality: {selected.day_score:.3f})")
         
         # Mark as used
         selected.used_count += 1
@@ -275,7 +306,16 @@ class DaySelector:
         if not date_range[0] and not date_range[1]:
             return True
         
-        day_date = datetime.strptime(day.date, "%Y-%m-%d").date()
+        # Handle both string and Timestamp inputs for day.date
+        if hasattr(day.date, 'date'):
+            # It's a pandas Timestamp or datetime object
+            day_date = day.date.date()
+        elif isinstance(day.date, str):
+            # It's a string, parse it
+            day_date = datetime.strptime(day.date, "%Y-%m-%d").date()
+        else:
+            # It's already a date object
+            day_date = day.date
         
         if date_range[0]:
             start_date = datetime.strptime(date_range[0], "%Y-%m-%d").date()
@@ -443,14 +483,27 @@ class DataLifecycleManager:
         # Current reset point from cycler
         self.current_reset_point = None
         
-        self.logger.info(f"🎯 DataLifecycleManager initialized for adaptive data management")
+        # Constructor initialization is silent - details logged during initialize()
     
     def initialize(self) -> bool:
         """Initialize data lifecycle - select first day and reset points"""
         try:
-            return self._advance_to_next_cycle()
+            # First select initial day (this already selects the first reset point)
+            if not self._advance_to_next_day():
+                self.logger.error("│   └── ❌ Failed to select initial day")
+                return False
+                
+            # Log final summary
+            day_date = self.cycle_state.current_day.date  # Already a string
+            symbol = self.cycle_state.current_day.symbol
+            reset_count = len(self.cycle_state.current_reset_points)
+            quality = self.cycle_state.current_day.day_score
+            
+            self.logger.info("│   ├── 📅 Selected: %s %s (quality: %.3f)", symbol, day_date, quality)
+            self.logger.info("│   └── 🔄 Reset points: %d available", reset_count)
+            return True
         except Exception as e:
-            self.logger.error(f"❌ Failed to initialize data lifecycle: {e}")
+            self.logger.error("│   └── ❌ Failed to initialize data lifecycle: %s", e)
             return False
     
     def should_terminate_data_lifecycle(self) -> Optional[DataTerminationReason]:
@@ -463,10 +516,8 @@ class DataLifecycleManager:
             if not self._advance_to_next_day():
                 return DataTerminationReason.NO_MORE_DAYS
         
-        # Check if current reset points exhausted
-        if self._should_advance_cycle():
-            if not self._advance_to_next_cycle():
-                return DataTerminationReason.NO_MORE_RESET_POINTS
+        # Note: Cycle advancement is now handled explicitly via advance_cycle_on_episode_completion()
+        # Don't automatically advance here
         
         return None
     
@@ -475,12 +526,34 @@ class DataLifecycleManager:
         if not self.cycle_state.current_day or not self.cycle_state.current_reset_points:
             return None
         
-        return {
+        # Format data for PPOTrainer compatibility
+        day_info = {
             'date': self.cycle_state.current_day.date,
             'symbol': self.cycle_state.current_day.symbol,
-            'reset_points': [rp.timestamp for rp in self.cycle_state.current_reset_points],
-            'day_score': self.cycle_state.current_day.day_score,
-            'stage': self.stage_manager.get_current_stage().name if self.stage_manager.get_current_stage() else None
+            'quality_score': self.cycle_state.current_day.day_score,
+        }
+        
+        # Get current reset point index (use 0 for first reset point)
+        current_reset_point_index = 0  # TODO: Track current reset point in cycle state
+        
+        # Format reset points as dictionaries for dashboard compatibility
+        reset_points_formatted = []
+        for rp in self.cycle_state.current_reset_points:
+            reset_point_dict = {
+                'timestamp': rp.timestamp,
+                'quality_score': rp.quality_score,
+                'roc_score': rp.roc_score,
+                'activity_score': rp.activity_score,
+                'combined_score': rp.quality_score,  # Use quality_score as combined
+                'price': 0.0  # Price will be filled by environment
+            }
+            reset_points_formatted.append(reset_point_dict)
+        
+        return {
+            'day_info': day_info,
+            'reset_points': reset_points_formatted,
+            'reset_point_index': current_reset_point_index,
+            'stage': 'adaptive_data_lifecycle'  # Fixed stage name for adaptive system
         }
     
     def update_progress(self, episodes: int, updates: int):
@@ -536,9 +609,9 @@ class DataLifecycleManager:
     
     def _should_advance_cycle(self) -> bool:
         """Check if should advance to next reset point"""
-        # For now, advance after each episode (1 episode per reset point)
-        # This could be made configurable later
-        return True
+        # Only advance when explicitly requested (after episode completion)
+        # Don't advance automatically on every check
+        return False
     
     def _advance_to_next_day(self) -> bool:
         """Advance to next day - select new day and reset points"""
@@ -627,6 +700,10 @@ class DataLifecycleManager:
         """Update the day-level update counter"""
         self.current_day_updates += 1
         self.logger.debug(f"Day update count: {self.current_day_updates}")
+    
+    def advance_cycle_on_episode_completion(self) -> bool:
+        """Explicitly advance to next reset point after episode completion"""
+        return self._advance_to_next_cycle()
     
     def apply_dynamic_adaptation(self, adaptation: Dict[str, Any]) -> bool:
         """Apply dynamic adaptation from ContinuousTraining"""

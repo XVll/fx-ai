@@ -82,6 +82,17 @@ class TradingEnvironment(gym.Env):
 
     metadata = {"render_modes": ["human", "logs", "none"], "render_fps": 10}
 
+    def _safe_date_format(self, date_obj) -> str:
+        """Safely format a date object to YYYY-MM-DD string"""
+        if isinstance(date_obj, str):
+            return date_obj  # Already a string
+        elif hasattr(date_obj, 'strftime'):
+            return date_obj.strftime('%Y-%m-%d')
+        elif hasattr(date_obj, 'date'):
+            return date_obj.date().strftime('%Y-%m-%d')
+        else:
+            return str(date_obj)
+
     def __init__(
         self,
         config: Config,
@@ -217,7 +228,7 @@ class TradingEnvironment(gym.Env):
             self.current_session_date = date
 
         self.logger.info(
-            f"🎯 Setting up session: {self.primary_asset} on {self.current_session_date.strftime('%Y-%m-%d')}"
+            f"├── 🎯 Session setup: {self.primary_asset} on {self._safe_date_format(self.current_session_date)}"
         )
 
         # Create MarketSimulator for this session
@@ -304,7 +315,7 @@ class TradingEnvironment(gym.Env):
                         "activity_score": row.get("activity_score", 0.5),
                         "combined_score": row.get("combined_score", 0.5),
                         "day_activity_score": row.get("day_activity_score", 0.5),
-                        # Add 2-component scores for curriculum system
+                        # Add 2-component scores for adaptive data system
                         "roc_score": row.get("roc_score", 0.0),
                         "max_duration_hours": self._get_duration_for_activity(
                             row.get("activity_score", 0.5)
@@ -507,7 +518,7 @@ class TradingEnvironment(gym.Env):
             next_date = date
 
         self.logger.info(
-            f"🔄 Preparing next session: {symbol} on {next_date.strftime('%Y-%m-%d')}"
+            f"🔄 Preparing next session: {symbol} on {self._safe_date_format(next_date)}"
         )
 
         # Create MarketSimulator for next session
@@ -522,11 +533,11 @@ class TradingEnvironment(gym.Env):
         success = self.next_market_simulator.initialize_day(next_date)
         if success:
             self.logger.info(
-                f"✅ Next session ready: {symbol} {next_date.strftime('%Y-%m-%d')}"
+                f"✅ Next session ready: {symbol} {self._safe_date_format(next_date)}"
             )
         else:
             self.logger.error(
-                f"❌ Failed to prepare next session: {symbol} {next_date.strftime('%Y-%m-%d')}"
+                f"❌ Failed to prepare next session: {symbol} {self._safe_date_format(next_date)}"
             )
 
     def switch_to_next_session(self):
@@ -556,7 +567,7 @@ class TradingEnvironment(gym.Env):
     def select_next_momentum_day(
         self, exclude_dates: Optional[List[datetime]] = None
     ) -> Optional[Dict]:
-        """Select next momentum day based on quality and curriculum."""
+        """Select next momentum day based on quality and adaptive data criteria."""
         momentum_days = self.get_momentum_days(min_activity=0.0)
 
         if momentum_days.empty:
@@ -681,8 +692,8 @@ class TradingEnvironment(gym.Env):
         )
 
         # Log episode reset info
-        original_time = reset_point["timestamp"].strftime("%H:%M:%S")
-        randomized_time = randomized_start.strftime("%H:%M:%S")
+        original_time = reset_point["timestamp"].strftime("%H:%M:%S") if hasattr(reset_point["timestamp"], 'strftime') else str(reset_point["timestamp"])
+        randomized_time = randomized_start.strftime("%H:%M:%S") if hasattr(randomized_start, 'strftime') else str(randomized_start)
         offset_minutes = random_offset_seconds // 60
         window_minutes = max_offset_minutes
 
@@ -781,7 +792,7 @@ class TradingEnvironment(gym.Env):
 
         # Trigger episode visualization start
         if self.callback_manager:
-            episode_date = current_sim_time.strftime("%Y-%m-%d")
+            episode_date = self._safe_date_format(current_sim_time)
             self.callback_manager.trigger(
                 "on_custom_event",
                 "episode_visualization_start",
@@ -920,6 +931,20 @@ class TradingEnvironment(gym.Env):
         self, action: np.ndarray
     ) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
         """Execute one environment step - simplified to use ExecutionSimulator."""
+        # Check for training interruption at the beginning of each step
+        if (
+            hasattr(__import__("main"), "training_interrupted")
+            and __import__("main").training_interrupted
+        ):
+            self.logger.warning("Environment step interrupted by training shutdown")
+            return (
+                self._last_observation or self._get_dummy_observation(),
+                0.0,
+                True,
+                False,
+                {"interrupted": True, "termination_reason": "TRAINING_INTERRUPTED"},
+            )
+
         if self._last_observation is None or self.primary_asset is None:
             self.logger.error("Step called with invalid state")
             return (
@@ -945,13 +970,13 @@ class TradingEnvironment(gym.Env):
                     progress_pct = self.current_step / self.max_episode_steps * 100
                     self.logger.info(
                         f"📈 Episode progress: Step {self.current_step}/{self.max_episode_steps} ({progress_pct:.1f}%) | "
-                        f"Episode {self.episode_number} | Sim time: {current_time.strftime('%H:%M:%S')} | "
+                        f"Episode {self.episode_number} | Sim time: {current_time.strftime('%H:%M:%S') if hasattr(current_time, 'strftime') else str(current_time)} | "
                         f"Elapsed: {elapsed_seconds // 60}m {elapsed_seconds % 60}s"
                     )
                 else:
                     self.logger.info(
                         f"📈 Episode progress: Step {self.current_step} | "
-                        f"Episode {self.episode_number} | Sim time: {current_time.strftime('%H:%M:%S')} | "
+                        f"Episode {self.episode_number} | Sim time: {current_time.strftime('%H:%M:%S') if hasattr(current_time, 'strftime') else str(current_time)} | "
                         f"Elapsed: {elapsed_seconds // 60}m {elapsed_seconds % 60}s"
                     )
         if market_state_at_decision is None:
@@ -1681,45 +1706,7 @@ class TradingEnvironment(gym.Env):
                     if bid > 0 and ask > 0:
                         quality_metrics["avg_spread"] = ask - bid
 
-            # Calculate curriculum information if data manager has curriculum support
-            curriculum_metrics = {}
-            if (
-                hasattr(self.data_manager, "index_utils")
-                and self.data_manager.index_utils
-            ):
-                # Get curriculum stage from the index utils
-                index_utils = self.data_manager.index_utils
-                total_episodes = getattr(
-                    index_utils, "total_episodes", self.total_episodes
-                )
-
-                # Calculate curriculum stage based on episode count
-                if total_episodes < 10000:
-                    stage = "early"
-                    min_quality = 0.8
-                    next_threshold = 10000
-                elif total_episodes < 50000:
-                    stage = "intermediate"
-                    min_quality = 0.6
-                    next_threshold = 50000
-                else:
-                    stage = "advanced"
-                    min_quality = 0.0
-                    next_threshold = None
-
-                curriculum_metrics.update(
-                    {
-                        "curriculum_stage": stage,
-                        "curriculum_min_quality": min_quality,
-                        "total_episodes_for_curriculum": total_episodes,
-                        "curriculum_progress": (total_episodes / next_threshold * 100)
-                        if next_threshold
-                        else 100.0,
-                    }
-                )
-
-                # Update the quality metrics dict to include curriculum info
-                quality_metrics.update(curriculum_metrics)
+            # Note: Adaptive data management now handled by TrainingManager -> DataLifecycleManager
 
             # Update dashboard state
             dashboard_state.update_quality_metrics(quality_metrics)

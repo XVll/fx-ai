@@ -152,11 +152,11 @@ class DashboardCallback(BaseCallback):
         if not hasattr(self.dashboard_state, "win_rate"):
             self.dashboard_state.win_rate = 0.0
 
-        # Curriculum attributes
-        if not hasattr(self.dashboard_state, "curriculum_stage"):
-            self.dashboard_state.curriculum_stage = "stage_1"
-        if not hasattr(self.dashboard_state, "curriculum_progress"):
-            self.dashboard_state.curriculum_progress = 0.0
+        # Adaptive data attributes
+        if not hasattr(self.dashboard_state, "adaptive_data_mode"):
+            self.dashboard_state.adaptive_data_mode = "adaptive"
+        if not hasattr(self.dashboard_state, "day_progress"):
+            self.dashboard_state.day_progress = 0.0
         if not hasattr(self.dashboard_state, "roc_range"):
             self.dashboard_state.roc_range = [0.0, 1.0]
         if not hasattr(self.dashboard_state, "activity_range"):
@@ -777,17 +777,30 @@ class DashboardCallback(BaseCallback):
             f"Switched to {date_str}: quality={quality_score:.3f}", "info"
         )
 
-    def on_curriculum_stage_change(self, stage_info: Dict[str, Any]) -> None:
-        """Update curriculum progress."""
+    def on_adaptive_data_change(self, adaptation_info: Dict[str, Any]) -> None:
+        """Update adaptive data configuration."""
         if not self.enabled or not self.dashboard_state:
             return
 
-        self.dashboard_state.curriculum_stage = stage_info.get("stage", 1)
-        self.dashboard_state.curriculum_progress = stage_info.get("progress", 0.0)
+        # Initialize adaptive data attributes if they don't exist
+        if not hasattr(self.dashboard_state, "day_score_range"):
+            self.dashboard_state.day_score_range = [0.0, 1.0]
+        if not hasattr(self.dashboard_state, "selection_mode"):
+            self.dashboard_state.selection_mode = "adaptive"
+
+        # Update adaptive data criteria
+        if 'day_score_range' in adaptation_info:
+            self.dashboard_state.day_score_range = adaptation_info.get("day_score_range", [0.0, 1.0])
+        if 'roc_range' in adaptation_info:
+            self.dashboard_state.roc_range = adaptation_info.get("roc_range", [0.0, 1.0])
+        if 'activity_range' in adaptation_info:
+            self.dashboard_state.activity_range = adaptation_info.get("activity_range", [0.0, 1.0])
+        if 'selection_mode' in adaptation_info:
+            self.dashboard_state.selection_mode = adaptation_info.get("selection_mode", "adaptive")
 
         # Add milestone event
         self._add_training_event(
-            f"Advanced to curriculum stage {stage_info.get('stage', 1)}", "success"
+            "Adaptive data criteria updated", "info"
         )
 
     def on_custom_event(self, event_name: str, event_data: Dict[str, Any]) -> None:
@@ -862,26 +875,39 @@ class DashboardCallback(BaseCallback):
             )
             self.dashboard_state.entropy_history.append(self.dashboard_state.entropy)
 
-        elif event_name == "curriculum_progress":
-            # Update curriculum tracking
-            self.dashboard_state.curriculum_progress = event_data.get("progress", 0.0)
-            self.dashboard_state.curriculum_stage = event_data.get("stage", "stage_1")
+        elif event_name == "data_lifecycle_update":
+            # Update data lifecycle tracking
+            self.dashboard_state.day_progress = event_data.get("day_progress", 0.0)
+            self.dashboard_state.adaptive_data_mode = event_data.get("mode", "adaptive")
+            
+            # Update cycle status
+            cycle_status = event_data.get("cycle_status", {})
+            if cycle_status:
+                if not hasattr(self.dashboard_state, "current_cycle"):
+                    self.dashboard_state.current_cycle = 0
+                if not hasattr(self.dashboard_state, "current_reset_point_index"):
+                    self.dashboard_state.current_reset_point_index = 0
+                if not hasattr(self.dashboard_state, "total_reset_points"):
+                    self.dashboard_state.total_reset_points = 0
+                if not hasattr(self.dashboard_state, "cycle_progress"):
+                    self.dashboard_state.cycle_progress = 0.0
+                    
+                self.dashboard_state.current_cycle = cycle_status.get("current_cycle", 0)
+                self.dashboard_state.current_reset_point_index = cycle_status.get("current_index", 0)
+                self.dashboard_state.total_reset_points = cycle_status.get("total_reset_points", 0)
+                self.dashboard_state.cycle_progress = cycle_status.get("progress_in_cycle", 0.0)
 
-        elif event_name == "curriculum_detail":
-            # Update detailed curriculum information
-            self.dashboard_state.curriculum_stage = event_data.get(
-                "current_stage", "stage_1"
-            )
-            self.dashboard_state.episodes_to_next_stage = event_data.get(
-                "episodes_to_next_stage", 0
-            )
-            self.dashboard_state.next_stage_name = event_data.get("next_stage_name", "")
-            self.dashboard_state.episodes_per_day_config = event_data.get(
-                "episodes_per_day_config", 10
-            )
-            self.dashboard_state.curriculum_strategy = event_data.get(
-                "curriculum_method", "quality_based"
-            )
+        elif event_name == "adaptive_criteria_update":
+            # Update adaptive data criteria
+            if not hasattr(self.dashboard_state, "day_score_range"):
+                self.dashboard_state.day_score_range = [0.0, 1.0]
+            if not hasattr(self.dashboard_state, "selection_mode"):
+                self.dashboard_state.selection_mode = "adaptive"
+                
+            self.dashboard_state.roc_range = event_data.get("roc_range", [0.0, 1.0])
+            self.dashboard_state.activity_range = event_data.get("activity_range", [0.0, 1.0])
+            self.dashboard_state.day_score_range = event_data.get("day_score_range", [0.0, 1.0])
+            self.dashboard_state.selection_mode = event_data.get("selection_mode", "adaptive")
 
         elif event_name == "cycle_completion":
             # Update cycle and day switching tracking

@@ -7,14 +7,15 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-# Momentum Training (RECOMMENDED)
-train = "poetry run python main.py --config momentum_training"
-train-continue = "poetry run python main.py --config momentum_training --continue"
+# Momentum Training (RECOMMENDED - uses smart day selection and curriculum learning)
+momentum = "poetry run python main.py --config training.yaml"
+momentum-continue = "poetry run python main.py --config training --continue"
 build-index = "poetry run python scripts/build_index.py"
 
-# Legacy Training (standard single-day training)
-quick = "poetry run python main.py --config quick_test"
+# Legacy Training (standard single-day training)  
+quick = "poetry run python main.py --config quick"
 init = "poetry run python main.py"
+train = "poetry run python main.py --config training --continue"
 
 # Backtest
 backtest = "poetry run python main.py --config backtest"

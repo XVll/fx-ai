@@ -287,7 +287,7 @@ class ContinuousTraining:
         NOTE: This method now only provides recommendations when evaluation data is available.
         Training metrics are ignored - only evaluation results drive recommendations.
         """
-        from training.training_manager import TrainingRecommendations, TerminationReason
+        from training.training_manager import TrainingRecommendations
         
         if not self.enabled:
             return TrainingRecommendations.no_changes()

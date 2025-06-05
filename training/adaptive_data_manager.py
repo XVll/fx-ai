@@ -6,9 +6,8 @@ Dynamically adjusts data difficulty based on performance without fixed stages.
 import logging
 import random
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Set
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
-from enum import Enum
 
 from training.data_lifecycle_manager import (
     DataTerminationReason, SelectionMode, ResetPointInfo, DayInfo,

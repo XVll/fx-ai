@@ -5,7 +5,6 @@ Handles proper cleanup of all components during termination.
 
 import signal
 import logging
-import asyncio
 import threading
 from typing import List, Callable, Optional
 from dataclasses import dataclass
@@ -77,6 +76,13 @@ class GracefulShutdownManager:
         
         self.shutdown_reason = f"Signal {signal_name}"
         self.request_shutdown()
+        
+        # Set global training_interrupted flag for backward compatibility
+        try:
+            import __main__
+            __main__.training_interrupted = True
+        except:
+            pass
     
     def request_shutdown(self, reason: str = "Manual request"):
         """Request graceful shutdown"""
@@ -87,6 +93,21 @@ class GracefulShutdownManager:
         self.shutdown_requested = True
         self.shutdown_reason = reason
         self.logger.info(f"🛑 Graceful shutdown requested: {reason}")
+        
+        # Set global training_interrupted flag for backward compatibility
+        try:
+            import __main__
+            __main__.training_interrupted = True
+        except:
+            pass
+        
+        # Immediately trigger stop on all registered components that have stop_training
+        for component in self.components:
+            if "trainer" in component.name.lower():
+                try:
+                    component.shutdown_func()
+                except:
+                    pass
     
     def is_shutdown_requested(self) -> bool:
         """Check if shutdown has been requested"""
