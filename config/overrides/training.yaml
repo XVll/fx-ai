@@ -46,15 +46,12 @@ env:
         day_score_range: [0.0, 1.0]               # [min_quality, max_quality] filter
         roc_range: [0.00, 1.0]                    # [min_roc, max_roc] momentum filter
         activity_range: [0.0, 1.0]                # [min_activity, max_activity] filter
-        selection_mode: "sequential"               # Options: "sequential", "quality_weighted", "random"
-        randomize_order: false                     # Randomize selection within mode
-      
-      reset_points:
-        selection_mode: "sequential"     # Options: "sequential", "random" - how to cycle through reset points
-      
-      day_selection:
-        selection_mode: "sequential"     # Options: "sequential", "quality_weighted", "random" - how to pick days
-        randomize_order: false           # Whether to randomize the selection order
+        
+        # DAY SELECTION: How to pick which trading day to use next
+        day_selection_mode: "sequential"           # Options: "sequential" (chronological), "quality_weighted" (by score), "random"
+        
+        # RESET POINT SELECTION: How to cycle through reset points within each day  
+        reset_point_selection_mode: "sequential"  # Options: "sequential" (by quality), "random"
       
       preloading:
         preload_enabled: true

@@ -39,22 +39,19 @@ env:
         day_max_updates: null            # No update limit per day
         day_max_cycles: 2                # Quick cycling for sweep trials
       
-      # Deterministic adaptive data selection
+      # Deterministic adaptive data selection for consistent sweep trials
       adaptive_data:
         symbols: ["MLGO"]
         date_range: [null, null]
         day_score_range: [0.7, 1.0]
         roc_range: [0.05, 1.0]
         activity_range: [0.0, 1.0]
-        selection_mode: "sequential"  # Deterministic for consistency
-        randomize_order: false
-      
-      reset_points:
-        selection_mode: "sequential"     # Deterministic for consistency
-      
-      day_selection:
-        selection_mode: "sequential"  # Deterministic selection
-        randomize_order: false
+        
+        # DAY SELECTION: Sequential for deterministic behavior
+        day_selection_mode: "sequential"           # Options: "sequential" (chronological), "quality_weighted" (by score), "random"
+        
+        # RESET POINT SELECTION: Sequential for deterministic behavior
+        reset_point_selection_mode: "sequential"  # Options: "sequential" (by quality), "random"
       
       preloading:
         preload_enabled: false  # Disabled for faster trials

@@ -39,22 +39,19 @@ env:
         day_max_updates: null            # No update limit per day
         day_max_cycles: 2                # Quick cycling for development
       
-      # Random adaptive data selection for variety
+      # Random adaptive data selection for variety in development
       adaptive_data:
         symbols: ["MLGO"]
         date_range: [null, null]
         day_score_range: [0.7, 1.0]
         roc_range: [0.1, 1.0]    # Wider range for more data
         activity_range: [0.0, 1.0]
-        selection_mode: "random"  # Random for variety in development
-        randomize_order: true
-      
-      reset_points:
-        selection_mode: "random"          # Random for development variety
-      
-      day_selection:
-        selection_mode: "random"  # Random for development variety
-        randomize_order: true
+        
+        # DAY SELECTION: Random for development variety  
+        day_selection_mode: "random"           # Options: "sequential" (chronological), "quality_weighted" (by score), "random"
+        
+        # RESET POINT SELECTION: Random for development variety
+        reset_point_selection_mode: "random"  # Options: "sequential" (by quality), "random"
       
       preloading:
         preload_enabled: false  # Disabled for simplicity
