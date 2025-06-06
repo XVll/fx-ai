@@ -58,6 +58,7 @@ class CaptumCallback(BaseCallback):
         
         # State caching to avoid env.reset() issues
         self.cached_state = None
+        self.cached_action = None
         
     def on_training_start(self, config: Dict[str, Any]):
         """Initialize Captum analyzer with the model."""
@@ -165,13 +166,28 @@ class CaptumCallback(BaseCallback):
                 return
                 
             # Log what we're analyzing
+            state_shapes = {k: v.shape for k, v in state_dict.items()}
             if target_action is not None:
-                self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count}, target_action: {target_action})")
+                self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count}, target_action: {target_action}, state_shapes: {state_shapes})")
             else:
-                self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count}, no target action available)")
+                self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count}, no target action - will use model predictions, state_shapes: {state_shapes})")
             
-            # Run attribution analysis
-            results = self.analyzer.analyze_sample(state_dict, target_action=target_action)
+            # Run attribution analysis with error handling
+            try:
+                results = self.analyzer.analyze_sample(state_dict, target_action=target_action)
+            except Exception as e:
+                self.logger.error(f"Captum analysis failed: {str(e)}")
+                # Try again without target action for debugging
+                if target_action is not None:
+                    self.logger.info("Retrying Captum analysis without target action")
+                    try:
+                        results = self.analyzer.analyze_sample(state_dict, target_action=None)
+                        self.logger.info("Captum analysis succeeded without target action")
+                    except Exception as e2:
+                        self.logger.error(f"Captum analysis failed even without target action: {str(e2)}")
+                        return
+                else:
+                    return
             
             # Track analysis
             self.analysis_count += 1
@@ -204,87 +220,79 @@ class CaptumCallback(BaseCallback):
         except Exception as e:
             self.logger.error(f"Error in Captum analysis: {str(e)}")
             import traceback
-            traceback.print_exc()
+            self.logger.debug(f"Full traceback:\n{traceback.format_exc()}")
+            # Don't re-raise, just log and continue
     
     def _get_sample_state(self, trainer) -> Optional[Tuple[Dict[str, torch.Tensor], Optional[int]]]:
-        """Get a sample state from buffer with caching fallback (no env.reset).
+        """Get a sample state and action from buffer for Captum analysis.
         
         Returns:
-            Tuple of (state_dict, target_action) or None
+            Tuple of (state_dict, target_action) or (None, None) if unavailable
         """
         try:
-            # Try to get from replay buffer first
-            if hasattr(trainer, "buffer") and trainer.buffer.get_size() > 0:
-                # Get the most recent state from buffer
-                recent_experience = trainer.buffer.buffer[-1]  # Get last experience
-                if "state" in recent_experience:
+            # Strategy 1: Use prepared data from buffer (most reliable)
+            if hasattr(trainer, "buffer") and hasattr(trainer.buffer, "states") and trainer.buffer.states is not None:
+                batch_size = trainer.buffer.states["hf"].shape[0]
+                if batch_size > 0:
+                    # Get a sample from the middle of the batch (more representative than edges)
+                    idx = min(batch_size // 2, batch_size - 1)
+                    
                     state_dict = {}
-                    state_data = recent_experience["state"]
                     for key in ["hf", "mf", "lf", "portfolio"]:
-                        if key in state_data:
-                            if isinstance(state_data[key], torch.Tensor):
-                                tensor = state_data[key].to(trainer.device)
-                            else:
-                                tensor = torch.as_tensor(
-                                    state_data[key], dtype=torch.float32
-                                ).to(trainer.device)
-                            # Ensure proper dimensions
-                            if tensor.dim() == 2:  # [seq_len, feat_dim]
-                                tensor = tensor.unsqueeze(0)  # [1, seq_len, feat_dim]
+                        if key in trainer.buffer.states:
+                            # Get single sample with proper batch dimension
+                            tensor = trainer.buffer.states[key][idx:idx+1].to(trainer.device)
                             state_dict[key] = tensor
                     
-                    # Get the action taken for this state if available
-                    target_action = None
-                    if "action" in recent_experience:
-                        try:
-                            action = recent_experience["action"]
-                            self.logger.debug(f"Action from buffer - type: {type(action)}, value: {action if not isinstance(action, torch.Tensor) else f'tensor shape {action.shape}'}")
-                            
-                            if isinstance(action, torch.Tensor):
-                                # Handle tensor actions
-                                if action.numel() == 1:
-                                    target_action = int(action.item())
-                                elif action.numel() == 2:
-                                    # Assume (action_type, position_size)
-                                    action_type = int(action[0].item())
-                                    position_size = int(action[1].item())
-                                    target_action = action_type * 4 + position_size
-                                else:
-                                    # Take first element as a fallback
-                                    target_action = int(action[0].item())
-                            elif isinstance(action, (list, tuple)) and len(action) >= 2:
-                                # Convert (action_type, position_size) to flat index
-                                action_type = int(action[0]) if not isinstance(action[0], torch.Tensor) else int(action[0].item())
-                                position_size = int(action[1]) if not isinstance(action[1], torch.Tensor) else int(action[1].item())
-                                target_action = action_type * 4 + position_size
-                            elif isinstance(action, (int, float)):
-                                target_action = int(action)
-                            elif isinstance(action, np.ndarray):
-                                # Handle numpy arrays
-                                if action.size == 1:
-                                    target_action = int(action.item())
-                                elif action.size == 2:
-                                    target_action = int(action[0] * 4 + action[1])
-                                else:
-                                    target_action = int(action.flat[0])
-                            else:
-                                self.logger.debug(f"Unknown action type: {type(action)}, value: {action}")
-                        except Exception as e:
-                            self.logger.debug(f"Failed to extract action: {e}, action was: {action}")
+                    # Validate state dictionary
+                    if len(state_dict) < 4:
+                        self.logger.warning(f"Incomplete state dict: {list(state_dict.keys())}")
+                        return None, None
                     
-                    # Cache this good state for future use
+                    # Get the corresponding action
+                    target_action = None
+                    if hasattr(trainer.buffer, "actions") and trainer.buffer.actions is not None:
+                        if idx < trainer.buffer.actions.shape[0]:
+                            action_tensor = trainer.buffer.actions[idx]
+                            target_action = self._convert_action_to_linear_index(action_tensor)
+                            if target_action is not None:
+                                self.logger.debug(f"Extracted action from prepared buffer: action_tensor={action_tensor}, linear_idx={target_action}")
+                            else:
+                                self.logger.warning(f"Failed to convert action tensor: {action_tensor} (shape: {action_tensor.shape if hasattr(action_tensor, 'shape') else 'N/A'})")
+                    
+                    # Cache for future use
                     self.cached_state = state_dict
                     self.cached_action = target_action
-                    self.logger.debug("Cached fresh state from buffer for Captum analysis")
                     return state_dict, target_action
             
-            # Use cached state if buffer is empty
-            if self.cached_state is not None:
-                self.logger.info("Using cached state for Captum analysis (buffer empty)")
+            # Strategy 2: Use raw buffer experiences
+            elif hasattr(trainer, "buffer") and hasattr(trainer.buffer, "buffer") and len(trainer.buffer.buffer) > 0:
+                self.logger.debug(f"Using raw buffer with {len(trainer.buffer.buffer)} experiences")
+                
+                # Try multiple recent experiences to find a valid one
+                for i in range(min(5, len(trainer.buffer.buffer))):
+                    experience_idx = -(i + 1)  # -1, -2, -3, -4, -5
+                    experience = trainer.buffer.buffer[experience_idx]
+                    
+                    state_dict = self._extract_state_from_experience(experience, trainer.device)
+                    target_action = self._extract_action_from_experience(experience)
+                    
+                    if state_dict and len(state_dict) >= 4:
+                        self.logger.debug(f"Successfully extracted state from experience {experience_idx}")
+                        # Cache for future use
+                        self.cached_state = state_dict
+                        self.cached_action = target_action
+                        return state_dict, target_action
+                    else:
+                        self.logger.debug(f"Experience {experience_idx} has incomplete state: {list(state_dict.keys()) if state_dict else 'None'}")
+            
+            # Strategy 3: Use cached state
+            elif self.cached_state is not None:
+                self.logger.debug("Using cached state for Captum analysis")
                 return self.cached_state, getattr(self, 'cached_action', None)
             
-            # No data available - skip analysis
-            self.logger.warning("No state available for Captum analysis - no buffer data and no cached state")
+            # No data available
+            self.logger.warning("No valid state data available for Captum analysis")
             return None, None
                 
         except Exception as e:
@@ -292,6 +300,230 @@ class CaptumCallback(BaseCallback):
             import traceback
             self.logger.debug(traceback.format_exc())
             return None, None
+    
+    def _extract_state_from_experience(self, experience: Dict, device: torch.device) -> Dict[str, torch.Tensor]:
+        """Extract and format state from a buffer experience."""
+        state_dict = {}
+        
+        if "state" not in experience:
+            self.logger.debug("No 'state' key in experience")
+            return state_dict
+            
+        state_data = experience["state"]
+        
+        for key in ["hf", "mf", "lf", "portfolio"]:
+            if key in state_data:
+                try:
+                    if isinstance(state_data[key], torch.Tensor):
+                        tensor = state_data[key].to(device)
+                    elif isinstance(state_data[key], np.ndarray):
+                        tensor = torch.from_numpy(state_data[key]).to(device, dtype=torch.float32)
+                    else:
+                        tensor = torch.as_tensor(state_data[key], dtype=torch.float32).to(device)
+                    
+                    # Ensure proper dimensions [batch, seq_len, feat_dim]
+                    if tensor.dim() == 1:  # [feat_dim] -> [1, 1, feat_dim]
+                        tensor = tensor.unsqueeze(0).unsqueeze(0)
+                    elif tensor.dim() == 2:  # [seq_len, feat_dim] -> [1, seq_len, feat_dim]
+                        tensor = tensor.unsqueeze(0)
+                    elif tensor.dim() > 3:
+                        self.logger.warning(f"Unexpected tensor dimension for {key}: {tensor.shape}")
+                        continue
+                    
+                    # Basic sanity check
+                    if tensor.numel() == 0:
+                        self.logger.warning(f"Empty tensor for {key}")
+                        continue
+                        
+                    state_dict[key] = tensor
+                    
+                except Exception as e:
+                    self.logger.warning(f"Error processing {key} in experience state: {e}")
+            else:
+                self.logger.debug(f"Missing {key} in state data")
+                
+        return state_dict
+    
+    def _extract_action_from_experience(self, experience: Dict) -> Optional[int]:
+        """Extract action from a buffer experience and convert to linear index."""
+        if "action" not in experience:
+            self.logger.debug("No 'action' key in experience")
+            return None
+            
+        action = experience["action"]
+        linear_action = self._convert_action_to_linear_index(action)
+        
+        if linear_action is not None:
+            self.logger.debug(f"Converted action {action} -> linear index {linear_action}")
+        else:
+            self.logger.warning(f"Failed to convert action from experience: {action} (type: {type(action)})")
+            
+        return linear_action
+    
+    @staticmethod
+    def test_action_conversion():
+        """Test the action conversion logic with various input formats."""
+        import torch
+        import numpy as np
+        from feature.attribution.captum_attribution import AttributionConfig
+        
+        callback = CaptumCallback(
+            config=AttributionConfig(),
+            enabled=False
+        )
+        
+        # Test cases: (input, expected_output)
+        test_cases = [
+            # Tensor formats
+            (torch.tensor([0, 0]), 0),  # HOLD, 25%
+            (torch.tensor([1, 1]), 5),  # BUY, 50%
+            (torch.tensor([2, 3]), 11), # SELL, 100%
+            (torch.tensor([[1, 2]]), 6), # BUY, 75% (batched)
+            (torch.tensor([7]), 7),      # Linear index
+            
+            # NumPy formats
+            (np.array([0, 1]), 1),       # HOLD, 50%
+            (np.array([2, 2]), 10),      # SELL, 75%
+            (np.array([[1, 0]]), 4),     # BUY, 25% (batched)
+            (np.array([9]), 9),          # Linear index
+            
+            # List/tuple formats
+            ([0, 2], 2),                 # HOLD, 75%
+            ((1, 3), 7),                 # BUY, 100%
+            
+            # Scalar formats
+            (5, 5),                      # Linear index
+            (11, 11),                    # Max linear index
+        ]
+        
+        print("Testing action conversion logic:")
+        for i, (input_action, expected) in enumerate(test_cases):
+            result = callback._convert_action_to_linear_index(input_action)
+            status = "✓" if result == expected else "✗"
+            print(f"  {status} Test {i+1}: {input_action} -> {result} (expected {expected})")
+            
+        # Test invalid cases
+        invalid_cases = [
+            torch.tensor([3, 0]),  # Invalid action type
+            torch.tensor([1, 4]),  # Invalid position size
+            torch.tensor([12]),    # Invalid linear index
+            "invalid",             # Invalid type
+        ]
+        
+        print("\nTesting invalid inputs:")
+        for i, invalid_input in enumerate(invalid_cases):
+            result = callback._convert_action_to_linear_index(invalid_input)
+            status = "✓" if result is None else "✗"
+            print(f"  {status} Invalid {i+1}: {invalid_input} -> {result} (expected None)")
+        
+        print("\nAction space mapping (for reference):")
+        for action_type in range(3):
+            for position_size in range(4):
+                linear_idx = action_type * 4 + position_size
+                action_names = ["HOLD", "BUY", "SELL"]
+                size_names = ["25%", "50%", "75%", "100%"]
+                print(f"  [{action_type}, {position_size}] -> {linear_idx} ({action_names[action_type]}, {size_names[position_size]})")
+    
+    def _convert_action_to_linear_index(self, action: Any) -> Optional[int]:
+        """Convert various action formats to linear index (0-11).
+        
+        The trading environment uses MultiDiscrete([3, 4]) action space:
+        - 3 action types: HOLD=0, BUY=1, SELL=2
+        - 4 position sizes: 25%=0, 50%=1, 75%=2, 100%=3
+        - Linear index = action_type * 4 + position_size
+        
+        Handles all formats found in the buffer:
+        - Tensor with shape [2] -> [action_type, position_size]
+        - Tensor with shape [1, 2] -> batched format
+        - NumPy array with same shapes
+        - List/tuple with 2 elements
+        - Single integer (already linear)
+        """
+        try:
+            # Convert to numpy for consistent handling
+            if isinstance(action, torch.Tensor):
+                action_np = action.detach().cpu().numpy()
+            elif isinstance(action, np.ndarray):
+                action_np = action
+            elif isinstance(action, (list, tuple)):
+                action_np = np.array(action)
+            elif isinstance(action, (int, float)):
+                # Already linear index
+                linear_idx = int(action)
+                if 0 <= linear_idx <= 11:  # Valid range check
+                    return linear_idx
+                else:
+                    self.logger.warning(f"Linear action index {linear_idx} out of range [0, 11]")
+                    return None
+            else:
+                self.logger.warning(f"Unsupported action type: {type(action)}")
+                return None
+            
+            # Handle different array shapes
+            if action_np.size == 1:
+                # Single element - treat as linear index
+                linear_idx = int(action_np.item())
+                if 0 <= linear_idx <= 11:
+                    return linear_idx
+                else:
+                    self.logger.warning(f"Linear action index {linear_idx} out of range [0, 11]")
+                    return None
+                    
+            elif action_np.size == 2:
+                # Two elements - could be flat [action_type, position_size] or [batch=1, linear_idx]
+                if action_np.ndim == 1:
+                    # [action_type, position_size]
+                    action_type, position_size = int(action_np[0]), int(action_np[1])
+                else:
+                    # Could be [[action_type, position_size]] or [batch, linear_idx]
+                    action_flat = action_np.flatten()
+                    if len(action_flat) == 2:
+                        action_type, position_size = int(action_flat[0]), int(action_flat[1])
+                    else:
+                        self.logger.warning(f"Unexpected action shape: {action_np.shape}")
+                        return None
+                
+                # Validate ranges
+                if not (0 <= action_type <= 2):
+                    self.logger.warning(f"Action type {action_type} out of range [0, 2]")
+                    return None
+                if not (0 <= position_size <= 3):
+                    self.logger.warning(f"Position size {position_size} out of range [0, 3]")
+                    return None
+                
+                # Convert to linear index
+                linear_idx = action_type * 4 + position_size
+                return linear_idx
+                
+            elif action_np.shape[-1] == 2:  # Batched format [..., 2]
+                # Take the first sample if batched
+                if action_np.ndim == 2:
+                    action_type, position_size = int(action_np[0, 0]), int(action_np[0, 1])
+                else:
+                    # Flatten and take first two
+                    action_flat = action_np.flatten()
+                    action_type, position_size = int(action_flat[0]), int(action_flat[1])
+                
+                # Validate ranges
+                if not (0 <= action_type <= 2):
+                    self.logger.warning(f"Action type {action_type} out of range [0, 2]")
+                    return None
+                if not (0 <= position_size <= 3):
+                    self.logger.warning(f"Position size {position_size} out of range [0, 3]")
+                    return None
+                
+                # Convert to linear index
+                linear_idx = action_type * 4 + position_size
+                return linear_idx
+                
+            else:
+                self.logger.warning(f"Unexpected action shape: {action_np.shape}, size: {action_np.size}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error converting action to linear index: {e}")
+            self.logger.debug(f"Action details: type={type(action)}, value={action}")
+            return None
     
     def _log_to_wandb(self, results: Dict, trigger: str, count: int):
         """Log attribution results to WandB."""
@@ -364,7 +596,10 @@ class CaptumCallback(BaseCallback):
                     except Exception as e:
                         self.logger.error(f"Error uploading visualization {viz_path}: {str(e)}")
                 
-                self.logger.info(f"Uploaded {len(results['visualizations'])} visualizations to W&B")
+                if results.get('visualizations'):
+                    self.logger.info(f"Uploaded {len(results['visualizations'])} visualizations to W&B")
+                else:
+                    self.logger.debug("No visualizations to upload to W&B")
             
             # Log predictions if available
             if "predictions" in results:

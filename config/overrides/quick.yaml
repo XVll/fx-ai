@@ -99,7 +99,7 @@ captum:
   # Frequent analysis for development debugging
   callback:
     analyze_every_n_episodes: null   # Disabled
-    analyze_every_n_updates: 10      # Every update for testing
+    analyze_every_n_updates: 3      # Every update for testing
     save_to_wandb: true
     save_to_dashboard: true
     output_dir: outputs/captum_dev
