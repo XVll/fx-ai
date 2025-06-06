@@ -75,7 +75,7 @@ class AttributionConfig:
         if self.methods is None:
             self.methods = ["integrated_gradients", "deep_lift"]
         if self.timeseries_branches is None:
-            self.timeseries_branches = ["hf", "mf", "lf", "portfolio"]  # All branches by default
+            self.timeseries_branches = ["hf", "mf", "lf", "portfolio", "fusion"]  # All branches by default
         
         if self.feature_groups is None:
             # Default feature groups based on your system
@@ -247,11 +247,28 @@ class CaptumAttributionAnalyzer:
             lf_features = lf_features[:lf_dim]
             portfolio_features = portfolio_features[:portfolio_dim]
         
+        # Add fusion layer feature names (typically d_model dimensions)
+        if hasattr(self.model, "model_config"):
+            config = self.model.model_config
+            if hasattr(config, "model_dump"):
+                config_dict = config.model_dump()
+            elif hasattr(config, "__dict__"):
+                config_dict = config.__dict__
+            else:
+                config_dict = config
+            
+            d_model = config_dict.get("d_model", 256)
+            fusion_features = [f"fusion_dim_{i}" for i in range(d_model)]
+        else:
+            # Default fusion layer size
+            fusion_features = [f"fusion_dim_{i}" for i in range(256)]
+        
         return {
             "hf": hf_features,
             "mf": mf_features,
             "lf": lf_features,
             "portfolio": portfolio_features,
+            "fusion": fusion_features,
         }
     
     def _get_portfolio_feature_names(self) -> List[str]:
@@ -305,7 +322,12 @@ class CaptumAttributionAnalyzer:
         self.logger.info(f"🔍 Initialized {len(self.methods)} attribution methods")
     
     def _init_layer_methods(self):
-        """Initialize layer-specific attribution methods."""
+        """Initialize layer-specific attribution methods.
+        
+        Layer conductance methods analyze specific layers and return attributions
+        for that layer's output, not for the input features. This is different
+        from input attribution methods that return attributions for all inputs.
+        """
         # Layer conductance for each transformer branch
         action_model = MultiBranchTransformerWrapper(self.model, "action")
         
@@ -420,55 +442,61 @@ class CaptumAttributionAnalyzer:
                     warnings.filterwarnings("ignore", message=".*Target not provided when necessary.*")
                     
                     # Check if this method requires target action
-                    requires_target = "integrated_gradients" in method_name or "deep_lift" in method_name or "gradient_shap" in method_name
+                    # Only action attribution methods need targets, value methods don't
+                    is_action_method = "_action" in method_name
+                    is_value_method = "_value" in method_name
+                    requires_target = is_action_method and ("integrated_gradients" in method_name or "deep_lift" in method_name or "gradient_shap" in method_name or "saliency" in method_name)
                     
                     if requires_target and target_action is None:
                         self.logger.debug(f"Skipping {method_name} - requires target action but none provided")
                         continue
+                    
+                    # Determine the target to use: target_action for action methods, None for value methods
+                    method_target = target_action if is_action_method else None
                     
                     if "integrated_gradients" in method_name:
                         attributions = self._run_integrated_gradients(
                             method, 
                             (hf_features, mf_features, lf_features, portfolio_features),
                             baselines,
-                            target_action,
+                            method_target,
                         )
                     elif "deep_lift" in method_name:
                         attributions = self._run_deep_lift(
                             method,
                             (hf_features, mf_features, lf_features, portfolio_features),
                             baselines,
-                            target_action,
+                            method_target,
                         )
                     elif "gradient_shap" in method_name:
                         attributions = self._run_gradient_shap(
                             method,
                             (hf_features, mf_features, lf_features, portfolio_features),
                             baselines,
-                            target_action,
+                            method_target,
                         )
                     elif "layer_conductance" in method_name:
                         attributions = self._run_layer_conductance(
                             method,
                             (hf_features, mf_features, lf_features, portfolio_features),
                             baselines,
-                            target_action,
+                            method_target,
                         )
                     elif "saliency" in method_name:
-                        # Saliency doesn't always need target
+                        # Use appropriate target based on method type
                         attributions = method.attribute(
                             inputs=(hf_features, mf_features, lf_features, portfolio_features),
-                            target=target_action,
+                            target=method_target,
                         )
                     else:
-                        # Generic attribution - try with target first, then without
+                        # Generic attribution - use method_target based on action/value type
                         try:
                             attributions = method.attribute(
                                 inputs=(hf_features, mf_features, lf_features, portfolio_features),
-                                target=target_action,
+                                target=method_target,
                             )
                         except Exception as e:
-                            if target_action is not None and "target" in str(e).lower():
+                            if method_target is not None and "target" in str(e).lower():
                                 self.logger.debug(f"Retrying {method_name} without target due to: {e}")
                                 attributions = method.attribute(
                                     inputs=(hf_features, mf_features, lf_features, portfolio_features),
@@ -476,18 +504,43 @@ class CaptumAttributionAnalyzer:
                             else:
                                 raise e
                 
-                # Validate attributions
-                if not isinstance(attributions, tuple) or len(attributions) != 4:
-                    self.logger.warning(f"Unexpected attribution format from {method_name}: type={type(attributions)}, len={len(attributions) if isinstance(attributions, tuple) else 'N/A'}")
-                    continue
-                
-                # Store results
-                results["attributions"][method_name] = {
-                    "hf": attributions[0].detach().cpu().numpy(),
-                    "mf": attributions[1].detach().cpu().numpy(),
-                    "lf": attributions[2].detach().cpu().numpy(),
-                    "portfolio": attributions[3].detach().cpu().numpy(),
-                }
+                # Handle different attribution formats
+                if "layer_conductance" in method_name:
+                    # Layer conductance returns a single tensor for the specific layer
+                    if not isinstance(attributions, torch.Tensor):
+                        self.logger.warning(f"Unexpected layer conductance format from {method_name}: type={type(attributions)}")
+                        continue
+                    
+                    # Determine which branch this layer corresponds to
+                    if "hf" in method_name:
+                        branch_key = "hf"
+                    elif "mf" in method_name:
+                        branch_key = "mf"
+                    elif "lf" in method_name:
+                        branch_key = "lf"
+                    elif "fusion" in method_name:
+                        branch_key = "fusion"
+                    else:
+                        self.logger.warning(f"Unknown layer conductance branch in {method_name}")
+                        continue
+                    
+                    # Store single-branch result
+                    results["attributions"][method_name] = {
+                        branch_key: attributions.detach().cpu().numpy()
+                    }
+                else:
+                    # Input attribution methods return tuple of 4 tensors
+                    if not isinstance(attributions, tuple) or len(attributions) != 4:
+                        self.logger.warning(f"Unexpected attribution format from {method_name}: type={type(attributions)}, len={len(attributions) if isinstance(attributions, tuple) else 'N/A'}")
+                        continue
+                    
+                    # Store results for all branches
+                    results["attributions"][method_name] = {
+                        "hf": attributions[0].detach().cpu().numpy(),
+                        "mf": attributions[1].detach().cpu().numpy(),
+                        "lf": attributions[2].detach().cpu().numpy(),
+                        "portfolio": attributions[3].detach().cpu().numpy(),
+                    }
                 
                 successful_methods += 1
                 self.logger.debug(f"Successfully completed {method_name}")
@@ -630,7 +683,11 @@ class CaptumAttributionAnalyzer:
         )
     
     def _run_layer_conductance(self, method, inputs, baselines, target):
-        """Run layer conductance attribution."""
+        """Run layer conductance attribution.
+        
+        Returns a single tensor representing attributions for the specific layer,
+        not a tuple of tensors like input attribution methods.
+        """
         baseline_tuple = (
             baselines["hf"],
             baselines["mf"],
@@ -653,8 +710,8 @@ class CaptumAttributionAnalyzer:
         for method_name, method_attrs in attributions.items():
             aggregated[method_name] = {}
             
-            # Aggregate each branch
-            for branch in ["hf", "mf", "lf", "portfolio"]:
+            # Aggregate each branch (including fusion for layer conductance)
+            for branch in ["hf", "mf", "lf", "portfolio", "fusion"]:
                 if method_attrs.get(branch) is None:
                     continue
                     
@@ -760,7 +817,7 @@ class CaptumAttributionAnalyzer:
             branch_data = []
             branch_labels = []
             
-            for branch in ["hf", "mf", "lf", "portfolio"]:
+            for branch in ["hf", "mf", "lf", "portfolio", "fusion"]:
                 if attributions.get(branch) is not None and attributions[branch] is not None:
                     attrs = attributions[branch]
                     if attrs.ndim > 2:
@@ -950,6 +1007,8 @@ class CaptumAttributionAnalyzer:
                     colors.append("#ff7f0e")
                 elif f.startswith("lf_"):
                     colors.append("#2ca02c")
+                elif f.startswith("fusion_"):
+                    colors.append("#9467bd")
                 else:
                     colors.append("#d62728")
             
@@ -968,6 +1027,7 @@ class CaptumAttributionAnalyzer:
                 Patch(facecolor="#1f77b4", label="HF"),
                 Patch(facecolor="#ff7f0e", label="MF"),
                 Patch(facecolor="#2ca02c", label="LF"),
+                Patch(facecolor="#9467bd", label="Fusion"),
                 Patch(facecolor="#d62728", label="Portfolio"),
             ]
             ax.legend(handles=legend_elements, loc="lower right")
@@ -1015,7 +1075,7 @@ class CaptumAttributionAnalyzer:
             return {}
         
         # Aggregate statistics across history
-        branch_importance_history = {branch: [] for branch in ["hf", "mf", "lf", "portfolio"]}
+        branch_importance_history = {branch: [] for branch in ["hf", "mf", "lf", "portfolio", "fusion"]}
         feature_frequency = {}
         
         for record in self.attribution_history:
@@ -1024,6 +1084,10 @@ class CaptumAttributionAnalyzer:
                 
             for method_data in record["aggregated"].values():
                 for branch, branch_data in method_data.items():
+                    # Initialize branch if not seen before
+                    if branch not in branch_importance_history:
+                        branch_importance_history[branch] = []
+                    
                     if "total_importance" in branch_data:
                         branch_importance_history[branch].append(
                             branch_data["total_importance"]
