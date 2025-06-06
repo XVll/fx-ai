@@ -1071,6 +1071,30 @@ class DashboardCallback(BaseCallback):
             termination_reason = event_data.get("termination_reason")
             if termination_reason:
                 self._add_training_event(f"Training terminated: {termination_reason}", "warning")
+                
+        elif event_name == "captum_analysis":
+            # Handle Captum feature attribution results
+            if not hasattr(self.dashboard_state, "captum_results"):
+                self.dashboard_state.captum_results = {}
+            
+            # Update Captum analysis data
+            self.dashboard_state.captum_results = {
+                "analysis_count": event_data.get("analysis_count", 0),
+                "trigger": event_data.get("trigger", "unknown"),
+                "timestamp": event_data.get("timestamp", datetime.now().isoformat()),
+                "branch_importance": event_data.get("branch_importance", {}),
+                "top_features": event_data.get("top_features", {}),
+                "visualization": event_data.get("visualization", None),
+                "avg_analysis_time": event_data.get("avg_analysis_time", 0.0),
+            }
+            
+            # Add Captum event
+            trigger = event_data.get("trigger", "unknown")
+            count = event_data.get("trigger_count", 0)
+            self._add_training_event(
+                f"Captum analysis #{event_data.get('analysis_count', 0)} ({trigger} {count})",
+                "info"
+            )
 
     def on_reset_point_selected(self, tracking_data: Dict[str, Any]) -> None:
         """Handle reset point selection tracking."""

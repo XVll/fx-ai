@@ -72,6 +72,7 @@ optuna = "^4.1.0"
 optuna-dashboard = "^0.18.0"
 joblib = "^1.4.2"
 scikit-learn = "^1.6.0"
+captum = "^0.7.0"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.24.0"

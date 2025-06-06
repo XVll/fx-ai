@@ -1,0 +1,51 @@
+# Quick Test Configuration for Captum
+# Optimized for fast testing with poe quick command
+
+# Use faster methods for testing
+methods:
+  - saliency  # Fastest method
+  - integrated_gradients  # More accurate but slower
+
+# Reduced parameters for speed
+n_steps: 10  # Fewer steps for faster computation
+n_samples: 5  # Fewer samples
+
+# Analysis settings
+analyze_branches: true
+analyze_fusion: false  # Skip fusion analysis for speed
+analyze_actions: true
+
+# Simple baseline
+baseline_type: zero
+
+# Visualization settings
+save_visualizations: true
+visualization_dir: outputs/captum_test
+heatmap_threshold: 0.05  # Higher threshold for cleaner plots
+
+# Performance settings
+batch_analysis: false
+max_batch_size: 8
+
+# Feature aggregation
+aggregate_features: true
+
+# Simplified feature groups for testing
+feature_groups:
+  price:
+    - price
+    - returns
+  volume:
+    - volume
+    - vwap
+  portfolio:
+    - position
+    - pnl
+
+# Aggressive callback settings for testing
+callback:
+  analyze_every_n_episodes: 2  # Analyze frequently
+  analyze_every_n_updates: 1  # Analyze every update
+  save_to_wandb: true
+  save_to_dashboard: true
+  output_dir: outputs/captum_test

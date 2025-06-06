@@ -55,14 +55,12 @@ class BaseCallback(ABC):
         """
         pass
 
-    def on_episode_end(self, trainer, episode_reward: float, episode_length: int, info: Dict[str, Any]) -> None:
+    def on_episode_end(self, episode_num: int, episode_data: Dict[str, Any]) -> None:
         """Called at the end of each episode.
 
         Args:
-            trainer: The PPO trainer instance
-            episode_reward: Total reward for the episode
-            episode_length: Number of steps in the episode
-            info: Additional episode information
+            episode_num: Current episode number
+            episode_data: Episode data including reward, length, termination info, etc.
         """
         pass
 
@@ -93,7 +91,7 @@ class BaseCallback(ABC):
         """Called before collecting rollouts."""
         pass
 
-    def on_rollout_end(self, trainer) -> None:
+    def on_rollout_end(self, rollout_data: Dict[str, Any]) -> None:
         """Called after collecting rollouts.
 
         Args:
@@ -101,15 +99,19 @@ class BaseCallback(ABC):
         """
         pass
 
-    def on_update_start(self, trainer) -> None:
-        """Called before PPO update."""
+    def on_update_start(self, update_num: int) -> None:
+        """Called before PPO update.
+        
+        Args:
+            update_num: Current update number
+        """
         pass
 
-    def on_update_end(self, trainer, update_metrics: Dict[str, Any]) -> None:
+    def on_update_end(self, update_num: int, update_metrics: Dict[str, Any]) -> None:
         """Called after PPO update.
 
         Args:
-            trainer: The PPO trainer instance
+            update_num: Current update number
             update_metrics: Losses, gradients, learning rate, etc.
         """
         pass
@@ -270,6 +272,8 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
     from agent.optuna_callback import OptunaCallback
     from agent.wandb_callback import WandBCallback
     from agent.dashboard_callback import DashboardCallback
+    from agent.captum_callback import CaptumCallback
+    from feature.attribution.captum_attribution import AttributionConfig
 
     callbacks = []
 
@@ -310,6 +314,48 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
                     enabled=True,
                 )
             )
+
+    # Add Captum callback if configured
+    captum_config = config.get("captum")
+    logging.getLogger(__name__).info(f"Captum config found: {captum_config is not None}")
+    if captum_config:  # Remove model requirement here since it's optional
+        logging.getLogger(__name__).info("Initializing Captum callback...")
+        try:
+            # Handle both dict and Pydantic model
+            if hasattr(captum_config, "model_dump"):
+                # It's a Pydantic model
+                captum_dict = captum_config.model_dump()
+            else:
+                # It's already a dict
+                captum_dict = captum_config.copy() if isinstance(captum_config, dict) else {}
+            
+            # Extract callback settings
+            callback_config = captum_dict.pop("callback", {})
+            
+            # Handle Pydantic callback config
+            if hasattr(callback_config, "model_dump"):
+                callback_dict = callback_config.model_dump()
+            elif isinstance(callback_config, dict):
+                callback_dict = callback_config
+            else:
+                callback_dict = {}
+            
+            # Create AttributionConfig
+            attribution_config = AttributionConfig(**captum_dict)
+            
+            # Create Captum callback
+            captum_callback = CaptumCallback(
+                config=attribution_config,
+                analyze_every_n_episodes=callback_dict.get("analyze_every_n_episodes", 10),
+                analyze_every_n_updates=callback_dict.get("analyze_every_n_updates", 5),
+                save_to_wandb=callback_dict.get("save_to_wandb", True),
+                save_to_dashboard=callback_dict.get("save_to_dashboard", True),
+                output_dir=callback_dict.get("output_dir", "outputs/captum"),
+            )
+            callbacks.append(captum_callback)
+            logging.getLogger(__name__).info("🔍 Captum feature attribution callback added")
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to initialize Captum callback: {e}")
 
     # Add any custom callbacks from config
     for callback_config in config.get("callbacks", []):

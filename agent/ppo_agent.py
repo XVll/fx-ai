@@ -962,6 +962,7 @@ class PPOTrainer:
                     "pnl": info.get("total_pnl", 0),
                     "win_rate": info.get("win_rate", 0),
                     "trades": info.get("total_trades", 0),
+                    "trainer": self,  # Add trainer reference for Captum callback
                 }
                 self.callback_manager.trigger(
                     "on_episode_end", self.global_episode_counter, episode_data
@@ -1583,6 +1584,7 @@ class PPOTrainer:
                 "actions": getattr(self, "_last_batch_actions", None),
                 "buffer_size": self.buffer.get_size(),
             },
+            "trainer": self,  # Add trainer reference for Captum callback
         }
 
         # Comprehensive update summary with interpretation hints
@@ -1859,6 +1861,7 @@ class PPOTrainer:
             # Model info
             "model_config": self.model_config,
             "model": self.model,  # Add model for attribution callback
+            "trainer": self,  # Add trainer reference for callbacks that need it
         }
         self.callback_manager.trigger("on_training_start", training_config)
 

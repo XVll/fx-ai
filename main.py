@@ -361,6 +361,9 @@ def create_callback_manager(
         "simulation": config.simulation.__dict__
         if hasattr(config.simulation, "__dict__")
         else config.simulation,
+        "captum": config.captum.__dict__
+        if hasattr(config, "captum") and config.captum and hasattr(config.captum, "__dict__")
+        else getattr(config, "captum", None),
     }
 
     # Check for Optuna trial info (subprocess mode)

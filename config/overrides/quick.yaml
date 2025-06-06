@@ -6,7 +6,7 @@ training:
 
 env:
   # Quick episode length for development
-  max_steps: 128
+  max_steps: 256
   
   training_manager:
     mode: "production"
@@ -70,3 +70,42 @@ wandb:
   project: fx-ai-development
   tags: [development, quick]
   notes: "Quick development training"
+
+# Captum feature attribution for quick testing
+captum:
+  # Use faster methods for testing
+  methods:
+    - saliency  # Fastest method
+    - integrated_gradients  # More accurate but slower
+  
+  # Reduced parameters for speed
+  n_steps: 10  # Fewer steps for faster computation
+  n_samples: 5  # Fewer samples
+  
+  # Analysis settings
+  analyze_branches: true
+  analyze_fusion: false  # Skip fusion analysis for speed
+  analyze_actions: true
+  
+  # Simple baseline
+  baseline_type: zero
+  
+  # Visualization settings
+  save_visualizations: true
+  visualization_dir: outputs/captum_test
+  heatmap_threshold: 0.05  # Higher threshold for cleaner plots
+  
+  # Performance settings
+  batch_analysis: false
+  max_batch_size: 8
+  
+  # Feature aggregation
+  aggregate_features: true
+  
+  # Aggressive callback settings for testing
+  callback:
+    analyze_every_n_episodes: 2  # Analyze frequently
+    analyze_every_n_updates: 1  # Analyze every update
+    save_to_wandb: true
+    save_to_dashboard: true
+    output_dir: outputs/captum_test

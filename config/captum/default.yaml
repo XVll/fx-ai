@@ -1,0 +1,71 @@
+# Captum Feature Attribution Configuration
+# This configures how Captum analyzes feature importance in the model
+
+# Attribution methods to use
+# Available: integrated_gradients, deep_lift, gradient_shap, saliency, input_x_gradient
+methods:
+  - integrated_gradients
+  - deep_lift
+
+# Method-specific parameters
+n_steps: 50  # Steps for integrated gradients (higher = more accurate but slower)
+n_samples: 25  # Samples for gradient SHAP
+
+# Analysis settings
+analyze_branches: true  # Analyze each transformer branch separately
+analyze_fusion: true  # Analyze attention fusion layer
+analyze_actions: true  # Analyze action head attributions
+
+# Baseline configuration
+# Options: zero (all zeros), mean (feature means), random (small random noise)
+baseline_type: zero
+
+# Visualization settings
+save_visualizations: true
+visualization_dir: outputs/captum
+heatmap_threshold: 0.01  # Minimum attribution value to show in heatmaps
+
+# Performance settings
+batch_analysis: false  # Analyze multiple samples at once
+max_batch_size: 32
+
+# Feature importance aggregation
+aggregate_features: true  # Aggregate attributions by feature groups
+
+# Feature grouping definitions
+# Groups features for better interpretability
+feature_groups:
+  price_action:
+    - price
+    - returns
+    - volatility
+    - price_velocity
+    - price_acceleration
+  volume:
+    - volume
+    - vwap
+    - relative_volume
+    - volume_imbalance
+  microstructure:
+    - spread
+    - bid_ask_imbalance
+    - order_flow
+    - trade_intensity
+  technical:
+    - ema
+    - rsi
+    - patterns
+    - support_resistance
+  portfolio:
+    - position
+    - pnl
+    - risk
+    - drawdown
+
+# Callback settings
+callback:
+  analyze_every_n_episodes: 10  # Run analysis every N episodes
+  analyze_every_n_updates: 5  # Run analysis every N PPO updates
+  save_to_wandb: true  # Log results to Weights & Biases
+  save_to_dashboard: true  # Send results to live dashboard
+  output_dir: outputs/captum  # Directory for analysis reports
