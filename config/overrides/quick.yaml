@@ -94,7 +94,7 @@ captum:
   heatmap_threshold: 0.05
   
   # Performance settings for development
-  batch_analysis: false
+  batch_analysis: true
   aggregate_features: true
   
   # Use actual feature names from feature manager
