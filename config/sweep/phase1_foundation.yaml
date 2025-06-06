@@ -15,7 +15,7 @@ studies:
     load_if_exists: true
     
     # NEW: Base config reference system
-    base_config: momentum_training
+    base_config: sweep
     
     sampler:
       type: TPESampler
@@ -87,40 +87,17 @@ studies:
     n_jobs: 1
     catch_exceptions: true
     
-    # ONLY trial-specific overrides (inherits everything else from momentum_training)
+    # ONLY trial-specific overrides (inherits sweep base config)
     trial_overrides:
-      mode: train
       experiment_name: sweep_foundation
       
       training:
-        checkpoint_interval: 5
-        eval_frequency: 2        # Evaluate more frequently for short trials  
-        eval_episodes: 5         # More evaluation episodes
-        continue_training: false # Always start fresh
         n_epochs: 4              # Fewer epochs for speed
-      
-      env:
-        max_steps: 256   # Longer episodes for meaningful trading
+        continue_training: false # Always start fresh
       
       wandb:
-        enabled: false           # Disable W&B for faster trials  
         project: fx-ai-sweep-foundation
         tags: [sweep, phase1, foundation]
         notes: "Phase 1: Foundation hyperparameter optimization"
-        save_model: false        # Don't save models during optimization
-      
-      dashboard:
-        enabled: false           # Disable during optimization
-      
-      logging:
-        level: INFO              # Show more info for debugging
-        file_enabled: false      # Reduce I/O during trials
-        log_actions: false
-        log_features: false
-        console_enabled: true    # Enable console logging for debugging
     
-    episodes_per_trial: 1000     # Estimated episodes for 10 updates
-    eval_frequency: 5
-    eval_episodes: 3
     save_checkpoints: false      # Don't save checkpoints during foundation
-    checkpoint_dir: sweep_foundation_checkpoints

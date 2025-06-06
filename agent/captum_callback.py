@@ -156,12 +156,21 @@ class CaptumCallback(BaseCallback):
             start_time = datetime.now()
             
             # Get a sample from the environment
-            state_dict, target_action = self._get_sample_state(trainer)
-            if state_dict is None:
+            result = self._get_sample_state(trainer)
+            if result is None:
                 return
             
+            state_dict, target_action = result
+            if state_dict is None:
+                return
+                
+            # Log what we're analyzing
+            if target_action is not None:
+                self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count}, target_action: {target_action})")
+            else:
+                self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count}, no target action available)")
+            
             # Run attribution analysis
-            self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count})")
             results = self.analyzer.analyze_sample(state_dict, target_action=target_action)
             
             # Track analysis
@@ -227,13 +236,41 @@ class CaptumCallback(BaseCallback):
                     # Get the action taken for this state if available
                     target_action = None
                     if "action" in recent_experience:
-                        action = recent_experience["action"]
-                        if isinstance(action, (list, tuple)) and len(action) >= 2:
-                            # Convert (action_type, position_size) to flat index
-                            action_type, position_size = action[0], action[1]
-                            target_action = int(action_type * 4 + position_size)
-                        elif isinstance(action, (int, torch.Tensor)):
-                            target_action = int(action)
+                        try:
+                            action = recent_experience["action"]
+                            self.logger.debug(f"Action from buffer - type: {type(action)}, value: {action if not isinstance(action, torch.Tensor) else f'tensor shape {action.shape}'}")
+                            
+                            if isinstance(action, torch.Tensor):
+                                # Handle tensor actions
+                                if action.numel() == 1:
+                                    target_action = int(action.item())
+                                elif action.numel() == 2:
+                                    # Assume (action_type, position_size)
+                                    action_type = int(action[0].item())
+                                    position_size = int(action[1].item())
+                                    target_action = action_type * 4 + position_size
+                                else:
+                                    # Take first element as a fallback
+                                    target_action = int(action[0].item())
+                            elif isinstance(action, (list, tuple)) and len(action) >= 2:
+                                # Convert (action_type, position_size) to flat index
+                                action_type = int(action[0]) if not isinstance(action[0], torch.Tensor) else int(action[0].item())
+                                position_size = int(action[1]) if not isinstance(action[1], torch.Tensor) else int(action[1].item())
+                                target_action = action_type * 4 + position_size
+                            elif isinstance(action, (int, float)):
+                                target_action = int(action)
+                            elif isinstance(action, np.ndarray):
+                                # Handle numpy arrays
+                                if action.size == 1:
+                                    target_action = int(action.item())
+                                elif action.size == 2:
+                                    target_action = int(action[0] * 4 + action[1])
+                                else:
+                                    target_action = int(action.flat[0])
+                            else:
+                                self.logger.debug(f"Unknown action type: {type(action)}, value: {action}")
+                        except Exception as e:
+                            self.logger.debug(f"Failed to extract action: {e}, action was: {action}")
                     
                     # Cache this good state for future use
                     self.cached_state = state_dict
@@ -252,6 +289,8 @@ class CaptumCallback(BaseCallback):
                 
         except Exception as e:
             self.logger.error(f"Error getting sample state: {str(e)}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
             return None, None
     
     def _log_to_wandb(self, results: Dict, trigger: str, count: int):

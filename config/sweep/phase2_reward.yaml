@@ -15,7 +15,7 @@ studies:
     load_if_exists: true
     
     # NEW: Base config reference system
-    base_config: momentum_training
+    base_config: sweep
     
     sampler:
       type: CmaEsSampler      # Better for continuous reward coefficients
@@ -99,13 +99,9 @@ studies:
     
     # ONLY trial-specific overrides (foundation params will be set by transfer script)
     trial_overrides:
-      mode: train
       experiment_name: sweep_reward
       
       training:
-        checkpoint_interval: 8
-        eval_frequency: 8
-        eval_episodes: 5
         continue_training: false
         
         # FIXED foundation parameters (populated by transfer script)
@@ -119,27 +115,11 @@ studies:
         # d_model: [SET BY TRANSFER]
         # n_layers: [SET BY TRANSFER]
         # dropout: [SET BY TRANSFER]
-        
-      env:
-        max_steps: 256   # Longer episodes for meaningful trading
       
       wandb:
         enabled: true
         project: fx-ai-sweep-reward
         tags: [sweep, phase2, reward]
         notes: "Phase 2: Reward system optimization with fixed foundation"
-        save_model: false
-      
-      dashboard:
-        enabled: false
-      
-      logging:
-        file_enabled: false
-        log_actions: false
-        log_features: false
     
-    episodes_per_trial: 2500     # ~25 updates × estimated episodes per update
-    eval_frequency: 8
-    eval_episodes: 5
     save_checkpoints: false
-    checkpoint_dir: sweep_reward_checkpoints

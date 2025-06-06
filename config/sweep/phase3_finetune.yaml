@@ -15,7 +15,7 @@ studies:
     load_if_exists: true
     
     # NEW: Base config reference system
-    base_config: momentum_training
+    base_config: sweep
     
     sampler:
       type: TPESampler      # Fine-grained exploration for remaining parameters
@@ -82,13 +82,9 @@ studies:
     
     # ONLY trial-specific overrides (foundation+reward params will be set by transfer script)
     trial_overrides:
-      mode: train
       experiment_name: sweep_finetune
       
       training:
-        checkpoint_interval: 12
-        eval_frequency: 12
-        eval_episodes: 8
         continue_training: false
         
         # FIXED foundation parameters (populated by transfer script)
@@ -96,9 +92,6 @@ studies:
         # batch_size: [SET BY TRANSFER]
         # entropy_coef: [SET BY TRANSFER]
         # gamma: [SET BY TRANSFER]
-        
-        # FIXED reward parameters (populated by transfer script)
-        # All reward coefficients from Phase 2 will be transferred
       
       model:
         # FIXED foundation parameters (populated by transfer script)
@@ -107,8 +100,6 @@ studies:
         # dropout: [SET BY TRANSFER]
         
       env:
-        max_steps: 256   # Longer episodes for meaningful trading
-        
         reward:
           # FIXED parameters from previous phases (populated by transfer script)
           # pnl_coefficient: [SET BY TRANSFER]
@@ -129,18 +120,5 @@ studies:
         project: fx-ai-sweep-finetune
         tags: [sweep, phase3, finetune]
         notes: "Phase 3: Fine-tuning with fixed foundation and reward parameters"
-        save_model: false
-      
-      dashboard:
-        enabled: false
-      
-      logging:
-        file_enabled: false
-        log_actions: false
-        log_features: false
     
-    episodes_per_trial: 4000     # ~40 updates × estimated episodes per update
-    eval_frequency: 12
-    eval_episodes: 8
     save_checkpoints: false
-    checkpoint_dir: sweep_finetune_checkpoints
