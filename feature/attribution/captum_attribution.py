@@ -445,14 +445,18 @@ class CaptumAttributionAnalyzer:
                     # Only action attribution methods need targets, value methods don't
                     is_action_method = "_action" in method_name
                     is_value_method = "_value" in method_name
-                    requires_target = is_action_method and ("integrated_gradients" in method_name or "deep_lift" in method_name or "gradient_shap" in method_name or "saliency" in method_name)
+                    is_layer_conductance = "layer_conductance" in method_name
+                    
+                    # All layer conductance methods need targets because they're created with action_model
+                    # Other methods need targets only if they're action methods
+                    requires_target = (is_action_method and ("integrated_gradients" in method_name or "deep_lift" in method_name or "gradient_shap" in method_name or "saliency" in method_name)) or is_layer_conductance
                     
                     if requires_target and target_action is None:
                         self.logger.debug(f"Skipping {method_name} - requires target action but none provided")
                         continue
                     
-                    # Determine the target to use: target_action for action methods, None for value methods
-                    method_target = target_action if is_action_method else None
+                    # Determine the target to use: target_action for action methods and layer conductance, None for value methods
+                    method_target = target_action if (is_action_method or is_layer_conductance) else None
                     
                     if "integrated_gradients" in method_name:
                         attributions = self._run_integrated_gradients(
@@ -760,7 +764,8 @@ class CaptumAttributionAnalyzer:
                 display_name += " (Value)"
                 
             # Branch comparison heatmap
-            if getattr(self.config, 'create_branch_heatmap', True):
+            # Skip for layer conductance methods as they only analyze single layers
+            if getattr(self.config, 'create_branch_heatmap', True) and "layer_conductance" not in method_name:
                 fig = self._create_branch_heatmap(display_name, attributions)
                 if fig:
                     path = self.viz_dir / f"{method_name}_branches_{timestamp}.png"
