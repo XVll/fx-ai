@@ -10,6 +10,7 @@ import seaborn as sns
 import pandas as pd
 from pathlib import Path
 import json
+import warnings
 
 # Import feature registry for consistent feature names
 from feature.feature_registry import FeatureRegistry
@@ -343,6 +344,10 @@ class CaptumAttributionAnalyzer:
             lf_features = lf_features.unsqueeze(0)
         if portfolio_features.dim() == 2:
             portfolio_features = portfolio_features.unsqueeze(0)
+            
+        # Convert target action to tensor if needed
+        if target_action is not None and not isinstance(target_action, torch.Tensor):
+            target_action = torch.tensor([target_action], dtype=torch.long, device=hf_features.device)
         
         # Create baselines
         baselines = self._create_baseline({
@@ -362,40 +367,45 @@ class CaptumAttributionAnalyzer:
         # Run each attribution method
         for method_name, method in self.methods.items():
             try:
-                if "integrated_gradients" in method_name:
-                    attributions = self._run_integrated_gradients(
-                        method, 
-                        (hf_features, mf_features, lf_features, portfolio_features),
-                        baselines,
-                        target_action,
-                    )
-                elif "deep_lift" in method_name:
-                    attributions = self._run_deep_lift(
-                        method,
-                        (hf_features, mf_features, lf_features, portfolio_features),
-                        baselines,
-                        target_action,
-                    )
-                elif "gradient_shap" in method_name:
-                    attributions = self._run_gradient_shap(
-                        method,
-                        (hf_features, mf_features, lf_features, portfolio_features),
-                        baselines,
-                        target_action,
-                    )
-                elif "layer_conductance" in method_name:
-                    attributions = self._run_layer_conductance(
-                        method,
-                        (hf_features, mf_features, lf_features, portfolio_features),
-                        baselines,
-                        target_action,
-                    )
-                else:
-                    # Generic attribution
-                    attributions = method.attribute(
-                        inputs=(hf_features, mf_features, lf_features, portfolio_features),
-                        target=target_action,
-                    )
+                # Suppress the gradient warnings - they're expected and harmless
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message=".*did not already require gradients.*")
+                    warnings.filterwarnings("ignore", message=".*Setting forward, backward hooks.*")
+                    
+                    if "integrated_gradients" in method_name:
+                        attributions = self._run_integrated_gradients(
+                            method, 
+                            (hf_features, mf_features, lf_features, portfolio_features),
+                            baselines,
+                            target_action,
+                        )
+                    elif "deep_lift" in method_name:
+                        attributions = self._run_deep_lift(
+                            method,
+                            (hf_features, mf_features, lf_features, portfolio_features),
+                            baselines,
+                            target_action,
+                        )
+                    elif "gradient_shap" in method_name:
+                        attributions = self._run_gradient_shap(
+                            method,
+                            (hf_features, mf_features, lf_features, portfolio_features),
+                            baselines,
+                            target_action,
+                        )
+                    elif "layer_conductance" in method_name:
+                        attributions = self._run_layer_conductance(
+                            method,
+                            (hf_features, mf_features, lf_features, portfolio_features),
+                            baselines,
+                            target_action,
+                        )
+                    else:
+                        # Generic attribution
+                        attributions = method.attribute(
+                            inputs=(hf_features, mf_features, lf_features, portfolio_features),
+                            target=target_action,
+                        )
                 
                 # Store results
                 results["attributions"][method_name] = {
