@@ -33,12 +33,12 @@ def test_captum_direct():
     )
     model.eval()
     
-    # Create Captum analyzer
+    # Create Captum analyzer with layer conductance to test the fix
     attr_config = AttributionConfig(
         methods=["saliency"],
         n_steps=5,
-        analyze_branches=False,
-        analyze_fusion=False,
+        analyze_branches=True,  # Enable layer conductance
+        analyze_fusion=True,    # Enable fusion layer conductance
         analyze_actions=True,
         save_visualizations=False,
     )
@@ -75,7 +75,18 @@ def test_captum_direct():
         logger.info(f"Results keys: {list(results.keys())}")
         
         if 'attributions' in results:
-            logger.info(f"Methods analyzed: {list(results['attributions'].keys())}")
+            methods = list(results['attributions'].keys())
+            logger.info(f"Methods analyzed: {methods}")
+            
+            # Check if layer conductance methods were processed successfully
+            layer_methods = [m for m in methods if 'layer_conductance' in m]
+            if layer_methods:
+                logger.info(f"✅ Layer conductance methods processed: {layer_methods}")
+                for method in layer_methods:
+                    branches = list(results['attributions'][method].keys())
+                    logger.info(f"  {method} - branches: {branches}")
+            else:
+                logger.info("ℹ️  No layer conductance methods found")
         else:
             logger.info(f"No attributions in results")
         
