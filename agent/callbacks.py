@@ -341,6 +341,10 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
                 # Extract callback settings
                 callback_config = captum_dict.pop("callback", {})
                 
+                # Remove fields that are not part of AttributionConfig
+                captum_dict.pop("enabled", None)
+                captum_dict.pop("use_feature_manager_names", None)
+                
                 # Handle Pydantic callback config
                 if hasattr(callback_config, "model_dump"):
                     callback_dict = callback_config.model_dump()
