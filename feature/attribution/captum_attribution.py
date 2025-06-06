@@ -59,6 +59,9 @@ class AttributionConfig:
     create_timeseries_plot: bool = True
     create_aggregated_plot: bool = True
     
+    # Which branches to create timeseries plots for
+    timeseries_branches: List[str] = None  # Default: ["hf", "mf", "lf"]
+    
     # Performance settings
     batch_analysis: bool = False  # Analyze multiple samples at once
     max_batch_size: int = 32
@@ -70,6 +73,8 @@ class AttributionConfig:
     def __post_init__(self):
         if self.methods is None:
             self.methods = ["integrated_gradients", "deep_lift"]
+        if self.timeseries_branches is None:
+            self.timeseries_branches = ["hf", "mf", "lf", "portfolio"]  # All branches by default
         
         if self.feature_groups is None:
             # Default feature groups based on your system
@@ -604,27 +609,17 @@ class CaptumAttributionAnalyzer:
             
             # Time series attribution plots
             if getattr(self.config, 'create_timeseries_plot', True):
-                # HF timeseries
-                if attributions.get("hf") is not None:
-                    fig = self._create_timeseries_plot(display_name, attributions["hf"], "hf")
-                    if fig:
-                        path = self.viz_dir / f"{method_name}_hf_timeseries_{timestamp}.png"
-                        # Ensure directory exists
-                        path.parent.mkdir(parents=True, exist_ok=True)
-                        fig.savefig(path, dpi=150, bbox_inches="tight")
-                        plt.close(fig)
-                        viz_paths.append(str(path))
-                        self.logger.info(f"Created HF timeseries plot: {path.name}")
-                
-                # MF timeseries if available
-                if attributions.get("mf") is not None and self.config.analyze_branches:
-                    fig = self._create_timeseries_plot(display_name, attributions["mf"], "mf")
-                    if fig:
-                        path = self.viz_dir / f"{method_name}_mf_timeseries_{timestamp}.png"
-                        path.parent.mkdir(parents=True, exist_ok=True)
-                        fig.savefig(path, dpi=150, bbox_inches="tight")
-                        plt.close(fig)
-                        viz_paths.append(str(path))
+                # Create timeseries for configured branches
+                for branch in self.config.timeseries_branches:
+                    if attributions.get(branch) is not None:
+                        fig = self._create_timeseries_plot(display_name, attributions[branch], branch)
+                        if fig:
+                            path = self.viz_dir / f"{method_name}_{branch}_timeseries_{timestamp}.png"
+                            path.parent.mkdir(parents=True, exist_ok=True)
+                            fig.savefig(path, dpi=150, bbox_inches="tight")
+                            plt.close(fig)
+                            viz_paths.append(str(path))
+                            self.logger.info(f"Created {branch.upper()} timeseries plot: {path.name}")
         
         # Create aggregated importance plot
         if getattr(self.config, 'create_aggregated_plot', True) and results.get("aggregated"):
