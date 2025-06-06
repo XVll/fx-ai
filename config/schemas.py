@@ -568,6 +568,65 @@ class DashboardConfig(BaseModel):
     )
 
 
+class CaptumCallbackConfig(BaseModel):
+    """Captum callback configuration"""
+    
+    analyze_every_n_episodes: int = Field(10, description="Run analysis every N episodes")
+    analyze_every_n_updates: int = Field(5, description="Run analysis every N PPO updates")
+    save_to_wandb: bool = Field(True, description="Log results to Weights & Biases")
+    save_to_dashboard: bool = Field(True, description="Send results to live dashboard")
+    output_dir: str = Field("outputs/captum", description="Directory for analysis reports")
+
+
+class CaptumConfig(BaseModel):
+    """Captum feature attribution configuration"""
+    
+    # Attribution methods to use
+    methods: List[str] = Field(
+        default_factory=lambda: ["integrated_gradients", "deep_lift"],
+        description="Attribution methods: integrated_gradients, deep_lift, gradient_shap, saliency, input_x_gradient"
+    )
+    
+    # Method-specific parameters
+    n_steps: int = Field(50, description="Steps for integrated gradients")
+    n_samples: int = Field(25, description="Samples for gradient SHAP")
+    
+    # Analysis settings
+    analyze_branches: bool = Field(True, description="Analyze each transformer branch separately")
+    analyze_fusion: bool = Field(True, description="Analyze attention fusion layer")
+    analyze_actions: bool = Field(True, description="Analyze action head attributions")
+    
+    # Baseline configuration
+    baseline_type: str = Field("zero", description="Baseline type: zero, mean, random")
+    
+    # Visualization settings
+    save_visualizations: bool = Field(True, description="Save attribution visualizations")
+    visualization_dir: str = Field("outputs/captum", description="Visualization directory")
+    heatmap_threshold: float = Field(0.01, description="Minimum attribution value to show")
+    
+    # Performance settings
+    batch_analysis: bool = Field(False, description="Analyze multiple samples at once")
+    max_batch_size: int = Field(32, description="Maximum batch size for analysis")
+    
+    # Feature importance aggregation
+    aggregate_features: bool = Field(True, description="Aggregate attributions by feature groups")
+    
+    # Feature grouping definitions
+    feature_groups: Dict[str, List[str]] = Field(
+        default_factory=lambda: {
+            "price_action": ["price", "returns", "volatility", "price_velocity", "price_acceleration"],
+            "volume": ["volume", "vwap", "relative_volume", "volume_imbalance"],
+            "microstructure": ["spread", "bid_ask_imbalance", "order_flow", "trade_intensity"],
+            "technical": ["ema", "rsi", "patterns", "support_resistance"],
+            "portfolio": ["position", "pnl", "risk", "drawdown"],
+        },
+        description="Feature grouping definitions"
+    )
+    
+    # Callback settings
+    callback: CaptumCallbackConfig = Field(default_factory=CaptumCallbackConfig)
+
+
 # =============================================================================
 # DAY SELECTION CONFIGURATION
 # =============================================================================
@@ -612,6 +671,9 @@ class Config(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     wandb: WandbConfig = Field(default_factory=WandbConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
+    
+    # Feature attribution analysis
+    captum: Optional[CaptumConfig] = Field(None, description="Captum feature attribution config")
 
     # Runtime settings
     experiment_name: str = Field("momentum_training", description="Experiment name")

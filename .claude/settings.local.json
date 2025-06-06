@@ -83,7 +83,9 @@
       "Bash(PYTHONPATH=/home/fx/PycharmProjects/fx-ai python -m pytest tests/test_portfolio_simulator.py::TestPortfolioInitialization -v)",
       "Bash(setxkbmap:*)",
       "Bash(npm install:*)",
-      "Bash(pyright:*)"
+      "Bash(pyright:*)",
+      "Bash(gtimeout:*)",
+      "Bash(kill:*)"
     ],
     "deny": []
   },
