@@ -318,44 +318,49 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
     # Add Captum callback if configured
     captum_config = config.get("captum")
     logging.getLogger(__name__).info(f"Captum config found: {captum_config is not None}")
-    if captum_config:  # Remove model requirement here since it's optional
-        logging.getLogger(__name__).info("Initializing Captum callback...")
-        try:
-            # Handle both dict and Pydantic model
-            if hasattr(captum_config, "model_dump"):
-                # It's a Pydantic model
-                captum_dict = captum_config.model_dump()
-            else:
-                # It's already a dict
-                captum_dict = captum_config.copy() if isinstance(captum_config, dict) else {}
-            
-            # Extract callback settings
-            callback_config = captum_dict.pop("callback", {})
-            
-            # Handle Pydantic callback config
-            if hasattr(callback_config, "model_dump"):
-                callback_dict = callback_config.model_dump()
-            elif isinstance(callback_config, dict):
-                callback_dict = callback_config
-            else:
-                callback_dict = {}
-            
-            # Create AttributionConfig
-            attribution_config = AttributionConfig(**captum_dict)
-            
-            # Create Captum callback
-            captum_callback = CaptumCallback(
-                config=attribution_config,
-                analyze_every_n_episodes=callback_dict.get("analyze_every_n_episodes", 10),
-                analyze_every_n_updates=callback_dict.get("analyze_every_n_updates", 5),
-                save_to_wandb=callback_dict.get("save_to_wandb", True),
-                save_to_dashboard=callback_dict.get("save_to_dashboard", True),
-                output_dir=callback_dict.get("output_dir", "outputs/captum"),
-            )
-            callbacks.append(captum_callback)
-            logging.getLogger(__name__).info("🔍 Captum feature attribution callback added")
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to initialize Captum callback: {e}")
+    if captum_config:
+        # Check if Captum is enabled
+        captum_enabled = captum_config.get("enabled", True) if isinstance(captum_config, dict) else getattr(captum_config, "enabled", True)
+        if not captum_enabled:
+            logging.getLogger(__name__).info("Captum is disabled via config, skipping initialization")
+        else:
+            logging.getLogger(__name__).info("Initializing Captum callback...")
+            try:
+                # Handle both dict and Pydantic model
+                if hasattr(captum_config, "model_dump"):
+                    # It's a Pydantic model
+                    captum_dict = captum_config.model_dump()
+                else:
+                    # It's already a dict
+                    captum_dict = captum_config.copy() if isinstance(captum_config, dict) else {}
+                
+                # Extract callback settings
+                callback_config = captum_dict.pop("callback", {})
+                
+                # Handle Pydantic callback config
+                if hasattr(callback_config, "model_dump"):
+                    callback_dict = callback_config.model_dump()
+                elif isinstance(callback_config, dict):
+                    callback_dict = callback_config
+                else:
+                    callback_dict = {}
+                
+                # Create AttributionConfig
+                attribution_config = AttributionConfig(**captum_dict)
+                
+                # Create Captum callback
+                captum_callback = CaptumCallback(
+                    config=attribution_config,
+                    analyze_every_n_episodes=callback_dict.get("analyze_every_n_episodes", 10),
+                    analyze_every_n_updates=callback_dict.get("analyze_every_n_updates", 5),
+                    save_to_wandb=callback_dict.get("save_to_wandb", True),
+                    save_to_dashboard=callback_dict.get("save_to_dashboard", True),
+                    output_dir=callback_dict.get("output_dir", "outputs/captum"),
+                )
+                callbacks.append(captum_callback)
+                logging.getLogger(__name__).info("🔍 Captum feature attribution callback added")
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Failed to initialize Captum callback: {e}")
 
     # Add any custom callbacks from config
     for callback_config in config.get("callbacks", []):

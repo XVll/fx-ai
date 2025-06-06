@@ -1,51 +1,72 @@
-# Quick Test Configuration for Captum
-# Optimized for fast testing with poe quick command
+# Quick Test Configuration for Captum Feature Attribution
+# Optimized for fast development and debugging
 
-# Use faster methods for testing
+# Fast attribution methods only
 methods:
   - saliency  # Fastest method
-  - integrated_gradients  # More accurate but slower
 
-# Reduced parameters for speed
-n_steps: 10  # Fewer steps for faster computation
-n_samples: 5  # Fewer samples
+# Minimal parameters for speed
+n_steps: 5  # Very few steps for integrated gradients
+n_samples: 3  # Minimal samples
 
-# Analysis settings
-analyze_branches: true
+# Quick analysis settings
+analyze_branches: true  # Analyze branches
 analyze_fusion: false  # Skip fusion analysis for speed
-analyze_actions: true
+analyze_actions: true  # Analyze actions
 
 # Simple baseline
 baseline_type: zero
 
-# Visualization settings
+# Visualization settings for debugging
 save_visualizations: true
-visualization_dir: outputs/captum_test
-heatmap_threshold: 0.05  # Higher threshold for cleaner plots
+visualization_dir: outputs/captum_quick
+heatmap_threshold: 0.05  # Higher threshold for cleaner visualizations
 
 # Performance settings
 batch_analysis: false
-max_batch_size: 8
-
-# Feature aggregation
 aggregate_features: true
 
-# Simplified feature groups for testing
+# Simplified feature groups for quick testing
 feature_groups:
-  price:
-    - price
-    - returns
-  volume:
-    - volume
-    - vwap
-  portfolio:
-    - position
-    - pnl
+  # High-frequency (top features only)
+  hf_core:
+    - price_velocity
+    - price_acceleration
+    - tape_imbalance
+    - volume_velocity
+  
+  # Medium-frequency (key patterns only)
+  mf_core:
+    - distance_to_ema9_1m
+    - distance_to_ema20_1m
+    - distance_to_vwap
+    - relative_volume
+    - momentum_quality
+  
+  # Low-frequency (essential context)
+  lf_core:
+    - daily_range_position
+    - support_distance
+    - resistance_distance
+    - session_progress
+  
+  # Portfolio (all features - they're already minimal)
+  portfolio_all:
+    - position_size_normalized
+    - unrealized_pnl_normalized
+    - time_in_position
+    - cash_ratio
+    - session_pnl_percentage
+    - max_favorable_excursion
+    - max_adverse_excursion
+    - profit_giveback_ratio
+    - recovery_ratio
+    - trade_quality_score
 
-# Aggressive callback settings for testing
+# Frequent analysis for debugging
 callback:
-  analyze_every_n_episodes: 2  # Analyze frequently
-  analyze_every_n_updates: 1  # Analyze every update
+  analyze_every_n_episodes: 2  # Very frequent for debugging
+  analyze_every_n_updates: 5   # Very frequent for debugging
   save_to_wandb: true
   save_to_dashboard: true
-  output_dir: outputs/captum_test
+  output_dir: outputs/captum_quick

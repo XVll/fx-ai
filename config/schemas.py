@@ -571,8 +571,8 @@ class DashboardConfig(BaseModel):
 class CaptumCallbackConfig(BaseModel):
     """Captum callback configuration"""
     
-    analyze_every_n_episodes: int = Field(10, description="Run analysis every N episodes")
-    analyze_every_n_updates: int = Field(5, description="Run analysis every N PPO updates")
+    analyze_every_n_episodes: Optional[int] = Field(10, description="Run analysis every N episodes (null to disable)")
+    analyze_every_n_updates: Optional[int] = Field(5, description="Run analysis every N PPO updates (null to disable)")
     save_to_wandb: bool = Field(True, description="Log results to Weights & Biases")
     save_to_dashboard: bool = Field(True, description="Send results to live dashboard")
     output_dir: str = Field("outputs/captum", description="Directory for analysis reports")
@@ -580,6 +580,9 @@ class CaptumCallbackConfig(BaseModel):
 
 class CaptumConfig(BaseModel):
     """Captum feature attribution configuration"""
+    
+    # Enable/disable Captum analysis
+    enabled: bool = Field(True, description="Enable/disable Captum feature attribution analysis")
     
     # Attribution methods to use
     methods: List[str] = Field(

@@ -58,3 +58,45 @@ env:
 
 # Model configuration for training
 model: {}
+
+# Production W&B settings
+wandb:
+  enabled: true
+  project: fx-ai-production
+  tags: [production, training]
+  notes: "Full production training with model insights"
+
+# Captum feature attribution for production insights
+captum:
+  enabled: true
+  # Balanced methods for production insights
+  methods:
+    - saliency     # Fast baseline
+    - deep_lift    # More accurate attribution
+  
+  # Production analysis parameters
+  n_steps: 25      # Balanced accuracy/speed
+  n_samples: 5     # Reasonable sampling
+  
+  # Full analysis settings for production
+  analyze_branches: true
+  analyze_fusion: true   # Include attention analysis
+  analyze_actions: true
+  baseline_type: zero
+  
+  # Production visualization settings
+  save_visualizations: false  # Skip plots for speed, focus on data
+  visualization_dir: outputs/captum_prod
+  heatmap_threshold: 0.01      # Lower threshold for detail
+  
+  # Production performance settings
+  batch_analysis: false
+  aggregate_features: true
+  
+  # Conservative analysis frequency for production
+  callback:
+    analyze_every_n_episodes: null  # Every 10 episodes
+    analyze_every_n_updates: 10    # Every 5 updates
+    save_to_wandb: true           # Focus on WandB logging
+    save_to_dashboard: false      # Reduce overhead
+    output_dir: outputs/captum_prod
