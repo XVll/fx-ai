@@ -1,0 +1,17 @@
+{
+  "version": 418,
+  "timestamp": "20250606_180837",
+  "reward": 0.0,
+  "metrics": {
+    "mean_reward": 0.0,
+    "recent_reward": -22.137289120510577,
+    "update_iter": 19,
+    "episode_count": 19,
+    "global_steps": 4864,
+    "timestamp": 1749222517.426059,
+    "mode": "production",
+    "recent_episodes_count": 10,
+    "training_active": true
+  },
+  "source": "outputs/momentum_training_20250606_175847/models/checkpoint_iter19.pt"
+}

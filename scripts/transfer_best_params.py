@@ -17,7 +17,7 @@ def load_best_parameters(study_name: str) -> Dict[str, Any]:
     """Load best parameters from completed Optuna study."""
     try:
         study = optuna.load_study(
-            study_name=study_name, storage="sqlite:///optuna_studies.db"
+            study_name=study_name, storage="sqlite:///sweep_studies.db"
         )
 
         best_trial = study.best_trial
@@ -96,7 +96,7 @@ def transfer_phase1_to_phase2():
         # Note: pnl_coefficient will be re-optimized in phase 2
     }
 
-    config_path = Path("config/optuna/phase2_reward.yaml")
+    config_path = Path("config/sweep/phase2_reward.yaml")
     update_config_with_params(config_path, best_params, param_mapping)
 
 
@@ -144,7 +144,7 @@ def transfer_phase2_to_phase3():
         "env.reward.max_holding_time_steps": "env.reward.max_holding_time_steps",
     }
 
-    config_path = Path("config/optuna/phase3_finetune.yaml")
+    config_path = Path("config/sweep/phase3_finetune.yaml")
     update_config_with_params(config_path, all_best_params, param_mapping)
 
     print("✅ Phase 3 uses base config inheritance - no refinement ranges needed")
@@ -165,7 +165,7 @@ def show_phase_status():
     for phase_name, study_name in phases:
         try:
             study = optuna.load_study(
-                study_name=study_name, storage="sqlite:///optuna_studies.db"
+                study_name=study_name, storage="sqlite:///sweep_studies.db"
             )
             n_trials = len(study.trials)
 

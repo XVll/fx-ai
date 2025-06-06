@@ -2,14 +2,15 @@
 # Optimized for fast, deterministic trials with minimal overhead
 
 env:
+  max_steps: 256  
   training_manager:
     mode: "sweep"
     
     # Fixed termination for consistent trials (for entire training)
     termination:
-      training_max_episodes: 500         # Fixed episode limit
-      training_max_updates: 100          # Fixed update limit for fast trials
-      training_max_cycles: 10           # Fixed cycle limit for consistency
+      training_max_episodes: null         # Fixed episode limit
+      training_max_updates: null          # Fixed update limit for fast trials
+      training_max_cycles: 1           # Fixed cycle limit for consistency
       intelligent_termination: false  # Disabled for deterministic behavior
       plateau_patience: 999999  # Effectively disabled
       degradation_threshold: 1.0  # Effectively disabled
@@ -22,11 +23,11 @@ env:
       
       # Centralized evaluation settings
       evaluation:
-        frequency: 100         # Less frequent evaluation
-        episodes: 3            # Fewer episodes for speed
+        frequency: 999         # Less frequent evaluation
+        episodes: 1            # Fewer episodes for speed
       
       # Only safe data difficulty adaptation
-      adaptation_enabled: true  # Only data changes, no training params
+      adaptation_enabled: false  # Only data changes, no training params
     
     # Simplified adaptive data for sweep
     data_lifecycle:
@@ -34,17 +35,16 @@ env:
       
       # Data cycle management (when to switch days/reset points)
       cycles:
-        episode_max_steps: 256           # Steps per episode
         day_max_episodes: null           # No episode limit per day
         day_max_updates: null            # No update limit per day
-        day_max_cycles: 2                # Quick cycling for sweep trials
+        day_max_cycles: 1                # Quick cycling for sweep trials
       
       # Deterministic adaptive data selection for consistent sweep trials
       adaptive_data:
         symbols: ["MLGO"]
-        date_range: [null, null]
-        day_score_range: [0.7, 1.0]
-        roc_range: [0.05, 1.0]
+        date_range: ["2025-02-21", "2025-02-24"]  # [start_date, end_date] inclusive
+        day_score_range: [0.0, 1.0]
+        roc_range: [0.0, 1.0]
         activity_range: [0.0, 1.0]
         
         # DAY SELECTION: Sequential for deterministic behavior
@@ -56,13 +56,11 @@ env:
       preloading:
         preload_enabled: false  # Disabled for faster trials
 
-# Model configuration for sweep
-model: {}
-
-# Disable W&B for faster trials (can be overridden in sweep configs)
 wandb:
   enabled: false
 
-# Explicitly disable Captum for hyperparameter optimization (performance)
+dashboard:
+  enabled: false
+
 captum:
   enabled: false
