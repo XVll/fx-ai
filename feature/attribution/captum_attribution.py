@@ -141,35 +141,114 @@ class CaptumAttributionAnalyzer:
         self.attribution_history = []
         
     def _get_default_feature_names(self) -> Dict[str, List[str]]:
-        """Get default feature names based on model configuration."""
-        # Extract from model config if available
+        """Get default feature names based on actual FxAIv2 feature implementation."""
+        # Real feature names from FxAIv2 SimpleFeatureManager
+        hf_features = [
+            "price_velocity", "price_acceleration", "tape_imbalance", "tape_aggression_ratio",
+            "spread_compression", "quote_velocity", "quote_imbalance", 
+            "volume_velocity", "volume_acceleration"
+        ]
+        
+        mf_features = [
+            # Candle features
+            "1m_position_in_current_candle", "5m_position_in_current_candle",
+            "1m_body_size_relative", "5m_body_size_relative",
+            "1m_position_in_previous_candle", "5m_position_in_previous_candle",
+            "1m_upper_wick_relative", "1m_lower_wick_relative",
+            "5m_upper_wick_relative", "5m_lower_wick_relative",
+            # EMA features
+            "distance_to_ema9_1m", "distance_to_ema20_1m", "distance_to_ema9_5m", "distance_to_ema20_5m",
+            "ema_interaction_pattern", "ema_crossover_dynamics", "ema_trend_alignment",
+            # Swing features
+            "swing_high_distance_1m", "swing_low_distance_1m", "swing_high_distance_5m", "swing_low_distance_5m",
+            # Velocity/acceleration features
+            "price_velocity_1m", "price_velocity_5m", "volume_velocity_1m", "volume_velocity_5m",
+            "price_acceleration_1m", "price_acceleration_5m", "volume_acceleration_1m", "volume_acceleration_5m",
+            # VWAP features
+            "distance_to_vwap", "vwap_slope", "price_vwap_divergence",
+            "vwap_interaction_dynamics", "vwap_breakout_quality", "vwap_mean_reversion_tendency",
+            # Volume features
+            "relative_volume", "volume_surge", "cumulative_volume_delta", "volume_momentum",
+            # Professional indicators
+            "professional_ema_system", "professional_vwap_analysis", 
+            "professional_momentum_quality", "professional_volatility_regime",
+            # Sequence patterns
+            "trend_acceleration", "volume_pattern_evolution", "momentum_quality", "pattern_maturation",
+            # Aggregated signals
+            "mf_trend_consistency", "mf_volume_price_divergence", "mf_momentum_persistence",
+            # Adaptive features
+            "volatility_adjusted_momentum", "regime_relative_volume"
+        ]
+        
+        lf_features = [
+            # Range features
+            "daily_range_position", "prev_day_range_position", "price_change_from_prev_close",
+            # Level features
+            "support_distance", "resistance_distance", "whole_dollar_proximity", "half_dollar_proximity",
+            # Time features
+            "market_session_type", "time_of_day_sin", "time_of_day_cos",
+            # Market structure
+            "halt_state", "time_since_halt", "distance_to_luld_up", "distance_to_luld_down", "luld_band_width",
+            # Context features
+            "session_progress", "market_stress", "session_volume_profile",
+            # Adaptive features
+            "adaptive_support_resistance",
+            # HF summary features
+            "hf_momentum_summary", "hf_volume_dynamics", "hf_microstructure_quality"
+        ]
+        
+        portfolio_features = [
+            "position_size_normalized",    # Feature 0: -1 to 1
+            "unrealized_pnl_normalized",   # Feature 1: -2 to 2
+            "time_in_position",            # Feature 2: 0 to 2
+            "cash_ratio",                  # Feature 3: 0 to 2
+            "session_pnl_percentage",      # Feature 4: -1 to 1
+            "max_favorable_excursion",     # Feature 5: -2 to 2 (MFE)
+            "max_adverse_excursion",       # Feature 6: -2 to 2 (MAE)
+            "profit_giveback_ratio",       # Feature 7: -1 to 1
+            "recovery_ratio",              # Feature 8: -1 to 1
+            "trade_quality_score"          # Feature 9: -1 to 1
+        ]
+        
+        # Get model config for dimensions if available
         if hasattr(self.model, "model_config"):
             config = self.model.model_config
             # Handle both dict and Pydantic model
             if hasattr(config, "model_dump"):
-                # It's a Pydantic model
                 config_dict = config.model_dump()
             elif hasattr(config, "__dict__"):
-                # It's an object with __dict__
                 config_dict = config.__dict__
             else:
-                # It's already a dict
                 config_dict = config
             
-            return {
-                "hf": [f"hf_feat_{i}" for i in range(config_dict.get("hf_feat_dim", 20))],
-                "mf": [f"mf_feat_{i}" for i in range(config_dict.get("mf_feat_dim", 30))],
-                "lf": [f"lf_feat_{i}" for i in range(config_dict.get("lf_feat_dim", 10))],
-                "portfolio": [f"port_feat_{i}" for i in range(config_dict.get("portfolio_feat_dim", 15))],
-            }
-        else:
-            # Fallback defaults
-            return {
-                "hf": [f"hf_feat_{i}" for i in range(20)],
-                "mf": [f"mf_feat_{i}" for i in range(30)],
-                "lf": [f"lf_feat_{i}" for i in range(10)],
-                "portfolio": [f"port_feat_{i}" for i in range(15)],
-            }
+            # Pad or truncate feature lists to match model dimensions
+            hf_dim = config_dict.get("hf_feat_dim", len(hf_features))
+            mf_dim = config_dict.get("mf_feat_dim", len(mf_features))
+            lf_dim = config_dict.get("lf_feat_dim", len(lf_features))
+            portfolio_dim = config_dict.get("portfolio_feat_dim", len(portfolio_features))
+            
+            # Pad with generic names if needed
+            while len(hf_features) < hf_dim:
+                hf_features.append(f"hf_feat_{len(hf_features)}")
+            while len(mf_features) < mf_dim:
+                mf_features.append(f"mf_feat_{len(mf_features)}")
+            while len(lf_features) < lf_dim:
+                lf_features.append(f"lf_feat_{len(lf_features)}")
+            while len(portfolio_features) < portfolio_dim:
+                portfolio_features.append(f"portfolio_feat_{len(portfolio_features)}")
+            
+            # Truncate if needed
+            hf_features = hf_features[:hf_dim]
+            mf_features = mf_features[:mf_dim]
+            lf_features = lf_features[:lf_dim]
+            portfolio_features = portfolio_features[:portfolio_dim]
+        
+        return {
+            "hf": hf_features,
+            "mf": mf_features,
+            "lf": lf_features,
+            "portfolio": portfolio_features,
+        }
     
     def _init_attribution_methods(self):
         """Initialize Captum attribution methods."""
@@ -523,6 +602,8 @@ class CaptumAttributionAnalyzer:
             fig = self._create_branch_heatmap(method_name, attributions)
             if fig:
                 path = self.viz_dir / f"{method_name}_branches_{timestamp}.png"
+                # Ensure directory exists
+                path.parent.mkdir(parents=True, exist_ok=True)
                 fig.savefig(path, dpi=150, bbox_inches="tight")
                 plt.close(fig)
                 viz_paths.append(str(path))
@@ -532,6 +613,8 @@ class CaptumAttributionAnalyzer:
                 fig = self._create_timeseries_plot(method_name, attributions["hf"], "hf")
                 if fig:
                     path = self.viz_dir / f"{method_name}_hf_timeseries_{timestamp}.png"
+                    # Ensure directory exists
+                    path.parent.mkdir(parents=True, exist_ok=True)
                     fig.savefig(path, dpi=150, bbox_inches="tight")
                     plt.close(fig)
                     viz_paths.append(str(path))
@@ -541,6 +624,8 @@ class CaptumAttributionAnalyzer:
             fig = self._create_aggregated_importance_plot(results["aggregated"])
             if fig:
                 path = self.viz_dir / f"aggregated_importance_{timestamp}.png"
+                # Ensure directory exists
+                path.parent.mkdir(parents=True, exist_ok=True)
                 fig.savefig(path, dpi=150, bbox_inches="tight")
                 plt.close(fig)
                 viz_paths.append(str(path))

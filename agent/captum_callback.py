@@ -56,6 +56,9 @@ class CaptumCallback(BaseCallback):
         # Performance tracking
         self.analysis_times = []
         
+        # State caching to avoid env.reset() issues
+        self.cached_state = None
+        
     def on_training_start(self, config: Dict[str, Any]):
         """Initialize Captum analyzer with the model."""
         self.logger.info("🔍 Initializing Captum attribution analyzer")
@@ -91,6 +94,10 @@ class CaptumCallback(BaseCallback):
     
     def on_episode_end(self, episode_num: int, episode_data: Dict[str, Any]):
         """Analyze attributions at episode end if scheduled."""
+        if self.analyze_every_n_episodes is None:
+            self.logger.debug(f"Episode {episode_num} completed - episode analysis disabled")
+            return
+            
         self.logger.info(f"Episode {episode_num} completed, checking for Captum analysis (every {self.analyze_every_n_episodes})")
         if episode_num % self.analyze_every_n_episodes == 0:
             self.logger.info(f"Triggering Captum analysis for episode {episode_num}")
@@ -100,6 +107,10 @@ class CaptumCallback(BaseCallback):
     
     def on_update_end(self, update_num: int, update_metrics: Dict[str, Any]) -> None:
         """Analyze attributions after PPO update if scheduled."""
+        if self.analyze_every_n_updates is None:
+            self.logger.debug(f"Update {update_num} completed - update analysis disabled")
+            return
+            
         self.logger.info(f"Update {update_num} completed, checking for Captum analysis (every {self.analyze_every_n_updates})")
         if update_num % self.analyze_every_n_updates == 0:
             self.logger.info(f"Triggering Captum analysis for update {update_num}")
@@ -187,7 +198,7 @@ class CaptumCallback(BaseCallback):
             traceback.print_exc()
     
     def _get_sample_state(self, trainer) -> Optional[Dict[str, torch.Tensor]]:
-        """Get a sample state from the environment or buffer."""
+        """Get a sample state from buffer with caching fallback (no env.reset)."""
         try:
             # Try to get from replay buffer first
             if hasattr(trainer, "buffer") and trainer.buffer.get_size() > 0:
@@ -208,21 +219,20 @@ class CaptumCallback(BaseCallback):
                             if tensor.dim() == 2:  # [seq_len, feat_dim]
                                 tensor = tensor.unsqueeze(0)  # [1, seq_len, feat_dim]
                             state_dict[key] = tensor
+                    
+                    # Cache this good state for future use
+                    self.cached_state = state_dict
+                    self.logger.debug("Cached fresh state from buffer for Captum analysis")
                     return state_dict
             
-            # Otherwise get from environment
-            if hasattr(trainer, "env"):
-                state_np, _ = trainer.env.reset()
-                state_dict = {}
-                for key in ["hf", "mf", "lf", "portfolio"]:
-                    if key in state_np:
-                        tensor = torch.as_tensor(
-                            state_np[key], dtype=torch.float32
-                        ).to(trainer.device)
-                        if tensor.dim() == 2:
-                            tensor = tensor.unsqueeze(0)
-                        state_dict[key] = tensor
-                return state_dict
+            # Use cached state if buffer is empty
+            if self.cached_state is not None:
+                self.logger.info("Using cached state for Captum analysis (buffer empty)")
+                return self.cached_state
+            
+            # No data available - skip analysis
+            self.logger.warning("No state available for Captum analysis - no buffer data and no cached state")
+            return None
                 
         except Exception as e:
             self.logger.error(f"Error getting sample state: {str(e)}")

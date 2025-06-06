@@ -62,3 +62,7 @@ model: {}
 # Disable W&B for faster trials (can be overridden in sweep configs)
 wandb:
   enabled: false
+
+# Explicitly disable Captum for hyperparameter optimization (performance)
+captum:
+  enabled: false
