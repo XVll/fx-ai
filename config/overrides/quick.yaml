@@ -73,20 +73,18 @@ wandb:
 
 # Captum feature attribution for development/debugging
 captum:
-  # Enable Captum analysis
   enabled: true
-  
-  # Fast methods for frequent analysis
+  # Balanced methods for production insights
   methods:
-    - saliency  # Fastest method for development
-  
+    - saliency     # Fast baseline
+    - deep_lift    # More accurate attribution
   # Quick analysis parameters
   n_steps: 10  # Fast computation
   n_samples: 3  # Minimal samples
   
   # Development analysis settings
   analyze_branches: true
-  analyze_fusion: false  # Skip for speed
+  analyze_fusion: true  # Skip for speed
   analyze_actions: true
   baseline_type: zero
   
