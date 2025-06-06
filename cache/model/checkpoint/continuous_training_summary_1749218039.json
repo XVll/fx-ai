@@ -1,0 +1,221 @@
+{
+  "termination_reason": "user_interrupt",
+  "total_episodes": 180,
+  "total_updates": 180,
+  "total_steps": 46080,
+  "training_hours": 2.214112196111111,
+  "final_performance": 0.0,
+  "best_performance": 0.0,
+  "continuous_training_session_duration": 7973.640779018402,
+  "continuous_training_best_reward": 0.0,
+  "continuous_training_adaptations": 7,
+  "continuous_training_evaluations": 20,
+  "continuous_training_mode": "production",
+  "adaptation_history": [
+    {
+      "timestamp": "2025-06-06T16:35:40.869488",
+      "old_range": [
+        0.7,
+        1.0
+      ],
+      "new_range": [
+        0.75,
+        1.0
+      ],
+      "reason": "struggling",
+      "confidence": 0.9,
+      "improvement_rate": -2.3953497354297846
+    },
+    {
+      "timestamp": "2025-06-06T16:38:07.460553",
+      "old_range": [
+        0.75,
+        1.0
+      ],
+      "new_range": [
+        0.8,
+        1.0
+      ],
+      "reason": "struggling",
+      "confidence": 0.9,
+      "improvement_rate": -2.3953497354297846
+    },
+    {
+      "timestamp": "2025-06-06T16:40:27.802907",
+      "old_range": [
+        0.8,
+        1.0
+      ],
+      "new_range": [
+        0.8500000000000001,
+        1.0
+      ],
+      "reason": "struggling",
+      "confidence": 0.9,
+      "improvement_rate": -2.3953497354297846
+    },
+    {
+      "timestamp": "2025-06-06T16:42:50.276289",
+      "old_range": [
+        0.8500000000000001,
+        1.0
+      ],
+      "new_range": [
+        0.9,
+        1.0
+      ],
+      "reason": "struggling",
+      "confidence": 0.9,
+      "improvement_rate": -2.3953497354297846
+    },
+    {
+      "timestamp": "2025-06-06T16:47:35.850485",
+      "old_range": [
+        0.9,
+        1.0
+      ],
+      "new_range": [
+        0.85,
+        1.0
+      ],
+      "reason": "excelling",
+      "confidence": 0.9,
+      "improvement_rate": 0.7054795299685322
+    },
+    {
+      "timestamp": "2025-06-06T16:49:54.104693",
+      "old_range": [
+        0.85,
+        1.0
+      ],
+      "new_range": [
+        0.7999999999999999,
+        1.0
+      ],
+      "reason": "excelling",
+      "confidence": 0.9,
+      "improvement_rate": 0.7054795299685322
+    },
+    {
+      "timestamp": "2025-06-06T16:52:22.430043",
+      "old_range": [
+        0.7999999999999999,
+        1.0
+      ],
+      "new_range": [
+        0.7499999999999999,
+        1.0
+      ],
+      "reason": "excelling",
+      "confidence": 0.9,
+      "improvement_rate": 0.7054795299685322
+    }
+  ],
+  "evaluation_history": [
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T15:50:38.889557",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T15:55:55.680169",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:01:28.173202",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:07:05.467995",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:12:46.058858",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:18:23.533627",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:22:42.216460",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:25:05.309292",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:27:28.780544",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:29:49.757872",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:32:09.940357",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -33.220476613501106,
+      "timestamp": "2025-06-06T16:34:30.599655",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:36:59.402916",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:39:20.115895",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:41:41.954165",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:44:05.898094",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:46:30.361082",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:48:48.011433",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:51:12.596750",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -2.559999999999989,
+      "timestamp": "2025-06-06T16:53:40.444979",
+      "evaluation_episodes": 0
+    }
+  ],
+  "final_quality_range": [
+    0.7499999999999999,
+    1.0
+  ],
+  "timestamp": "2025-06-06T16:53:59.360854"
+}

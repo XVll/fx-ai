@@ -71,12 +71,12 @@ captum:
   enabled: true
   # Balanced methods for production insights
   methods:
-    - deep_lift    # More accurate attribution
+    - integrated_gradients    # More accurate attribution
     - gradient_shap  # Robust method for complex models
   
   # Production analysis parameters
-  n_steps: 25      # Balanced accuracy/speed
-  n_samples: 5     # Reasonable sampling
+  n_steps: 50      # Balanced accuracy/speed
+  n_samples: 10     # Reasonable sampling
   
   # Full analysis settings for production
   analyze_branches: true
@@ -90,13 +90,12 @@ captum:
   heatmap_threshold: 0.01      # Lower threshold for detail
   
   # Production performance settings
-  batch_analysis: false
-  aggregate_features: true
+  batch_analysis: false  # Single sample analysis for production
   
   # Conservative analysis frequency for production
   callback:
-    analyze_every_n_episodes: null  # Every 10 episodes
-    analyze_every_n_updates: 10    # Every 5 updates
-    save_to_wandb: true           # Focus on WandB logging
-    save_to_dashboard: false      # Reduce overhead
+    analyze_every_n_episodes: null  # Disabled
+    analyze_every_n_updates: 10     # Every 10 updates
+    save_to_wandb: true             # Focus on WandB logging
+    save_to_dashboard: false        # Reduce overhead
     output_dir: outputs/captum_prod
