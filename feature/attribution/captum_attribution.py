@@ -433,7 +433,6 @@ class CaptumAttributionAnalyzer:
         successful_methods = 0
         for method_name, method in self.methods.items():
             try:
-                self.logger.debug(f"Running attribution method: {method_name}")
                 
                 # Suppress the gradient warnings - they're expected and harmless
                 with warnings.catch_warnings():
@@ -452,7 +451,6 @@ class CaptumAttributionAnalyzer:
                     requires_target = (is_action_method and ("integrated_gradients" in method_name or "deep_lift" in method_name or "gradient_shap" in method_name or "saliency" in method_name)) or is_layer_conductance
                     
                     if requires_target and target_action is None:
-                        self.logger.debug(f"Skipping {method_name} - requires target action but none provided")
                         continue
                     
                     # Determine the target to use: target_action for action methods and layer conductance, None for value methods
@@ -501,7 +499,6 @@ class CaptumAttributionAnalyzer:
                             )
                         except Exception as e:
                             if method_target is not None and "target" in str(e).lower():
-                                self.logger.debug(f"Retrying {method_name} without target due to: {e}")
                                 attributions = method.attribute(
                                     inputs=(hf_features, mf_features, lf_features, portfolio_features),
                                 )
@@ -547,11 +544,9 @@ class CaptumAttributionAnalyzer:
                     }
                 
                 successful_methods += 1
-                self.logger.debug(f"Successfully completed {method_name}")
                 
             except Exception as e:
                 self.logger.error(f"Error in {method_name}: {str(e)}")
-                self.logger.debug(f"Method {method_name} failed with: {type(e).__name__}: {e}")
                 continue
         
         if successful_methods == 0:
@@ -753,7 +748,6 @@ class CaptumAttributionAnalyzer:
             # Check if we have any valid attributions
             valid_attrs = {k: v for k, v in attributions.items() if v is not None}
             if not valid_attrs:
-                self.logger.debug(f"No valid attributions for {method_name}")
                 continue
             
             # Clean method name for display
@@ -838,7 +832,6 @@ class CaptumAttributionAnalyzer:
                     branch_labels.append(branch.upper())
             
             if not branch_data or len(branch_data) < 2:
-                self.logger.debug(f"Insufficient branch data for heatmap: {len(branch_data)} branches")
                 return None
             
             # Create figure with better layout
