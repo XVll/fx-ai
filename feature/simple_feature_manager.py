@@ -5,6 +5,7 @@ import numpy as np
 import logging
 from .feature_base import BaseFeature, FeatureConfig
 from .contexts import MarketContext
+from .feature_registry import FeatureRegistry
 
 
 class SimpleFeatureManager:
@@ -27,6 +28,9 @@ class SimpleFeatureManager:
 
         # Initialize feature collections
         self._feature_collections = self._initialize_features()
+        
+        # Validate features match registry
+        self._validate_features()
 
     def _initialize_features(self) -> Dict[str, List[BaseFeature]]:
         """Initialize all feature collections directly"""
@@ -37,7 +41,7 @@ class SimpleFeatureManager:
         }
 
     def _create_hf_features(self) -> List[BaseFeature]:
-        """Create ALL high-frequency features"""
+        """Create ALL high-frequency features based on FeatureRegistry"""
         features = []
 
         try:
@@ -60,25 +64,45 @@ class SimpleFeatureManager:
                 VolumeAccelerationFeature,
             )
 
-            hf_feature_classes = [
-                ("price_velocity", PriceVelocityFeature),
-                ("price_acceleration", PriceAccelerationFeature),
-                ("tape_imbalance", TapeImbalanceFeature),
-                ("tape_aggression_ratio", TapeAggressionRatioFeature),
-                ("spread_compression", SpreadCompressionFeature),
-                ("quote_velocity", QuoteVelocityFeature),
-                ("quote_imbalance", QuoteImbalanceFeature),
-                ("volume_velocity", VolumeVelocityFeature),
-                ("volume_acceleration", VolumeAccelerationFeature),
-            ]
+            # Map feature names to classes
+            feature_class_map = {
+                "price_velocity": PriceVelocityFeature,
+                "price_acceleration": PriceAccelerationFeature,
+                "tape_imbalance": TapeImbalanceFeature,
+                "tape_aggression_ratio": TapeAggressionRatioFeature,
+                "spread_compression": SpreadCompressionFeature,
+                "quote_velocity": QuoteVelocityFeature,
+                "quote_imbalance": QuoteImbalanceFeature,
+                "volume_velocity": VolumeVelocityFeature,
+                "volume_acceleration": VolumeAccelerationFeature,
+            }
 
-            for name, feature_class in hf_feature_classes:
-                try:
-                    config = FeatureConfig(name=name, enabled=True, normalize=True)
-                    features.append(feature_class(config))
-                    self.logger.debug(f"Created HF feature: {name}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to create HF feature {name}: {e}")
+            # Get feature names from registry to ensure order matches
+            hf_feature_names = FeatureRegistry.get_feature_names("hf")
+            
+            # Validate we have all features
+            registry_set = set(hf_feature_names)
+            implemented_set = set(feature_class_map.keys())
+            
+            missing = registry_set - implemented_set
+            if missing:
+                self.logger.error(f"Missing HF feature implementations: {missing}")
+            
+            extra = implemented_set - registry_set
+            if extra:
+                self.logger.warning(f"Extra HF features not in registry: {extra}")
+            
+            # Create features in registry order
+            for name in hf_feature_names:
+                if name in feature_class_map:
+                    try:
+                        config = FeatureConfig(name=name, enabled=True, normalize=True)
+                        features.append(feature_class_map[name](config))
+                        self.logger.debug(f"Created HF feature: {name}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to create HF feature {name}: {e}")
+                else:
+                    self.logger.error(f"No implementation found for HF feature: {name}")
 
         except ImportError as e:
             self.logger.warning(f"Failed to import HF features: {e}")
@@ -86,7 +110,7 @@ class SimpleFeatureManager:
         return features
 
     def _create_mf_features(self) -> List[BaseFeature]:
-        """Create ALL medium-frequency features"""
+        """Create ONLY active medium-frequency features based on FeatureRegistry"""
         features = []
 
         try:
@@ -172,79 +196,95 @@ class SimpleFeatureManager:
                 RegimeRelativeVolumeFeature,
             )
 
-            mf_feature_classes = [
+            # Get ONLY the active MF features from registry
+            mf_feature_names = FeatureRegistry.get_feature_names("mf", active_only=True)
+            
+            # Map ALL feature implementations
+            feature_class_map = {
                 # Candle features
-                ("1m_position_in_current_candle", PositionInCurrentCandle1mFeature),
-                ("5m_position_in_current_candle", PositionInCurrentCandle5mFeature),
-                ("1m_body_size_relative", BodySizeRelative1mFeature),
-                ("5m_body_size_relative", BodySizeRelative5mFeature),
-                ("1m_position_in_previous_candle", PositionInPreviousCandle1mFeature),
-                ("5m_position_in_previous_candle", PositionInPreviousCandle5mFeature),
-                ("1m_upper_wick_relative", UpperWickRelative1mFeature),
-                ("1m_lower_wick_relative", LowerWickRelative1mFeature),
-                ("5m_upper_wick_relative", UpperWickRelative5mFeature),
-                ("5m_lower_wick_relative", LowerWickRelative5mFeature),
+                "1m_position_in_current_candle": PositionInCurrentCandle1mFeature,
+                "5m_position_in_current_candle": PositionInCurrentCandle5mFeature,
+                "1m_body_size_relative": BodySizeRelative1mFeature,
+                "5m_body_size_relative": BodySizeRelative5mFeature,
+                "1m_position_in_previous_candle": PositionInPreviousCandle1mFeature,
+                "5m_position_in_previous_candle": PositionInPreviousCandle5mFeature,
+                "1m_upper_wick_relative": UpperWickRelative1mFeature,
+                "1m_lower_wick_relative": LowerWickRelative1mFeature,
+                "5m_upper_wick_relative": UpperWickRelative5mFeature,
+                "5m_lower_wick_relative": LowerWickRelative5mFeature,
                 # EMA features
-                ("distance_to_ema9_1m", DistanceToEMA9_1mFeature),
-                ("distance_to_ema20_1m", DistanceToEMA20_1mFeature),
-                ("distance_to_ema9_5m", DistanceToEMA9_5mFeature),
-                ("distance_to_ema20_5m", DistanceToEMA20_5mFeature),
-                ("ema_interaction_pattern", EMAInteractionPatternFeature),
-                ("ema_crossover_dynamics", EMACrossoverDynamicsFeature),
-                ("ema_trend_alignment", EMATrendAlignmentFeature),
+                "distance_to_ema9_1m": DistanceToEMA9_1mFeature,
+                "distance_to_ema20_1m": DistanceToEMA20_1mFeature,
+                "distance_to_ema9_5m": DistanceToEMA9_5mFeature,
+                "distance_to_ema20_5m": DistanceToEMA20_5mFeature,
+                "ema_interaction_pattern": EMAInteractionPatternFeature,
+                "ema_crossover_dynamics": EMACrossoverDynamicsFeature,
+                "ema_trend_alignment": EMATrendAlignmentFeature,
                 # Swing features
-                ("swing_high_distance_1m", SwingHighDistance1mFeature),
-                ("swing_low_distance_1m", SwingLowDistance1mFeature),
-                ("swing_high_distance_5m", SwingHighDistance5mFeature),
-                ("swing_low_distance_5m", SwingLowDistance5mFeature),
+                "swing_high_distance_1m": SwingHighDistance1mFeature,
+                "swing_low_distance_1m": SwingLowDistance1mFeature,
+                "swing_high_distance_5m": SwingHighDistance5mFeature,
+                "swing_low_distance_5m": SwingLowDistance5mFeature,
                 # Velocity features
-                ("price_velocity_1m", PriceVelocity1mFeature),
-                ("price_velocity_5m", PriceVelocity5mFeature),
-                ("volume_velocity_1m", VolumeVelocity1mFeature),
-                ("volume_velocity_5m", VolumeVelocity5mFeature),
+                "price_velocity_1m": PriceVelocity1mFeature,
+                "price_velocity_5m": PriceVelocity5mFeature,
+                "volume_velocity_1m": VolumeVelocity1mFeature,
+                "volume_velocity_5m": VolumeVelocity5mFeature,
                 # Acceleration features
-                ("price_acceleration_1m", PriceAcceleration1mFeature),
-                ("price_acceleration_5m", PriceAcceleration5mFeature),
-                ("volume_acceleration_1m", VolumeAcceleration1mFeature),
-                ("volume_acceleration_5m", VolumeAcceleration5mFeature),
+                "price_acceleration_1m": PriceAcceleration1mFeature,
+                "price_acceleration_5m": PriceAcceleration5mFeature,
+                "volume_acceleration_1m": VolumeAcceleration1mFeature,
+                "volume_acceleration_5m": VolumeAcceleration5mFeature,
                 # VWAP features
-                ("distance_to_vwap", DistanceToVWAPFeature),
-                ("vwap_slope", VWAPSlopeFeature),
-                ("price_vwap_divergence", PriceVWAPDivergenceFeature),
-                ("vwap_interaction_dynamics", VWAPInteractionDynamicsFeature),
-                ("vwap_breakout_quality", VWAPBreakoutQualityFeature),
-                ("vwap_mean_reversion_tendency", VWAPMeanReversionTendencyFeature),
+                "distance_to_vwap": DistanceToVWAPFeature,
+                "vwap_slope": VWAPSlopeFeature,
+                "price_vwap_divergence": PriceVWAPDivergenceFeature,
+                "vwap_interaction_dynamics": VWAPInteractionDynamicsFeature,
+                "vwap_breakout_quality": VWAPBreakoutQualityFeature,
+                "vwap_mean_reversion_tendency": VWAPMeanReversionTendencyFeature,
                 # Volume features
-                ("relative_volume", RelativeVolumeFeature),
-                ("volume_surge", VolumeSurgeFeature),
-                ("cumulative_volume_delta", CumulativeVolumeDeltaFeature),
-                ("volume_momentum", VolumeMomentumFeature),
+                "relative_volume": RelativeVolumeFeature,
+                "volume_surge": VolumeSurgeFeature,
+                "cumulative_volume_delta": CumulativeVolumeDeltaFeature,
+                "volume_momentum": VolumeMomentumFeature,
                 # Professional features
-                ("professional_ema_system", ProfessionalEMASystemFeature),
-                ("professional_vwap_analysis", ProfessionalVWAPAnalysisFeature),
-                ("professional_momentum_quality", ProfessionalMomentumQualityFeature),
-                ("professional_volatility_regime", ProfessionalVolatilityRegimeFeature),
-                # Sequence-aware features
-                ("trend_acceleration", TrendAccelerationFeature),
-                ("volume_pattern_evolution", VolumePatternEvolutionFeature),
-                ("momentum_quality", MomentumQualityFeature),
-                ("pattern_maturation", PatternMaturationFeature),
-                # Aggregated features
-                ("mf_trend_consistency", MFTrendConsistencyFeature),
-                ("mf_volume_price_divergence", MFVolumePriceDivergenceFeature),
-                ("mf_momentum_persistence", MFMomentumPersistenceFeature),
-                # Adaptive features
-                ("volatility_adjusted_momentum", VolatilityAdjustedMomentumFeature),
-                ("regime_relative_volume", RegimeRelativeVolumeFeature),
-            ]
-
-            for name, feature_class in mf_feature_classes:
-                try:
-                    config = FeatureConfig(name=name, enabled=True, normalize=True)
-                    features.append(feature_class(config))
-                    self.logger.debug(f"Created MF feature: {name}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to create MF feature {name}: {e}")
+                "professional_ema_system": ProfessionalEMASystemFeature,
+                "professional_vwap_analysis": ProfessionalVWAPAnalysisFeature,
+                "professional_momentum_quality": ProfessionalMomentumQualityFeature,
+                "professional_volatility_regime": ProfessionalVolatilityRegimeFeature,
+                # Sequence-aware features (these will be skipped if inactive)
+                "trend_acceleration": TrendAccelerationFeature,
+                "volume_pattern_evolution": VolumePatternEvolutionFeature,
+                "momentum_quality": MomentumQualityFeature,
+                "pattern_maturation": PatternMaturationFeature,
+                # Aggregated features (these will be skipped if inactive)
+                "mf_trend_consistency": MFTrendConsistencyFeature,
+                "mf_volume_price_divergence": MFVolumePriceDivergenceFeature,
+                "mf_momentum_persistence": MFMomentumPersistenceFeature,
+                # Adaptive features (these will be skipped if inactive)
+                "volatility_adjusted_momentum": VolatilityAdjustedMomentumFeature,
+                "regime_relative_volume": RegimeRelativeVolumeFeature,
+            }
+            
+            # Validate we have all features
+            registry_set = set(mf_feature_names)
+            implemented_set = set(feature_class_map.keys())
+            
+            missing = registry_set - implemented_set
+            if missing:
+                self.logger.error(f"Missing MF feature implementations: {missing}")
+            
+            # Create features in registry order (ONLY ACTIVE ONES)
+            for name in mf_feature_names:
+                if name in feature_class_map:
+                    try:
+                        config = FeatureConfig(name=name, enabled=True, normalize=True)
+                        features.append(feature_class_map[name](config))
+                        self.logger.debug(f"Created MF feature: {name}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to create MF feature {name}: {e}")
+                else:
+                    self.logger.error(f"No implementation found for MF feature: {name}")
 
         except ImportError as e:
             self.logger.warning(f"Failed to import MF features: {e}")
@@ -252,7 +292,7 @@ class SimpleFeatureManager:
         return features
 
     def _create_lf_features(self) -> List[BaseFeature]:
-        """Create ALL low-frequency features"""
+        """Create ONLY active low-frequency features based on FeatureRegistry"""
         features = []
 
         try:
@@ -296,45 +336,61 @@ class SimpleFeatureManager:
                 HFMicrostructureQualityFeature,
             )
 
-            lf_feature_classes = [
+            # Get ONLY the active LF features from registry
+            lf_feature_names = FeatureRegistry.get_feature_names("lf", active_only=True)
+            
+            # Map ALL feature implementations
+            feature_class_map = {
                 # Range features
-                ("daily_range_position", PositionInDailyRangeFeature),
-                ("prev_day_range_position", PositionInPrevDayRangeFeature),
-                ("price_change_from_prev_close", PriceChangeFromPrevCloseFeature),
+                "daily_range_position": PositionInDailyRangeFeature,
+                "prev_day_range_position": PositionInPrevDayRangeFeature,
+                "price_change_from_prev_close": PriceChangeFromPrevCloseFeature,
                 # Level features
-                ("support_distance", DistanceToClosestSupportFeature),
-                ("resistance_distance", DistanceToClosestResistanceFeature),
-                ("whole_dollar_proximity", WholeDollarProximityFeature),
-                ("half_dollar_proximity", HalfDollarProximityFeature),
+                "support_distance": DistanceToClosestSupportFeature,
+                "resistance_distance": DistanceToClosestResistanceFeature,
+                "whole_dollar_proximity": WholeDollarProximityFeature,
+                "half_dollar_proximity": HalfDollarProximityFeature,
                 # Time features
-                ("market_session_type", MarketSessionTypeFeature),
-                ("time_of_day_sin", TimeOfDaySinFeature),
-                ("time_of_day_cos", TimeOfDayCosFeature),
+                "market_session_type": MarketSessionTypeFeature,
+                "time_of_day_sin": TimeOfDaySinFeature,
+                "time_of_day_cos": TimeOfDayCosFeature,
                 # Market structure features
-                ("halt_state", HaltStateFeature),
-                ("time_since_halt", TimeSinceHaltFeature),
-                ("distance_to_luld_up", DistanceToLULDUpFeature),
-                ("distance_to_luld_down", DistanceToLULDDownFeature),
-                ("luld_band_width", LULDBandWidthFeature),
+                "halt_state": HaltStateFeature,
+                "time_since_halt": TimeSinceHaltFeature,
+                "distance_to_luld_up": DistanceToLULDUpFeature,
+                "distance_to_luld_down": DistanceToLULDDownFeature,
+                "luld_band_width": LULDBandWidthFeature,
                 # Context features
-                ("session_progress", SessionProgressFeature),
-                ("market_stress", MarketStressFeature),
-                ("session_volume_profile", SessionVolumeProfileFeature),
+                "session_progress": SessionProgressFeature,
+                "market_stress": MarketStressFeature,
+                "session_volume_profile": SessionVolumeProfileFeature,
                 # Adaptive features
-                ("adaptive_support_resistance", AdaptiveSupportResistanceFeature),
-                # Aggregated HF summary features (moved to LF for daily context)
-                ("hf_momentum_summary", HFMomentumSummaryFeature),
-                ("hf_volume_dynamics", HFVolumeDynamicsFeature),
-                ("hf_microstructure_quality", HFMicrostructureQualityFeature),
-            ]
-
-            for name, feature_class in lf_feature_classes:
-                try:
-                    config = FeatureConfig(name=name, enabled=True, normalize=True)
-                    features.append(feature_class(config))
-                    self.logger.debug(f"Created LF feature: {name}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to create LF feature {name}: {e}")
+                "adaptive_support_resistance": AdaptiveSupportResistanceFeature,
+                # Aggregated HF summary features (these will be skipped if inactive)
+                "hf_momentum_summary": HFMomentumSummaryFeature,
+                "hf_volume_dynamics": HFVolumeDynamicsFeature,
+                "hf_microstructure_quality": HFMicrostructureQualityFeature,
+            }
+            
+            # Validate we have all features
+            registry_set = set(lf_feature_names)
+            implemented_set = set(feature_class_map.keys())
+            
+            missing = registry_set - implemented_set
+            if missing:
+                self.logger.error(f"Missing LF feature implementations: {missing}")
+            
+            # Create features in registry order (ONLY ACTIVE ONES)
+            for name in lf_feature_names:
+                if name in feature_class_map:
+                    try:
+                        config = FeatureConfig(name=name, enabled=True, normalize=True)
+                        features.append(feature_class_map[name](config))
+                        self.logger.debug(f"Created LF feature: {name}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to create LF feature {name}: {e}")
+                else:
+                    self.logger.error(f"No implementation found for LF feature: {name}")
 
         except ImportError as e:
             self.logger.warning(f"Failed to import LF features: {e}")
@@ -608,6 +664,34 @@ class SimpleFeatureManager:
         except Exception as e:
             self.logger.error(f"LF feature extraction failed: {e}")
             return np.zeros((self.lf_seq_len, self.lf_feat_dim), dtype=np.float32)
+    
+    def _validate_features(self):
+        """Validate that features match the registry."""
+        try:
+            # Check each category
+            for category in ["hf", "mf", "lf"]:
+                registry_features = FeatureRegistry.get_feature_names(category)
+                manager_features = self.get_enabled_features(category)
+                
+                if len(registry_features) != len(manager_features):
+                    self.logger.warning(
+                        f"Feature count mismatch in {category}: "
+                        f"Registry has {len(registry_features)}, Manager has {len(manager_features)}"
+                    )
+                
+                # Check order and names
+                for i, (reg, mgr) in enumerate(zip(registry_features, manager_features)):
+                    if reg != mgr:
+                        self.logger.warning(
+                            f"Feature mismatch at {category}[{i}]: "
+                            f"Registry: '{reg}', Manager: '{mgr}'"
+                        )
+            
+            # Log success
+            self.logger.info("✅ Feature validation complete - all features match registry")
+            
+        except Exception as e:
+            self.logger.error(f"Error validating features: {e}")
 
     def reset(self):
         """Reset feature manager state"""

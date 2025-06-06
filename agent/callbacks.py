@@ -317,14 +317,18 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
 
     # Add Captum callback if configured
     captum_config = config.get("captum")
-    logging.getLogger(__name__).info(f"Captum config found: {captum_config is not None}")
+    logging.getLogger(__name__).info(f"🔍 DEBUG: Captum config found: {captum_config is not None}")
+    logging.getLogger(__name__).info(f"🔍 DEBUG: Captum config type: {type(captum_config)}")
+    logging.getLogger(__name__).info(f"🔍 DEBUG: Captum config content: {captum_config}")
     if captum_config:
         # Check if Captum is enabled
         captum_enabled = captum_config.get("enabled", True) if isinstance(captum_config, dict) else getattr(captum_config, "enabled", True)
+        logging.getLogger(__name__).info(f"🔍 DEBUG: Captum enabled value: {captum_enabled}")
+        logging.getLogger(__name__).info(f"🔍 DEBUG: Captum config is dict: {isinstance(captum_config, dict)}")
         if not captum_enabled:
-            logging.getLogger(__name__).info("Captum is disabled via config, skipping initialization")
+            logging.getLogger(__name__).info("❌ Captum is disabled via config, skipping initialization")
         else:
-            logging.getLogger(__name__).info("Initializing Captum callback...")
+            logging.getLogger(__name__).info("✅ Initializing Captum callback...")
             try:
                 # Handle both dict and Pydantic model
                 if hasattr(captum_config, "model_dump"):

@@ -60,15 +60,58 @@ class ModelConfig(BaseModel):
     lf_heads: int = Field(4, description="Low-frequency attention heads")
     portfolio_heads: int = Field(4, description="Portfolio attention heads")
 
-    # Feature dimensions (aligned with actual implementation)
+    # Feature dimensions - dynamically set from FeatureRegistry
     hf_seq_len: int = Field(60, description="High-frequency sequence length")
-    hf_feat_dim: int = Field(9, description="High-frequency features (corrected)")
+    hf_feat_dim: int = Field(9, description="High-frequency features")
     mf_seq_len: int = Field(30, description="Medium-frequency sequence length")
     mf_feat_dim: int = Field(43, description="Medium-frequency features")
     lf_seq_len: int = Field(30, description="Low-frequency sequence length")
     lf_feat_dim: int = Field(19, description="Low-frequency features")
     portfolio_seq_len: int = Field(5, description="Portfolio sequence length")
     portfolio_feat_dim: int = Field(10, description="Portfolio features")
+    
+    @field_validator("hf_feat_dim", "mf_feat_dim", "lf_feat_dim", "portfolio_feat_dim", mode="before")
+    @classmethod
+    def validate_dimensions(cls, v, info):
+        """Validate feature dimensions match FeatureRegistry."""
+        from feature.feature_registry import FeatureRegistry
+        
+        # Get expected dimensions from registry
+        dims = FeatureRegistry.get_feature_dimensions(active_only=True)
+        
+        # Map field names to category names
+        field_to_category = {
+            "hf_feat_dim": "hf",
+            "mf_feat_dim": "mf", 
+            "lf_feat_dim": "lf",
+            "portfolio_feat_dim": "portfolio"
+        }
+        
+        field_name = info.field_name
+        category = field_to_category.get(field_name)
+        
+        if category and v != dims[category]:
+            # Log warning but allow the value for backward compatibility
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Feature dimension mismatch: {field_name}={v} but FeatureRegistry has {dims[category]} active features"
+            )
+        
+        return v
+    
+    @classmethod
+    def from_registry(cls):
+        """Create ModelConfig with dimensions from FeatureRegistry."""
+        from feature.feature_registry import FeatureRegistry
+        dims = FeatureRegistry.get_feature_dimensions(active_only=True)
+        
+        # Create with registry dimensions
+        return cls(
+            hf_feat_dim=dims['hf'],
+            mf_feat_dim=dims['mf'],
+            lf_feat_dim=dims['lf'],
+            portfolio_feat_dim=dims['portfolio']
+        )
 
     # Action space
     action_dim: List[int] = Field([3, 4], description="[action_types, position_sizes]")
@@ -614,16 +657,16 @@ class CaptumConfig(BaseModel):
     # Feature importance aggregation
     aggregate_features: bool = Field(True, description="Aggregate attributions by feature groups")
     
-    # Feature grouping definitions
-    feature_groups: Dict[str, List[str]] = Field(
-        default_factory=lambda: {
-            "price_action": ["price", "returns", "volatility", "price_velocity", "price_acceleration"],
-            "volume": ["volume", "vwap", "relative_volume", "volume_imbalance"],
-            "microstructure": ["spread", "bid_ask_imbalance", "order_flow", "trade_intensity"],
-            "technical": ["ema", "rsi", "patterns", "support_resistance"],
-            "portfolio": ["position", "pnl", "risk", "drawdown"],
-        },
-        description="Feature grouping definitions"
+    # Feature grouping definitions (can be auto-generated or manually specified)
+    feature_groups: Optional[Dict[str, List[str]]] = Field(
+        None,
+        description="Feature grouping definitions. If None, will be auto-generated from feature manager"
+    )
+    
+    # Use actual feature names from feature manager
+    use_feature_manager_names: bool = Field(
+        True,
+        description="Use actual feature names from SimpleFeatureManager instead of generic names"
     )
     
     # Callback settings

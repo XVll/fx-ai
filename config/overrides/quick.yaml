@@ -99,136 +99,14 @@ captum:
   batch_analysis: false
   aggregate_features: true
   
-  # Real feature groups based on actual FxAIv2 feature implementation
-  feature_groups:
-    # High-frequency features (1-second bars)
-    hf_price_action:
-      - price_velocity
-      - price_acceleration
-    hf_tape_analysis:
-      - tape_imbalance
-      - tape_aggression_ratio
-    hf_quote_dynamics:
-      - spread_compression
-      - quote_velocity
-      - quote_imbalance
-    hf_volume_flow:
-      - volume_velocity
-      - volume_acceleration
-    
-    # Medium-frequency features (1m/5m bars)
-    mf_candle_patterns:
-      - 1m_position_in_current_candle
-      - 5m_position_in_current_candle
-      - 1m_body_size_relative
-      - 5m_body_size_relative
-      - 1m_position_in_previous_candle
-      - 5m_position_in_previous_candle
-      - 1m_upper_wick_relative
-      - 1m_lower_wick_relative
-      - 5m_upper_wick_relative
-      - 5m_lower_wick_relative
-    mf_ema_system:
-      - distance_to_ema9_1m
-      - distance_to_ema20_1m
-      - distance_to_ema9_5m
-      - distance_to_ema20_5m
-      - ema_interaction_pattern
-      - ema_crossover_dynamics
-      - ema_trend_alignment
-    mf_swing_analysis:
-      - swing_high_distance_1m
-      - swing_low_distance_1m
-      - swing_high_distance_5m
-      - swing_low_distance_5m
-    mf_velocity_acceleration:
-      - price_velocity_1m
-      - price_velocity_5m
-      - volume_velocity_1m
-      - volume_velocity_5m
-      - price_acceleration_1m
-      - price_acceleration_5m
-      - volume_acceleration_1m
-      - volume_acceleration_5m
-    mf_vwap_analysis:
-      - distance_to_vwap
-      - vwap_slope
-      - price_vwap_divergence
-      - vwap_interaction_dynamics
-      - vwap_breakout_quality
-      - vwap_mean_reversion_tendency
-    mf_volume_dynamics:
-      - relative_volume
-      - volume_surge
-      - cumulative_volume_delta
-      - volume_momentum
-    mf_professional_indicators:
-      - professional_ema_system
-      - professional_vwap_analysis
-      - professional_momentum_quality
-      - professional_volatility_regime
-    mf_sequence_patterns:
-      - trend_acceleration
-      - volume_pattern_evolution
-      - momentum_quality
-      - pattern_maturation
-    mf_aggregated_signals:
-      - mf_trend_consistency
-      - mf_volume_price_divergence
-      - mf_momentum_persistence
-    mf_adaptive_features:
-      - volatility_adjusted_momentum
-      - regime_relative_volume
-    
-    # Low-frequency features (daily context)
-    lf_range_position:
-      - daily_range_position
-      - prev_day_range_position
-      - price_change_from_prev_close
-    lf_support_resistance:
-      - support_distance
-      - resistance_distance
-      - whole_dollar_proximity
-      - half_dollar_proximity
-      - adaptive_support_resistance
-    lf_time_context:
-      - market_session_type
-      - time_of_day_sin
-      - time_of_day_cos
-    lf_market_structure:
-      - halt_state
-      - time_since_halt
-      - distance_to_luld_up
-      - distance_to_luld_down
-      - luld_band_width
-    lf_session_context:
-      - session_progress
-      - market_stress
-      - session_volume_profile
-    lf_hf_summaries:
-      - hf_momentum_summary
-      - hf_volume_dynamics
-      - hf_microstructure_quality
-    
-    # Portfolio features (position and P&L tracking)
-    portfolio_position:
-      - position_size_normalized  # Feature 0: -1 to 1
-      - unrealized_pnl_normalized  # Feature 1: -2 to 2
-      - time_in_position  # Feature 2: 0 to 2
-      - cash_ratio  # Feature 3: 0 to 2
-    portfolio_pnl:
-      - session_pnl_percentage  # Feature 4: -1 to 1
-      - max_favorable_excursion  # Feature 5: -2 to 2 (MFE)
-      - max_adverse_excursion  # Feature 6: -2 to 2 (MAE)
-    portfolio_trade_quality:
-      - profit_giveback_ratio  # Feature 7: -1 to 1
-      - recovery_ratio  # Feature 8: -1 to 1
-      - trade_quality_score  # Feature 9: -1 to 1
+  # Use actual feature names from feature manager
+  use_feature_manager_names: true
+  feature_groups: null  # Auto-generated from feature manager
   
   # Frequent analysis for development debugging
   callback:
-    analyze_every_n_episodes: null   # Every 2 episodes
-    analyze_every_n_updates: 5    # Every update (aggressive)
+    analyze_every_n_episodes: null   # Disabled
+    analyze_every_n_updates: 5      # Every 5 updates
     save_to_wandb: true
     save_to_dashboard: true
     output_dir: outputs/captum_dev

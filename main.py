@@ -361,10 +361,18 @@ def create_callback_manager(
         "simulation": config.simulation.__dict__
         if hasattr(config.simulation, "__dict__")
         else config.simulation,
-        "captum": config.captum.__dict__
-        if hasattr(config, "captum") and config.captum and hasattr(config.captum, "__dict__")
+        "captum": config.captum.model_dump()
+        if hasattr(config, "captum") and config.captum and hasattr(config.captum, "model_dump")
         else getattr(config, "captum", None),
     }
+
+    # Debug captum config
+    log.info(f"🔍 DEBUG: Original config.captum: {config.captum}")
+    log.info(f"🔍 DEBUG: Original config.captum type: {type(config.captum)}")
+    if config.captum:
+        log.info(f"🔍 DEBUG: Original config.captum.enabled: {config.captum.enabled}")
+    log.info(f"🔍 DEBUG: config_dict['captum']: {config_dict.get('captum')}")
+    log.info(f"🔍 DEBUG: config_dict['captum'] type: {type(config_dict.get('captum'))}")
 
     # Check for Optuna trial info (subprocess mode)
     optuna_trial_info = getattr(config, "optuna_trial_info", None)

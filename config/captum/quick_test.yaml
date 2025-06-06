@@ -1,72 +1,35 @@
-# Quick Test Configuration for Captum Feature Attribution
-# Optimized for fast development and debugging
+# Captum Feature Attribution - Quick Test Configuration
+# Simplified configuration for rapid testing during development
 
-# Fast attribution methods only
-methods:
-  - saliency  # Fastest method
-
-# Minimal parameters for speed
-n_steps: 5  # Very few steps for integrated gradients
-n_samples: 3  # Minimal samples
-
-# Quick analysis settings
-analyze_branches: true  # Analyze branches
-analyze_fusion: false  # Skip fusion analysis for speed
-analyze_actions: true  # Analyze actions
-
-# Simple baseline
-baseline_type: zero
-
-# Visualization settings for debugging
-save_visualizations: true
-visualization_dir: outputs/captum_quick
-heatmap_threshold: 0.05  # Higher threshold for cleaner visualizations
-
-# Performance settings
-batch_analysis: false
-aggregate_features: true
-
-# Simplified feature groups for quick testing
-feature_groups:
-  # High-frequency (top features only)
-  hf_core:
-    - price_velocity
-    - price_acceleration
-    - tape_imbalance
-    - volume_velocity
+captum:
+  enabled: true
   
-  # Medium-frequency (key patterns only)
-  mf_core:
-    - distance_to_ema9_1m
-    - distance_to_ema20_1m
-    - distance_to_vwap
-    - relative_volume
-    - momentum_quality
+  # Fast attribution method only
+  methods:
+    - saliency  # Fastest method
   
-  # Low-frequency (essential context)
-  lf_core:
-    - daily_range_position
-    - support_distance
-    - resistance_distance
-    - session_progress
+  # Minimal parameters for speed
+  n_steps: 5      # Very fast
+  n_samples: 2    # Minimal
   
-  # Portfolio (all features - they're already minimal)
-  portfolio_all:
-    - position_size_normalized
-    - unrealized_pnl_normalized
-    - time_in_position
-    - cash_ratio
-    - session_pnl_percentage
-    - max_favorable_excursion
-    - max_adverse_excursion
-    - profit_giveback_ratio
-    - recovery_ratio
-    - trade_quality_score
-
-# Frequent analysis for debugging
-callback:
-  analyze_every_n_episodes: 2  # Very frequent for debugging
-  analyze_every_n_updates: 5   # Very frequent for debugging
-  save_to_wandb: true
-  save_to_dashboard: true
-  output_dir: outputs/captum_quick
+  # Skip expensive analyses
+  analyze_branches: false
+  analyze_fusion: false
+  analyze_actions: true
+  baseline_type: zero
+  
+  # Minimal visualizations
+  save_visualizations: false
+  aggregate_features: true
+  
+  # Use actual feature names from registry
+  use_feature_manager_names: true
+  feature_groups: null  # Auto-generated from FeatureRegistry
+  
+  # Development analysis frequency
+  callback:
+    analyze_every_n_episodes: null  # Disabled
+    analyze_every_n_updates: 2      # Very frequent for testing
+    save_to_wandb: false            # Skip for speed
+    save_to_dashboard: true
+    output_dir: outputs/captum_test
