@@ -42,7 +42,7 @@ env:
       # Deterministic adaptive data selection for consistent sweep trials
       adaptive_data:
         symbols: ["MLGO"]
-        date_range: ["2025-02-21", "2025-02-24"]  # [start_date, end_date] inclusive
+        date_range: ["2025-02-21", "2025-02-21"]  # [start_date, end_date] inclusive
         day_score_range: [0.0, 1.0]
         roc_range: [0.0, 1.0]
         activity_range: [0.0, 1.0]
