@@ -93,6 +93,10 @@ class MultiBranchTransformerWrapper(nn.Module):
     
     Captum expects models with simple forward signatures, so we wrap
     the transformer to handle the complex input structure.
+    
+    For action attribution, we need to convert the model's separate action_type
+    and position_size logits into a format that Captum can handle with linear
+    target indices (0-11 for our 3x4 MultiDiscrete action space).
     """
     
     def __init__(self, model, target_output: str = "action"):
@@ -114,17 +118,48 @@ class MultiBranchTransformerWrapper(nn.Module):
         action_params, value = self.model(state_dict)
         
         if self.target_output == "action":
-            # For discrete actions, return action logits
+            # For discrete actions, convert to linear action space
             if len(action_params) == 2:
-                # Combined logits for action type and size
-                return torch.cat(action_params, dim=-1)
+                # We have separate action_type and position_size logits
+                # Convert to linear action logits using the Cartesian product
+                action_type_logits, position_size_logits = action_params
+                
+                # Create linear action logits: shape [batch_size, 12]
+                # Linear index = action_type * 4 + position_size
+                batch_size = action_type_logits.shape[0]
+                linear_logits = torch.zeros(batch_size, 12, device=action_type_logits.device, dtype=action_type_logits.dtype)
+                
+                for action_type in range(3):  # HOLD, BUY, SELL
+                    for position_size in range(4):  # 25%, 50%, 75%, 100%
+                        linear_idx = action_type * 4 + position_size
+                        # Sum the log probabilities (add logits)
+                        linear_logits[:, linear_idx] = (
+                            action_type_logits[:, action_type] + position_size_logits[:, position_size]
+                        )
+                
+                return linear_logits
             else:
+                # Single action output (shouldn't happen with our model)
                 return action_params[0]
+                
         elif self.target_output == "value":
             return value
+            
         else:  # "both"
             if len(action_params) == 2:
-                return torch.cat([action_params[0], action_params[1], value], dim=-1)
+                # Convert action to linear format and concatenate with value
+                action_type_logits, position_size_logits = action_params
+                batch_size = action_type_logits.shape[0]
+                linear_logits = torch.zeros(batch_size, 12, device=action_type_logits.device, dtype=action_type_logits.dtype)
+                
+                for action_type in range(3):
+                    for position_size in range(4):
+                        linear_idx = action_type * 4 + position_size
+                        linear_logits[:, linear_idx] = (
+                            action_type_logits[:, action_type] + position_size_logits[:, position_size]
+                        )
+                
+                return torch.cat([linear_logits, value], dim=-1)
             else:
                 return torch.cat([action_params[0], value], dim=-1)
 
@@ -346,8 +381,16 @@ class CaptumAttributionAnalyzer:
             portfolio_features = portfolio_features.unsqueeze(0)
             
         # Convert target action to tensor if needed
-        if target_action is not None and not isinstance(target_action, torch.Tensor):
-            target_action = torch.tensor([target_action], dtype=torch.long, device=hf_features.device)
+        if target_action is not None:
+            if not isinstance(target_action, torch.Tensor):
+                target_action = torch.tensor([target_action], dtype=torch.long, device=hf_features.device)
+            elif target_action.dim() == 0:  # Scalar tensor
+                target_action = target_action.unsqueeze(0)
+            
+            # Validate target action range
+            if torch.any(target_action < 0) or torch.any(target_action > 11):
+                self.logger.warning(f"Target action {target_action} out of valid range [0, 11], setting to None")
+                target_action = None
         
         # Create baselines
         baselines = self._create_baseline({
@@ -365,12 +408,23 @@ class CaptumAttributionAnalyzer:
         }
         
         # Run each attribution method
+        successful_methods = 0
         for method_name, method in self.methods.items():
             try:
+                self.logger.debug(f"Running attribution method: {method_name}")
+                
                 # Suppress the gradient warnings - they're expected and harmless
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", message=".*did not already require gradients.*")
                     warnings.filterwarnings("ignore", message=".*Setting forward, backward hooks.*")
+                    warnings.filterwarnings("ignore", message=".*Target not provided when necessary.*")
+                    
+                    # Check if this method requires target action
+                    requires_target = "integrated_gradients" in method_name or "deep_lift" in method_name or "gradient_shap" in method_name
+                    
+                    if requires_target and target_action is None:
+                        self.logger.debug(f"Skipping {method_name} - requires target action but none provided")
+                        continue
                     
                     if "integrated_gradients" in method_name:
                         attributions = self._run_integrated_gradients(
@@ -400,33 +454,78 @@ class CaptumAttributionAnalyzer:
                             baselines,
                             target_action,
                         )
-                    else:
-                        # Generic attribution
+                    elif "saliency" in method_name:
+                        # Saliency doesn't always need target
                         attributions = method.attribute(
                             inputs=(hf_features, mf_features, lf_features, portfolio_features),
                             target=target_action,
                         )
+                    else:
+                        # Generic attribution - try with target first, then without
+                        try:
+                            attributions = method.attribute(
+                                inputs=(hf_features, mf_features, lf_features, portfolio_features),
+                                target=target_action,
+                            )
+                        except Exception as e:
+                            if target_action is not None and "target" in str(e).lower():
+                                self.logger.debug(f"Retrying {method_name} without target due to: {e}")
+                                attributions = method.attribute(
+                                    inputs=(hf_features, mf_features, lf_features, portfolio_features),
+                                )
+                            else:
+                                raise e
+                
+                # Validate attributions
+                if not isinstance(attributions, tuple) or len(attributions) != 4:
+                    self.logger.warning(f"Unexpected attribution format from {method_name}: type={type(attributions)}, len={len(attributions) if isinstance(attributions, tuple) else 'N/A'}")
+                    continue
                 
                 # Store results
                 results["attributions"][method_name] = {
-                    "hf": attributions[0].detach().cpu().numpy() if isinstance(attributions, tuple) else None,
-                    "mf": attributions[1].detach().cpu().numpy() if isinstance(attributions, tuple) and len(attributions) > 1 else None,
-                    "lf": attributions[2].detach().cpu().numpy() if isinstance(attributions, tuple) and len(attributions) > 2 else None,
-                    "portfolio": attributions[3].detach().cpu().numpy() if isinstance(attributions, tuple) and len(attributions) > 3 else None,
+                    "hf": attributions[0].detach().cpu().numpy(),
+                    "mf": attributions[1].detach().cpu().numpy(),
+                    "lf": attributions[2].detach().cpu().numpy(),
+                    "portfolio": attributions[3].detach().cpu().numpy(),
                 }
+                
+                successful_methods += 1
+                self.logger.debug(f"Successfully completed {method_name}")
                 
             except Exception as e:
                 self.logger.error(f"Error in {method_name}: {str(e)}")
+                self.logger.debug(f"Method {method_name} failed with: {type(e).__name__}: {e}")
                 continue
         
+        if successful_methods == 0:
+            self.logger.warning("No attribution methods completed successfully")
+            # Return empty results to avoid downstream errors
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "attributions": {},
+                "aggregated": {},
+                "visualizations": [],
+                "predictions": {},
+            }
+        
+        self.logger.info(f"Completed {successful_methods}/{len(self.methods)} attribution methods")
+        
         # Aggregate attributions
-        if self.config.aggregate_features:
-            results["aggregated"] = self._aggregate_attributions(results["attributions"])
+        if self.config.aggregate_features and results["attributions"]:
+            try:
+                results["aggregated"] = self._aggregate_attributions(results["attributions"])
+            except Exception as e:
+                self.logger.error(f"Error aggregating attributions: {e}")
+                results["aggregated"] = {}
         
         # Create visualizations
-        if self.config.save_visualizations:
-            viz_paths = self._create_visualizations(results, state_dict)
-            results["visualizations"] = viz_paths
+        if self.config.save_visualizations and results["attributions"]:
+            try:
+                viz_paths = self._create_visualizations(results, state_dict)
+                results["visualizations"] = viz_paths
+            except Exception as e:
+                self.logger.error(f"Error creating visualizations: {e}")
+                results["visualizations"] = []
         
         # Store in history
         self.attribution_history.append(results)
@@ -645,7 +744,10 @@ class CaptumAttributionAnalyzer:
         elif not results.get("aggregated"):
             self.logger.warning("No aggregated data for importance plot")
             
-        self.logger.info(f"Created {len(viz_paths)} visualizations total")
+        if viz_paths:
+            self.logger.info(f"Created {len(viz_paths)} visualizations total")
+        else:
+            self.logger.warning("No visualizations were created")
         
         return viz_paths
     

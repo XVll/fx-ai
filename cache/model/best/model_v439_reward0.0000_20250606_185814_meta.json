@@ -1,17 +1,17 @@
 {
-  "version": 417,
-  "timestamp": "20250606_180724",
+  "version": 439,
+  "timestamp": "20250606_185814",
   "reward": 0.0,
   "metrics": {
     "mean_reward": 0.0,
-    "recent_reward": -16.31797484966113,
+    "recent_reward": -15.508443988716007,
     "update_iter": 14,
     "episode_count": 14,
     "global_steps": 3584,
-    "timestamp": 1749222444.500324,
+    "timestamp": 1749225494.0674171,
     "mode": "production",
     "recent_episodes_count": 10,
     "training_active": true
   },
-  "source": "outputs/momentum_training_20250606_175847/models/checkpoint_iter14.pt"
+  "source": "outputs/momentum_training_20250606_184946/models/checkpoint_iter14.pt"
 }

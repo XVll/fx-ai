@@ -1,8 +1,11 @@
 # Sweep Override - Hyperparameter Optimization
 # Optimized for fast, deterministic trials with minimal overhead
+training:
+  rollout_steps: 64
+  n_epochs: 1
 
 env:
-  max_steps: 256  
+  max_steps: 64  
   training_manager:
     mode: "sweep"
     
