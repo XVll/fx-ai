@@ -54,6 +54,11 @@ class AttributionConfig:
     visualization_dir: str = "outputs/captum"
     heatmap_threshold: float = 0.01  # Min attribution value to show
     
+    # Control which visualizations to create
+    create_branch_heatmap: bool = True
+    create_timeseries_plot: bool = True
+    create_aggregated_plot: bool = True
+    
     # Performance settings
     batch_analysis: bool = False  # Analyze multiple samples at once
     max_batch_size: int = 32
@@ -145,9 +150,7 @@ class CaptumAttributionAnalyzer:
         # Attribution history for analysis
         self.attribution_history = []
         
-        # Auto-generate feature groups if not provided
-        if self.config.feature_groups is None and getattr(self.config, 'use_feature_manager_names', True):
-            self.config.feature_groups = FeatureRegistry.get_all_feature_groups()
+        # Feature groups are always auto-generated in __init__
         
     def _get_default_feature_names(self) -> Dict[str, List[str]]:
         """Get default feature names based on actual FxAIv2 feature implementation."""
@@ -169,74 +172,6 @@ class CaptumAttributionAnalyzer:
             mf_features = FeatureRegistry.get_feature_names("mf")
             lf_features = FeatureRegistry.get_feature_names("lf")
             portfolio_features = FeatureRegistry.get_feature_names("portfolio")
-        else:
-            # Fallback to hardcoded (but this should be avoided)
-            hf_features = [
-            "price_velocity", "price_acceleration", "tape_imbalance", "tape_aggression_ratio",
-            "spread_compression", "quote_velocity", "quote_imbalance", 
-            "volume_velocity", "volume_acceleration"
-        ]
-        
-        mf_features = [
-            # Candle features
-            "1m_position_in_current_candle", "5m_position_in_current_candle",
-            "1m_body_size_relative", "5m_body_size_relative",
-            "1m_position_in_previous_candle", "5m_position_in_previous_candle",
-            "1m_upper_wick_relative", "1m_lower_wick_relative",
-            "5m_upper_wick_relative", "5m_lower_wick_relative",
-            # EMA features
-            "distance_to_ema9_1m", "distance_to_ema20_1m", "distance_to_ema9_5m", "distance_to_ema20_5m",
-            "ema_interaction_pattern", "ema_crossover_dynamics", "ema_trend_alignment",
-            # Swing features
-            "swing_high_distance_1m", "swing_low_distance_1m", "swing_high_distance_5m", "swing_low_distance_5m",
-            # Velocity/acceleration features
-            "price_velocity_1m", "price_velocity_5m", "volume_velocity_1m", "volume_velocity_5m",
-            "price_acceleration_1m", "price_acceleration_5m", "volume_acceleration_1m", "volume_acceleration_5m",
-            # VWAP features
-            "distance_to_vwap", "vwap_slope", "price_vwap_divergence",
-            "vwap_interaction_dynamics", "vwap_breakout_quality", "vwap_mean_reversion_tendency",
-            # Volume features
-            "relative_volume", "volume_surge", "cumulative_volume_delta", "volume_momentum",
-            # Professional indicators
-            "professional_ema_system", "professional_vwap_analysis", 
-            "professional_momentum_quality", "professional_volatility_regime",
-            # Sequence patterns
-            "trend_acceleration", "volume_pattern_evolution", "momentum_quality", "pattern_maturation",
-            # Aggregated signals
-            "mf_trend_consistency", "mf_volume_price_divergence", "mf_momentum_persistence",
-            # Adaptive features
-            "volatility_adjusted_momentum", "regime_relative_volume"
-        ]
-        
-        lf_features = [
-            # Range features
-            "daily_range_position", "prev_day_range_position", "price_change_from_prev_close",
-            # Level features
-            "support_distance", "resistance_distance", "whole_dollar_proximity", "half_dollar_proximity",
-            # Time features
-            "market_session_type", "time_of_day_sin", "time_of_day_cos",
-            # Market structure
-            "halt_state", "time_since_halt", "distance_to_luld_up", "distance_to_luld_down", "luld_band_width",
-            # Context features
-            "session_progress", "market_stress", "session_volume_profile",
-            # Adaptive features
-            "adaptive_support_resistance",
-            # HF summary features
-            "hf_momentum_summary", "hf_volume_dynamics", "hf_microstructure_quality"
-        ]
-        
-        portfolio_features = [
-            "position_size_normalized",    # Feature 0: -1 to 1
-            "unrealized_pnl_normalized",   # Feature 1: -2 to 2
-            "time_in_position",            # Feature 2: 0 to 2
-            "cash_ratio",                  # Feature 3: 0 to 2
-            "session_pnl_percentage",      # Feature 4: -1 to 1
-            "max_favorable_excursion",     # Feature 5: -2 to 2 (MFE)
-            "max_adverse_excursion",       # Feature 6: -2 to 2 (MAE)
-            "profit_giveback_ratio",       # Feature 7: -1 to 1
-            "recovery_ratio",              # Feature 8: -1 to 1
-            "trade_quality_score"          # Feature 9: -1 to 1
-        ]
         
         # Get model config for dimensions if available
         if hasattr(self.model, "model_config"):
@@ -459,10 +394,10 @@ class CaptumAttributionAnalyzer:
                 
                 # Store results
                 results["attributions"][method_name] = {
-                    "hf": attributions[0].cpu().numpy() if isinstance(attributions, tuple) else None,
-                    "mf": attributions[1].cpu().numpy() if isinstance(attributions, tuple) and len(attributions) > 1 else None,
-                    "lf": attributions[2].cpu().numpy() if isinstance(attributions, tuple) and len(attributions) > 2 else None,
-                    "portfolio": attributions[3].cpu().numpy() if isinstance(attributions, tuple) and len(attributions) > 3 else None,
+                    "hf": attributions[0].detach().cpu().numpy() if isinstance(attributions, tuple) else None,
+                    "mf": attributions[1].detach().cpu().numpy() if isinstance(attributions, tuple) and len(attributions) > 1 else None,
+                    "lf": attributions[2].detach().cpu().numpy() if isinstance(attributions, tuple) and len(attributions) > 2 else None,
+                    "portfolio": attributions[3].detach().cpu().numpy() if isinstance(attributions, tuple) and len(attributions) > 3 else None,
                 }
                 
             except Exception as e:
@@ -481,9 +416,7 @@ class CaptumAttributionAnalyzer:
         # Store in history
         self.attribution_history.append(results)
         
-        # Auto-generate feature groups if not provided
-        if self.config.feature_groups is None and getattr(self.config, 'use_feature_manager_names', True):
-            self.config.feature_groups = FeatureRegistry.get_all_feature_groups()
+        # Feature groups are always auto-generated in __init__
         
         # Get model predictions for context
         with torch.no_grad():
@@ -642,32 +575,59 @@ class CaptumAttributionAnalyzer:
         
         # Create heatmaps for each method
         for method_name, attributions in results["attributions"].items():
-            if not any(v is not None for v in attributions.values()):
+            # Check if we have any valid attributions
+            valid_attrs = {k: v for k, v in attributions.items() if v is not None}
+            if not valid_attrs:
+                self.logger.debug(f"No valid attributions for {method_name}")
                 continue
+            
+            # Clean method name for display
+            display_name = method_name.replace("_action", "").replace("_value", "")
+            if "_action" in method_name:
+                display_name += " (Action)"
+            elif "_value" in method_name:
+                display_name += " (Value)"
                 
             # Branch comparison heatmap
-            fig = self._create_branch_heatmap(method_name, attributions)
-            if fig:
-                path = self.viz_dir / f"{method_name}_branches_{timestamp}.png"
-                # Ensure directory exists
-                path.parent.mkdir(parents=True, exist_ok=True)
-                fig.savefig(path, dpi=150, bbox_inches="tight")
-                plt.close(fig)
-                viz_paths.append(str(path))
-            
-            # Time series attribution plot for HF features
-            if attributions.get("hf") is not None:
-                fig = self._create_timeseries_plot(method_name, attributions["hf"], "hf")
+            if getattr(self.config, 'create_branch_heatmap', True):
+                fig = self._create_branch_heatmap(display_name, attributions)
                 if fig:
-                    path = self.viz_dir / f"{method_name}_hf_timeseries_{timestamp}.png"
+                    path = self.viz_dir / f"{method_name}_branches_{timestamp}.png"
                     # Ensure directory exists
                     path.parent.mkdir(parents=True, exist_ok=True)
                     fig.savefig(path, dpi=150, bbox_inches="tight")
                     plt.close(fig)
                     viz_paths.append(str(path))
+                    self.logger.info(f"Created branch heatmap: {path.name}")
+                else:
+                    self.logger.warning(f"Failed to create branch heatmap for {method_name}")
+            
+            # Time series attribution plots
+            if getattr(self.config, 'create_timeseries_plot', True):
+                # HF timeseries
+                if attributions.get("hf") is not None:
+                    fig = self._create_timeseries_plot(display_name, attributions["hf"], "hf")
+                    if fig:
+                        path = self.viz_dir / f"{method_name}_hf_timeseries_{timestamp}.png"
+                        # Ensure directory exists
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        fig.savefig(path, dpi=150, bbox_inches="tight")
+                        plt.close(fig)
+                        viz_paths.append(str(path))
+                        self.logger.info(f"Created HF timeseries plot: {path.name}")
+                
+                # MF timeseries if available
+                if attributions.get("mf") is not None and self.config.analyze_branches:
+                    fig = self._create_timeseries_plot(display_name, attributions["mf"], "mf")
+                    if fig:
+                        path = self.viz_dir / f"{method_name}_mf_timeseries_{timestamp}.png"
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        fig.savefig(path, dpi=150, bbox_inches="tight")
+                        plt.close(fig)
+                        viz_paths.append(str(path))
         
         # Create aggregated importance plot
-        if results.get("aggregated"):
+        if getattr(self.config, 'create_aggregated_plot', True) and results.get("aggregated"):
             fig = self._create_aggregated_importance_plot(results["aggregated"])
             if fig:
                 path = self.viz_dir / f"aggregated_importance_{timestamp}.png"
@@ -676,6 +636,11 @@ class CaptumAttributionAnalyzer:
                 fig.savefig(path, dpi=150, bbox_inches="tight")
                 plt.close(fig)
                 viz_paths.append(str(path))
+                self.logger.info(f"Created aggregated plot: {path.name}")
+        elif not results.get("aggregated"):
+            self.logger.warning("No aggregated data for importance plot")
+            
+        self.logger.info(f"Created {len(viz_paths)} visualizations total")
         
         return viz_paths
     
@@ -689,7 +654,7 @@ class CaptumAttributionAnalyzer:
             branch_labels = []
             
             for branch in ["hf", "mf", "lf", "portfolio"]:
-                if attributions.get(branch) is not None:
+                if attributions.get(branch) is not None and attributions[branch] is not None:
                     attrs = attributions[branch]
                     if attrs.ndim > 2:
                         # Average over batch and sequence dimensions
@@ -703,29 +668,89 @@ class CaptumAttributionAnalyzer:
                     branch_data.append(attrs[top_indices])
                     branch_labels.append(branch.upper())
             
-            if not branch_data:
+            if not branch_data or len(branch_data) < 2:
+                self.logger.debug(f"Insufficient branch data for heatmap: {len(branch_data)} branches")
                 return None
             
-            # Create heatmap
-            fig, ax = plt.subplots(figsize=(12, 8))
+            # Create figure with better layout
+            fig = plt.figure(figsize=(16, 10))
             
-            # Stack data
-            data_matrix = np.array(branch_data)
+            # Create main heatmap
+            ax_main = plt.subplot2grid((10, 12), (0, 0), rowspan=8, colspan=10)
             
-            # Create heatmap
-            sns.heatmap(
-                data_matrix,
-                xticklabels=[f"F{i}" for i in range(data_matrix.shape[1])],
-                yticklabels=branch_labels,
-                cmap="RdBu_r",
-                center=0,
-                cbar_kws={"label": "Attribution Score"},
-                ax=ax,
-            )
+            # Stack data - pad shorter arrays to match longest
+            max_features = max(len(d) for d in branch_data)
+            padded_data = []
+            feature_names_by_branch = []
             
-            ax.set_title(f"Feature Attributions - {method_name}")
-            ax.set_xlabel("Top Features")
-            ax.set_ylabel("Branch")
+            for i, (data, branch_label) in enumerate(zip(branch_data, branch_labels)):
+                branch_key = branch_label.lower()
+                if len(data) < max_features:
+                    padded = np.pad(data, (0, max_features - len(data)), mode='constant', constant_values=0)
+                    padded_data.append(padded)
+                else:
+                    padded_data.append(data[:max_features])
+                
+                # Get feature names for this branch
+                if branch_key in self.feature_names:
+                    branch_features = self.feature_names[branch_key]
+                    # Get indices from original attribution
+                    attrs = attributions.get(branch_key)
+                    if attrs is not None:
+                        if attrs.ndim > 2:
+                            attrs = attrs.mean(axis=(0, 1))
+                        elif attrs.ndim == 2:
+                            attrs = attrs.mean(axis=0)
+                        attrs = np.abs(attrs)
+                        top_indices = np.argsort(attrs)[-20:][::-1]
+                        # Get feature names for top indices
+                        names = []
+                        for idx in top_indices[:max_features]:
+                            if idx < len(branch_features):
+                                names.append(branch_features[idx])
+                            else:
+                                names.append(f"{branch_key}_feat_{idx}")
+                        feature_names_by_branch.append(names)
+                    else:
+                        feature_names_by_branch.append([f"F{j}" for j in range(max_features)])
+                else:
+                    feature_names_by_branch.append([f"F{j}" for j in range(max_features)])
+            
+            data_matrix = np.array(padded_data)
+            
+            # Create heatmap with normalized values
+            im = ax_main.imshow(data_matrix, cmap="RdBu_r", aspect="auto")
+            
+            # Set ticks and labels
+            ax_main.set_yticks(np.arange(len(branch_labels)))
+            ax_main.set_yticklabels(branch_labels, fontsize=12)
+            ax_main.set_xticks(np.arange(data_matrix.shape[1]))
+            ax_main.set_xticklabels([f"F{i}" for i in range(data_matrix.shape[1])], rotation=45, ha="right")
+            
+            # Add colorbar
+            cbar_ax = plt.subplot2grid((10, 12), (0, 10), rowspan=8, colspan=1)
+            plt.colorbar(im, cax=cbar_ax, label="Attribution Score")
+            
+            # Add feature name legend on the right
+            legend_ax = plt.subplot2grid((10, 12), (8, 0), rowspan=2, colspan=12)
+            legend_ax.axis('off')
+            
+            # Create legend text showing top features per branch
+            legend_text = "Top Features by Branch:\n"
+            for branch_label, names in zip(branch_labels, feature_names_by_branch):
+                top_3_names = names[:3] if len(names) >= 3 else names
+                legend_text += f"{branch_label}: {', '.join(top_3_names)}...\n"
+            
+            legend_ax.text(0.05, 0.5, legend_text, transform=legend_ax.transAxes, 
+                         fontsize=10, verticalalignment='center', family='monospace')
+            
+            # Add title
+            fig.suptitle(f"Feature Attribution Heatmap - {method_name}", fontsize=16, y=0.98)
+            ax_main.set_title("Top 20 Features per Branch (Darker = Higher Attribution)", fontsize=12, pad=10)
+            ax_main.set_xlabel("Feature Index", fontsize=12)
+            ax_main.set_ylabel("Branch", fontsize=12)
+            
+            plt.tight_layout()
             
             return fig
             
@@ -826,7 +851,9 @@ class CaptumAttributionAnalyzer:
             ax.set_yticklabels(features)
             ax.invert_yaxis()
             ax.set_xlabel("Average Importance Score")
-            ax.set_title("Top Feature Importances (Aggregated Across Methods)")
+            # Add method count to title
+            method_count = len(set(m.split('_')[0] for m in aggregated.keys()))
+            ax.set_title(f"Top Feature Importances (Averaged Across {method_count} Methods)")
             
             # Add legend
             from matplotlib.patches import Patch

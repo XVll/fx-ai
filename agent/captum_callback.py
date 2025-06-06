@@ -276,14 +276,40 @@ class CaptumCallback(BaseCallback):
                             )
                             log_dict[f"captum/{method_name}/{branch}_top_features"] = table
             
-            # Log visualizations
+            # Log visualizations with better naming
             if "visualizations" in results:
                 for viz_path in results["visualizations"]:
                     try:
+                        # Parse visualization type from filename
+                        filename = Path(viz_path).stem
+                        if "branches" in filename:
+                            viz_type = "branch_heatmap"
+                        elif "timeseries" in filename:
+                            if "hf" in filename:
+                                viz_type = "hf_timeseries"
+                            elif "mf" in filename:
+                                viz_type = "mf_timeseries"
+                            else:
+                                viz_type = "timeseries"
+                        elif "aggregated" in filename:
+                            viz_type = "aggregated_importance"
+                        else:
+                            viz_type = "unknown"
+                        
+                        # Extract method name if present
+                        method_part = filename.split('_')[0]
+                        if method_part in ['saliency', 'deep', 'integrated', 'gradient']:
+                            log_key = f"captum/{method_part}/{viz_type}"
+                        else:
+                            log_key = f"captum/{viz_type}"
+                            
                         # Upload image to WandB
-                        log_dict[f"captum/viz_{Path(viz_path).stem}"] = wandb.Image(viz_path)
+                        log_dict[log_key] = wandb.Image(viz_path)
+                        self.logger.debug(f"Uploaded {viz_type} to W&B: {log_key}")
                     except Exception as e:
-                        self.logger.error(f"Error uploading visualization: {str(e)}")
+                        self.logger.error(f"Error uploading visualization {viz_path}: {str(e)}")
+                
+                self.logger.info(f"Uploaded {len(results['visualizations'])} visualizations to W&B")
             
             # Log predictions if available
             if "predictions" in results:

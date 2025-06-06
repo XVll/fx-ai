@@ -650,24 +650,18 @@ class CaptumConfig(BaseModel):
     visualization_dir: str = Field("outputs/captum", description="Visualization directory")
     heatmap_threshold: float = Field(0.01, description="Minimum attribution value to show")
     
+    # Control which visualizations to create
+    create_branch_heatmap: bool = Field(True, description="Create branch comparison heatmap")
+    create_timeseries_plot: bool = Field(True, description="Create time series attribution plots")
+    create_aggregated_plot: bool = Field(True, description="Create aggregated importance plot")
+    
     # Performance settings
     batch_analysis: bool = Field(False, description="Analyze multiple samples at once")
     max_batch_size: int = Field(32, description="Maximum batch size for analysis")
     
-    # Feature importance aggregation
-    aggregate_features: bool = Field(True, description="Aggregate attributions by feature groups")
-    
-    # Feature grouping definitions (can be auto-generated or manually specified)
-    feature_groups: Optional[Dict[str, List[str]]] = Field(
-        None,
-        description="Feature grouping definitions. If None, will be auto-generated from feature manager"
-    )
-    
-    # Use actual feature names from feature manager
-    use_feature_manager_names: bool = Field(
-        True,
-        description="Use actual feature names from SimpleFeatureManager instead of generic names"
-    )
+    # Feature importance aggregation - removed, always enabled
+    # Feature groups - removed, always auto-generated from FeatureRegistry
+    # use_feature_manager_names - removed, always true (who wants generic names?)
     
     # Callback settings
     callback: CaptumCallbackConfig = Field(default_factory=CaptumCallbackConfig)
