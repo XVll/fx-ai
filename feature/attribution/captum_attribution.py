@@ -11,6 +11,9 @@ import pandas as pd
 from pathlib import Path
 import json
 
+# Import feature registry for consistent feature names
+from feature.feature_registry import FeatureRegistry
+
 # Captum imports
 from captum.attr import (
     IntegratedGradients,
@@ -123,10 +126,12 @@ class CaptumAttributionAnalyzer:
         model: nn.Module,
         config: AttributionConfig,
         feature_names: Optional[Dict[str, List[str]]] = None,
+        feature_manager: Optional[Any] = None,
         logger: Optional[logging.Logger] = None,
     ):
         self.model = model
         self.config = config
+        self.feature_manager = feature_manager
         self.feature_names = feature_names or self._get_default_feature_names()
         self.logger = logger or logging.getLogger(__name__)
         
@@ -140,10 +145,33 @@ class CaptumAttributionAnalyzer:
         # Attribution history for analysis
         self.attribution_history = []
         
+        # Auto-generate feature groups if not provided
+        if self.config.feature_groups is None and getattr(self.config, 'use_feature_manager_names', True):
+            self.config.feature_groups = FeatureRegistry.get_all_feature_groups()
+        
     def _get_default_feature_names(self) -> Dict[str, List[str]]:
         """Get default feature names based on actual FxAIv2 feature implementation."""
-        # Real feature names from FxAIv2 SimpleFeatureManager
-        hf_features = [
+        # Try to get feature names from the feature manager if available
+        if self.feature_manager is not None:
+            try:
+                return {
+                    "hf": self.feature_manager.get_enabled_features("hf"),
+                    "mf": self.feature_manager.get_enabled_features("mf"),
+                    "lf": self.feature_manager.get_enabled_features("lf"),
+                    "portfolio": FeatureRegistry.get_feature_names("portfolio"),
+                }
+            except Exception as e:
+                self.logger.warning(f"Failed to get feature names from manager: {e}")
+        
+        # Use feature registry as the source of truth
+        if getattr(self.config, 'use_feature_manager_names', True):
+            hf_features = FeatureRegistry.get_feature_names("hf")
+            mf_features = FeatureRegistry.get_feature_names("mf")
+            lf_features = FeatureRegistry.get_feature_names("lf")
+            portfolio_features = FeatureRegistry.get_feature_names("portfolio")
+        else:
+            # Fallback to hardcoded (but this should be avoided)
+            hf_features = [
             "price_velocity", "price_acceleration", "tape_imbalance", "tape_aggression_ratio",
             "spread_compression", "quote_velocity", "quote_imbalance", 
             "volume_velocity", "volume_acceleration"
@@ -249,6 +277,21 @@ class CaptumAttributionAnalyzer:
             "lf": lf_features,
             "portfolio": portfolio_features,
         }
+    
+    def _get_portfolio_feature_names(self) -> List[str]:
+        """Get portfolio feature names - these are well-defined in PortfolioSimulator."""
+        return [
+            "position_size_normalized",    # Feature 0: -1 to 1
+            "unrealized_pnl_normalized",   # Feature 1: -2 to 2
+            "time_in_position",            # Feature 2: 0 to 2
+            "cash_ratio",                  # Feature 3: 0 to 2
+            "session_pnl_percentage",      # Feature 4: -1 to 1
+            "max_favorable_excursion",     # Feature 5: -2 to 2 (MFE)
+            "max_adverse_excursion",       # Feature 6: -2 to 2 (MAE)
+            "profit_giveback_ratio",       # Feature 7: -1 to 1
+            "recovery_ratio",              # Feature 8: -1 to 1
+            "trade_quality_score"          # Feature 9: -1 to 1
+        ]
     
     def _init_attribution_methods(self):
         """Initialize Captum attribution methods."""
@@ -437,6 +480,10 @@ class CaptumAttributionAnalyzer:
         
         # Store in history
         self.attribution_history.append(results)
+        
+        # Auto-generate feature groups if not provided
+        if self.config.feature_groups is None and getattr(self.config, 'use_feature_manager_names', True):
+            self.config.feature_groups = FeatureRegistry.get_all_feature_groups()
         
         # Get model predictions for context
         with torch.no_grad():

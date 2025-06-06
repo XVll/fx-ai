@@ -1,6 +1,10 @@
 """Feature Attribution Analysis Package
 
 Provides feature importance analysis using simple methods and Captum.
+
+The FeatureRegistry is used as the single source of truth for all feature
+names and groupings, ensuring consistency between feature extraction and
+attribution analysis.
 """
 
 from .simple_attribution import SimpleFeatureAttribution
