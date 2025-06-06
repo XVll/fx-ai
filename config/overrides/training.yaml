@@ -71,8 +71,8 @@ captum:
   enabled: true
   # Balanced methods for production insights
   methods:
-    - saliency     # Fast baseline
     - deep_lift    # More accurate attribution
+    - gradient_shap  # Robust method for complex models
   
   # Production analysis parameters
   n_steps: 25      # Balanced accuracy/speed
