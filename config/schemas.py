@@ -654,6 +654,10 @@ class CaptumConfig(BaseModel):
     create_branch_heatmap: bool = Field(True, description="Create branch comparison heatmap")
     create_timeseries_plot: bool = Field(True, description="Create time series attribution plots")
     create_aggregated_plot: bool = Field(True, description="Create aggregated importance plot")
+    timeseries_branches: List[str] = Field(
+        default_factory=lambda: ["hf", "mf", "lf", "portfolio"],
+        description="Which branches to create timeseries plots for"
+    )
     
     # Performance settings
     batch_analysis: bool = Field(False, description="Analyze multiple samples at once")
