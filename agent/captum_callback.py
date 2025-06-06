@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import logging
 import json
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -156,13 +156,13 @@ class CaptumCallback(BaseCallback):
             start_time = datetime.now()
             
             # Get a sample from the environment
-            state_dict = self._get_sample_state(trainer)
+            state_dict, target_action = self._get_sample_state(trainer)
             if state_dict is None:
                 return
             
             # Run attribution analysis
             self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count})")
-            results = self.analyzer.analyze_sample(state_dict)
+            results = self.analyzer.analyze_sample(state_dict, target_action=target_action)
             
             # Track analysis
             self.analysis_count += 1
@@ -197,8 +197,12 @@ class CaptumCallback(BaseCallback):
             import traceback
             traceback.print_exc()
     
-    def _get_sample_state(self, trainer) -> Optional[Dict[str, torch.Tensor]]:
-        """Get a sample state from buffer with caching fallback (no env.reset)."""
+    def _get_sample_state(self, trainer) -> Optional[Tuple[Dict[str, torch.Tensor], Optional[int]]]:
+        """Get a sample state from buffer with caching fallback (no env.reset).
+        
+        Returns:
+            Tuple of (state_dict, target_action) or None
+        """
         try:
             # Try to get from replay buffer first
             if hasattr(trainer, "buffer") and trainer.buffer.get_size() > 0:
@@ -220,23 +224,35 @@ class CaptumCallback(BaseCallback):
                                 tensor = tensor.unsqueeze(0)  # [1, seq_len, feat_dim]
                             state_dict[key] = tensor
                     
+                    # Get the action taken for this state if available
+                    target_action = None
+                    if "action" in recent_experience:
+                        action = recent_experience["action"]
+                        if isinstance(action, (list, tuple)) and len(action) >= 2:
+                            # Convert (action_type, position_size) to flat index
+                            action_type, position_size = action[0], action[1]
+                            target_action = int(action_type * 4 + position_size)
+                        elif isinstance(action, (int, torch.Tensor)):
+                            target_action = int(action)
+                    
                     # Cache this good state for future use
                     self.cached_state = state_dict
+                    self.cached_action = target_action
                     self.logger.debug("Cached fresh state from buffer for Captum analysis")
-                    return state_dict
+                    return state_dict, target_action
             
             # Use cached state if buffer is empty
             if self.cached_state is not None:
                 self.logger.info("Using cached state for Captum analysis (buffer empty)")
-                return self.cached_state
+                return self.cached_state, getattr(self, 'cached_action', None)
             
             # No data available - skip analysis
             self.logger.warning("No state available for Captum analysis - no buffer data and no cached state")
-            return None
+            return None, None
                 
         except Exception as e:
             self.logger.error(f"Error getting sample state: {str(e)}")
-            return None
+            return None, None
     
     def _log_to_wandb(self, results: Dict, trigger: str, count: int):
         """Log attribution results to WandB."""
@@ -320,9 +336,11 @@ class CaptumCallback(BaseCallback):
                             log_dict[f"captum/action_prob_{i}"] = p
                 
                 if "value" in results["predictions"]:
-                    log_dict["captum/value_estimate"] = float(
-                        results["predictions"]["value"]
-                    )
+                    value = results["predictions"]["value"]
+                    # Handle numpy arrays properly
+                    if isinstance(value, np.ndarray):
+                        value = value.item() if value.size == 1 else float(value.flatten()[0])
+                    log_dict["captum/value_estimate"] = float(value)
             
             # Log summary statistics periodically
             if self.analysis_count % 10 == 0:
