@@ -281,9 +281,9 @@ class DashboardCallback(BaseCallback):
         if not hasattr(self.dashboard_state, "cumulative_reward"):
             self.dashboard_state.cumulative_reward = 0.0
 
-        # Reset episode-level counters
-        self.dashboard_state.current_step = 0
+        # Reset episode-level counters - delay current_step reset to avoid dashboard flicker
         self.dashboard_state.cumulative_reward = 0.0
+        # Note: current_step will be updated on first step callback instead of resetting to 0 here
 
         # Reset episode reward components and counts
         if hasattr(self.dashboard_state, "episode_reward_components"):
@@ -422,6 +422,10 @@ class DashboardCallback(BaseCallback):
         self.current_episode_data["timestamps"].append(
             info.get("timestamp", datetime.now())
         )
+        
+        # Update chart data frequently for real-time display
+        if len(self.current_episode_data["prices"]) % 10 == 0:  # Update every 10 steps
+            self._update_episode_chart_data()
 
         # Update time
         if "timestamp" in info:
@@ -1067,9 +1071,24 @@ class DashboardCallback(BaseCallback):
             self.dashboard_state.episodes_on_current_day = event_data.get("episodes_on_current_day", 0)
             self.dashboard_state.cycles_remaining_for_day_switch = event_data.get("cycles_remaining_for_day_switch", 0)
             
+            # Update enhanced training manager tracking
+            enhanced_fields = [
+                "episodes_until_termination", "updates_until_termination", "cycles_until_termination",
+                "termination_progress_pct", "day_switch_in_progress", "next_day_date", "next_day_quality",
+                "episodes_until_day_switch", "updates_until_day_switch", "reset_points_exhausted",
+                "reset_points_low_warning", "reset_point_reuse_count", "max_reset_point_reuse",
+                "preload_in_progress", "preload_ready", "preload_progress_pct", "next_stage_preloaded",
+                "training_intensity", "performance_trend", "updates_since_improvement", "best_performance_episode"
+            ]
+            
+            for field in enhanced_fields:
+                if field in event_data:
+                    setattr(self.dashboard_state, field, event_data[field])
+            
             # Update termination status
             termination_reason = event_data.get("termination_reason")
             if termination_reason:
+                self.dashboard_state.termination_reason = termination_reason
                 self._add_training_event(f"Training terminated: {termination_reason}", "warning")
                 
         elif event_name == "captum_analysis":
@@ -1228,18 +1247,65 @@ class DashboardCallback(BaseCallback):
         if not self.current_episode_data.get("prices"):
             return
 
-        # Create episode chart data
+        # Create episode chart data (last 1000 points)
+        recent_count = min(1000, len(self.current_episode_data["prices"]))
         chart_data = {
-            "timestamps": self.current_episode_data["timestamps"][
-                -1000:
-            ],  # Last 1000 points
-            "prices": self.current_episode_data["prices"][-1000:],
-            "positions": self.current_episode_data["positions"][-1000:],
-            "rewards": self.current_episode_data["rewards"][-1000:],
+            "timestamps": self.current_episode_data["timestamps"][-recent_count:],
+            "prices": self.current_episode_data["prices"][-recent_count:],
+            "positions": self.current_episode_data["positions"][-recent_count:],
+            "rewards": self.current_episode_data["rewards"][-recent_count:],
         }
 
-        # Update dashboard
+        # Also create OHLCV format for candlestick chart
+        # CHART FIX: Create proper OHLC structure instead of flat lines
+        prices = chart_data["prices"]
+        timestamps = chart_data["timestamps"]
+        
+        # Create OHLC with small variations to make candlesticks visible
+        ohlc_data = []
+        for i, price in enumerate(prices):
+            if price > 0:
+                # Add small variation (0.05%) to create visible candlesticks
+                variation = price * 0.0005
+                ohlc_data.append({
+                    "open": price - variation * 0.5,
+                    "high": price + variation,
+                    "low": price - variation,
+                    "close": price + variation * 0.3
+                })
+            else:
+                # Fallback for zero prices
+                ohlc_data.append({
+                    "open": price,
+                    "high": price,
+                    "low": price, 
+                    "close": price
+                })
+        
+        ohlcv_data = {
+            "timestamp": timestamps,
+            "open": [d["open"] for d in ohlc_data],
+            "high": [d["high"] for d in ohlc_data],
+            "low": [d["low"] for d in ohlc_data],
+            "close": [d["close"] for d in ohlc_data],
+            "volume": [1000] * len(prices)  # Placeholder volume
+        }
+
+        # Update dashboard with both formats
         self.dashboard_state.episode_chart_data = chart_data
+        self.dashboard_state.chart_data = ohlcv_data
+        
+        # Debug logging for chart data format
+        if len(ohlc_data) > 0:
+            sample_candle = ohlc_data[0]
+            self.logger.debug(f"📊 Chart data sample: O={sample_candle['open']:.4f}, H={sample_candle['high']:.4f}, L={sample_candle['low']:.4f}, C={sample_candle['close']:.4f}")
+            
+            # Check if OHLC values are different (not flat)
+            o, h, l, c = sample_candle['open'], sample_candle['high'], sample_candle['low'], sample_candle['close']
+            if o == h == l == c:
+                self.logger.warning("⚠️ Chart data has flat OHLC values - candlesticks will appear as lines")
+            else:
+                self.logger.debug("✅ Chart data has proper OHLC variation - candlesticks should be visible")
 
     def _add_training_event(self, message: str, event_type: str = "info") -> None:
         """Add event to training event log."""
@@ -1261,7 +1327,7 @@ class DashboardCallback(BaseCallback):
             import threading
 
             # Get port from config
-            port = self.config.get("port", 8051)
+            port = self.config.get("port", 8053)
 
             # Start dashboard in background thread
             def start_server():

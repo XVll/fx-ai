@@ -553,9 +553,18 @@ class PortfolioSimulator:
 
         # Complete trade record
         trade["exit_timestamp"] = exit_time
-        trade["holding_period_seconds"] = (
-            exit_time - trade["entry_timestamp"]
-        ).total_seconds()
+        
+        # Ensure both timestamps are datetime objects
+        exit_ts = exit_time
+        entry_ts = trade["entry_timestamp"]
+        
+        # Convert pandas Timestamps to datetime if needed
+        if hasattr(exit_ts, 'to_pydatetime'):
+            exit_ts = exit_ts.to_pydatetime()
+        if hasattr(entry_ts, 'to_pydatetime'):
+            entry_ts = entry_ts.to_pydatetime()
+        
+        trade["holding_period_seconds"] = (exit_ts - entry_ts).total_seconds()
 
         # Move to completed trades
         self.completed_trades.append(trade)
@@ -715,7 +724,17 @@ class PortfolioSimulator:
             and self.max_holding_seconds
             and self.max_holding_seconds > 0
         ):
-            time_held = (timestamp - position.entry_timestamp).total_seconds()
+            # Ensure both timestamps are datetime objects
+            current_ts = timestamp
+            entry_ts = position.entry_timestamp
+            
+            # Convert pandas Timestamps to datetime if needed
+            if hasattr(current_ts, 'to_pydatetime'):
+                current_ts = current_ts.to_pydatetime()
+            if hasattr(entry_ts, 'to_pydatetime'):
+                entry_ts = entry_ts.to_pydatetime()
+            
+            time_held = (current_ts - entry_ts).total_seconds()
             if time_held >= 0:  # Ensure non-negative time held
                 features[2] = np.clip(time_held / self.max_holding_seconds, 0.0, 2.0)
 

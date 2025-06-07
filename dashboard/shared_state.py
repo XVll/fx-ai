@@ -89,6 +89,7 @@ class SharedDashboardState:
     updates_per_hour: float = 0.0
 
     # PPO metrics (from metrics)
+    total_loss: float = 0.0
     policy_loss: float = 0.0
     value_loss: float = 0.0
     entropy: float = 0.0
@@ -118,6 +119,7 @@ class SharedDashboardState:
     mean_episode_reward_history: Deque[float] = field(
         default_factory=lambda: deque(maxlen=10)
     )
+    total_loss_history: Deque[float] = field(default_factory=lambda: deque(maxlen=10))
 
     # Reward components (from metrics)
     reward_components: Dict[str, float] = field(default_factory=dict)
@@ -146,6 +148,9 @@ class SharedDashboardState:
     recent_trades: Deque[Dict[str, Any]] = field(
         default_factory=lambda: deque(maxlen=20)
     )
+    episode_trades: List[Dict[str, Any]] = field(
+        default_factory=list
+    )  # Episode-only trades (cleared on episode reset)
     recent_executions: Deque[Dict[str, Any]] = field(
         default_factory=lambda: deque(maxlen=50)
     )  # All executions
@@ -247,12 +252,53 @@ class SharedDashboardState:
     # Additional training lifecycle attributes
     is_collecting_rollout: bool = False
     rollout_size: int = 0
+    
+    # Chart data for candlestick chart
+    chart_data: Dict[str, Any] = field(default_factory=dict)
+    episode_chart_data: Dict[str, Any] = field(default_factory=dict)
+    
+    # Episode trades for chart display
+    episode_trades: List[Dict[str, Any]] = field(default_factory=list)
     rollout_reward_mean: float = 0.0
     
     # Evaluation attributes
     eval_mean_reward: float = 0.0
     eval_win_rate: float = 0.0
     eval_sharpe_ratio: float = 0.0
+    
+    # Enhanced Training Manager attributes
+    # Termination tracking
+    termination_reason: Optional[str] = None
+    episodes_until_termination: int = 0
+    updates_until_termination: int = 0
+    cycles_until_termination: int = 0
+    termination_progress_pct: float = 0.0
+    
+    # Day transition tracking
+    day_switch_in_progress: bool = False
+    next_day_date: str = ""
+    next_day_quality: float = 0.0
+    day_transition_eta_episodes: int = 0
+    episodes_until_day_switch: int = 0
+    updates_until_day_switch: int = 0
+    
+    # Reset point lifecycle
+    reset_points_exhausted: bool = False
+    reset_points_low_warning: bool = False
+    reset_point_reuse_count: int = 0
+    max_reset_point_reuse: int = 3
+    
+    # Preload status
+    preload_in_progress: bool = False
+    preload_ready: bool = False
+    preload_progress_pct: float = 0.0
+    next_stage_preloaded: str = ""
+    
+    # Training intensity and performance
+    training_intensity: str = "normal"  # normal, high, continuous
+    performance_trend: str = "stable"  # improving, stable, declining
+    updates_since_improvement: int = 0
+    best_performance_episode: int = 0
 
 
 class DashboardStateManager:
@@ -307,10 +353,17 @@ class DashboardStateManager:
                             and self._state.current_timestamp
                         ):
                             try:
-                                hold_duration = (
-                                    self._state.current_timestamp
-                                    - self._state.position_entry_timestamp
-                                )
+                                # Ensure both timestamps are datetime objects
+                                current_ts = self._state.current_timestamp
+                                entry_ts = self._state.position_entry_timestamp
+                                
+                                # Convert pandas Timestamps to datetime if needed
+                                if hasattr(current_ts, 'to_pydatetime'):
+                                    current_ts = current_ts.to_pydatetime()
+                                if hasattr(entry_ts, 'to_pydatetime'):
+                                    entry_ts = entry_ts.to_pydatetime()
+                                
+                                hold_duration = current_ts - entry_ts
                                 new_hold_time = int(hold_duration.total_seconds())
                                 # Only update if the time has actually changed (avoid constant logging)
                                 if (
@@ -392,21 +445,41 @@ class DashboardStateManager:
                     hold_time_minutes = hold_time_seconds / 60
 
                     pnl = data.get("pnl", 0)
-                    self._state.recent_trades.append(
-                        {
-                            "entry_time": entry_time_str,
-                            "exit_time": exit_time_str,
-                            "side": data.get("side"),
-                            "quantity": data.get("quantity"),
-                            "entry_price": data.get("price"),
-                            "exit_price": data.get("fill_price"),
-                            "pnl": pnl,
-                            "hold_time": f"{hold_time_minutes:.1f}m"
-                            if hold_time_minutes
-                            else "N/A",
-                            "status": "CLOSED",
-                        }
-                    )
+                    trade_entry = {
+                        "entry_time": entry_time_str,
+                        "exit_time": exit_time_str,
+                        "side": data.get("side"),
+                        "quantity": data.get("quantity"),
+                        "entry_price": data.get("price"),
+                        "exit_price": data.get("fill_price"),
+                        "pnl": pnl,
+                        "hold_time": f"{hold_time_minutes:.1f}m"
+                        if hold_time_minutes
+                        else "N/A",
+                        "status": "CLOSED",
+                        "episode": data.get("episode", 0),  # Add episode number for filtering
+                    }
+                    
+                    self._state.recent_trades.append(trade_entry)
+                    
+                    # Also add to episode_trades for current episode only
+                    if not hasattr(self._state, 'episode_trades'):
+                        self._state.episode_trades = []
+                    
+                    # Only add to episode_trades if it's for the current episode
+                    current_episode = getattr(self._state, 'episode_number', 0)
+                    trade_episode = data.get("episode", 0)
+                    if trade_episode == current_episode:
+                        self._state.episode_trades.append(trade_entry)
+                        # Debug log
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.debug(f"Added trade to episode_trades: episode {trade_episode}, total episode trades: {len(self._state.episode_trades)}")
+                    else:
+                        # Debug log for mismatched episodes
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.debug(f"Skipped adding trade: trade episode {trade_episode} != current episode {current_episode}")
 
                     # Update trade counters
                     self._state.episode_total_trades += 1
@@ -470,10 +543,17 @@ class DashboardStateManager:
                         # Calculate hold time immediately
                         if self._state.current_timestamp:
                             try:
-                                hold_duration = (
-                                    self._state.current_timestamp
-                                    - self._state.position_entry_timestamp
-                                )
+                                # Ensure both timestamps are datetime objects
+                                current_ts = self._state.current_timestamp
+                                entry_ts = self._state.position_entry_timestamp
+                                
+                                # Convert pandas Timestamps to datetime if needed
+                                if hasattr(current_ts, 'to_pydatetime'):
+                                    current_ts = current_ts.to_pydatetime()
+                                if hasattr(entry_ts, 'to_pydatetime'):
+                                    entry_ts = entry_ts.to_pydatetime()
+                                
+                                hold_duration = current_ts - entry_ts
                                 self._state.position_hold_time_seconds = int(
                                     hold_duration.total_seconds()
                                 )
@@ -596,6 +676,7 @@ class DashboardStateManager:
             # PPO metrics
             ppo_updated = False
             for key in [
+                "total_loss",
                 "policy_loss",
                 "value_loss",
                 "entropy",
@@ -698,6 +779,35 @@ class DashboardStateManager:
                 "episodes_per_day_config",
                 "curriculum_strategy",
                 "curriculum_episode_length",
+            ]:
+                if key in metrics:
+                    setattr(self._state, key, metrics[key])
+
+            # Enhanced Training Manager tracking
+            for key in [
+                "termination_reason",
+                "episodes_until_termination",
+                "updates_until_termination", 
+                "cycles_until_termination",
+                "termination_progress_pct",
+                "day_switch_in_progress",
+                "next_day_date",
+                "next_day_quality",
+                "day_transition_eta_episodes",
+                "episodes_until_day_switch",
+                "updates_until_day_switch",
+                "reset_points_exhausted",
+                "reset_points_low_warning",
+                "reset_point_reuse_count",
+                "max_reset_point_reuse",
+                "preload_in_progress",
+                "preload_ready",
+                "preload_progress_pct",
+                "next_stage_preloaded",
+                "training_intensity",
+                "performance_trend",
+                "updates_since_improvement",
+                "best_performance_episode",
             ]:
                 if key in metrics:
                     setattr(self._state, key, metrics[key])
@@ -829,14 +939,33 @@ class DashboardStateManager:
         # Notify callbacks
         self._notify_callbacks()
 
-    def reset_episode_counters(self):
+    def reset_episode_counters(self, episode_number: int = None):
         """Reset episode-level counters at episode start"""
         with self._lock:
+            # Update episode number if provided
+            if episode_number is not None:
+                self._state.episode_number = episode_number
+                
             self._state.episode_total_trades = 0
             self._state.episode_winning_trades = 0
             self._state.episode_losing_trades = 0
             self._state.episode_action_distribution = {"HOLD": 0, "BUY": 0, "SELL": 0}
             # self._state.episode_invalid_actions = 0  # Removed - action masking prevents invalid actions
+            
+            # Clear episode-specific trades
+            if hasattr(self._state, 'episode_trades'):
+                trades_count = len(self._state.episode_trades)
+                self._state.episode_trades.clear()
+                # Debug log
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Cleared episode_trades: removed {trades_count} trades for episode {self._state.episode_number}")
+            else:
+                self._state.episode_trades = []
+                # Debug log
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Initialized episode_trades for episode {self._state.episode_number}")
 
     def get_state(self) -> SharedDashboardState:
         """Get current state (thread-safe copy)"""
@@ -946,6 +1075,9 @@ class DashboardStateManager:
             self._state.recent_trades.clear()
             # Clear executions for current episode only
             self._state.recent_executions.clear()
+            # Clear episode-specific trades
+            if hasattr(self._state, 'episode_trades'):
+                self._state.episode_trades.clear()
             # Don't reset action_distribution here - it's managed by event stream
 
             logger.debug(

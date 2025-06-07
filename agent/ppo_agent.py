@@ -642,8 +642,18 @@ class PPOTrainer:
 
             # Track episode completion
             self.episodes_completed_on_current_day += 1
+            
+            # Notify DataLifecycleManager of episode completion - this advances to next reset point
+            # and handles cycle completion tracking internally
+            if self.training_manager and hasattr(self.training_manager, 'data_lifecycle_manager'):
+                if self.training_manager.data_lifecycle_manager:
+                    try:
+                        self.training_manager.data_lifecycle_manager.advance_cycle_on_episode_completion()
+                        self.logger.debug("🔄 Notified DataLifecycleManager of episode completion")
+                    except Exception as e:
+                        self.logger.debug(f"DataLifecycleManager episode notification failed: {e}")
 
-            # Check if we completed a cycle through all reset points
+            # Check if we completed a cycle through all reset points (for PPO agent's own tracking)
             if not self.env.has_more_reset_points():
                 self.reset_point_cycles_completed += 1
                 self.used_reset_point_indices.clear()
@@ -1099,6 +1109,9 @@ class PPOTrainer:
             "global_episode_counter": self.global_episode_counter,
             "invalid_actions": total_invalid_actions,
         }
+        
+        # Store mean_episode_reward as attribute for training_manager compatibility
+        self.mean_episode_reward = mean_episode_reward
 
         # Calculate aggregate metrics for interpretation
         if episode_details:

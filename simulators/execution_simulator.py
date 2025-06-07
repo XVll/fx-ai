@@ -381,7 +381,12 @@ class ExecutionSimulator:
             )
 
             # Create fill details
-            fill_timestamp = order_request.decision_timestamp + timedelta(
+            decision_ts = order_request.decision_timestamp
+            # Convert pandas Timestamp to datetime if needed
+            if hasattr(decision_ts, 'to_pydatetime'):
+                decision_ts = decision_ts.to_pydatetime()
+            
+            fill_timestamp = decision_ts + timedelta(
                 milliseconds=latency_ms
             )
 
