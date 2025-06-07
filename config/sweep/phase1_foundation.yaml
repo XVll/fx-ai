@@ -15,7 +15,7 @@ studies:
     load_if_exists: true
     
     # NEW: Base config reference system
-    base_config: sweep
+    base_config: optuna
     
     sampler:
       type: TPESampler
@@ -82,7 +82,7 @@ studies:
         low: 80.0
         high: 300.0
     
-    n_trials: 100
+    n_trials: 5
     timeout: null
     n_jobs: 1
     catch_exceptions: true
@@ -92,12 +92,7 @@ studies:
       experiment_name: sweep_foundation
       
       training:
-        n_epochs: 4              # Fewer epochs for speed
+        n_epochs: 2              # Fewer epochs for speed
         continue_training: false # Always start fresh
-      
-      wandb:
-        project: fx-ai-sweep-foundation
-        tags: [sweep, phase1, foundation]
-        notes: "Phase 1: Foundation hyperparameter optimization"
     
     save_checkpoints: false      # Don't save checkpoints during foundation

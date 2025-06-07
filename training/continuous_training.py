@@ -228,7 +228,17 @@ class ContinuousTraining:
         self.config = config
         self.mode = mode
         self.enabled = enabled
+        self.bypass_all_features = config.get('bypass_all_features', False)
         self.logger = logging.getLogger(__name__)
+        
+        # If bypassing all features (optuna mode), initialize minimal state
+        if self.bypass_all_features:
+            self.model_manager = None
+            self.best_reward = 0.0
+            self.best_model_path = None
+            self.performance_analyzer = None
+            self.difficulty_manager = None
+            return
         
         # Model management
         self.model_manager = ModelManager()
@@ -247,7 +257,18 @@ class ContinuousTraining:
         # Recommendation settings
         self.recommendation_frequency = config.get('recommendation_frequency', 10)
         self.checkpoint_frequency = config.get('checkpoint_frequency', 25)
-        self.evaluation_frequency = config.get('evaluation_frequency', 50)
+        
+        # Evaluation settings - check nested structure first, then fallback to flat
+        evaluation_config = config.get('evaluation', {})
+        if isinstance(evaluation_config, dict):
+            self.evaluation_frequency = evaluation_config.get('frequency', 50)
+            self.evaluation_episodes = evaluation_config.get('episodes', 10)
+            self.logger.info(f"📊 Evaluation config from nested structure: frequency={self.evaluation_frequency}, episodes={self.evaluation_episodes}")
+        else:
+            # Fallback to flat structure for backward compatibility
+            self.evaluation_frequency = config.get('evaluation_frequency', 50)
+            self.evaluation_episodes = config.get('evaluation_episodes', 10)
+            self.logger.info(f"📊 Evaluation config from flat structure: frequency={self.evaluation_frequency}, episodes={self.evaluation_episodes}")
         
         # State tracking
         self.session_start_time: Optional[float] = None
@@ -289,7 +310,7 @@ class ContinuousTraining:
         """
         from training.training_manager import TrainingRecommendations
         
-        if not self.enabled:
+        if not self.enabled or self.bypass_all_features:
             return TrainingRecommendations.no_changes()
         
         recommendations = TrainingRecommendations()
@@ -530,6 +551,9 @@ class ContinuousTraining:
     
     def finalize_training(self, final_stats: Dict[str, Any]) -> Dict[str, Any]:
         """Finalize training session and return additional statistics"""
+        if self.bypass_all_features:
+            return {}  # Return empty dict for optuna mode
+            
         session_duration = time.time() - self.session_start_time if self.session_start_time else 0
         
         # Create final statistics

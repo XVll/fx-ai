@@ -564,6 +564,11 @@ def train(config: Config):
         # Callback components
         callback_manager = create_callback_manager(config, logger, model)
 
+        # Initialize shutdown manager if not already initialized (e.g., when called directly by optuna)
+        global _shutdown_manager
+        if _shutdown_manager is None:
+            _shutdown_manager = get_shutdown_manager()
+
         # Register callback manager for graceful shutdown
         _shutdown_manager.register_component(
             "CallbackManager",

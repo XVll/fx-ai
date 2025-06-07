@@ -48,7 +48,7 @@ from rich.panel import Panel
 # Add parent directory to Python path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from config.optuna.optuna_config import (
+from config.sweep.sweep_config import (
     OptunaStudySpec,
     StudyConfig,
     ParameterConfig,
@@ -261,8 +261,8 @@ class OptunaOptimizer:
             # Import training function directly (standard way)
             from main import train
 
-            # Load base config
-            base_config_name = study_config.base_config or "momentum_training"
+            # Load base config - use optuna config for trials
+            base_config_name = study_config.base_config or "optuna"
             config = load_config(base_config_name)
 
             console.print(f"[blue]Trial {trial.number}[/blue]: Starting...")
@@ -282,9 +282,10 @@ class OptunaOptimizer:
 
             # Configure for optimization
             config.experiment_name = f"optuna_trial_{trial.number}"
-            config.dashboard.enabled = False  # Disable for speed
-            config.wandb.enabled = False  # Disable for speed
-            config.optuna_trial = trial  # Pass trial object directly (STANDARD!)
+            # Don't override dashboard/wandb settings - let config files control them
+            # config.dashboard.enabled = False  # Disable for speed
+            # config.wandb.enabled = False  # Disable for speed
+            # config.optuna_trial = trial  # Removed - Config schema doesn't have this field
 
             # Apply trial overrides if specified
             if (
@@ -299,10 +300,14 @@ class OptunaOptimizer:
 
                 # Extract optimization metric
                 if training_stats and not training_stats.get("interrupted", False):
+                    # Debug: log what we got back
+                    console.print(f"[cyan]Trial {trial.number} training_stats keys: {list(training_stats.keys())}[/cyan]")
+                    
                     # Look for the specified metric
                     metric_value = training_stats.get(
                         study_config.metric_name, float("-inf")
                     )
+                    console.print(f"[cyan]Trial {trial.number} {study_config.metric_name}: {metric_value}[/cyan]")
 
                     # Fallback to common metric names
                     if metric_value == float("-inf"):
@@ -313,9 +318,11 @@ class OptunaOptimizer:
                         ]:
                             if fallback in training_stats:
                                 metric_value = training_stats[fallback]
+                                console.print(f"[cyan]Using fallback {fallback}: {metric_value}[/cyan]")
                                 break
                 else:
                     metric_value = float("-inf")
+                    console.print(f"[red]Trial {trial.number} interrupted or no stats[/red]")
 
                 # Save trial results
                 self._save_trial_results(

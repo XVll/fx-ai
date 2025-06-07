@@ -19,6 +19,7 @@ class TrainingMode(Enum):
     """Training mode enumeration"""
     SWEEP = "sweep"
     PRODUCTION = "production"
+    OPTUNA = "optuna"  # Pure hyperparameter optimization mode
 
 
 class TerminationReason(Enum):
@@ -133,8 +134,8 @@ class TerminationController:
         if state.termination_votes:
             return state.termination_votes[0]  # Take first vote
         
-        # Intelligent termination (only in production mode)
-        if self.enable_intelligent_termination:
+        # Intelligent termination (only in production mode, never in optuna mode)
+        if self.enable_intelligent_termination and self.mode == TrainingMode.PRODUCTION:
             intelligent_reason = self._check_intelligent_termination(state)
             if intelligent_reason:
                 return intelligent_reason
@@ -255,11 +256,16 @@ class TrainingManager:
         
         # Continuous training advisor and model manager
         continuous_config = self._convert_pydantic_to_dict(config, 'continuous', {})
+        
+        # In optuna mode, disable continuous training entirely
+        if self.mode == TrainingMode.OPTUNA:
+            continuous_config['enabled'] = False
+            continuous_config['bypass_all_features'] = True
             
         self.continuous_training = ContinuousTraining(
             config=continuous_config,
             mode=self.mode.value,
-            enabled=True
+            enabled=self.mode != TrainingMode.OPTUNA  # Disable for optuna
         )
         
         # Initialize shutdown manager
@@ -371,13 +377,14 @@ class TrainingManager:
                     self._terminate_training(training_termination)
                     break
                 
-                # Get recommendations from continuous training advisor
-                recommendations = self.continuous_training.get_recommendations(
-                    self.state, self._get_performance_metrics(trainer)
-                )
-                
-                # Process recommendations
-                self._process_recommendations(recommendations, trainer)
+                # Get recommendations from continuous training advisor (skip in optuna mode)
+                if self.mode != TrainingMode.OPTUNA:
+                    recommendations = self.continuous_training.get_recommendations(
+                        self.state, self._get_performance_metrics(trainer)
+                    )
+                    
+                    # Process recommendations
+                    self._process_recommendations(recommendations, trainer)
                 
                 # Send training manager updates to dashboard
                 self._send_dashboard_update(trainer)
@@ -507,7 +514,9 @@ class TrainingManager:
     def _handle_evaluation_request(self, trainer):
         """Handle evaluation request from continuous training"""
         if hasattr(trainer, 'evaluate'):
-            eval_results = trainer.evaluate()
+            # Get number of episodes from continuous training config
+            n_episodes = getattr(self.continuous_training, 'evaluation_episodes', 10)
+            eval_results = trainer.evaluate(n_episodes=n_episodes)
             self.continuous_training.process_evaluation_results(eval_results)
     
     def _send_dashboard_update(self, trainer):
@@ -605,6 +614,95 @@ class TrainingManager:
                 progress_pct = min(100.0, (self.state.updates % 100) * 1.0)
                 next_stage_name = "Continuous"
 
+            # Calculate enhanced termination tracking
+            episodes_until_termination = 0
+            updates_until_termination = 0
+            cycles_until_termination = 0
+            
+            if self.termination_controller.training_max_episodes != float('inf'):
+                episodes_until_termination = max(0, self.termination_controller.training_max_episodes - self.state.episodes)
+            if self.termination_controller.training_max_updates != float('inf'):
+                updates_until_termination = max(0, self.termination_controller.training_max_updates - self.state.updates)
+            if self.termination_controller.training_max_cycles != float('inf'):
+                cycles_until_termination = max(0, self.termination_controller.training_max_cycles - self.state.cycle_count)
+            
+            # Calculate termination progress as inverse of remaining progress
+            termination_progress_pct = min(100.0, progress_pct)
+            
+            # Day transition info from data lifecycle
+            day_switch_in_progress = False
+            next_day_date = ""
+            next_day_quality = 0.0
+            episodes_until_day_switch = 0
+            updates_until_day_switch = 0
+            
+            if self.data_lifecycle_manager:
+                # Get day switching information
+                data_status = self.data_lifecycle_manager.get_data_lifecycle_status()
+                current_day_episodes = data_status.get('episodes_in_day', 0)
+                current_day_updates = data_status.get('updates_in_day', 0)
+                
+                # Check if approaching day switch thresholds
+                day_config = self.data_lifecycle_manager.config.cycles if self.data_lifecycle_manager else None
+                if day_config:
+                    if day_config.day_max_episodes and day_config.day_max_episodes != float('inf'):
+                        episodes_until_day_switch = max(0, day_config.day_max_episodes - current_day_episodes)
+                        if episodes_until_day_switch <= 5:  # Within 5 episodes of switching
+                            day_switch_in_progress = True
+                    
+                    if day_config.day_max_updates and day_config.day_max_updates != float('inf'):
+                        updates_until_day_switch = max(0, day_config.day_max_updates - current_day_updates)
+                        if updates_until_day_switch <= 10:  # Within 10 updates of switching
+                            day_switch_in_progress = True
+            
+            # Reset point lifecycle info
+            reset_points_exhausted = False
+            reset_points_low_warning = False
+            reset_point_reuse_count = 0
+            
+            if self.data_lifecycle_manager and hasattr(self.data_lifecycle_manager, 'reset_point_cycler'):
+                cycler = self.data_lifecycle_manager.reset_point_cycler
+                if cycler:
+                    # Check if reset points are running low
+                    available_points = getattr(cycler, 'available_reset_points', [])
+                    total_points = getattr(cycler, 'total_reset_points', 0)
+                    if total_points > 0:
+                        remaining_ratio = len(available_points) / total_points
+                        if remaining_ratio == 0:
+                            reset_points_exhausted = True
+                        elif remaining_ratio < 0.2:  # Less than 20% remaining
+                            reset_points_low_warning = True
+                    
+                    # Get reuse statistics
+                    if hasattr(cycler, 'current_reset_point'):
+                        current_point = cycler.current_reset_point
+                        if current_point:
+                            reset_point_reuse_count = getattr(current_point, 'used_count', 0)
+            
+            # Preload status
+            preload_in_progress = False
+            preload_ready = self.state.data_preload_ready
+            preload_progress_pct = 0.0
+            next_stage_preloaded = ""
+            
+            if self.data_lifecycle_manager and hasattr(self.data_lifecycle_manager, 'preload_state'):
+                preload_state = self.data_lifecycle_manager.preload_state
+                preload_in_progress = getattr(preload_state, 'preload_in_progress', False)
+                preload_progress_pct = getattr(preload_state, 'preload_progress', 0.0) * 100
+                next_stage_preloaded = getattr(preload_state, 'next_stage_name', "")
+            
+            # Training intensity and performance tracking
+            training_intensity = "continuous" if self.mode == TrainingMode.PRODUCTION else "normal"
+            performance_trend = "stable"
+            updates_since_improvement = getattr(self.termination_controller, 'updates_since_improvement', 0)
+            best_performance_episode = getattr(self, 'best_performance_episode', 0)
+            
+            # Determine performance trend
+            if updates_since_improvement > 50:
+                performance_trend = "declining"
+            elif updates_since_improvement < 10 and self.state.current_performance > self.state.best_performance * 0.95:
+                performance_trend = "improving"
+
             dashboard_data = {
                 "mode": self.mode.value,
                 "current_stage": self.state.current_stage,
@@ -632,6 +730,37 @@ class TrainingManager:
                 "episodes_to_next_stage": episodes_to_next,
                 "next_stage_name": next_stage_name,
                 
+                # Enhanced termination tracking
+                "episodes_until_termination": episodes_until_termination,
+                "updates_until_termination": updates_until_termination,
+                "cycles_until_termination": cycles_until_termination,
+                "termination_progress_pct": termination_progress_pct,
+                
+                # Day transition tracking
+                "day_switch_in_progress": day_switch_in_progress,
+                "next_day_date": next_day_date,
+                "next_day_quality": next_day_quality,
+                "episodes_until_day_switch": episodes_until_day_switch,
+                "updates_until_day_switch": updates_until_day_switch,
+                
+                # Reset point lifecycle
+                "reset_points_exhausted": reset_points_exhausted,
+                "reset_points_low_warning": reset_points_low_warning,
+                "reset_point_reuse_count": reset_point_reuse_count,
+                "max_reset_point_reuse": 3,
+                
+                # Preload status
+                "preload_in_progress": preload_in_progress,
+                "preload_ready": preload_ready,
+                "preload_progress_pct": preload_progress_pct,
+                "next_stage_preloaded": next_stage_preloaded,
+                
+                # Training intensity and performance
+                "training_intensity": training_intensity,
+                "performance_trend": performance_trend,
+                "updates_since_improvement": updates_since_improvement,
+                "best_performance_episode": best_performance_episode,
+                
                 # Data lifecycle information
                 **data_lifecycle_info
             }
@@ -658,19 +787,29 @@ class TrainingManager:
     
     def _finalize_training(self, trainer) -> Dict[str, Any]:
         """Finalize training and return statistics"""
-        final_stats = {
-            'termination_reason': self.termination_reason.value if self.termination_reason else 'unknown',
-            'total_episodes': self.state.episodes,
-            'total_updates': self.state.updates,
-            'total_steps': self.state.global_steps,
-            'training_hours': self.state.training_hours,
-            'final_performance': self.state.current_performance,
-            'best_performance': self.state.best_performance,
-        }
+        # In optuna mode, return simplified stats
+        if self.mode == TrainingMode.OPTUNA:
+            final_stats = {
+                'mean_reward': self.state.current_performance,
+                'total_episodes': self.state.episodes,
+                'total_updates': self.state.updates,
+            }
+        else:
+            final_stats = {
+                'termination_reason': self.termination_reason.value if self.termination_reason else 'unknown',
+                'total_episodes': self.state.episodes,
+                'total_updates': self.state.updates,
+                'total_steps': self.state.global_steps,
+                'training_hours': self.state.training_hours,
+                'final_performance': self.state.current_performance,
+                'best_performance': self.state.best_performance,
+                'mean_reward': self.state.current_performance,  # Add mean_reward for optuna compatibility
+            }
         
-        # Finalize continuous training
-        continuous_stats = self.continuous_training.finalize_training(final_stats)
-        final_stats.update(continuous_stats)
+        # Finalize continuous training (skip in optuna mode)
+        if self.mode != TrainingMode.OPTUNA:
+            continuous_stats = self.continuous_training.finalize_training(final_stats)
+            final_stats.update(continuous_stats)
         
         self.logger.info(f"🎯 Training completed: {final_stats}")
         return final_stats
