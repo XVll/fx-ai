@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 
-from config.schemas import RewardConfig
+from config.config import RewardConfig
 from agent.callbacks import CallbackManager
 from rewards.core import RewardState
 from rewards.components import (
@@ -61,7 +61,7 @@ class RewardSystem:
         self.episode_total_reward = 0.0
         self.component_totals = {}
 
-        # Component tracking for dashboard
+        # Component tracking for display
         self._last_component_rewards = {}
 
         self.logger.info(
@@ -321,8 +321,8 @@ class RewardSystem:
             "total_steps": self.step_count,
         }
 
-    def get_metrics_for_dashboard(self) -> Dict[str, Any]:
-        """Get current metrics formatted for dashboard display"""
+    def get_metrics_for_display(self) -> Dict[str, Any]:
+        """Get current metrics formatted for display"""
         return {
             "episode_reward": self.episode_total_reward,
             "component_rewards": self._last_component_rewards.copy(),

@@ -1,0 +1,98 @@
+name: phase1_foundation_optimization
+description: "Phase 1: Foundation hyperparameter optimization focusing on core training stability and model architecture"
+version: "1.0"
+
+dashboard_port: 8052
+log_level: INFO
+results_dir: sweep_results
+save_study_plots: true
+
+studies:
+  - study_name: fx_ai_foundation
+    direction: maximize
+    metric_name: mean_reward
+    storage: sqlite:///sweep_studies.db
+    load_if_exists: true
+    
+    # NEW: Base config reference system
+    base_config: optuna
+    
+    sampler:
+      type: TPESampler
+      n_startup_trials: 15
+      multivariate: true
+      seed: 42
+      consider_prior: true
+      prior_weight: 1.0
+      consider_magic_clip: true
+      consider_endpoints: false
+    
+    pruner:
+      type: MedianPruner
+      n_startup_trials: 8
+      n_warmup_steps: 15
+      interval_steps: 3
+      n_min_trials: 5
+    
+    # ONLY the parameters we're optimizing
+    parameters:
+      # Tier 1: Critical training parameters (4 params)
+      - name: training.learning_rate
+        type: float_log
+        low: 0.00005
+        high: 0.001
+      
+      - name: training.batch_size
+        type: categorical
+        choices: [32, 64, 128]
+      
+      - name: training.entropy_coef
+        type: float_log
+        low: 0.001
+        high: 0.05
+      
+      - name: training.gamma
+        type: float
+        low: 0.97
+        high: 0.999
+      
+      # Tier 2: Core model architecture (3 params)
+      - name: model.d_model
+        type: categorical
+        choices: [64, 128, 256]
+      
+      - name: model.n_layers
+        type: int
+        low: 4
+        high: 8
+      
+      - name: model.dropout
+        type: float
+        low: 0.05
+        high: 0.25
+      
+      # Tier 3: Sample collection efficiency (1 param)
+      - name: training.rollout_steps
+        type: categorical
+        choices: [1024, 2048, 4096]
+      
+      # Tier 4: Essential reward baseline (1 param)
+      - name: env.reward.pnl_coefficient
+        type: float
+        low: 80.0
+        high: 300.0
+    
+    n_trials: 5
+    timeout: null
+    n_jobs: 1
+    catch_exceptions: true
+    
+    # ONLY trial-specific overrides (inherits sweep base config)
+    trial_overrides:
+      experiment_name: sweep_foundation
+      
+      training:
+        n_epochs: 2              # Fewer epochs for speed
+        continue_training: false # Always start fresh
+    
+    save_checkpoints: false      # Don't save checkpoints during foundation

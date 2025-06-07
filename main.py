@@ -11,8 +11,7 @@ import torch
 import numpy as np
 import wandb
 
-from config.loader import load_config, check_unused_configs
-from config.schemas import Config, TrainingConfig, DataConfig
+from config.config import Config, TrainingConfig, DataConfig
 from utils.logger import console, setup_rich_logging, get_logger
 from utils.graceful_shutdown import get_shutdown_manager
 
@@ -349,9 +348,6 @@ def create_callback_manager(
         "wandb": config.wandb.__dict__
         if hasattr(config.wandb, "__dict__")
         else config.wandb,
-        "dashboard": config.dashboard.__dict__
-        if hasattr(config.dashboard, "__dict__")
-        else config.dashboard,
         "optuna_trial": getattr(config, "optuna_trial", None),
         "callbacks": getattr(config, "callbacks", []),
         "model": model,
@@ -668,8 +664,6 @@ def train(config: Config):
         raise
 
     finally:
-        # Check for unused configs
-        check_unused_configs()
 
         # Cleanup
         cleanup_resources()
@@ -720,18 +714,12 @@ def main_with_shutdown(shutdown_manager):
         default=None,
         help="Device to use for training",
     )
-    parser.add_argument(
-        "--no-dashboard",
-        dest="no_dashboard",
-        action="store_true",
-        help="Disable dashboard for automated runs",
-    )
 
     args = parser.parse_args()
 
     try:
         # Load configuration
-        config = load_config(args.config)
+        config = Config.load(args.config)
 
         # Apply command line overrides
         if args.experiment:
@@ -748,8 +736,6 @@ def main_with_shutdown(shutdown_manager):
             config.training.continue_training = True
         if args.device:
             config.training.device = args.device
-        if args.no_dashboard:
-            config.dashboard.enabled = False
 
         # Log configuration
         console.print(

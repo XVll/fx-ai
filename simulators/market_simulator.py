@@ -19,8 +19,7 @@ from data.data_manager import DataManager
 from data.feature_cache_manager import FeatureCacheManager
 from feature.simple_feature_manager import SimpleFeatureManager
 from feature.contexts import MarketContext
-from config.schemas import ModelConfig, SimulationConfig
-from dashboard.event_stream import event_stream
+from config.config import ModelConfig, SimulationConfig
 
 # Market hours configuration
 MARKET_HOURS = {
@@ -1379,22 +1378,6 @@ class MarketSimulator:
         if state is None:
             return None
 
-        # Emit market update event for dashboard
-        event_stream.emit_market_update(
-            symbol=self.symbol,
-            price=float(state.current_price),
-            bid=float(state.best_bid),
-            ask=float(state.best_ask),
-            volume=int(state.session_volume),
-            bid_size=int(state.bid_size),
-            ask_size=int(state.ask_size),
-            high=float(state.intraday_high),
-            low=float(state.intraday_low),
-            vwap=float(state.session_vwap),
-            is_halted=state.is_halted,
-            market_session=state.market_session,
-            timestamp=state.timestamp,  # Add timestamp for proper time display
-        )
 
         return {
             "timestamp": state.timestamp,
@@ -1496,47 +1479,15 @@ class MarketSimulator:
 
         return self.current_index / max(1, len(self.df_market_state) - 1) * 100
 
-    def get_stats(self) -> Dict[str, Any]:
-        """Get statistics about the current day"""
-        if self.df_market_state is None:
-            return {}
-
-        return {
-            "date": self.current_date,
-            "symbol": self.symbol,
-            "total_seconds": len(self.df_market_state),
-            "current_index": self.current_index,
-            "progress_pct": self.get_progress(),
-            "price_range": {
-                "high": self.df_market_state["intraday_high"].max(),
-                "low": self.df_market_state["intraday_low"].min(),
-            },
-            "total_volume": self.df_market_state["session_volume"].iloc[-1]
-            if not self.df_market_state.empty
-            else 0,
-            "total_trades": self.df_market_state["session_trades"].iloc[-1]
-            if not self.df_market_state.empty
-            else 0,
-            "warmup_info": {
-                "has_warmup": self.combined_bars_1s is not None
-                and not self.combined_bars_1s.empty,
-                "warmup_start": self.combined_bars_1s.index[0]
-                if self.combined_bars_1s is not None and not self.combined_bars_1s.empty
-                else None,
-                "warmup_seconds": len(self.combined_bars_1s) - len(self.df_market_state)
-                if self.combined_bars_1s is not None
-                else 0,
-            },
-        }
 
     def get_1m_candle_data(self, lookback_minutes: int = 390) -> List[Dict[str, Any]]:
-        """Get 1-minute candle data for dashboard display
+        """Get 1-minute candle data for display
 
         Args:
             lookback_minutes: Number of minutes to look back (default 390 = full trading day)
 
         Returns:
-            List of candle dictionaries suitable for dashboard
+            List of candle dictionaries suitable for display
         """
         if self.combined_bars_1m is None or self.combined_bars_1m.empty:
             return []
@@ -1554,7 +1505,7 @@ class MarketSimulator:
             self.combined_bars_1m.index <= current_time
         ].tail(lookback_minutes)
 
-        # Convert to dashboard format
+        # Convert to display format
         candle_list = []
         for timestamp, row in candles.iterrows():
             candle_list.append(

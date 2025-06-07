@@ -12,7 +12,7 @@ from simulators.portfolio_simulator import (
     OrderTypeEnum,
     OrderSideEnum,
 )
-from config.schemas import EnvironmentConfig, SimulationConfig, ModelConfig
+from config.config import EnvironmentConfig, SimulationConfig, ModelConfig
 from dashboard.event_stream import event_stream, EventType, TradingEvent
 
 # Configure logging

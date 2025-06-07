@@ -1,0 +1,105 @@
+# Quick Override - Fast Development Training
+# Optimized for rapid development cycles and testing
+training:
+  rollout_steps: 512
+  n_epochs: 3
+
+env:
+  # Quick episode length for development
+  max_steps: 256
+  
+  training_manager:
+    mode: "production"
+    
+    # Quick termination for development (for entire training)
+    termination:
+      training_max_episodes: null         # Quick episode limit for testing
+      training_max_updates: null           # Quick update limit
+      training_max_cycles: 3             # Quick cycle limit for development
+      intelligent_termination: false  # Disabled for quick tests
+      plateau_patience: 20      # Quick plateau detection
+      degradation_threshold: 0.1  # More sensitive for quick feedback
+    
+    # Frequent continuous training for quick feedback
+    continuous:
+      performance_window: 10    # Small window for quick trends
+      recommendation_frequency: 5  # Frequent recommendations
+      checkpoint_frequency: 10  # Frequent checkpoints for safety
+      
+      # Centralized evaluation settings
+      evaluation:
+        frequency: 2          # Frequent evaluations for feedback
+        episodes: 5           # Few episodes for speed
+      
+      # Quick adaptation
+      adaptation_enabled: false
+    
+    # Simple adaptive data for development
+    data_lifecycle:
+      enabled: true
+      
+      # Data cycle management (when to switch days/reset points)
+      cycles:
+        day_max_episodes: null               # 5 episodes per day for quick testing
+        day_max_updates: null            # No update limit per day
+        day_max_cycles: 2                # Quick cycling for development
+      
+      # Random adaptive data selection for variety in development
+      adaptive_data:
+        symbols: ["MLGO"]
+        date_range: ["2025-02-21", "2025-02-24"]  # [start_date, end_date] inclusive
+        day_score_range: [0.0, 1.0]
+        roc_range: [0.0, 1.0]    # Wider range for more data
+        activity_range: [0.0, 1.0]
+        
+        # DAY SELECTION: Random for development variety  
+        day_selection_mode: "sequential"           # Options: "sequential" (chronological), "quality_weighted" (by score), "random"
+        
+        # RESET POINT SELECTION: Random for development variety
+        reset_point_selection_mode: "sequential"  # Options: "sequential" (by quality), "random"
+      
+      preloading:
+        preload_enabled: false  # Disabled for simplicity
+
+# Model configuration for quick development
+model: {}
+
+# Development W&B settings
+wandb:
+  enabled: true
+  project: fx-ai-development
+  tags: [development, quick]
+  notes: "Quick development training"
+
+# Captum feature attribution for development/debugging
+captum:
+  enabled: true
+  # Balanced methods for production insights
+  methods:
+    - saliency     # Fast baseline
+    - deep_lift    # More accurate attribution
+  # Quick analysis parameters
+  n_steps: 10  # Fast computation
+  n_samples: 3  # Minimal samples
+  
+  # Development analysis settings
+  analyze_branches: true
+  analyze_fusion: true  # Skip for speed
+  analyze_actions: true
+  baseline_type: zero
+  
+  # Visualization for debugging
+  save_visualizations: true
+  visualization_dir: outputs/captum_dev
+  heatmap_threshold: 0.05
+  
+  # Performance settings for development
+  batch_analysis: true  # Process multiple samples at once when available
+  
+  # Frequent analysis for development debugging
+  callback:
+    analyze_every_n_episodes: null   # Disabled
+    analyze_every_n_updates: 3      # Every update for testing
+    save_to_wandb: true
+    save_to_dashboard: false
+    output_dir: outputs/captum_dev

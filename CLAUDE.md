@@ -37,29 +37,18 @@ poetry run poe scan                        # Min quality 0.5
 poetry run poe scan-high                   # Min quality 0.7  
 poetry run poe scan-all                    # All momentum days (0.0)
 
-# 3-Phase Hyperparameter Optimization with Optuna
-# Phase 1: Foundation (core training + model architecture)
-poetry run poe optuna-foundation           # Optimize learning_rate, batch_size, d_model, etc.
-
-# Phase 2: Reward system (with fixed foundation)
-poetry run poe optuna-transfer-1to2        # Transfer foundation results to phase 2
-poetry run poe optuna-reward               # Optimize all reward coefficients
-
-# Phase 3: Fine-tuning (remaining params + refinement)
-poetry run poe optuna-transfer-2to3        # Transfer all results to phase 3
-poetry run poe optuna-finetune             # Final optimization + validation
-
-# Management commands
+# Hyperparameter Optimization with Optuna
+poetry run poe optuna-foundation           # Phase 1: Foundation optimization
+poetry run poe optuna-reward               # Phase 2: Reward system optimization  
+poetry run poe optuna-finetune             # Phase 3: Fine-tuning optimization
 poetry run poe optuna-dashboard            # Launch Optuna dashboard
-poetry run poe optuna-status               # Show status of all 3 phases
-poetry run poe optuna-best fx_ai_foundation # Show best config from specific phase
-poetry run poe optuna-results              # Show results from all phases
 
-# Live dashboard (auto-launches with training)
-# Access at http://localhost:8051
+# Advanced usage (full features)
+poetry run python sweep_engine/optimization.py --spec optuna-1-foundation
 
-# Kill dashboard if stuck
-poetry run poe killport
+# Simple usage (centralized config)
+poetry run python run_optuna.py --config optuna --spec optuna-1-foundation
+
 
 ```
 
@@ -153,7 +142,6 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
 8. **Metrics & Monitoring** (`metrics/`)
    - Comprehensive metric collection system with factory pattern
    - Weights & Biases integration for experiment tracking
-   - Live dashboard with real-time visualization
    - Collectors: training, trading, model, execution, reward metrics
 
 9. **Hyperparameter Optimization** (`optuna_optimization.py`)

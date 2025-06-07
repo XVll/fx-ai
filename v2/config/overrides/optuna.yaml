@@ -1,0 +1,76 @@
+# Optuna Override - Pure Hyperparameter Optimization
+# Clean configuration with proper disable flags (no 999999 hacks)
+training:
+  continue_training: false  # Always start fresh
+  rollout_steps: 2048      # Reasonable for learning
+  n_epochs: 3              # Sufficient for comparison
+  checkpoint_interval: null # Disable checkpointing
+  eval_frequency: null     # Disable evaluations
+  seed: 42                 # Fixed seed for reproducibility
+
+env:
+  max_steps: 2048  # Match rollout_steps
+  training_manager:
+    mode: "optuna"  # Pure hyperparameter optimization mode
+    
+    # Fixed termination for consistent trials
+    termination:
+      training_max_episodes: 100     # Fixed episode count
+      training_max_updates: 20       # Fixed update count
+      training_max_cycles: 1         # Single cycle only
+      intelligent_termination: false # No smart termination
+      plateau_patience: null         # Disabled
+      degradation_threshold: null    # Disabled
+    
+    # Completely disable continuous training
+    continuous:
+      enabled: false               # Master switch - disables all features
+      bypass_all_features: true    # Complete bypass for optuna
+      
+      # All these will be ignored due to bypass_all_features, but kept for clarity
+      performance_window: null
+      recommendation_frequency: null
+      checkpoint_frequency: null
+      
+      evaluation:
+        frequency: null            # Disabled
+        episodes: 0                # No evaluation episodes
+      
+      # Feature flags (ignored in bypass mode but documented)
+      adaptation_enabled: false    # No data adaptation
+      advisory_enabled: false      # No advisory system
+      model_versioning: false      # No versioning
+      best_model_tracking: false   # No tracking
+    
+    # Fixed data selection for consistent trials
+    data_lifecycle:
+      enabled: true
+      
+      cycles:
+        day_max_episodes: null     # No episode limit per day
+        day_max_updates: null      # No update limit per day  
+        day_max_cycles: 1          # Single cycle for trials
+      
+      # Fixed data for all trials
+      adaptive_data:
+        symbols: ["MLGO"]
+        date_range: ["2025-02-21", "2025-02-21"]
+        day_score_range: [0.5, 1.0]
+        roc_range: [-1.0, 1.0]
+        activity_range: [0.5, 1.0]
+        
+        # Deterministic selection for reproducible trials
+        day_selection_mode: "sequential"
+        reset_point_selection_mode: "sequential"
+        randomize_order: false
+      
+      preloading:
+        preload_enabled: false     # No preloading for speed
+
+# Disable all external integrations for clean trials
+wandb:
+  enabled: false
+
+
+captum:
+  enabled: false

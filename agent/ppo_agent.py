@@ -211,10 +211,10 @@ class PPOTrainer:
             self.logger.warning("🔄 Training data missing day_info")
             return False
 
-    def _get_filtered_reset_points_for_dashboard(
+    def _get_filtered_reset_points_for_display(
         self, reset_points_data: List[Dict]
     ) -> List[Dict]:
-        """Filter reset points for dashboard display."""
+        """Filter reset points for display."""
         if not reset_points_data:
             return reset_points_data
 
@@ -928,7 +928,7 @@ class PPOTrainer:
                     "on_episode_end", self.global_episode_counter, episode_data
                 )
 
-                # Update recent episode rewards for dashboard
+                # Update recent episode rewards for display
                 self.recent_episode_rewards.append(current_episode_reward)
 
                 if len(self.recent_episode_rewards) > 10:  # Keep only last 10 episodes
@@ -1503,7 +1503,7 @@ class PPOTrainer:
         if len(self.update_times) > 20:  # Keep last 20 updates
             self.update_times.pop(0)
 
-        # Calculate performance metrics for dashboard
+        # Calculate performance metrics for display
         current_time = time.time()
         elapsed_time = current_time - self.training_start_time
         steps_per_second = (
@@ -1536,7 +1536,7 @@ class PPOTrainer:
             "update_time": update_duration,
             "learning_rate": current_lr,
             "total_steps": self.global_step_counter,  # Add for performance metrics
-            # Add performance metrics for dashboard
+            # Add performance metrics for display
             "steps_per_second": steps_per_second,
             "episodes_per_hour": episodes_per_hour,
             "updates_per_second": updates_per_second,

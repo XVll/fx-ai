@@ -7,7 +7,6 @@ from pathlib import Path
 from datetime import datetime
 import matplotlib.pyplot as plt
 import io
-import base64
 
 from agent.callbacks import BaseCallback
 from feature.attribution.captum_attribution import (
@@ -29,7 +28,7 @@ class CaptumCallback(BaseCallback):
         analyze_every_n_episodes: int = 10,
         analyze_every_n_updates: int = 5,
         save_to_wandb: bool = True,
-        save_to_dashboard: bool = True,
+        save_to_dashboard: bool = False,
         feature_names: Optional[Dict[str, List[str]]] = None,
         output_dir: str = "outputs/captum",
         enabled: bool = True,
@@ -204,9 +203,6 @@ class CaptumCallback(BaseCallback):
             if self.save_to_wandb and self.wandb_run:
                 self._log_to_wandb(results, trigger, count)
             
-            # Send to dashboard
-            if self.save_to_dashboard and hasattr(trainer, "callback_manager"):
-                self._send_to_dashboard(trainer, results, trigger, count)
             
             # Save periodic reports
             if self.analysis_count % 20 == 0:
@@ -627,61 +623,6 @@ class CaptumCallback(BaseCallback):
             
         except Exception as e:
             self.logger.error(f"Error logging to WandB: {str(e)}")
-    
-    def _send_to_dashboard(self, trainer, results: Dict, trigger: str, count: int):
-        """Send attribution results to the dashboard."""
-        try:
-            # Prepare dashboard data
-            dashboard_data = {
-                "analysis_count": self.analysis_count,
-                "trigger": trigger,
-                "trigger_count": count,
-                "timestamp": results.get("timestamp", datetime.now().isoformat()),
-            }
-            
-            # Add branch importance
-            if "branch_importance" in results:
-                # Get the first method's results for simplicity
-                method_data = next(iter(results["branch_importance"].values()))
-                dashboard_data["branch_importance"] = method_data
-            
-            # Add top features per branch
-            if "top_attributions" in results:
-                # Get the first method's results
-                method_data = next(iter(results["top_attributions"].values()))
-                top_features = {}
-                for branch, features in method_data.items():
-                    if features:
-                        # Get top 3 features
-                        top_features[branch] = [
-                            {"name": f["name"], "score": f["importance"]}
-                            for f in features[:3]
-                        ]
-                dashboard_data["top_features"] = top_features
-            
-            # Convert visualizations to base64 for dashboard
-            if "visualizations" in results and results["visualizations"]:
-                try:
-                    # Use the first visualization
-                    viz_path = results["visualizations"][0]
-                    with open(viz_path, "rb") as img_file:
-                        img_data = base64.b64encode(img_file.read()).decode()
-                        dashboard_data["visualization"] = f"data:image/png;base64,{img_data}"
-                except Exception as e:
-                    self.logger.error(f"Error encoding visualization: {str(e)}")
-            
-            # Add performance metrics
-            dashboard_data["avg_analysis_time"] = (
-                np.mean(self.analysis_times) if self.analysis_times else 0
-            )
-            
-            # Send to dashboard via callback manager
-            trainer.callback_manager.trigger(
-                "on_custom_event", "captum_analysis", dashboard_data
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error sending to dashboard: {str(e)}")
     
     def _save_analysis_report(self, trainer):
         """Save periodic analysis report."""

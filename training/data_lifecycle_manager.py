@@ -591,7 +591,7 @@ class DataLifecycleManager:
                     current_reset_point_index = i
                     break
         
-        # Format ALL reset points for dashboard display (not just current one)
+        # Format ALL reset points for display (not just current one)
         reset_points_formatted = []
         
         # Get all reset points for the current day from the reset point cycler
@@ -639,30 +639,7 @@ class DataLifecycleManager:
         
         self.logger.debug(f"Progress updated: episodes={episodes}, updates={updates}, day_episodes={self.current_day_episodes}")
     
-    def get_data_lifecycle_status(self) -> Dict[str, Any]:
-        """Get current data lifecycle status"""
-        # Use ResetPointCycler's current_cycle for day-level progress tracking
-        reset_point_cycle_count = self.reset_point_cycler.current_cycle if self.reset_point_cycler else 0
-        
-        # For training termination, use the cumulative cycle count that tracks across all days
-        # This ensures training can terminate even when reset point cycles are reset during day switching
-        training_cycle_count = max(reset_point_cycle_count, self.cycle_state.total_cycles_completed)
-        
-        return {
-            'cycle_count': training_cycle_count,  # Use cumulative cycles for training termination
-            'reset_point_cycles': reset_point_cycle_count,  # Track reset point cycles separately
-            'episodes_in_cycle': self.cycle_state.episodes_in_current_cycle,
-            'episodes_in_day': self.current_day_episodes,
-            'updates_in_day': self.current_day_updates,
-            'cycle_status': self.reset_point_cycler.get_cycle_status() if hasattr(self.reset_point_cycler, 'get_cycle_status') else {},
-            'current_day': self.cycle_state.current_day.date if self.cycle_state.current_day else None,
-            'current_symbol': self.cycle_state.current_day.symbol if self.cycle_state.current_day else None,
-            'reset_points_count': len(self.cycle_state.current_reset_points),
-            'preload_ready': self.preload_state.next_stage_ready,
-            'should_terminate': self.should_terminate,
-            'termination_reason': self.termination_reason.value if self.termination_reason else None
-        }
-    
+
     def _should_switch_day(self) -> bool:
         """Check if should switch to next day based on data cycle config"""
         cycle_config = self.config.cycles

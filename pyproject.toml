@@ -26,16 +26,11 @@ scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.5"
 scan-high = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.7"
 scan-all = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.0"
 
-# 3-Phase Hyperparameter Optimization with Optuna
-optuna-foundation = "poetry run python sweep_engine/optimization.py --spec config/sweep/phase1_foundation.yaml"
-optuna-reward = "poetry run python sweep_engine/optimization.py --spec config/sweep/phase2_reward.yaml"
-optuna-finetune = "poetry run python sweep_engine/optimization.py --spec config/sweep/phase3_finetune.yaml"
+# Hyperparameter Optimization with Optuna (Centralized Config)
+optuna-foundation = "poetry run python run_optuna.py --config optuna --spec optuna-1-foundation"
+optuna-reward = "poetry run python run_optuna.py --config optuna --spec optuna-2-reward"
+optuna-finetune = "poetry run python run_optuna.py --config optuna --spec optuna-3-finetune"
 optuna-dashboard = "optuna-dashboard sqlite:///sweep_studies.db"
-optuna-best = "poetry run python sweep_engine/optimization.py --show-best {{study_name}}"
-optuna-results = "poetry run python sweep_engine/optimization.py --show-results"
-optuna-status = "poetry run python scripts/transfer_best_params.py --status"
-optuna-transfer-1to2 = "poetry run python scripts/transfer_best_params.py --from-phase 1 --to-phase 2"
-optuna-transfer-2to3 = "poetry run python scripts/transfer_best_params.py --from-phase 2 --to-phase 3"
 
 # Testing & Linting
 test = "poetry run pytest -v"
@@ -47,8 +42,6 @@ format = "poetry run ruff format ."
 # Utility Tasks
 clean = "rm -rf outputs/* wandb/* __pycache__"
 setup = "wandb login"
-dashboard = "echo 'Dashboard will auto-launch during training at http://localhost:8051'"
-killport = "lsof -ti:8051 | xargs kill -9 || echo 'Port 8051 already free'"
 
 
 [tool.poetry.dependencies]

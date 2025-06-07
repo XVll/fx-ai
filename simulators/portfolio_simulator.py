@@ -22,8 +22,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from config.schemas import EnvironmentConfig, SimulationConfig, ModelConfig
-from dashboard.event_stream import event_stream
+from config.config import EnvironmentConfig, SimulationConfig, ModelConfig
 
 
 class OrderTypeEnum(Enum):
@@ -539,17 +538,6 @@ class PortfolioSimulator:
         position.market_value = 0.0
         position.unrealized_pnl = 0.0
 
-        # Emit position update event to notify dashboard of FLAT position
-        event_stream.emit_position_update(
-            side=position.side.name,  # "FLAT"
-            quantity=0,
-            avg_price=0.0,
-            current_price=0.0,
-            unrealized_pnl=0.0,
-            realized_pnl=self.session_realized_pnl,
-            market_value=0.0,
-            entry_timestamp=None,
-        )
 
         # Complete trade record
         trade["exit_timestamp"] = exit_time
@@ -617,17 +605,6 @@ class PortfolioSimulator:
             total_unrealized_pnl += unrealized_pnl
             total_market_value += position.market_value
 
-            # Emit position update event for dashboard
-            event_stream.emit_position_update(
-                side=position.side.name,
-                quantity=int(position.quantity),
-                avg_price=position.avg_price,
-                current_price=current_price,
-                unrealized_pnl=unrealized_pnl,
-                realized_pnl=self.session_realized_pnl,
-                market_value=position.market_value,
-                entry_timestamp=position.entry_timestamp,
-            )
 
             # Update MFE/MAE for open trades
             if position.trade_id and position.trade_id in self.open_trades:

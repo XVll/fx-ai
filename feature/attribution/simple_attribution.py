@@ -297,7 +297,7 @@ class SimpleFeatureAttribution:
             self.attribution_history[branch].append(importance)
 
     def get_attribution_summary(self) -> Dict[str, Any]:
-        """Get summary for dashboard display"""
+        """Get summary for display"""
         if not self.attribution_history:
             return {"attribution_enabled": False}
 

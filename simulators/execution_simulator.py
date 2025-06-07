@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from config.schemas import SimulationConfig
+from config.config import SimulationConfig
 from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import (
     OrderTypeEnum,

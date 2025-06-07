@@ -11,7 +11,7 @@ from ai.layers import (
     TransformerEncoder,
     AttentionFusion,
 )
-from config.schemas import ModelConfig
+from config.config import ModelConfig
 
 
 class MultiBranchTransformer(nn.Module):

@@ -17,7 +17,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from data.utils.helpers import ensure_timezone_aware
-from config.schemas import ScannerConfig
+from config.config import ScannerConfig
 
 
 class MomentumScanner:

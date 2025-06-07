@@ -271,7 +271,6 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
     """
     from agent.optuna_callback import OptunaCallback
     from agent.wandb_callback import WandBCallback
-    from agent.dashboard_callback import DashboardCallback
     from agent.captum_callback import CaptumCallback
     from feature.attribution.captum_attribution import AttributionConfig
 
@@ -295,25 +294,6 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
     if config.get("wandb", {}).get("enabled", False):
         callbacks.append(WandBCallback(config=config.get("wandb", {}), enabled=True))
 
-    # Add Dashboard callback if enabled
-    if config.get("dashboard", {}).get("enabled", False):
-        # Try to get dashboard state
-        dashboard_state = None
-        try:
-            from dashboard.shared_state import dashboard_state as global_state
-
-            dashboard_state = global_state
-        except ImportError:
-            pass
-
-        if dashboard_state:
-            callbacks.append(
-                DashboardCallback(
-                    config=config.get("dashboard", {}),
-                    dashboard_state=dashboard_state,
-                    enabled=True,
-                )
-            )
 
     # Add Captum callback if configured
     captum_config = config.get("captum")
@@ -364,7 +344,7 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
                     analyze_every_n_episodes=callback_dict.get("analyze_every_n_episodes", 10),
                     analyze_every_n_updates=callback_dict.get("analyze_every_n_updates", 5),
                     save_to_wandb=callback_dict.get("save_to_wandb", True),
-                    save_to_dashboard=callback_dict.get("save_to_dashboard", True),
+                    save_to_dashboard=callback_dict.get("save_to_dashboard", False),
                     output_dir=callback_dict.get("output_dir", "outputs/captum"),
                 )
                 callbacks.append(captum_callback)

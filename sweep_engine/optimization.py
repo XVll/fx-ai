@@ -1,4 +1,19 @@
-"""Standard Optuna hyperparameter optimization system for FxAI."""
+"""Advanced Optuna hyperparameter optimization system for FxAI.
+
+This is the main Optuna runner with full optimization features:
+- Multi-study support
+- Advanced sampling and pruning
+- Visualization and analysis
+- Progress tracking and results management
+
+Usage:
+    python sweep_engine/optimization.py --spec optuna-1-foundation
+    
+Or via poe commands:
+    poetry run poe optuna-foundation
+    poetry run poe optuna-reward  
+    poetry run poe optuna-finetune
+"""
 
 import argparse
 import json
@@ -48,7 +63,7 @@ from rich.panel import Panel
 # Add parent directory to Python path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from config.sweep.sweep_config import (
+from config.optuna.optuna_config import (
     OptunaStudySpec,
     StudyConfig,
     ParameterConfig,
@@ -58,7 +73,6 @@ from config.sweep.sweep_config import (
     PrunerType,
     DistributionType,
 )
-from config.loader import load_config
 from utils.logger import get_logger
 
 console = Console()
@@ -227,20 +241,6 @@ class OptunaOptimizer:
         else:
             raise ValueError(f"Unknown distribution type: {param.type}")
 
-    def _apply_param_to_config(self, config, param_name: str, value: Any):
-        """Apply parameter value to config object using dot notation."""
-        keys = param_name.split(".")
-        target = config
-
-        # Navigate to parent
-        for key in keys[:-1]:
-            if not hasattr(target, key):
-                # Create missing nested structure if needed
-                setattr(target, key, type("obj", (object,), {})())
-            target = getattr(target, key)
-
-        # Set the value
-        setattr(target, keys[-1], value)
 
     def _apply_overrides_to_config(self, config, overrides: Dict[str, Any]):
         """Apply override dictionary to config object."""
@@ -261,27 +261,34 @@ class OptunaOptimizer:
             # Import training function directly (standard way)
             from main import train
 
-            # Load base config - use optuna config for trials
-            base_config_name = study_config.base_config or "optuna"
-            config = load_config(base_config_name)
-
             console.print(f"[blue]Trial {trial.number}[/blue]: Starting...")
 
-            # Suggest parameters and apply to config
+            # Suggest parameters 
             params = {}
             for param_config in study_config.parameters:
                 value = self._suggest_parameter(trial, param_config)
                 params[param_config.name] = value
-                self._apply_param_to_config(config, param_config.name, value)
+
+            # Add trial metadata
+            params["trial_id"] = trial.number
+
+            # Use centralized config system
+            from config.config import Config
+            base_config_name = study_config.base_config or "optuna"
+            config = Config.load(base_config_name)
+            
+            # Apply suggested parameters using centralized approach
+            for param_name, value in params.items():
+                if param_name != "trial_id":  # Skip trial metadata
+                    # Use the helper from integration.py
+                    from sweep_engine.integration import _set_nested_attr
+                    _set_nested_attr(config, param_name, value)
 
             # Log parameters
             param_str = ", ".join(
-                [f"{k.split('.')[-1]}={v}" for k, v in params.items()]
+                [f"{k.split('.')[-1]}={v}" for k, v in params.items() if k != "trial_id"]
             )
             console.print(f"[blue]Trial {trial.number}[/blue]: {param_str}")
-
-            # Configure for optimization
-            config.experiment_name = f"optuna_trial_{trial.number}"
             # Don't override dashboard/wandb settings - let config files control them
             # config.dashboard.enabled = False  # Disable for speed
             # config.wandb.enabled = False  # Disable for speed
