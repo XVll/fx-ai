@@ -41,14 +41,14 @@ class ConfigLoader:
             override_path = Path(override_file)
 
             # Check in multiple locations
-            if not override_path.exists():
+            if not override_path.is_file():
                 # Try in config/overrides directory
                 override_path = Path("config/overrides") / override_file
-                if not override_path.exists():
+                if not override_path.is_file():
                     # Try with .yaml extension
                     override_path = Path("config/overrides") / f"{override_file}.yaml"
 
-            if override_path.exists():
+            if override_path.is_file():
                 self.logger.info(f"Loading config overrides from: {override_path}")
                 with open(override_path) as f:
                     overrides = yaml.safe_load(f)
