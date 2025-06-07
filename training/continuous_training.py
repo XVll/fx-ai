@@ -254,9 +254,14 @@ class ContinuousTraining:
         initial_quality_range = config.get('initial_quality_range', [0.7, 1.0])
         self.difficulty_manager = DataDifficultyManager(initial_quality_range)
         
-        # Recommendation settings
+        # Recommendation settings - handle null/None properly
         self.recommendation_frequency = config.get('recommendation_frequency', 10)
+        if self.recommendation_frequency is None:
+            self.recommendation_frequency = float('inf')  # Effectively disabled
+            
         self.checkpoint_frequency = config.get('checkpoint_frequency', 25)
+        if self.checkpoint_frequency is None:
+            self.checkpoint_frequency = float('inf')  # Effectively disabled
         
         # Evaluation settings - check nested structure first, then fallback to flat
         evaluation_config = config.get('evaluation', {})
@@ -269,6 +274,12 @@ class ContinuousTraining:
             self.evaluation_frequency = config.get('evaluation_frequency', 50)
             self.evaluation_episodes = config.get('evaluation_episodes', 10)
             self.logger.info(f"📊 Evaluation config from flat structure: frequency={self.evaluation_frequency}, episodes={self.evaluation_episodes}")
+        
+        # Handle null/None values for evaluation settings
+        if self.evaluation_frequency is None:
+            self.evaluation_frequency = float('inf')  # Effectively disabled
+        if self.evaluation_episodes is None:
+            self.evaluation_episodes = 0  # No episodes
         
         # State tracking
         self.session_start_time: Optional[float] = None

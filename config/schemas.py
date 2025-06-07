@@ -155,7 +155,7 @@ class TrainingConfig(BaseModel):
 
     # Model management
     continue_training: bool = Field(False, description="Continue from best model")
-    checkpoint_interval: int = Field(50, description="Updates between checkpoints")
+    checkpoint_interval: Optional[int] = Field(50, description="Updates between checkpoints (null to disable)")
     keep_best_n_models: int = Field(5, description="Number of best models to keep")
 
     # Early stopping
@@ -163,7 +163,7 @@ class TrainingConfig(BaseModel):
     early_stop_min_delta: float = Field(0.01, description="Minimum improvement")
 
     # Evaluation
-    eval_frequency: int = Field(5, description="Updates between evaluations")
+    eval_frequency: Optional[int] = Field(5, description="Updates between evaluations (null to disable)")
     eval_episodes: int = Field(10, description="Episodes for evaluation")
     best_model_metric: str = Field("mean_reward", description="Model selection metric")
 
@@ -386,8 +386,8 @@ class TerminationConfig(BaseModel):
     
     # Intelligent termination (production mode only)
     intelligent_termination: bool = Field(True, description="Enable intelligent termination")
-    plateau_patience: int = Field(50, description="Updates without improvement before plateau termination")
-    degradation_threshold: float = Field(0.05, description="Performance degradation threshold (5%)")
+    plateau_patience: Optional[int] = Field(50, description="Updates without improvement before plateau termination (null to disable)")
+    degradation_threshold: Optional[float] = Field(0.05, description="Performance degradation threshold (5%) (null to disable)")
 
 
 # EpisodeConfig removed - moved to data_lifecycle
@@ -395,7 +395,7 @@ class TerminationConfig(BaseModel):
 
 class EvaluationConfig(BaseModel):
     """Evaluation configuration"""
-    frequency: int = Field(50, description="Updates between evaluations")
+    frequency: Optional[int] = Field(50, description="Updates between evaluations (null to disable)")
     episodes: int = Field(10, description="Episodes per evaluation")
 
 
@@ -403,11 +403,11 @@ class ContinuousTrainingConfig(BaseModel):
     """Continuous training advisor and model management configuration"""
     
     # Performance analysis
-    performance_window: int = Field(50, description="Performance history window size")
-    recommendation_frequency: int = Field(10, description="Episodes between recommendations")
+    performance_window: Optional[int] = Field(50, description="Performance history window size (null to disable)")
+    recommendation_frequency: Optional[int] = Field(10, description="Episodes between recommendations (null to disable)")
     
     # Model management
-    checkpoint_frequency: int = Field(25, description="Updates between checkpoints")
+    checkpoint_frequency: Optional[int] = Field(25, description="Updates between checkpoints (null to disable)")
     
     # Evaluation settings (centralized)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
@@ -497,7 +497,7 @@ class TrainingManagerConfig(BaseModel):
     """Training Manager - Central authority for training lifecycle"""
     
     # Core mode selection
-    mode: Literal["sweep", "production"] = Field("production", description="Training mode")
+    mode: Literal["sweep", "production", "optuna"] = Field("production", description="Training mode")
     
     # Core configuration sections
     termination: TerminationConfig = Field(default_factory=TerminationConfig)

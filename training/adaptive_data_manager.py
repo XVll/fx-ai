@@ -118,7 +118,11 @@ class AdaptiveDataManager:
         # Check if should switch to next day based on cycle config
         if self._should_switch_day():
             if not self._advance_to_next_day():
-                return DataTerminationReason.NO_MORE_DAYS
+                # Fallback: Reset reset point cycle and continue on current day
+                self.reset_point_cycler.current_index = 0
+                self.reset_point_cycler.current_cycle = 0
+                self.logger.info("🔄 No more days available, restarting reset points on current day")
+                # Continue training - don't terminate
         
         # Check if current reset points exhausted
         elif self._should_advance_cycle():
@@ -183,9 +187,13 @@ class AdaptiveDataManager:
     
     def get_adaptation_status(self) -> Dict[str, Any]:
         """Get current adaptation status"""
+        # Use ResetPointCycler's current_cycle for accurate cycle counting
+        # This represents completed cycles through ALL reset points, not individual reset point advances
+        actual_cycle_count = self.reset_point_cycler.current_cycle if self.reset_point_cycler else 0
+        
         return {
             'current_criteria': self.current_criteria.__dict__,
-            'cycle_count': self.cycle_state.cycle_count,
+            'cycle_count': actual_cycle_count,  # Use actual completed cycles for consistency
             'episodes_in_cycle': self.cycle_state.episodes_in_current_cycle,
             'episodes_in_day': self.current_day_episodes,
             'updates_in_day': self.current_day_updates,
@@ -247,7 +255,6 @@ class AdaptiveDataManager:
         # Reset day-level counters
         self.current_day_episodes = 0
         self.current_day_updates = 0
-        self.current_day_cycles = 0
         
         # Update state
         self.cycle_state.reset_for_new_day()
@@ -277,7 +284,6 @@ class AdaptiveDataManager:
         # Update state
         self.cycle_state.reset_for_new_cycle()
         self.current_reset_points = reset_points
-        self.current_day_cycles += 1
         
         # Track usage
         for rp in reset_points:
