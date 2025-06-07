@@ -669,11 +669,11 @@ class TradingEnvironment(gym.Env):
                 },
             )
 
-        # Reset dashboard episode counters
+        # Reset dashboard episode counters with new episode number
         try:
             from dashboard.shared_state import dashboard_state
 
-            dashboard_state.reset_episode_counters()
+            dashboard_state.reset_episode_counters(episode_number=self.episode_number)
         except ImportError:
             pass  # Dashboard not available
 
@@ -1084,6 +1084,7 @@ class TradingEnvironment(gym.Env):
                 timestamp=enriched_fill.fill_timestamp,
                 closes_position=enriched_fill.closes_position,
                 holding_time_minutes=enriched_fill.holding_time_minutes,
+                episode=self.episode_number,  # Add episode number for dashboard filtering
             )
 
         # Update portfolio with current market prices
@@ -1825,9 +1826,19 @@ class TradingEnvironment(gym.Env):
 
                 dashboard_state.update_candle_data(candle_list)
                 self.last_chart_data_session_date = self.current_session_date  # Track when we sent data
-                self.logger.info(
-                    f"📊 Sent initial chart data: {len(candle_list)} candles"
-                )
+                
+                # Debug logging for chart data format
+                if candle_list:
+                    sample_candle = candle_list[0]
+                    o, h, l, c = sample_candle['open'], sample_candle['high'], sample_candle['low'], sample_candle['close']
+                    self.logger.info(
+                        f"📊 Sent initial chart data: {len(candle_list)} candles. "
+                        f"Sample OHLC: O={o:.4f}, H={h:.4f}, L={l:.4f}, C={c:.4f}"
+                    )
+                    if o == h == l == c:
+                        self.logger.warning("⚠️ Initial chart data has flat OHLC values - candlesticks may appear as lines")
+                else:
+                    self.logger.info(f"📊 Sent initial chart data: {len(candle_list)} candles")
 
         except Exception as e:
             self.logger.warning(f"Failed to send initial chart data: {e}")
@@ -1869,6 +1880,7 @@ class TradingEnvironment(gym.Env):
                 exit_timestamp=trade.get("exit_timestamp"),
                 holding_time_seconds=trade.get("holding_period_seconds", 0),
                 is_completed_trade=True,  # Flag to distinguish from executions
+                episode=self.episode_number,  # Add episode number for dashboard filtering
             )
         except Exception as e:
             self.logger.warning(f"Error in trade callback: {e}")

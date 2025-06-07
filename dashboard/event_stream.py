@@ -219,7 +219,9 @@ class TradingEventStream:
         if event_type:
             events = [e for e in events if e.event_type == event_type]
 
-        return events[-limit:]
+        # Safely slice the events list
+        events_list = list(events) if not isinstance(events, list) else events
+        return events_list[-limit:] if len(events_list) > limit else events_list
 
     def clear_buffer(self):
         """Clear event buffer"""
