@@ -1,0 +1,22 @@
+{
+  "termination_reason": "max_episodes_reached",
+  "total_episodes": 24,
+  "total_updates": 3,
+  "total_steps": 6144,
+  "training_hours": 0.1442723413888889,
+  "final_performance": -35.84771652363119,
+  "best_performance": 0.0,
+  "mean_reward": -35.84771652363119,
+  "continuous_training_session_duration": 519.3762512207031,
+  "continuous_training_best_reward": 0.0,
+  "continuous_training_adaptations": 0,
+  "continuous_training_evaluations": 0,
+  "continuous_training_mode": "sweep",
+  "adaptation_history": [],
+  "evaluation_history": [],
+  "final_quality_range": [
+    0.7,
+    1.0
+  ],
+  "timestamp": "2025-06-07T08:43:49.620487"
+}

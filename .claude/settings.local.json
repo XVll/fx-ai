@@ -85,7 +85,12 @@
       "Bash(npm install:*)",
       "Bash(pyright:*)",
       "Bash(gtimeout:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(for file in /Users/fx/Repositories/FxAIv2/dashboard/panels/*.py)",
+      "Bash(do echo \"Checking $file\")",
+      "Bash(done)",
+      "Bash(pgrep:*)",
+      "Bash(git rm:*)"
     ],
     "deny": []
   },

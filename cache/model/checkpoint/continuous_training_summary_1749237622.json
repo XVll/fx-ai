@@ -1,0 +1,25 @@
+{
+  "continuous_training_session_duration": 307.647567987442,
+  "continuous_training_best_reward": 0.0,
+  "continuous_training_adaptations": 0,
+  "continuous_training_evaluations": 2,
+  "continuous_training_mode": "sweep",
+  "adaptation_history": [],
+  "evaluation_history": [
+    {
+      "mean_reward": -0.7089698967715542,
+      "timestamp": "2025-06-06T22:17:57.681669",
+      "evaluation_episodes": 0
+    },
+    {
+      "mean_reward": -6.600907304999123,
+      "timestamp": "2025-06-06T22:19:01.587551",
+      "evaluation_episodes": 0
+    }
+  ],
+  "final_quality_range": [
+    0.7,
+    1.0
+  ],
+  "timestamp": "2025-06-06T22:20:22.073342"
+}

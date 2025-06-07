@@ -1,7 +1,7 @@
 # Quick Override - Fast Development Training
 # Optimized for rapid development cycles and testing
 training:
-  rollout_steps: 256
+  rollout_steps: 512
   n_epochs: 3
 
 env:

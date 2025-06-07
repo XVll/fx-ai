@@ -101,6 +101,7 @@ class CycleState:
     cycle_count: int = 0
     episode_count: int = 0
     update_count: int = 0
+    total_cycles_completed: int = 0  # Total cycles across all days (for training termination)
     
     # Current selections
     current_day: Optional[DayInfo] = None
@@ -117,6 +118,7 @@ class CycleState:
     def reset_for_new_cycle(self):
         """Reset counters for new cycle"""
         self.cycle_count += 1
+        self.total_cycles_completed += 1  # Track cumulative cycles
         self.episodes_in_current_cycle = 0
         self.current_reset_points = []
     
@@ -192,6 +194,9 @@ class ResetPointCycler:
         # Get current reset point
         reset_point = self.ordered_reset_points[self.current_index]
         
+        # Log for debugging
+        self.logger.info(f"🎯 Reset point cycle: index {self.current_index}/{len(self.ordered_reset_points)}, time: {reset_point.timestamp.strftime('%H:%M')}")
+        
         # Advance to next
         self.current_index += 1
         
@@ -207,6 +212,10 @@ class ResetPointCycler:
                 self.logger.debug("🔀 Re-shuffled reset points for next cycle")
         
         return reset_point
+    
+    def get_all_reset_points(self) -> List[ResetPointInfo]:
+        """Get all available reset points for the current day"""
+        return self.ordered_reset_points.copy()
     
     def get_cycle_status(self) -> Dict[str, Any]:
         """Get current cycle status"""
@@ -540,7 +549,16 @@ class DataLifecycleManager:
         # Check if should switch to next day based on cycle config
         if self._should_switch_day():
             if not self._advance_to_next_day():
-                return DataTerminationReason.NO_MORE_DAYS
+                # Before fallback, check if we should terminate based on total cycles completed
+                # This prevents infinite cycling when training_max_cycles is reached
+                self.logger.info("🔄 No more days available, but checking training termination first")
+                
+                # Note: Don't reset the cycle counters here - let training termination logic see them
+                # The fallback of continuing on current day should only happen if training allows it
+                self.logger.info("🔄 No more days available, continuing with current day reset points")
+                # Just reset the index but keep the cycle count for training termination
+                self.reset_point_cycler.current_index = 0
+                # Do NOT reset current_cycle here - training termination needs to see it
         
         # Note: Cycle advancement is now handled explicitly via advance_cycle_on_episode_completion()
         # Don't automatically advance here
@@ -559,12 +577,33 @@ class DataLifecycleManager:
             'quality_score': self.cycle_state.current_day.day_score,
         }
         
-        # Get current reset point index (use 0 for first reset point)
-        current_reset_point_index = 0  # TODO: Track current reset point in cycle state
+        # Get current reset point index from the reset point cycler
+        current_reset_point_index = 0
+        if hasattr(self, 'reset_point_cycler') and self.reset_point_cycler:
+            # The current index was already advanced, so we need the previous index
+            current_reset_point_index = max(0, self.reset_point_cycler.current_index - 1)
         
-        # Format reset points as dictionaries for dashboard compatibility
+        # If we have a current reset point, find its index in the list
+        if hasattr(self, 'current_reset_point') and self.current_reset_point:
+            all_reset_points = self.reset_point_cycler.get_all_reset_points() if hasattr(self, 'reset_point_cycler') else []
+            for i, rp in enumerate(all_reset_points):
+                if rp.timestamp == self.current_reset_point.timestamp:
+                    current_reset_point_index = i
+                    break
+        
+        # Format ALL reset points for dashboard display (not just current one)
         reset_points_formatted = []
-        for rp in self.cycle_state.current_reset_points:
+        
+        # Get all reset points for the current day from the reset point cycler
+        all_reset_points = []
+        if hasattr(self, 'reset_point_cycler') and self.reset_point_cycler:
+            all_reset_points = self.reset_point_cycler.get_all_reset_points()
+        
+        # If we don't have all reset points, fallback to current ones
+        if not all_reset_points:
+            all_reset_points = self.cycle_state.current_reset_points
+        
+        for rp in all_reset_points:
             reset_point_dict = {
                 'timestamp': rp.timestamp,
                 'quality_score': rp.quality_score,
@@ -574,6 +613,8 @@ class DataLifecycleManager:
                 'price': rp.price  # Use actual price from reset point
             }
             reset_points_formatted.append(reset_point_dict)
+        
+        self.logger.debug(f"🎯 Returning training data with reset point index: {current_reset_point_index}")
         
         return {
             'day_info': day_info,
@@ -600,8 +641,16 @@ class DataLifecycleManager:
     
     def get_data_lifecycle_status(self) -> Dict[str, Any]:
         """Get current data lifecycle status"""
+        # Use ResetPointCycler's current_cycle for day-level progress tracking
+        reset_point_cycle_count = self.reset_point_cycler.current_cycle if self.reset_point_cycler else 0
+        
+        # For training termination, use the cumulative cycle count that tracks across all days
+        # This ensures training can terminate even when reset point cycles are reset during day switching
+        training_cycle_count = max(reset_point_cycle_count, self.cycle_state.total_cycles_completed)
+        
         return {
-            'cycle_count': self.cycle_state.cycle_count,
+            'cycle_count': training_cycle_count,  # Use cumulative cycles for training termination
+            'reset_point_cycles': reset_point_cycle_count,  # Track reset point cycles separately
             'episodes_in_cycle': self.cycle_state.episodes_in_current_cycle,
             'episodes_in_day': self.current_day_episodes,
             'updates_in_day': self.current_day_updates,
@@ -705,14 +754,26 @@ class DataLifecycleManager:
         if not self.cycle_state.current_day:
             return False
         
+        # Track previous cycle count to detect when a full cycle is completed
+        previous_cycle_count = self.reset_point_cycler.current_cycle
+        
         # Get next reset point from cycler
         next_reset_point = self.reset_point_cycler.get_next_reset_point()
         if not next_reset_point:
             self.logger.warning(f"No more reset points available for day {self.cycle_state.current_day.date}")
             return False
         
-        # Update state
-        self.cycle_state.reset_for_new_cycle()
+        # Check if ResetPointCycler completed a full cycle (went through all reset points)
+        cycle_completed = self.reset_point_cycler.current_cycle > previous_cycle_count
+        
+        # Only update cycle state when a full cycle through ALL reset points is completed
+        if cycle_completed:
+            self.cycle_state.reset_for_new_cycle()
+            self.logger.info(f"🔄 Completed full cycle {self.reset_point_cycler.current_cycle}, total cycles: {self.cycle_state.total_cycles_completed}")
+        else:
+            # Just increment episode counter for this cycle, but don't count as new cycle
+            self.cycle_state.episodes_in_current_cycle += 1
+        
         self.current_reset_point = next_reset_point
         self.cycle_state.current_reset_points = [next_reset_point]  # Keep as list for compatibility
         
@@ -733,7 +794,13 @@ class DataLifecycleManager:
     
     def advance_cycle_on_episode_completion(self) -> bool:
         """Explicitly advance to next reset point after episode completion"""
-        return self._advance_to_next_cycle()
+        self.logger.info("🔄 Episode completed - advancing to next reset point")
+        result = self._advance_to_next_cycle()
+        if result:
+            self.logger.info(f"✅ Advanced to reset point at {self.current_reset_point.timestamp.strftime('%H:%M')}")
+        else:
+            self.logger.warning("❌ Failed to advance to next reset point")
+        return result
     
     def apply_dynamic_adaptation(self, adaptation: Dict[str, Any]) -> bool:
         """Apply dynamic adaptation from ContinuousTraining"""
