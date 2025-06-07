@@ -236,56 +236,6 @@ class PPOTrainer:
 
     # Curriculum methods removed - now handled by TrainingManager with DataLifecycleManager
 
-    def _should_switch_day(self) -> bool:
-        """Get momentum days filtered by stage criteria."""
-        if not hasattr(self.env, "data_manager"):
-            return []
-
-        all_momentum_days = self.env.data_manager.get_all_momentum_days()
-        if not all_momentum_days:
-            return []
-
-        filtered_days = []
-        for day_info in all_momentum_days:
-            # Filter by symbol
-            if stage.symbols and day_info.get("symbol") not in stage.symbols:
-                continue
-
-            # Filter by date range
-            if stage.date_range[0] is not None:
-                from datetime import datetime
-
-                start_date = datetime.strptime(stage.date_range[0], "%Y-%m-%d").date()
-                # Convert pd.Timestamp to date for comparison
-                day_date = (
-                    day_info["date"].date()
-                    if hasattr(day_info["date"], "date")
-                    else day_info["date"]
-                )
-                if day_date < start_date:
-                    continue
-
-            if stage.date_range[1] is not None:
-                from datetime import datetime
-
-                end_date = datetime.strptime(stage.date_range[1], "%Y-%m-%d").date()
-                # Convert pd.Timestamp to date for comparison
-                day_date = (
-                    day_info["date"].date()
-                    if hasattr(day_info["date"], "date")
-                    else day_info["date"]
-                )
-                if day_date > end_date:
-                    continue
-
-            # Filter by day score
-            day_score = day_info.get("quality_score", 0)
-            if not (stage.day_score_range[0] <= day_score <= stage.day_score_range[1]):
-                continue
-
-            filtered_days.append(day_info)
-
-        return filtered_days
 
     def _get_current_curriculum_stage(self):
         """Placeholder for legacy curriculum stage - returns None since we use adaptive data lifecycle."""

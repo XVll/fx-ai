@@ -1,0 +1,27 @@
+{
+  "version": 503,
+  "timestamp": "20250607_193356",
+  "reward": -5.8053230317110955,
+  "metrics": {
+    "policy_loss": -0.012898339486127952,
+    "value_loss": 0.4446860221141833,
+    "entropy": 1.5003925994969904,
+    "clip_fraction": 0.25518798828125,
+    "kl_divergence": 0.04708905466759461,
+    "explained_variance": 0.39108109660446644,
+    "gradient_norm": 2.143969716853462,
+    "total_loss": 0.43178768262805534,
+    "mean_episode_reward": -5.8053230317110955,
+    "global_step_counter": 2048,
+    "global_episode_counter": 8,
+    "global_update_counter": 1,
+    "update_time": 37.75456190109253,
+    "learning_rate": 0.00015,
+    "total_steps": 2048,
+    "steps_per_second": 8.743325118436747,
+    "episodes_per_hour": 1.6463596243924047e-05,
+    "updates_per_second": 5.716526473584739e-10,
+    "updates_per_hour": 2.057949530490506e-06,
+    "batch_data": {
+      "states": {
+        "hf": 

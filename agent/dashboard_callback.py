@@ -6,6 +6,7 @@ from datetime import datetime
 import numpy as np
 
 from agent.callbacks import BaseCallback
+from dashboard.shared_state import SharedDashboardState
 
 
 class DashboardCallback(BaseCallback):
@@ -22,7 +23,7 @@ class DashboardCallback(BaseCallback):
     def __init__(
         self,
         config: Dict[str, Any],
-        dashboard_state: Optional["SharedDashboardState"] = None,
+        dashboard_state: Optional[SharedDashboardState] = None,
         enabled: bool = True,
     ):
         """Initialize dashboard callback.

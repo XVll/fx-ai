@@ -1,8 +1,10 @@
 """Integration module for Optuna with the FxAI training system."""
 
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import yaml
+import numpy as np
+import optuna
 
 from config.loader import load_config
 from utils.logger import get_logger
