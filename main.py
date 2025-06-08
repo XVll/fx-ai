@@ -504,28 +504,6 @@ def train(config: Config):
     adaptive_symbols = get_adaptive_symbols(config)
     logger.info(f"📈 Symbols: {adaptive_symbols}")
 
-    # Handle both dict and object access patterns
-    model_cfg = config.model
-    d_model = (
-        model_cfg.d_model
-        if hasattr(model_cfg, "d_model")
-        else model_cfg.get("d_model", 64)
-    )
-    n_layers = (
-        model_cfg.n_layers
-        if hasattr(model_cfg, "n_layers")
-        else model_cfg.get("n_layers", 4)
-    )
-    action_dim = (
-        model_cfg.action_dim
-        if hasattr(model_cfg, "action_dim")
-        else model_cfg.get("action_dim", [3, 4])
-    )
-
-    logger.info(f"🧠 Model: d_model={d_model}, layers={n_layers}")
-    logger.info(f"🎯 Action space: {action_dim[0]}×{action_dim[1]}")
-    logger.info("=" * 80)
-
     # Create output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = Path("outputs") / f"{config.experiment_name}_{timestamp}"

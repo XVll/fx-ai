@@ -53,3 +53,19 @@
   3. Make Magic Numbers Configurable: Add config options for hard-coded values like "last 10 seconds"
   4. Add Gradient Clipping: Consider adding gradient clipping in transformer layers for stability
   5. Memory Optimization: Consider using Flash Attention or similar optimizations for long sequences
+
+
+Our task is to re-write whole codebase from scratch. New implementation will be at /v2 directory. Rest of the codebase will be our reference.
+- We will be removing references when we are done with the new implementation.
+- New implementation will be done in TDD, testable and modular, maintainable.
+- You won't be implementing everything at once.
+  - We will talk about each module on its interface, when we are on the same page, I will approve you to write test cases.
+  - When I am satisfied with the test cases, I will approve you to write the implementation.
+Since our entry point for training will be TrainingManager we will start with that one.
+Check main.py and exisiting training manager for reference.
+  - Then go to v2/training that is our focus for now.
+  - We will port existing functionality with improvements, this time we will be using modes each mode will have its own settings. For example continiuos training will have advisory systems, dynamic adjustments, models management etc.
+  - Optuna Mode will have deterministic training, no advisory systems, no dynamic adjustments, no models management.
+  - Benchmark Mode will have evaluation systems, no advisory systems, no dynamic adjustments, no models management.
+What we need to decide is does each mode has its own TrainingManager or do we have a single TrainingManager that handles modes internally?
+  - What is your opinion on this? Based on your suggestions we will refactor v2/training.thinkultra, thinkhard

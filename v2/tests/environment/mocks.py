@@ -10,19 +10,15 @@ These mocks are useful for:
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import numpy as np
-import logging
 
 import sys
 from pathlib import Path
+
+from v2.simulation.interfaces import IPortfolioSimulator
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from envs.trading_environment_interface import (
-    IMarketSimulator,
-    IPortfolioSimulator,
-    IExecutionSimulator,
-    IRewardCalculator,
-    IActionMask,
-    IDataManager,
+from v2.envs.interfaces import (
     MarketData,
     PortfolioState,
     ObservationDict,
@@ -283,7 +279,7 @@ class MockExecutionSimulator:
     
     def execute_action(self, raw_action: ActionArray, market_state: MarketData,
                       portfolio_state: PortfolioState, primary_asset: str,
-                      portfolio_manager: "IPortfolioSimulator") -> ExecutionResult:
+                      portfolio_manager: IPortfolioSimulator) -> ExecutionResult:
         """Execute trading action."""
         action_type = int(raw_action[0])  # 0=HOLD, 1=BUY, 2=SELL
         position_size = int(raw_action[1])  # 0=25%, 1=50%, 2=75%, 3=100%

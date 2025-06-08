@@ -13,14 +13,10 @@ import pandas as pd
 from gymnasium import spaces
 
 from v2.config import Config
-from v2.envs.trading_environment_interface import (
+from v2.data.interfaces import IDataManager
+from v2.envs import IActionMask
+from v2.envs.interfaces import (
     ITradingEnvironment,
-    IMarketSimulator,
-    IPortfolioSimulator,
-    IExecutionSimulator,
-    IRewardCalculator,
-    IActionMask,
-    IDataManager,
     ObservationDict,
     InfoDict,
     ActionArray,
@@ -30,6 +26,8 @@ from v2.envs.trading_environment_interface import (
     MomentumDay,
     SessionOptions,
 )
+from v2.simulation.interfaces import IMarketSimulator, IPortfolioSimulator, IExecutionSimulator
+from v2.simulation.rewards.interfaces import IRewardCalculator
 
 
 class TradingEnvironment(gym.Env):
