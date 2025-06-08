@@ -12,7 +12,7 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 
-from v2.core.common import Symbol, MarketDataPoint, Configurable, Resettable, OrderSide, Quantity, OrderType, Price, ExecutionInfo, Cash
+from v2.core.types import Symbol, MarketDataPoint, Configurable, Resettable, OrderSide, Quantity, OrderType, Price, ExecutionInfo, Cash
 
 
 @runtime_checkable

@@ -90,6 +90,7 @@ class TerminationReason(Enum):
     INVALID_ACTION = "INVALID_ACTION"      # Too many invalid actions
     MANUAL = "MANUAL"                      # User intervention
     ERROR = "ERROR"                        # System error
+    EXTERNAL_ERROR = "EXTERNAL_ERROR"      # External system error
 
 
 class RunMode(Enum):
@@ -98,13 +99,10 @@ class RunMode(Enum):
     Design: Modes separate concerns and enable specialized workflows.
     Each mode has its own lifecycle and optimization goals.
     """
-    TRAINING = "TRAINING"          # Standard RL training
-    CONTINUOUS = "CONTINUOUS"      # Continuous improvement mode
-    BENCHMARK = "BENCHMARK"        # Performance evaluation
-    OPTUNA = "OPTUNA"             # Hyperparameter optimization
-    BACKTEST = "BACKTEST"         # Historical evaluation
-    LIVE = "LIVE"                 # Live trading (future)
-    REPLAY = "REPLAY"             # Replay specific episodes
+    CONTINUOUS_TRAINING = "CONTINUOUS_TRAINING"  # Primary training mode with adaptive configs
+    BENCHMARK_EVALUATION = "BENCHMARK_EVALUATION"  # Performance evaluation
+    OPTUNA_OPTIMIZATION = "OPTUNA_OPTIMIZATION"   # Hyperparameter optimization
+    LIVE = "LIVE"                             # Live trading (future)
 
 
 class FeatureFrequency(Enum):

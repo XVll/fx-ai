@@ -2,8 +2,7 @@
 Unified Training Interfaces for Mode-Based Training System.
 
 This module provides comprehensive interfaces for different training modes:
-- Standard RL training with fixed schedules
-- Continuous training with model versioning and curriculum learning  
+- Continuous training with model versioning and curriculum learning (primary mode)
 - Hyperparameter optimization with Optuna integration
 - Benchmarking and performance evaluation
 
@@ -21,7 +20,7 @@ from pathlib import Path
 from enum import Enum
 import pandas as pd
 
-from ..core.common import (
+from ..core.types import (
     RunMode, ModelVersion, EpisodeMetrics, Symbol, TerminationReason,
     Configurable, Resettable, Serializable
 )
@@ -177,83 +176,28 @@ class ITrainingMode(Protocol):
         ...
 
 
-class IStandardTrainingMode(ITrainingMode):
-    """Standard reinforcement learning training mode.
-    
-    Implementation Guide:
-    - Traditional episode-based training loop
-    - Fixed termination criteria (episodes, steps, or time)
-    - Single model output with checkpoints
-    - Progress tracking and logging
-    - Support for evaluation episodes during training
-    
-    Use Cases:
-    - Initial model training
-    - Baseline model development
-    - Simple training scenarios
-    - Development and testing
-    """
-    
-    @abstractmethod
-    def set_training_schedule(
-        self,
-        total_episodes: Optional[int] = None,
-        total_steps: Optional[int] = None,
-        time_limit: Optional[float] = None,
-        evaluation_frequency: int = 100
-    ) -> None:
-        """Configure training duration and evaluation schedule.
-        
-        Implementation Guide:
-        - At least one termination criterion must be specified
-        - Store criteria for use in training loop
-        - Set up evaluation scheduling
-        - Configure progress tracking intervals
-        
-        Args:
-            total_episodes: Maximum episodes to train
-            total_steps: Maximum environment steps
-            time_limit: Maximum training time in hours
-            evaluation_frequency: Episodes between evaluations
-        """
-        ...
-    
-    @abstractmethod
-    def get_training_progress(self) -> Dict[str, float]:
-        """Get detailed training progress information.
-        
-        Implementation Guide:
-        - Calculate completion percentage for each criterion
-        - Estimate remaining time based on current rate
-        - Include current performance metrics
-        
-        Returns:
-            Dictionary containing:
-            - episodes_completed: Current episode count
-            - steps_completed: Current step count  
-            - time_elapsed: Hours of training
-            - completion_percentage: Overall progress (0-1)
-            - estimated_time_remaining: Hours estimated
-            - current_performance: Latest metrics
-        """
-        ...
 
 
 class IContinuousTrainingMode(ITrainingMode):
-    """Continuous improvement training mode with model versioning.
+    """Primary training mode with configurable behavior.
     
     Implementation Guide:
-    - Never-ending training loop with intelligent termination
-    - Automatic model versioning (v1, v2, v3...)
-    - Curriculum learning with progressive difficulty
+    - Configurable training loop (fixed episodes or continuous)
+    - Optional model versioning (v1, v2, v3...)
+    - Optional curriculum learning with progressive difficulty
     - Performance-based model selection and rollback
     - Adaptive learning rate and hyperparameter adjustment
     
+    Configuration Modes:
+    - Standard Training: Fixed episodes/steps, single model output
+    - Continuous Training: Never-ending loop with intelligent termination
+    - Curriculum Training: Progressive difficulty with data lifecycle
+    
     Use Cases:
+    - All training scenarios (replaces separate standard mode)
     - Production model improvement
     - Long-term model evolution
-    - Curriculum-based training
-    - Adaptive learning scenarios
+    - Development and testing
     
     Interaction with DataLifecycleManager:
     - Requests next training data configuration

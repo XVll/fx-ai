@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from v2.core.common import Symbol, Timestamp, Configurable, Resettable, FeatureFrequency, FeatureArray
+from v2.core.types import Symbol, Timestamp, Configurable, Resettable, FeatureFrequency, FeatureArray
 
 
 @runtime_checkable

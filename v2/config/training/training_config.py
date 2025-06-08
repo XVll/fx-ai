@@ -134,10 +134,11 @@ class TrainingManagerConfig(BaseModel):
 
 class TrainingConfig(BaseModel):
     """PPO training configuration"""
+    seed: int = Field(42, description="Random seed")
+    # -----------------------------------------------------------------------------#
 
     # Core settings
     device: str = Field("mps", description="Training device")
-    seed: int = Field(42, description="Random seed")
 
     # PPO hyperparameters
     learning_rate: float = Field(1.5e-4, gt=0.0, description="Learning rate")

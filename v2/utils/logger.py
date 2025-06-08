@@ -10,10 +10,10 @@ console = Console()
 
 
 def setup_rich_logging(
-    level: int = logging.INFO,
-    show_time: bool = True,
-    show_path: bool = False,
-    compact_errors: bool = True,
+        level: int = logging.INFO,
+        show_time: bool = True,
+        show_path: bool = False,
+        compact_errors: bool = True,
 ):
     """
     Set up Rich logging for clean console output.
@@ -31,18 +31,7 @@ def setup_rich_logging(
             width=100,  # Limit width
             extra_lines=3,  # Show only 3 lines of context
             word_wrap=True,  # Wrap long lines
-            suppress=[  # Suppress these modules in traceback
-                "gymnasium",
-                "torch",
-                "numpy",
-                "pandas",
-                "wandb",
-                "hydra",
-                "dash",
-                "plotly",
-                "werkzeug",
-            ],
-        )
+            suppress=[])
     else:
         install(show_locals=True)
 

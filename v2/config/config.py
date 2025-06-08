@@ -14,7 +14,7 @@ from v2.config.optuna.optuna_config import StudyConfig, OptunaStudySpec
 
 class Config(BaseModel):
     """Main configuration container"""
-
+    output_dir: str = Field("outputs", description="Base output directory for results")
     model_config = ConfigDict(extra="forbid")
 
     # Core components

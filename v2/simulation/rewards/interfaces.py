@@ -11,7 +11,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from v2.core.common import Configurable, Resettable
+from v2.core.types import Configurable, Resettable
 
 
 @runtime_checkable

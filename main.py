@@ -125,31 +125,6 @@ def cleanup_resources():
         console.print(f"[bold red]Error during cleanup: {e}[/bold red]")
 
 
-def setup_environment(training_config: TrainingConfig) -> torch.device:
-    """Set up training environment with config"""
-    # Set random seeds
-    np.random.seed(training_config.seed)
-    torch.manual_seed(training_config.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(training_config.seed)
-
-    # Select device
-    device_str = training_config.device
-    if device_str == "cuda" and torch.cuda.is_available():
-        device = torch.device("cuda")
-        logging.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
-    elif (
-        device_str == "mps"
-        and hasattr(torch.backends, "mps")
-        and torch.backends.mps.is_available()
-    ):
-        device = torch.device("mps")
-        logging.info("Using MPS (Apple Silicon) device")
-    else:
-        device = torch.device("cpu")
-        logging.info("Using CPU device")
-
-    return device
 
 
 def create_data_provider(data_config: DataConfig):
@@ -491,26 +466,11 @@ def train(config: Config):
     """Main training function with proper config passing"""
     global current_components
 
-    # Setup logging
-    setup_rich_logging(
-        level=config.logging.level,
-    )
-    logger = get_logger("fx-ai")
-
-    logger.info("=" * 80)
     logger.info("🚀 Starting FX-AI Training System")
-    logger.info(f"📊 Experiment: {config.experiment_name}")
     # Get adaptive symbols for logging
     adaptive_symbols = get_adaptive_symbols(config)
     logger.info(f"📈 Symbols: {adaptive_symbols}")
 
-    # Create output directory
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = Path("outputs") / f"{config.experiment_name}_{timestamp}"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save used config
-    config.save_used_config(str(output_dir / "config_used.yaml"))
 
     # Setup environment
     device = setup_environment(config.training)
@@ -666,59 +626,8 @@ def main_with_shutdown(shutdown_manager):
     # Make shutdown_manager available globally 
     global _shutdown_manager
     _shutdown_manager = shutdown_manager
-    
-    # Parse arguments
-    parser = argparse.ArgumentParser(description="FX-AI Trading System")
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Config override file (e.g., quick_test, production)",
-    )
-    parser.add_argument("--experiment", type=str, default=None, help="Experiment name")
-    parser.add_argument(
-        "--symbol", type=str, default=None, help="Trading symbol (overrides config)"
-    )
-    parser.add_argument(
-        "--continue",
-        dest="continue_training",
-        action="store_true",
-        help="Continue from latest checkpoint",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        choices=["cuda", "cpu", "mps"],
-        default=None,
-        help="Device to use for training",
-    )
-
-    args = parser.parse_args()
 
     try:
-        # Load configuration
-        config = Config.load(args.config)
-
-        # Apply command line overrides
-        if args.experiment:
-            config.experiment_name = args.experiment
-        if args.symbol:
-            # Override adaptive data symbols
-            if hasattr(config, 'env') and hasattr(config.env, 'training_manager'):
-                training_manager_config = config.env.training_manager
-                if hasattr(training_manager_config, 'data_lifecycle'):
-                    data_lifecycle = training_manager_config.data_lifecycle
-                    if hasattr(data_lifecycle, 'adaptive_data'):
-                        data_lifecycle.adaptive_data.symbols = [args.symbol]
-        if args.continue_training:
-            config.training.continue_training = True
-        if args.device:
-            config.training.device = args.device
-
-        # Log configuration
-        console.print(
-            f"[bold green]Loaded configuration:[/bold green] {args.config or 'defaults'}"
-        )
         if args.symbol:
             console.print(f"[bold blue]Symbol override:[/bold blue] {args.symbol}")
         if args.continue_training:
