@@ -27,9 +27,11 @@ class CheckpointCallbackConfig(BaseModel):
 class WandBCallbackConfig(BaseModel):
     """Configuration for WandBCallback."""
     enabled: bool = Field(default=False, description="Whether callback is active")
-    project: str = Field(default="fxai-v2", description="WandB project name")
+    project: str = Field(default="fx-ai", description="WandB project name")
     entity: Optional[str] = Field(default=None, description="WandB entity/team name")
+    name: Optional[str] = Field(None, description="Run name")
     tags: List[str] = Field(default_factory=list, description="List of tags for the run")
+    notes: Optional[str] = Field(None, description="Run notes")
     log_freq: int = Field(default=10, description="Episode frequency for logging metrics")
     log_gradients: bool = Field(default=False, description="Whether to log gradient norms")
     log_parameters: bool = Field(default=True, description="Whether to log model parameters")
@@ -81,6 +83,10 @@ class EarlyStoppingCallbackConfig(BaseModel):
 class CallbackConfig(BaseModel):
     """Main callback configuration containing all callback configs."""
     
+    # System settings
+    shutdown_timeout: float = Field(default=10.0, description="Shutdown timeout in seconds")
+    
+    # Individual callback configs
     metrics: MetricsCallbackConfig = Field(default_factory=MetricsCallbackConfig)
     checkpoint: CheckpointCallbackConfig = Field(default_factory=CheckpointCallbackConfig)
     wandb: WandBCallbackConfig = Field(default_factory=WandBCallbackConfig)

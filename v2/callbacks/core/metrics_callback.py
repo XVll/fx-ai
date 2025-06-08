@@ -2,12 +2,13 @@
 Basic metrics logging callback.
 
 Provides fundamental metrics tracking and console logging
-for training progress monitoring.
+for training progress monitoring with strongly typed contexts.
 """
 
-from typing import Dict, Any, Optional
+from typing import Optional
 import logging
 from .base import BaseCallback
+from .context import TrainingStartContext, EpisodeEndContext, UpdateEndContext, TrainingEndContext
 
 
 class MetricsCallback(BaseCallback):
@@ -48,47 +49,46 @@ class MetricsCallback(BaseCallback):
         self.policy_losses = []
         self.value_losses = []
         
-    def on_training_start(self, context: Dict[str, Any]) -> None:
+    def on_training_start(self, context: TrainingStartContext) -> None:
         """Log training start."""
         super().on_training_start(context)
         
-        config = context.get("config", {})
         self.logger.info("🚀 Training started with MetricsCallback")
         self.logger.info(f"  Log frequency: {self.log_freq} episodes")
         self.logger.info(f"  Console output: {self.console_output}")
+        self.logger.info(f"  Run ID: {context.run_id}")
+        self.logger.info(f"  Output path: {context.output_path}")
         
         if self.console_output:
             print("\n" + "="*80)
             print("🚀 FxAI V2 Training Started")
+            print(f"Run ID: {context.run_id}")
             print("="*80)
     
-    def on_episode_end(self, context: Dict[str, Any]) -> None:
+    def on_episode_end(self, context: EpisodeEndContext) -> None:
         """Track episode metrics."""
         super().on_episode_end(context)
         
-        episode_info = context.get("episode", {})
-        metrics = context.get("metrics", {})
-        
-        # Extract episode data
-        episode_num = episode_info.get("num", self.episode_count)
-        reward = episode_info.get("reward", 0.0)
-        length = episode_info.get("length", 0)
+        # Extract typed data from context
+        episode_num = context.episode.num
+        reward = context.episode.reward
+        length = context.episode.length
         
         # Track metrics
         self.episode_rewards.append(reward)
         self.episode_lengths.append(length)
         
         # Track trading metrics
-        trades_count = metrics.get("trades_count", 0)
-        portfolio_value = metrics.get("portfolio_value", 0.0)
-        profit = metrics.get("total_profit", 0.0)
+        trades_count = context.metrics.trades_count
+        portfolio_value = context.metrics.portfolio_value
+        profit = context.metrics.total_profit
         
         self.total_trades += trades_count
         self.total_profit = profit
         
         # Log at specified frequency
         if episode_num % self.log_freq == 0:
-            self._log_episode_summary(episode_num, reward, length, metrics)
+            self._log_episode_summary(episode_num, reward, length, context)
     
     def on_update_end(self, context: Dict[str, Any]) -> None:
         """Track training update metrics."""
@@ -128,7 +128,7 @@ class MetricsCallback(BaseCallback):
         episode_num: int, 
         reward: float, 
         length: int, 
-        metrics: Dict[str, Any]
+        context: EpisodeEndContext
     ) -> None:
         """Log episode summary."""
         # Calculate running averages
@@ -147,9 +147,9 @@ class MetricsCallback(BaseCallback):
         
         # Console output
         if self.console_output:
-            portfolio_value = metrics.get("portfolio_value", 0.0)
-            trades_count = metrics.get("trades_count", 0)
-            win_rate = metrics.get("win_rate", 0.0)
+            portfolio_value = context.metrics.portfolio_value
+            trades_count = context.metrics.trades_count
+            win_rate = context.metrics.win_rate
             
             print(f"Episode {episode_num:6d} | "
                   f"Reward: {reward:8.3f} | "

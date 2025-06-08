@@ -102,4 +102,4 @@ coverage.xml
 docs/_build/
 docs/_static/
 docs/_templates/
-/cache/features/
+v2/cache/features/

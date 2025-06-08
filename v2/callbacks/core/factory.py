@@ -2,110 +2,76 @@
 Callback factory for creating callbacks from configuration.
 
 Provides a clean interface for creating and configuring callbacks
-based on configuration dictionaries.
+based on strongly typed Pydantic configurations.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import List, Optional, TYPE_CHECKING
+from pathlib import Path
 import logging
 from .base import BaseCallback
 from .manager import CallbackManager
+from ...agent.interfaces import IAgent
+from ...config import Config, CallbackConfig
+from ...envs.interfaces import ITradingEnvironment
+
 
 
 def create_callbacks_from_config(
-    config: Dict[str, Any],
-    trainer: Optional[Any] = None,
-    environment: Optional[Any] = None,
-    output_path: Optional[str] = None
+    config: CallbackConfig,
+    trainer: Optional[IAgent] = None,
+    environment: Optional[ITradingEnvironment] = None,
+    output_path: Optional[Path] = None
 ) -> CallbackManager:
     """
-    Create callback manager with callbacks from configuration.
+    Create callback manager with callbacks from strongly typed configuration.
     
     Args:
-        config: Configuration dictionary with callback settings
+        config: Typed CallbackConfig with all callback settings
         trainer: PPO trainer instance (for callbacks that need model access)
         environment: Trading environment (for callbacks that need env access)
         output_path: Output directory path
         
     Returns:
-        Configured CallbackManager instance
-        
-    Example config structure:
-    {
-        "callbacks": {
-            "wandb": {
-                "enabled": true,
-                "project": "fxai-v2",
-                "tags": ["momentum", "ppo"]
-            },
-            "checkpoint": {
-                "enabled": true,
-                "save_freq": 100,
-                "keep_best": 5
-            },
-            "metrics": {
-                "enabled": true,
-                "log_freq": 10
-            }
-        }
-    }
+        Configured CallbackManager instance with enabled callbacks
     """
     logger = logging.getLogger("callback_factory")
     callbacks = []
     
-    callback_config = config.get("callbacks", {})
-    if not callback_config:
-        logger.warning("No callback configuration found")
-        return CallbackManager(callbacks)
-    
     # Create core callbacks
-    if "metrics" in callback_config:
-        metrics_callback = _create_metrics_callback(
-            callback_config["metrics"], trainer, environment
-        )
+    if config.metrics.enabled:
+        metrics_callback = _create_metrics_callback(config.metrics, trainer, environment)
         if metrics_callback:
             callbacks.append(metrics_callback)
     
-    if "checkpoint" in callback_config:
-        checkpoint_callback = _create_checkpoint_callback(
-            callback_config["checkpoint"], trainer, output_path
-        )
+    if config.checkpoint.enabled:
+        checkpoint_callback = _create_checkpoint_callback(config.checkpoint, trainer, output_path)
         if checkpoint_callback:
             callbacks.append(checkpoint_callback)
     
-    if "wandb" in callback_config:
-        wandb_callback = _create_wandb_callback(
-            callback_config["wandb"], trainer, environment
-        )
+    if config.wandb.enabled:
+        wandb_callback = _create_wandb_callback(config.wandb, trainer, environment)
         if wandb_callback:
             callbacks.append(wandb_callback)
     
     # Create analysis callbacks
-    if "attribution" in callback_config:
-        attribution_callback = _create_attribution_callback(
-            callback_config["attribution"], trainer, environment
-        )
+    if config.attribution.enabled:
+        attribution_callback = _create_attribution_callback(config.attribution, trainer, environment)
         if attribution_callback:
             callbacks.append(attribution_callback)
     
-    if "performance" in callback_config:
-        performance_callback = _create_performance_callback(
-            callback_config["performance"], trainer, environment
-        )
+    if config.performance.enabled:
+        performance_callback = _create_performance_callback(config.performance, trainer, environment)
         if performance_callback:
             callbacks.append(performance_callback)
     
     # Create optimization callbacks
-    if "optuna" in callback_config:
-        optuna_callback = _create_optuna_callback(
-            callback_config["optuna"], trainer
-        )
+    if config.optuna.enabled:
+        optuna_callback = _create_optuna_callback(config.optuna, trainer)
         if optuna_callback:
             callbacks.append(optuna_callback)
     
-    if "early_stopping" in callback_config:
-        early_stopping_callback = _create_early_stopping_callback(
-            callback_config["early_stopping"], trainer
-        )
+    if config.early_stopping.enabled:
+        early_stopping_callback = _create_early_stopping_callback(config.early_stopping, trainer)
         if early_stopping_callback:
             callbacks.append(early_stopping_callback)
     
@@ -114,20 +80,17 @@ def create_callbacks_from_config(
 
 
 def _create_metrics_callback(
-    config: Dict[str, Any], 
+    config: "MetricsCallbackConfig", 
     trainer: Optional[Any], 
     environment: Optional[Any]
 ) -> Optional[BaseCallback]:
-    """Create metrics callback from config."""
-    if not config.get("enabled", True):
-        return None
-    
+    """Create metrics callback from typed config."""
     try:
-        from ..core.metrics_callback import MetricsCallback
+        from .metrics_callback import MetricsCallback
         return MetricsCallback(
-            enabled=config.get("enabled", True),
-            log_freq=config.get("log_freq", 10),
-            console_output=config.get("console_output", True)
+            enabled=config.enabled,
+            log_freq=config.log_freq,
+            console_output=config.console_output
         )
     except ImportError as e:
         logging.getLogger("callback_factory").warning(f"Could not create MetricsCallback: {e}")

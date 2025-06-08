@@ -16,9 +16,10 @@ from .context import (
     CustomEventContext,
     CallbackContext
 )
+from ...core.shutdown import IShutdownHandler
 
 
-class CallbackManager:
+class CallbackManager(IShutdownHandler):
     """
     Simplified callback manager for v2.
     
@@ -75,18 +76,17 @@ class CallbackManager:
         else:
             self.logger.warning(f"Callback {callback.name} not found")
     
-    def trigger(self, event_name: str, context: Optional[Dict[str, Any]] = None) -> None:
+    def trigger(self, event_name: str, context: CallbackContext) -> None:
         """
         Trigger event on all enabled callbacks.
         
-        Single consistent interface for all events. Handles errors gracefully
-        to prevent callback failures from crashing training.
+        Single consistent interface for all events with strongly typed contexts.
+        Handles errors gracefully to prevent callback failures from crashing training.
         
         Args:
             event_name: Name of event to trigger (e.g., "on_episode_end")
-            context: Event context dictionary
+            context: Strongly typed event context
         """
-        context = context or {}
         self._total_events += 1
         
         enabled_callbacks = [cb for cb in self.callbacks if cb.enabled]
@@ -104,10 +104,6 @@ class CallbackManager:
                         method(context)
                     else:
                         self.logger.warning(f"Event {event_name} on {callback.name} is not callable")
-                elif event_name.startswith("on_custom_"):
-                    # Handle custom events through on_custom_event
-                    custom_event_name = event_name[3:]  # Remove "on_" prefix
-                    callback.on_custom_event(custom_event_name, context)
                 else:
                     self.logger.debug(f"Callback {callback.name} does not handle {event_name}")
                     
@@ -119,25 +115,25 @@ class CallbackManager:
                 )
                 # Continue with other callbacks despite error
     
-    def trigger_training_start(self, context: Dict[str, Any]) -> None:
+    def trigger_training_start(self, context: TrainingStartContext) -> None:
         """Convenience method for training start."""
         self.trigger("on_training_start", context)
     
-    def trigger_episode_end(self, context: Dict[str, Any]) -> None:
+    def trigger_episode_end(self, context: EpisodeEndContext) -> None:
         """Convenience method for episode end.""" 
         self.trigger("on_episode_end", context)
         
-    def trigger_update_end(self, context: Dict[str, Any]) -> None:
+    def trigger_update_end(self, context: UpdateEndContext) -> None:
         """Convenience method for update end."""
         self.trigger("on_update_end", context)
         
-    def trigger_training_end(self, context: Dict[str, Any]) -> None:
+    def trigger_training_end(self, context: TrainingEndContext) -> None:
         """Convenience method for training end."""
         self.trigger("on_training_end", context)
     
-    def trigger_custom_event(self, event_name: str, context: Dict[str, Any]) -> None:
+    def trigger_custom_event(self, context: CustomEventContext) -> None:
         """Convenience method for custom events."""
-        self.trigger(f"on_custom_{event_name}", context)
+        self.trigger("on_custom_event", context)
     
     def enable_callback(self, name: str) -> bool:
         """
@@ -195,6 +191,22 @@ class CallbackManager:
     def get_enabled_callbacks(self) -> List[BaseCallback]:
         """Get list of enabled callbacks."""
         return [cb for cb in self.callbacks if cb.enabled]
+    
+    def register_trainer(self, trainer) -> None:
+        """Register trainer with callbacks that need it."""
+        self.trainer = trainer
+        for callback in self.callbacks:
+            if hasattr(callback, 'trainer') and callback.trainer is None:
+                callback.trainer = trainer
+        self.logger.info("Trainer registered with callback manager")
+    
+    def register_environment(self, environment) -> None:
+        """Register environment with callbacks that need it."""
+        self.environment = environment
+        for callback in self.callbacks:
+            if hasattr(callback, 'environment') and callback.environment is None:
+                callback.environment = environment
+        self.logger.info("Environment registered with callback manager")
     
     def shutdown(self) -> None:
         """

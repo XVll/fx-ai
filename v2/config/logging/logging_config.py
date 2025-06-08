@@ -22,25 +22,3 @@ class LoggingConfig(BaseModel):
     log_features: bool = Field(False, description="Log features")
     log_portfolio: bool = Field(True, description="Log portfolio")
 
-
-class WandbConfig(BaseModel):
-    """Weights & Biases configuration"""
-
-    enabled: bool = Field(True, description="Enable W&B")
-    project: str = Field("fx-ai-momentum", description="Project name")
-    entity: Optional[str] = Field(None, description="W&B entity")
-    name: Optional[str] = Field(None, description="Run name")
-    tags: List[str] = Field(default_factory=list, description="Tags")
-    notes: Optional[str] = Field(None, description="Run notes")
-
-    log_frequency: Dict[str, int] = Field(
-        default_factory=lambda: {
-            "training": 1,
-            "episode": 1,
-            "rollout": 1,
-            "evaluation": 1,
-        }
-    )
-
-    save_code: bool = Field(True, description="Save code")
-    save_model: bool = Field(True, description="Save model")

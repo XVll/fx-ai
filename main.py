@@ -1,44 +1,3 @@
-import os
-import sys
-import threading
-import logging
-import time
-from datetime import datetime
-import argparse
-from pathlib import Path
-
-import torch
-import numpy as np
-import wandb
-
-from config.config import Config, TrainingConfig, DataConfig
-from utils.logger import console, setup_rich_logging, get_logger
-from utils.graceful_shutdown import get_shutdown_manager
-
-# Import utilities
-from utils.model_manager import ModelManager
-
-# Import components
-from data.data_manager import DataManager
-from data.provider.data_bento.databento_file_provider import DatabentoFileProvider
-from data.scanner.momentum_scanner import MomentumScanner
-from envs.trading_environment import TradingEnvironment
-from agent.ppo_agent import PPOTrainer
-from ai.transformer import MultiBranchTransformer
-from agent.callbacks import (
-    create_callback_manager as create_callback_manager_base,
-    CallbackManager,
-)
-from agent.base_callbacks import (
-    ModelCheckpointCallback,
-    EarlyStoppingCallback,
-    TrainingCallback,
-    MomentumTrackingCallback,
-)
-from agent.continuous_training_callbacks import ContinuousTrainingCallback
-
-logger = logging.getLogger(__name__)
-
 def cleanup_resources():
     try:
         if "trainer" in current_components and "model_manager" in current_components:
@@ -176,73 +135,6 @@ def get_feature_names_from_config():
     }
 
 
-def create_callback_manager(
-    config: Config, log: logging.Logger, model: torch.nn.Module = None
-) -> CallbackManager:
-    """Create callback manager with all configured callbacks"""
-    # Convert Config object to dict for callback creation
-    config_dict = {
-        "wandb": config.wandb.__dict__
-        if hasattr(config.wandb, "__dict__")
-        else config.wandb,
-        "optuna_trial": getattr(config, "optuna_trial", None),
-        "callbacks": getattr(config, "callbacks", []),
-        "model": model,
-        "training": config.training.__dict__
-        if hasattr(config.training, "__dict__")
-        else config.training,
-        "simulation": config.simulation.__dict__
-        if hasattr(config.simulation, "__dict__")
-        else config.simulation,
-        "captum": config.captum.model_dump()
-        if hasattr(config, "captum") and config.captum and hasattr(config.captum, "model_dump")
-        else getattr(config, "captum", None),
-    }
-
-    # Debug captum config
-    log.info(f"🔍 DEBUG: Original config.captum: {config.captum}")
-    log.info(f"🔍 DEBUG: Original config.captum type: {type(config.captum)}")
-    if config.captum:
-        log.info(f"🔍 DEBUG: Original config.captum.enabled: {config.captum.enabled}")
-    log.info(f"🔍 DEBUG: config_dict['captum']: {config_dict.get('captum')}")
-    log.info(f"🔍 DEBUG: config_dict['captum'] type: {type(config_dict.get('captum'))}")
-
-    # Check for Optuna trial info (subprocess mode)
-    optuna_trial_info = getattr(config, "optuna_trial_info", None)
-    if optuna_trial_info and optuna_trial_info.get("is_optuna_trial", False):
-        # This is an Optuna trial running in subprocess mode
-        # Set a None trial to trigger subprocess mode in OptunaCallback
-        config_dict["optuna_trial"] = None
-        config_dict["optuna_trial_info"] = optuna_trial_info
-        log.info(
-            f"🔍 Detected Optuna trial {optuna_trial_info.get('trial_number', 'unknown')} - running in subprocess mode"
-        )
-
-
-    # Add adaptive symbols for tracking
-    adaptive_symbols = get_adaptive_symbols(config)
-    config_dict["adaptive_symbols"] = adaptive_symbols
-    config_dict["primary_symbol"] = (
-        adaptive_symbols[0] if adaptive_symbols else "adaptive"
-    )
-
-    # Create callback manager
-    callback_manager = create_callback_manager_base(config_dict)
-
-    # Log enabled callbacks
-    enabled_callbacks = [
-        cb.__class__.__name__ for cb in callback_manager.callbacks if cb.enabled
-    ]
-    if enabled_callbacks:
-        logging.info(
-            f"✅ Callback system initialized with: {', '.join(enabled_callbacks)}"
-        )
-    else:
-        logging.info("📊 No callbacks enabled")
-
-    # Note: on_training_start will be triggered by PPO trainer when training actually begins
-    return callback_manager
-
 
 def create_model_components(
     config: Config, device: torch.device, output_dir: str, log: logging.Logger
@@ -326,16 +218,6 @@ def create_training_callbacks(
 
 def train(config: Config):
     """Main training function with proper config passing"""
-    global current_components
-
-    logger.info("🚀 Starting FX-AI Training System")
-    # Get adaptive symbols for logging
-    adaptive_symbols = get_adaptive_symbols(config)
-    logger.info(f"📈 Symbols: {adaptive_symbols}")
-
-
-
-    # Create components with proper config passing
     try:
         # Data components
         data_manager = create_data_components(config, logger)

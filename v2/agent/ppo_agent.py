@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 
+from ..callbacks import CallbackManager
 from ..config import Config
 from ..envs.interfaces import ITradingEnvironment
 from ..model.transformer import MultiBranchTransformer
@@ -37,6 +38,7 @@ class PPOAgent(IAgent):
         config: Config,
         env: ITradingEnvironment,
         model: MultiBranchTransformer,
+        callback_manager: CallbackManager,
         device: Optional[torch.device] = None,
     ):
         """

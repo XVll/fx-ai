@@ -1,5 +1,7 @@
 from typing import Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
+
+from v2.config.callbacks import CallbackConfig
 from v2.config.core import ActionType, SessionType
 from v2.config.model import ModelConfig
 from v2.config.training import TrainingConfig, TrainingManagerConfig
@@ -29,8 +31,8 @@ class Config(BaseModel):
 
     # Monitoring
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    wandb: WandbConfig = Field(default_factory=WandbConfig)
-    
+    callbacks: CallbackConfig = Field(default_factory=CallbackConfig)
+
     # Feature attribution analysis
     captum: Optional[CaptumConfig] = Field(None, description="Captum feature attribution config")
     

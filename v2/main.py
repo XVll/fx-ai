@@ -16,6 +16,7 @@ import numpy as np
 import torch
 
 from v2.agent.interfaces import IAgent
+from v2.callbacks import create_callbacks_from_config, CallbackManager
 from v2.data.databento_file_provider import DatabentoFileProvider
 from v2.data.interfaces import IDataManager
 from v2.envs.interfaces import ITradingEnvironment
@@ -41,13 +42,13 @@ class ApplicationBootstrap(IShutdownHandler):
         self.logger = logging.getLogger(f"{__name__}.Application")
         self.shutdown_manager = shutdown_manager or get_global_shutdown_manager()
 
-
         # Component instances
         self.training_manager: Optional[ITrainingManager] = None
         self.trainer: Optional[IAgent] = None
         self.environment: Optional[ITradingEnvironment] = None
         self.data_manager: Optional[IDataManager] = None
         self.device: Optional[torch.device] = None
+        self.callback_manager: Optional[CallbackManager] = None
 
         # Register self for shutdown
         self.shutdown_manager.register_component(
@@ -93,6 +94,15 @@ class ApplicationBootstrap(IShutdownHandler):
             compact_errors=True
         )
 
+    def _create_callback_manager(self) -> Any:
+        """Create and configure callback manager with v2 config."""
+        from v2.callbacks.callback_manager import CallbackManager
+
+        # Convert pydantic config to dict for callback manager
+        config_dict = self.config.model_dump()
+
+        return callback_manager
+
     def _create_training_manager(self) -> ITrainingManager:
         """Create and configure training manager with v2 config."""
         from v2.training.training_manager import create_training_manager
@@ -113,10 +123,28 @@ class ApplicationBootstrap(IShutdownHandler):
         # Create device first
         self.device = self._create_device()
 
+        # Create callback manager first (before other components)
+        self.callback_manager = create_callbacks_from_config(
+            config=self.config.callbacks,
+            trainer=None,  # Will be set after creation
+            environment=None,  # Will be set after creation
+            output_path=self.output_path,
+        )
+
         # Create core components
         self.data_manager = self._create_data_manager()
         self.environment = self._create_environment()
         self.trainer = self._create_trainer()
+
+        # Register components with callback manager after creation
+        self.callback_manager.register_trainer(self.trainer)
+        self.callback_manager.register_environment(self.environment)
+
+        # Register callback manager with shutdown system
+        self.shutdown_manager.register_component(
+            component=self.callback_manager,
+            timeout=self.config.callbacks.shutdown_timeout
+        )
 
         self.shutdown_manager.register_component(
             component=self.data_manager,
@@ -136,6 +164,9 @@ class ApplicationBootstrap(IShutdownHandler):
         )
 
         self.logger.info("✅ All components initialized successfully")
+        
+        # Trigger training start callback event
+        self._trigger_training_start()
 
     def _create_device(self) -> torch.device:
         """Create and configure PyTorch device."""
@@ -197,15 +228,12 @@ class ApplicationBootstrap(IShutdownHandler):
         # Import v2 trainer implementation
         from v2.agent.ppo_agent import PPOAgent
 
-        # Create trainer
+        # Create trainer with callback manager
         trainer = PPOAgent(
             config=self.config,
-            env = self.environment,
-            device = self.device,
-            model= model,
-            output_path = self.output_path,
-            callback_manager= callback_manager,
-            callbacks=callbacks,
+            env=self.environment,
+            device=self.device,
+            callback_manager=self.callback_manager
         )
 
         self.logger.info("✅ Trainer created")
@@ -224,6 +252,7 @@ class ApplicationBootstrap(IShutdownHandler):
             self.data_manager = None
             self.device = None
             self.training_manager = None
+            self.callback_manager = None
             self.config = None
 
             self.logger.info("✅ Application shutdown completed")
