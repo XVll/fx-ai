@@ -14,14 +14,15 @@ from .interfaces import (
     IContinuousTrainingMode, IOptunaMode, IBenchmarkMode
 )
 from ..core.types import TerminationReason
+from ..core.shutdown import IShutdownHandler, ShutdownReason
 
 
 logger = logging.getLogger(__name__)
 
 
-class TrainingManager(ITrainingManager):
+class TrainingManager(ITrainingManager, IShutdownHandler):
     """
-    Concrete implementation of ITrainingManager.
+    Concrete implementation of ITrainingManager with graceful shutdown support.
     
     Responsibilities:
     - Mode registration and lifecycle management
@@ -54,7 +55,15 @@ class TrainingManager(ITrainingManager):
         self._termination_requested = False
         self._termination_reason: Optional[TerminationReason] = None
         
-        self.logger.info("<� TrainingManager initialized")
+        # Register with shutdown manager
+        from ..core.shutdown import get_global_shutdown_manager
+        shutdown_manager = get_global_shutdown_manager()
+        shutdown_manager.register_component(
+            component=self,
+            timeout=120.0  # 2 minutes for training manager cleanup
+        )
+        
+        self.logger.info("🔧 TrainingManager initialized")
     
     def configure(self, config: Dict[str, Any]) -> None:
         """Configure the training manager.
@@ -304,6 +313,35 @@ class TrainingManager(ITrainingManager):
                     mode.stop()
                 except Exception as e:
                     self.logger.error(f"L Error stopping mode {mode_type}: {e}")
+
+
+    # IShutdownHandler implementation
+    
+    def shutdown(self) -> None:
+        """Perform graceful shutdown - stop training and cleanup resources."""
+        self.logger.info("🛑 Shutting down TrainingManager")
+        
+        try:
+            # Request termination of all active modes
+            self.request_termination(TerminationReason.MANUAL, mode_type=None)
+            
+            # Stop all active modes
+            for mode_type in self._active_modes.copy():
+                try:
+                    mode = self._registered_modes[mode_type]
+                    mode.stop()
+                    self.logger.info(f"✅ Stopped mode: {mode_type}")
+                except Exception as e:
+                    self.logger.error(f"❌ Error stopping mode {mode_type}: {e}")
+            
+            # Clear state
+            self._active_modes.clear()
+            self._current_mode = None
+            self._trainer = None
+            self._environment = None
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error during TrainingManager shutdown: {e}")
 
 
 def create_training_manager(config: Dict[str, Any]) -> TrainingManager:

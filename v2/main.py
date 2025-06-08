@@ -18,19 +18,30 @@ import torch
 # V2 imports - using new interfaces
 from .training.interfaces import ITrainingManager, RunMode
 from .core.types import TerminationReason
+from .core.shutdown import (
+    IShutdownHandler, ShutdownManager, ShutdownReason, 
+    graceful_shutdown_context, get_global_shutdown_manager
+)
 from .config.config import Config
 from .utils.logger import setup_rich_logging, get_logger, console
 
 logger = logging.getLogger(__name__)
 
 
-class ApplicationBootstrap:
-    """Bootstrap the FxAI application with proper dependency injection."""
+class ApplicationBootstrap(IShutdownHandler):
+    """Bootstrap the FxAI application with proper dependency injection and graceful shutdown."""
 
-    def __init__(self):
+    def __init__(self, shutdown_manager: Optional[ShutdownManager] = None):
         self.config: Optional[Config] = None
         self.training_manager: Optional[ITrainingManager] = None
-        self.components: Dict[str, Any] = {}
+        self.shutdown_manager = shutdown_manager or get_global_shutdown_manager()
+        self.logger = logging.getLogger(f"{__name__}.ApplicationBootstrap")
+        
+        # Register self for shutdown
+        self.shutdown_manager.register_component(
+            component=self,
+            timeout=60.0  # 1 minute for app bootstrap cleanup
+        )
 
     def initialize(self, args:Optional[argparse.Namespace]) -> None:
         """Initialize application with configuration."""
@@ -102,6 +113,25 @@ class ApplicationBootstrap:
 
         logger.info(f"Using device: {device}")
         return device
+    
+    # IShutdownHandler implementation
+    
+    def shutdown(self) -> None:
+        """Perform graceful shutdown - save state and cleanup resources."""
+        self.logger.info("🛑 Shutting down ApplicationBootstrap")
+        
+        try:
+            # Only clean up ApplicationBootstrap's own resources
+            # Note: Other components (training_manager, etc.) are handled by ShutdownManager
+            
+            # Reset own state
+            self.training_manager = None
+            self.config = None
+            
+            self.logger.info("✅ ApplicationBootstrap shutdown completed")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error during ApplicationBootstrap shutdown: {e}")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -163,39 +193,46 @@ def execute_training(training_manager: ITrainingManager, config: Config) -> Dict
 
 
 def main() -> int:
-    """Main entry point for V2 FxAI system - config-driven approach.
+    """Main entry point for V2 FxAI system with graceful shutdown support.
     
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
-    try:
-        # Parse simplified arguments
-        args = parse_arguments()
+    # Use graceful shutdown context manager
+    with graceful_shutdown_context() as shutdown_manager:
+        try:
+            # Parse simplified arguments
+            args = parse_arguments()
+            
+            # Create application with shutdown manager
+            app = ApplicationBootstrap(shutdown_manager)
+            
 
-        app = ApplicationBootstrap()
-
-        app.initialize(args)
-
-        device = app.create_device()
-
-        # Execute training based on configuration
-        results = execute_training(
-            app.training_manager,
-            app.config
-        )
-
-        # Log results
-        logger.info(f"✅ Training completed: {results}")
-
-        return 0
-
-    except KeyboardInterrupt:
-        logger.warning("⚠️ Training interrupted by user")
-        return 130  # Standard exit code for SIGINT
-
-    except Exception as e:
-        logger.error(f"❌ Training failed: {e}", exc_info=True)
-        return 1
+            # Initialize application
+            app.initialize(args)
+            device = app.create_device()
+            
+            logger.info("🚀 Starting training with graceful shutdown support")
+            
+            # Execute training based on configuration
+            results = execute_training(
+                app.training_manager,
+                app.config
+            )
+            
+            # Check if shutdown was requested during training
+            if shutdown_manager.is_shutdown_requested():
+                logger.info("🛑 Training completed due to shutdown request")
+                return 130  # Standard exit code for SIGINT
+            
+            # Log results
+            logger.info(f"✅ Training completed successfully: {results}")
+            return 0
+            
+        except Exception as e:
+            logger.error(f"❌ Training failed: {e}", exc_info=True)
+            shutdown_manager.initiate_shutdown(ShutdownReason.ERROR_CONDITION)
+            return 1
 
 
 if __name__ == "__main__":

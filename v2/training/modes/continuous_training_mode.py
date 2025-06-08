@@ -20,6 +20,7 @@ import pandas as pd
 
 from ..interfaces import IContinuousTrainingMode, TrainingPhase, ModeState
 from ...core.types import RunMode, TerminationReason
+from ...core.shutdown import IShutdownHandler, ShutdownReason
 
 
 logger = logging.getLogger(__name__)
@@ -118,7 +119,7 @@ class TrainingState:
     termination_reason: Optional[TerminationReason] = None
 
 
-class ContinuousTrainingMode(IContinuousTrainingMode):
+class ContinuousTrainingMode(IContinuousTrainingMode, IShutdownHandler):
     """
     Primary training mode implementation with configurable behavior.
     
@@ -577,3 +578,41 @@ class ContinuousTrainingMode(IContinuousTrainingMode):
             "curriculum_stages_completed": len(set(h.get("stage") for h in self.state.adaptation_history)),
             "total_model_versions": len(self.state.model_version_history),
         }
+    
+    # IShutdownHandler implementation
+    
+    def shutdown(self) -> None:
+        """Perform graceful shutdown - save state and cleanup resources."""
+        self.logger.info("🛑 Shutting down ContinuousTrainingMode")
+        
+        try:
+            # Set termination flag
+            self.state.should_terminate = True
+            self.state.termination_reason = TerminationReason.MANUAL
+            
+            # Add to termination votes
+            self.state.termination_votes.append(self.state.termination_reason)
+            
+            # TODO: Save current progress
+            # self._save_shutdown_state()
+            
+            # Stop the training loop
+            self.stop()
+            
+            # TODO: Clean up strategy components
+            # if self.performance_monitor:
+            #     self.performance_monitor.shutdown()
+            # if self.model_version_manager:
+            #     self.model_version_manager.shutdown()
+            # if self.curriculum_manager:
+            #     self.curriculum_manager.shutdown()
+            # if self.adaptation_engine:
+            #     self.adaptation_engine.shutdown()
+            
+            # Clear references
+            self.trainer = None
+            self.environment = None
+            self.callbacks.clear()
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error during ContinuousTrainingMode shutdown: {e}")
