@@ -47,54 +47,7 @@ training_interrupted = False  # Global flag for backward compatibility
 
 
 def cleanup_resources():
-    """Clean up resources gracefully"""
-    global cleanup_called, current_components
-
-    if cleanup_called:
-        return
-    cleanup_called = True
-
     try:
-        logging.info("Starting resource cleanup...")
-
-        # Immediately finish W&B if running
-        try:
-            import wandb
-
-            if wandb.run is not None:
-                wandb.finish(quiet=True)
-                logging.info("W&B run finished")
-        except Exception as e:
-            logging.warning(f"Error finishing W&B: {e}")
-
-        # Stop callbacks first to prevent further processing
-        if "callback_manager" in current_components:
-            callback_manager = current_components["callback_manager"]
-            try:
-                callback_manager.disable_all()
-                callback_manager.trigger("on_training_end", {"interrupted": True})
-                logging.info("Stopped callbacks")
-                # Give threads time to stop
-                import time
-
-                time.sleep(0.2)  # Reduced from 0.5 to 0.2
-            except Exception as e:
-                logging.error(f"Error stopping callbacks: {e}")
-
-        # Clean up in reverse order of creation
-        cleanup_order = ["callback_manager", "trainer", "env", "data_manager"]
-
-        for component_name in cleanup_order:
-            if component_name in current_components:
-                component = current_components[component_name]
-                try:
-                    if hasattr(component, "close"):
-                        component.close()
-                    logging.info(f"{component_name} closed")
-                except Exception as e:
-                    logging.error(f"Error closing {component_name}: {e}")
-
-        # Save interrupted model if trainer exists
         if "trainer" in current_components and "model_manager" in current_components:
             trainer = current_components["trainer"]
             model_manager = current_components["model_manager"]
@@ -472,24 +425,16 @@ def train(config: Config):
     logger.info(f"📈 Symbols: {adaptive_symbols}")
 
 
-    # Setup environment
-    device = setup_environment(config.training)
 
     # Create components with proper config passing
     try:
         # Data components
         data_manager = create_data_components(config, logger)
-        current_components["data_manager"] = data_manager
-
-        # Environment components
         env = create_env_components(config, data_manager, logger)
-        current_components["env"] = env
 
         # For momentum-based training, don't pre-setup environment session
         # The PPO agent will handle day selection and environment setup
-        logger.info(
-            "🎯 Momentum-based training enabled - PPO agent will manage day selection"
-        )
+        logger.info("🎯 Momentum-based training enabled - PPO agent will manage day selection")
 
         # Model components (create first to pass to callbacks)
         model, optimizer, model_manager = create_model_components(
@@ -498,20 +443,6 @@ def train(config: Config):
         # Callback components
         callback_manager = create_callback_manager(config, logger, model)
 
-        # Initialize shutdown manager if not already initialized (e.g., when called directly by optuna)
-        global _shutdown_manager
-        if _shutdown_manager is None:
-            _shutdown_manager = get_shutdown_manager()
-
-        # Register callback manager for graceful shutdown
-        _shutdown_manager.register_component(
-            "CallbackManager",
-            lambda: callback_manager.trigger("on_training_end", {"interrupted": True}),
-            timeout=30.0,
-            critical=True
-        )
-
-        # Update environment with callback manager
         if callback_manager:
             env.callback_manager = callback_manager
 
@@ -611,42 +542,8 @@ def train(config: Config):
 
 
 def main():
-    """Main entry point"""
-    # Initialize graceful shutdown manager
-    shutdown_manager = get_shutdown_manager()
-
-    # Use graceful shutdown context manager
-    with shutdown_manager:
-        main_with_shutdown(shutdown_manager)
-
-
-def main_with_shutdown(shutdown_manager):
-    """Main logic with graceful shutdown support"""
-    
-    # Make shutdown_manager available globally 
-    global _shutdown_manager
-    _shutdown_manager = shutdown_manager
-
     try:
-        if args.symbol:
-            console.print(f"[bold blue]Symbol override:[/bold blue] {args.symbol}")
-        if args.continue_training:
-            console.print("[bold yellow]Continuing from checkpoint[/bold yellow]")
-
-        # Run training
         train(config)
-
-    except FileNotFoundError as e:
-        console.print(f"[bold red]Config file not found:[/bold red] {e}")
-        console.print("Available configs in config/overrides/:")
-        overrides_dir = Path("config/overrides")
-        if overrides_dir.exists():
-            for f in overrides_dir.glob("*.yaml"):
-                console.print(f"  - {f.stem}")
-        sys.exit(1)
-    except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {e}")
-        raise
     finally:
         cleanup_resources()
 

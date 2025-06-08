@@ -16,14 +16,14 @@ import numpy as np
 import torch
 
 # V2 imports - using new interfaces
-from .training.interfaces import ITrainingManager, RunMode
-from .core.types import TerminationReason
-from .core.shutdown import (
+from v2.training.interfaces import ITrainingManager, RunMode
+from v2.core.types import TerminationReason
+from v2.core.shutdown import (
     IShutdownHandler, ShutdownManager, ShutdownReason, 
     graceful_shutdown_context, get_global_shutdown_manager
 )
-from .config.config import Config
-from .utils.logger import setup_rich_logging, get_logger, console
+from v2.config.config import Config
+from v2.utils.logger import setup_rich_logging, get_logger, console
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class ApplicationBootstrap(IShutdownHandler):
 
     def _create_training_manager(self) -> ITrainingManager:
         """Create and configure training manager with v2 config."""
-        from .training.training_manager import create_training_manager
+        from v2.training.training_manager import create_training_manager
 
         # Convert pydantic config to dict for training manager
         config_dict = self.config.model_dump()
