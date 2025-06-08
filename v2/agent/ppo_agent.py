@@ -11,6 +11,9 @@ import numpy as np
 import torch
 import torch.optim as optim
 
+from ..config import Config
+from ..envs.interfaces import ITradingEnvironment
+from ..model.transformer import MultiBranchTransformer
 from ...core.agent.interfaces_improved import (
     IAgent, Experience, ExperienceBatch,
     ActionArray, ObservationArray, ProbabilityArray
@@ -31,10 +34,10 @@ class PPOAgent(IAgent):
     
     def __init__(
         self,
-        observation_space,
-        action_space,
-        config: dict[str, Any],
-        device: Optional[torch.device] = None
+        config: Config,
+        env: ITradingEnvironment,
+        model: MultiBranchTransformer,
+        device: Optional[torch.device] = None,
     ):
         """
         Initialize PPO agent.

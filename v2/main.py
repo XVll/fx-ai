@@ -15,11 +15,15 @@ from datetime import datetime
 import numpy as np
 import torch
 
+from v2.agent.interfaces import IAgent
+from v2.data.databento_file_provider import DatabentoFileProvider
+from v2.data.interfaces import IDataManager
+from v2.envs.interfaces import ITradingEnvironment
 # V2 imports - using new interfaces
 from v2.training.interfaces import ITrainingManager, RunMode
 from v2.core.types import TerminationReason
 from v2.core.shutdown import (
-    IShutdownHandler, ShutdownManager, ShutdownReason, 
+    IShutdownHandler, ShutdownManager, ShutdownReason,
     graceful_shutdown_context, get_global_shutdown_manager
 )
 from v2.config.config import Config
@@ -32,18 +36,26 @@ class ApplicationBootstrap(IShutdownHandler):
     """Bootstrap the FxAI application with proper dependency injection and graceful shutdown."""
 
     def __init__(self, shutdown_manager: Optional[ShutdownManager] = None):
+        self.output_path: Optional[Path] = None
         self.config: Optional[Config] = None
-        self.training_manager: Optional[ITrainingManager] = None
+        self.logger = logging.getLogger(f"{__name__}.Application")
         self.shutdown_manager = shutdown_manager or get_global_shutdown_manager()
-        self.logger = logging.getLogger(f"{__name__}.ApplicationBootstrap")
-        
+
+
+        # Component instances
+        self.training_manager: Optional[ITrainingManager] = None
+        self.trainer: Optional[IAgent] = None
+        self.environment: Optional[ITradingEnvironment] = None
+        self.data_manager: Optional[IDataManager] = None
+        self.device: Optional[torch.device] = None
+
         # Register self for shutdown
         self.shutdown_manager.register_component(
             component=self,
-            timeout=60.0  # 1 minute for app bootstrap cleanup
+            timeout=30.0
         )
 
-    def initialize(self, args:Optional[argparse.Namespace]) -> None:
+    def initialize(self, args: Optional[argparse.Namespace]) -> None:
         """Initialize application with configuration."""
 
         self._setup_config(args.config, args.spec)
@@ -51,25 +63,25 @@ class ApplicationBootstrap(IShutdownHandler):
         self.training_manager = self._create_training_manager()
         self._initialize_components()
 
-        output_path = self._setup_directories()
-        self.config.save_used_config(str(output_path/"config.yaml"))
+        self._setup_directories()
+        self.config.save_used_config(str(self.output_path / "config.yaml"))
 
         logger.info("=" * 80)
         logger.info(f"[bold green] Loaded configuration:[/bold green] {self.config or 'defaults'}")
-        logger.info(f"[bold green] Output directory created:[/bold green] {output_path}")
+        logger.info(f"[bold green] Output directory created:[/bold green] {self.output_path}")
         logger.info("🚀 FxAI Application bootstrapped successfully")
         logger.info("=" * 80)
 
-    def _setup_directories(self) -> Path:
+    def _setup_directories(self) -> None:
         """Setup necessary directories for outputs and logs."""
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output_dir = Path(self.config.output_dir) / f"run_{timestamp}"
         output_dir.mkdir(parents=True, exist_ok=True)
-        return output_dir
+        self.output_path = output_dir
 
-    def _setup_config(self,config:Optional[str], spec:Optional[str] ) -> Config:
+    def _setup_config(self, config: Optional[str], spec: Optional[str]) -> None:
         """Setup application configuration from v2 config."""
-        self.config =  Config.load(config, spec)
+        self.config = Config.load(config, spec)
 
     def _setup_logging(self) -> None:
         """Setup application logging using v2 rich logging system."""
@@ -96,12 +108,40 @@ class ApplicationBootstrap(IShutdownHandler):
         
         This method will create data managers, environments, etc.
         """
-        # TODO: Implement component initialization
-        pass
+        self.logger.info("🔧 Initializing application components")
 
-    def create_device(self) -> torch.device:
+        # Create device first
+        self.device = self._create_device()
+
+        # Create core components
+        self.data_manager = self._create_data_manager()
+        self.environment = self._create_environment()
+        self.trainer = self._create_trainer()
+
+        self.shutdown_manager.register_component(
+            component=self.data_manager,
+            timeout=self.config.data.shutdown_timeout
+        )
+        self.shutdown_manager.register_component(
+            component=self.environment,
+            timeout=self.config.env.shutdown_timeout
+        )
+        self.shutdown_manager.register_component(
+            component=self.trainer,
+            timeout=self.config.training.shutdown_timeout
+        )
+        self.shutdown_manager.register_component(
+            component=self.training_manager,
+            timeout=self.config.training.shutdown_timeout
+        )
+
+        self.logger.info("✅ All components initialized successfully")
+
+    def _create_device(self) -> torch.device:
+        """Create and configure PyTorch device."""
         np.random.seed(self.config.training.seed)
         torch.manual_seed(self.config.training.seed)
+
         if self.config.training.device == "cuda" and torch.cuda.is_available():
             torch.cuda.manual_seed(self.config.training.seed)
             device = torch.device("cuda")
@@ -111,25 +151,83 @@ class ApplicationBootstrap(IShutdownHandler):
         else:
             device = torch.device("cpu")
 
-        logger.info(f"Using device: {device}")
+        self.logger.info(f"🔧 Using device: {device}")
         return device
-    
+
+    def _create_data_manager(self) -> Any:
+        """Create data manager from configuration."""
+        self.logger.info("📊 Creating data manager")
+
+        # Import v2 data manager implementation
+        from v2.data.data_manager_impl import DataManager
+        from v2.data.momentum_scanner_impl import MomentumScanner
+
+        # Create data provider
+        if self.config.data.provider == "databento":
+            data_provider = DatabentoFileProvider(path=Path(self.config.data.data_dir))
+        else:
+            raise ValueError(f"Unsupported data provider: {self.config.data.provider}")
+
+        momentum_scanner = MomentumScanner(config=self.config.scanner)
+        data_manager = DataManager(provider=data_provider, momentum_scanner=momentum_scanner, config=self.config.data, logger=self.logger)
+
+        self.logger.info("✅ Data manager created")
+        return data_manager
+
+    def _create_environment(self) -> Any:
+        """Create trading environment from configuration."""
+        self.logger.info("🏢 Creating trading environment")
+
+        # Import v2 environment implementation
+        from v2.envs.trading_environment import TradingEnvironment
+
+        # Create trading environment
+        environment = TradingEnvironment(
+            config=self.config.env,
+            data_manager=self.data_manager,
+        )
+
+        self.logger.info("✅ Trading environment created")
+        return environment
+
+    def _create_trainer(self) -> Any:
+        """Create trainer/agent from configuration."""
+        self.logger.info("🤖 Creating trainer")
+
+        # Import v2 trainer implementation
+        from v2.agent.ppo_agent import PPOAgent
+
+        # Create trainer
+        trainer = PPOAgent(
+            config=self.config,
+            env = self.environment,
+            device = self.device,
+            model= model,
+            output_path = self.output_path,
+            callback_manager= callback_manager,
+            callbacks=callbacks,
+        )
+
+        self.logger.info("✅ Trainer created")
+        return trainer
+
     # IShutdownHandler implementation
-    
+
     def shutdown(self) -> None:
         """Perform graceful shutdown - save state and cleanup resources."""
-        self.logger.info("🛑 Shutting down ApplicationBootstrap")
-        
+        self.logger.info("🛑 Shutting down Application")
+
         try:
-            # Only clean up ApplicationBootstrap's own resources
-            # Note: Other components (training_manager, etc.) are handled by ShutdownManager
-            
-            # Reset own state
+            # Reset component references
+            self.trainer = None
+            self.environment = None
+            self.data_manager = None
+            self.device = None
             self.training_manager = None
             self.config = None
-            
-            self.logger.info("✅ ApplicationBootstrap shutdown completed")
-            
+
+            self.logger.info("✅ Application shutdown completed")
+
         except Exception as e:
             self.logger.error(f"❌ Error during ApplicationBootstrap shutdown: {e}")
 
@@ -153,19 +251,11 @@ def determine_training_mode(config: Config) -> RunMode:
         return RunMode.CONTINUOUS_TRAINING  # Default primary mode
 
 
-def execute_training(training_manager: ITrainingManager, config: Config) -> Dict[str, Any]:
-    """Execute training based on configuration. """
+def execute_training(training_manager: ITrainingManager, config: Config, app: 'ApplicationBootstrap') -> Dict[str, Any]:
+    """Execute training based on configuration."""
     # Determine mode from config
     mode_type = determine_training_mode(config)
     logger.info(f"🎯 Starting {mode_type.value} based on configuration")
-
-    # TODO: Create trainer and environment components from config
-    # trainer = create_trainer_from_config(config)
-    # environment = create_environment_from_config(config)
-
-    # For now, placeholder components for interface design
-    trainer = None  # Will be actual trainer implementation
-    environment = None  # Will be actual environment implementation
 
     # Execute the training mode
     try:
@@ -175,8 +265,8 @@ def execute_training(training_manager: ITrainingManager, config: Config) -> Dict
         results = training_manager.start_mode(
             mode_type=mode_type,
             config=mode_config,
-            trainer=trainer,
-            environment=environment,
+            trainer=app.trainer,
+            environment=app.environment,
             background=False
         )
 
@@ -203,32 +293,31 @@ def main() -> int:
         try:
             # Parse simplified arguments
             args = parse_arguments()
-            
+
             # Create application with shutdown manager
             app = ApplicationBootstrap(shutdown_manager)
-            
 
-            # Initialize application
+            # Initialize application (now includes components)
             app.initialize(args)
-            device = app.create_device()
-            
+
             logger.info("🚀 Starting training with graceful shutdown support")
-            
-            # Execute training based on configuration
+
+            # Execute training with bootstrap components
             results = execute_training(
                 app.training_manager,
-                app.config
+                app.config,
+                app
             )
-            
+
             # Check if shutdown was requested during training
             if shutdown_manager.is_shutdown_requested():
                 logger.info("🛑 Training completed due to shutdown request")
                 return 130  # Standard exit code for SIGINT
-            
+
             # Log results
             logger.info(f"✅ Training completed successfully: {results}")
             return 0
-            
+
         except Exception as e:
             logger.error(f"❌ Training failed: {e}", exc_info=True)
             shutdown_manager.initiate_shutdown(ShutdownReason.ERROR_CONDITION)

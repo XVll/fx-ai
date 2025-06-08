@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field
 class ScannerConfig(BaseModel):
     """Consolidated scanner configuration"""
 
+    cache_dir: str = Field("cache/scanner", description="Cache directory for scanner data")
+    # -------------------------------------------------------------------------------------#
+
     # Momentum scanning
     min_daily_move: float = Field(0.10, description="Min 10% intraday movement")
     min_volume_multiplier: float = Field(2.0, description="Min 2x average volume")

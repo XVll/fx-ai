@@ -13,6 +13,7 @@ import pandas as pd
 import numpy as np
 
 from v2.core.types import Symbol, Timestamp, Configurable, Resettable, FeatureFrequency, FeatureArray
+from v2.core.shutdown import IShutdownHandler
 
 
 @runtime_checkable
@@ -126,7 +127,7 @@ class IDataProvider(Protocol):
         ...
 
 
-class IDataManager(Configurable, Resettable):
+class IDataManager(IShutdownHandler, Configurable, Resettable):
     """High-level data management interface.
     
     Design principles:

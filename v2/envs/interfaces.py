@@ -4,6 +4,8 @@ from enum import Enum
 import numpy as np
 import numpy.typing as npt
 
+from v2.core.shutdown import IShutdownHandler
+
 
 # Type definitions for strong typing
 class ActionType(Enum):
@@ -79,7 +81,7 @@ EpisodeInfo = Dict[str, Union[int, float, str, datetime, ResetPoint]]
 
 
 @runtime_checkable
-class ITradingEnvironment(Protocol):
+class ITradingEnvironment(IShutdownHandler):
     """
     Interface for trading environments.
     
@@ -90,6 +92,9 @@ class ITradingEnvironment(Protocol):
     - Action masking and validation
     - Training information tracking
     """
+
+    def shutdown(self) -> None:
+        pass
 
     # Basic environment operations
     def setup_session(self, symbol: str, date: Union[str, datetime]) -> None:

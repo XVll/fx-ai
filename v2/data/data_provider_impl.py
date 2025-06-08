@@ -14,10 +14,11 @@ import pandas as pd
 import pyarrow.parquet as pq
 from databento import DBNStore
 
-from v2.core.interfaces import DataProvider, MarketData, DataSchema
+
+from v2.data.interfaces import IDataProvider
 
 
-class DataProviderImpl(DataProvider):
+class DataProvider(IDataProvider):
     """
     Concrete implementation of DataProvider interface.
     
@@ -35,13 +36,7 @@ class DataProviderImpl(DataProvider):
     - Symbol mapping
     """
     
-    def __init__(
-        self,
-        data_root: Path,
-        cache_dir: Optional[Path] = None,
-        enable_caching: bool = True,
-        validate_data: bool = True
-    ):
+    def __init__(self, data_root: Path):
         """
         Initialize the data provider.
         

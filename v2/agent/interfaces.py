@@ -15,10 +15,11 @@ import torch
 from pathlib import Path
 from dataclasses import dataclass
 
-from ..types.common import (
+from ..core.types import (
     ActionArray, ObservationArray, ProbabilityArray, 
     ModelVersion, EpisodeMetrics, Configurable, Serializable
 )
+from ..core.shutdown import IShutdownHandler
 
 
 @dataclass
@@ -54,7 +55,7 @@ class ExperienceBatch:
 
 
 @runtime_checkable
-class IAgent(Protocol, Configurable, Serializable):
+class IAgent(IShutdownHandler, Configurable, Serializable):
     """Unified agent interface for RL trading agents.
     
     Combines policy execution, learning, and experience collection
@@ -275,36 +276,3 @@ class IAgent(Protocol, Configurable, Serializable):
         Note: Only relevant for policy gradient algorithms
         """
         raise NotImplementedError("Log probs not available for this algorithm")
-
-
-# Simplified callback interface
-class IAgentCallback(Protocol):
-    """Callback interface for agent events."""
-    
-    def on_episode_start(self, episode: int) -> None:
-        """Called at episode start."""
-        ...
-    
-    def on_episode_end(
-        self,
-        episode: int,
-        metrics: EpisodeMetrics
-    ) -> None:
-        """Called at episode end."""
-        ...
-    
-    def on_learning_step(
-        self,
-        step: int,
-        metrics: dict[str, float]
-    ) -> None:
-        """Called after learning update."""
-        ...
-    
-    def on_model_save(
-        self,
-        path: Path,
-        metadata: dict[str, Any]
-    ) -> None:
-        """Called when model is saved."""
-        ...

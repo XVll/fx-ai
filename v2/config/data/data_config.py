@@ -8,10 +8,12 @@ from pydantic import BaseModel, Field
 
 class DataConfig(BaseModel):
     """Data source and processing configuration"""
-
-    # Provider settings
+    shutdown_timeout: Optional[int] = Field(30, description="Timeout for data source shutdown in seconds")
     provider: Literal["databento"] = Field("databento", description="Data provider")
     data_dir: str = Field("dnb", description="Data directory")
+    # -----------------------------------------------------------------------------------#
+
+    # Provider settings
     symbols: List[str] = Field(["MLGO"], description="Trading symbols")
 
     # Data types

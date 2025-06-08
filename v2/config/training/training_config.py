@@ -135,6 +135,7 @@ class TrainingManagerConfig(BaseModel):
 class TrainingConfig(BaseModel):
     """PPO training configuration"""
     seed: int = Field(42, description="Random seed")
+    shutdown_timeout: int = Field(10, description="Shutdown timeout in seconds")
     # -----------------------------------------------------------------------------#
 
     # Core settings

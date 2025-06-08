@@ -39,13 +39,6 @@ from agent.continuous_training_callbacks import ContinuousTrainingCallback
 
 logger = logging.getLogger(__name__)
 
-# Global variables for cleanup management
-cleanup_called = False
-current_components = {}
-_shutdown_manager = None
-training_interrupted = False  # Global flag for backward compatibility
-
-
 def cleanup_resources():
     try:
         if "trainer" in current_components and "model_manager" in current_components:
@@ -79,77 +72,6 @@ def cleanup_resources():
 
 
 
-
-def create_data_provider(data_config: DataConfig):
-    """Create data provider from config"""
-    logging.info(f"Initializing data provider: {data_config.provider}")
-
-    if data_config.provider == "databento":
-        # Construct paths for databento
-        # Use the actual directory name which is "mlgo" with capital M
-        data_path = Path(data_config.data_dir) / "mlgo"
-
-        return DatabentoFileProvider(
-            data_dir=str(data_path),
-            symbol_info_file=None,  # Optional CSV file, not needed
-            verbose=False,
-            dbn_cache_size=10,  # Default cache size
-        )
-    else:
-        raise ValueError(f"Unknown provider type: {data_config.provider}")
-
-
-def create_data_components(config: Config, log: logging.Logger):
-    """Create data-related components with proper config passing"""
-    # Data Manager with DataConfig
-    data_provider = create_data_provider(config.data)
-
-    # Create momentum scanner with rank-based scoring
-    momentum_scanner = MomentumScanner(
-        data_dir=str(Path(config.data.data_dir) / "mlgo"),
-        output_dir=f"{config.data.index_dir}/momentum_index",
-        scanner_config=config.scanner,
-        logger=log,
-    )
-
-    # Extract date range from config if available
-    date_range = None
-    if hasattr(config, 'env') and hasattr(config.env, 'training_manager'):
-        training_manager_config = config.env.training_manager
-        if hasattr(training_manager_config, 'data_lifecycle'):
-            data_lifecycle = training_manager_config.data_lifecycle
-            if hasattr(data_lifecycle, 'adaptive_data'):
-                date_range = data_lifecycle.adaptive_data.date_range
-                if date_range:
-                    log.info(f"📅 DataManager configured with date range: {date_range}")
-
-    data_manager = DataManager(
-        provider=data_provider, 
-        momentum_scanner=momentum_scanner, 
-        logger=log,
-        date_range=date_range,
-        include_weekends=False  # Exclude weekends - trading days only
-    )
-
-    return data_manager
-
-
-# Simulation components are now created inside TradingEnvironment.setup_session()
-
-
-def create_env_components(
-    config: Config, data_manager: DataManager, log: logging.Logger
-):
-    """Create environment and related components with proper config passing"""
-    # Trading Environment with full config
-    env = TradingEnvironment(
-        config=config,
-        data_manager=data_manager,
-        logger=log,
-        callback_manager=None,  # Will be set later
-    )
-
-    return env
 
 
 def get_feature_names_from_config():
@@ -252,19 +174,6 @@ def get_feature_names_from_config():
             "total_pnl",
         ],
     }
-
-
-def get_adaptive_symbols(config):
-    """Extract symbols from adaptive data configuration"""
-    if hasattr(config, 'env') and hasattr(config.env, 'training_manager'):
-        training_manager_config = config.env.training_manager
-        if hasattr(training_manager_config, 'data_lifecycle'):
-            data_lifecycle = training_manager_config.data_lifecycle
-            if hasattr(data_lifecycle, 'adaptive_data'):
-                return data_lifecycle.adaptive_data.symbols
-    
-    # Fallback to default
-    return ["MLGO"]
 
 
 def create_callback_manager(
@@ -485,42 +394,16 @@ def train(config: Config):
         )
         current_components["trainer"] = trainer
         
-        # Register trainer for immediate shutdown
-        _shutdown_manager.register_component(
-            "PPOTrainer",
-            lambda: setattr(trainer, 'stop_training', True),
-            timeout=5.0,
-            critical=True
-        )
-
-        # Check for shutdown request
-        if _shutdown_manager.is_shutdown_requested():
-            logger.warning("Shutdown requested before training start")
-            return {"shutdown_requested": True}
-
-        # TrainingManager will handle all data lifecycle initialization
-        logger.info("🎯 TrainingManager will handle data lifecycle initialization...")
 
         # Set primary asset - this will be determined by adaptive data
         adaptive_symbols = get_adaptive_symbols(config)
         primary_symbol = adaptive_symbols[0] if adaptive_symbols else "adaptive"
         env.primary_asset = primary_symbol
 
-        # Note: on_training_start will be triggered by PPO trainer.train() method
-
-        # Main training loop - TrainingManager controlled
-        logger.info("🚀 Starting TrainingManager-controlled training")
-        logger.info("   Training will complete based on TrainingManager termination criteria")
 
         try:
             # Use new TrainingManager system
             training_stats = trainer.train_with_manager()
-
-            if _shutdown_manager.is_shutdown_requested():
-                logger.warning("⚠️ Training was interrupted by shutdown request")
-                training_stats["interrupted"] = True
-            else:
-                logger.info("🎉 Training completed successfully!")
 
             return training_stats
 
@@ -532,21 +415,3 @@ def train(config: Config):
         logger.error(f"Critical error during training: {e}", exc_info=True)
         raise
 
-    finally:
-
-        # Cleanup
-        cleanup_resources()
-
-        if config.wandb.enabled:
-            wandb.finish()
-
-
-def main():
-    try:
-        train(config)
-    finally:
-        cleanup_resources()
-
-
-if __name__ == "__main__":
-    main()

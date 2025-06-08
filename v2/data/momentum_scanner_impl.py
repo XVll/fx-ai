@@ -11,12 +11,12 @@ from typing import Dict, List, Optional, Tuple, Set
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
-from v2.core.interfaces import Scanner, MomentumDay, ResetPoint, ScanConfig
+from v2.config import ScannerConfig
+from v2.data.interfaces import IMomentumScanner
 
 
-class MomentumScannerImpl(Scanner):
+class MomentumScanner(IMomentumScanner):
     """
     Concrete implementation of momentum day scanner.
     
@@ -34,12 +34,7 @@ class MomentumScannerImpl(Scanner):
     - Configurable thresholds
     """
     
-    def __init__(
-        self,
-        config: ScanConfig,
-        cache_dir: Optional[Path] = None,
-        min_quality_threshold: float = 0.5
-    ):
+    def __init__(self, config: ScannerConfig):
         """
         Initialize the momentum scanner.
         

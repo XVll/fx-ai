@@ -1,53 +1,59 @@
 """
-Data Manager Implementation Schema
+Data Manager Implementation - V2 Stub
 
-This module provides the concrete implementation of the DataManager interface
-for orchestrating data loading, caching, and feature extraction.
+Minimal stub implementation for v2/main.py bootstrap testing.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Union
-
-import numpy as np
-import pandas as pd
-
-from v2.core.interfaces import (
-    DataManager, DataProvider, FeatureExtractor,
-    MarketData, FeatureData, DataConfig
-)
+import logging
+from typing import Any, Optional
+from datetime import date
+from ..data.interfaces import IDataManager
 
 
-class DataManagerImpl(DataManager):
-    """
-    Concrete implementation of DataManager interface.
-    
-    Orchestrates the entire data pipeline:
-    - Coordinates multiple data providers
-    - Manages feature extraction
-    - Handles caching strategies
-    - Optimizes data loading for training
-    - Manages memory efficiently
-    
-    Features:
-    - Multi-threaded data loading
-    - Intelligent caching with TTL
-    - Memory-mapped file support
-    - Incremental feature updates
-    - Data validation and quality checks
-    """
+class DataManager(IDataManager):
+    """Stub implementation of IDataManager interface."""
     
     def __init__(
         self,
-        data_provider: DataProvider,
-        feature_extractor: FeatureExtractor,
-        config: DataConfig,
-        cache_dir: Optional[Path] = None,
-        max_workers: int = 4
+        provider: Any,
+        momentum_scanner: Any,
+        config: Any,
+        logger: Optional[logging.Logger] = None
     ):
-        """
-        Initialize the data manager.
+        """Initialize data manager stub."""
+        self.provider = provider
+        self.momentum_scanner = momentum_scanner
+        self.config = config
+        self.logger = logger or logging.getLogger(__name__)
+        self.logger.info("📊 DataManagerImpl stub initialized")
+    
+    def shutdown(self) -> None:
+        """Perform graceful shutdown."""
+        self.logger.info("🛑 DataManagerImpl shutdown")
+        
+    def configure(self, config: dict[str, Any]) -> None:
+        """Configure the data manager."""
+        self.config = config
+        
+    def reset(self) -> None:
+        """Reset data manager state."""
+        pass
+        
+    def initialize(self, providers: list[Any]) -> None:
+        """Initialize with data providers."""
+        pass
+        
+    def load_symbol_data(self, symbol: str, date: date, include_previous_day: bool = True) -> dict[str, Any]:
+        """Load data for symbol on date."""
+        return {}
+        
+    def get_momentum_days(self, symbol: str, min_quality_score: float = 0.5) -> list[dict[str, Any]]:
+        """Get momentum days for symbol."""
+        return []
+        
+    def get_reset_points(self, symbol: str, date: date) -> list[dict[str, Any]]:
+        """Get reset points for symbol and date."""
+        return []
         
         Args:
             data_provider: Provider for raw market data

@@ -10,6 +10,9 @@ from v2.config.rewards import RewardConfig
 class EnvironmentConfig(BaseModel):
     """Trading environment settings"""
 
+    shutdown_timeout: Optional[int] = Field(30, description="Timeout for environment shutdown in seconds")
+    # ------------------------------------------------------------------------------#
+
     # Episode control
     max_steps: int = Field(256, gt=0, description="Maximum steps per episode")
     max_training_steps: Optional[int] = Field(

@@ -42,13 +42,13 @@ class TradingEnvironment(gym.Env):
     def __init__(
             self,
             config: Config,
+            data_manager: IDataManager,
+
             market_simulator: IMarketSimulator,
             portfolio_simulator: IPortfolioSimulator,
             execution_simulator: IExecutionSimulator,
             reward_calculator: IRewardCalculator,
             action_mask: IActionMask,
-            data_manager: IDataManager,
-            logger: Optional[logging.Logger] = None,
     ):
         """
         Initialize trading environment with injected dependencies.
@@ -72,7 +72,7 @@ class TradingEnvironment(gym.Env):
         self.reward_calculator = reward_calculator
         self.action_mask = action_mask
         self.data_manager = data_manager
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
 
         # Environment state
         self.current_symbol: Optional[str] = None
