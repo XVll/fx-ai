@@ -12,6 +12,7 @@ from ..core.types import TerminationReason
 from ..core.shutdown import IShutdownHandler, get_global_shutdown_manager
 from ..config.training.training_config import TrainingManagerConfig
 from ..envs.training_environment import TrainingEnvironment
+from utils.model_manager import ModelManager
 
 
 class TrainingMode(Enum):
@@ -46,9 +47,10 @@ class TrainingManager(IShutdownHandler):
     - Model training (handled by Agent)
     """
 
-    def __init__(self, config: TrainingManagerConfig):
+    def __init__(self, config: TrainingManagerConfig, model_manager: ModelManager):
         """Initialize TrainingManager with clean separation of concerns."""
         self.config = config
+        self.model_manager = model_manager
         self.mode = TrainingMode(config.mode)
         self.logger = logging.getLogger(f"{__name__}.TrainingManager")
 
@@ -77,6 +79,9 @@ class TrainingManager(IShutdownHandler):
         self.environment = environment
         self.data_manager = data_manager
         self.callback_manager = callback_manager
+
+        # Handle model loading if continuing training
+        loaded_metadata = self._load_model()
 
         # Initialize training state
         self.state = TrainingState()
@@ -287,3 +292,34 @@ class TrainingManager(IShutdownHandler):
             self.logger.info(f"📊 Final stats: {metrics.global_episodes} episodes, {metrics.global_updates} updates")
         
         return None
+
+    def _load_model(self) -> Dict[str, Any]:
+        """Handle model loading if continuing training."""
+        loaded_metadata = {}
+        
+        if self.config.continue_training:
+            best_model_info = self.model_manager.find_best_model()
+            if best_model_info:
+                self.logger.info(f"📂 Loading best model: {best_model_info['path']}")
+                
+                # Load model and training state
+                model, model_state = self.model_manager.load_model(
+                    self.trainer.model, 
+                    self.trainer.optimizer, 
+                    best_model_info["path"]
+                )
+
+                # Todo Handle these counters in Training Manager
+                # Restore trainer counters
+                self.trainer.global_step_counter = model_state.get("global_step", 0)
+                self.trainer.global_episode_counter = model_state.get("global_episode", 0)
+                self.trainer.global_update_counter = model_state.get("global_update", 0)
+                
+                loaded_metadata = model_state.get("metadata", {})
+                self.logger.info(f"✅ Model loaded: step={model_state.get('global_step', 0)}")
+            else:
+                self.logger.info("🆕 No previous model found. Starting fresh.")
+        else:
+            self.logger.info("🆕 Starting fresh training")
+        
+        return loaded_metadata

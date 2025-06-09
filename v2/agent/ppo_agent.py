@@ -486,23 +486,6 @@ class PPOTrainer:
         except Exception as e:
             self.logger.error(f"Error saving model to {path}: {e}")
 
-    def load_model(self, path: str) -> None:
-        """Load model and optimizer state."""
-        try:
-            checkpoint = torch.load(path, map_location=self.device)
-            self.model.load_state_dict(checkpoint["model_state_dict"])
-            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-            
-            self.global_step_counter = checkpoint.get("global_step_counter", 0)
-            self.global_episode_counter = checkpoint.get("global_episode_counter", 0)
-            self.global_update_counter = checkpoint.get("global_update_counter", 0)
-            
-            self.model.to(self.device)
-            self.logger.info(
-                f"Model loaded from {path}. Resuming from step {self.global_step_counter}"
-            )
-        except Exception as e:
-            self.logger.error(f"Error loading model from {path}: {e}")
 
     def evaluate(self, environment, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
         """
