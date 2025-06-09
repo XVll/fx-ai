@@ -6,7 +6,7 @@ import numpy as np
 from typing import Dict, Any, Optional
 
 from agent.base_callbacks import V1TrainingCallback
-from utils.model_manager import ModelManager
+from replay_buffer.model_manager import ModelManager
 
 
 class ContinuousV1TrainingCallback(V1TrainingCallback):

@@ -95,7 +95,7 @@ class WandBCallbackV1(V1BaseCallback):
         
         # Register with graceful shutdown manager
         try:
-            from utils.graceful_shutdown import register_wandb_for_shutdown
+            from replay_buffer.graceful_shutdown import register_wandb_for_shutdown
             register_wandb_for_shutdown(self.run)
         except ImportError:
             # Graceful shutdown not available, continue without it

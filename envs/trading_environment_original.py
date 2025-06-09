@@ -30,6 +30,7 @@ from simulators.portfolio_simulator import (
     PositionSideEnum,
     FillDetails,
 )
+from v2.core.types import TerminationReasonEnum
 
 
 
@@ -137,28 +138,19 @@ class TradingEnvironment(gym.Env):
         self.max_training_steps: Optional[int] = (
             config.env.max_training_steps
         )  # Training limit (with penalty)
-        self.invalid_action_count_episode: int = 0
         self.episode_total_reward: float = 0.0
         self.initial_capital_for_session: float = (
             self.config.simulation.initial_capital
         )  # Initialize with config value
         self.episode_number: int = 0
-        self.episode_start_time: float = 0.0
 
         # Episode boundaries and reset points
         self.current_session_date: Optional[datetime] = None
-        self.last_chart_data_session_date: Optional[datetime] = None  # Track when we last sent chart data
         self.episode_start_time_utc: Optional[datetime] = None
         self.episode_end_time_utc: Optional[datetime] = None
         self.reset_points: List[Dict] = []
         self.current_reset_idx: int = 0
 
-        # Performance tracking
-        self.episode_fills: List[FillDetails] = []
-        self.episode_peak_equity: float = 0.0
-        self.episode_max_drawdown: float = 0.0
-        self.action_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
-        self.win_loss_counts = {"wins": 0, "losses": 0}
 
         # State tracking
         self._last_observation: Optional[Dict[str, np.ndarray]] = None
@@ -168,10 +160,6 @@ class TradingEnvironment(gym.Env):
         self.is_terminated: bool = False
         self.is_truncated: bool = False
 
-        # Training info
-        self.total_episodes: int = 0
-        self.total_steps: int = 0
-        self.update_count: int = 0
 
         self.render_mode = None
 
@@ -449,7 +437,6 @@ class TradingEnvironment(gym.Env):
             simulation_config=self.config.simulation,
             model_config=self.config.model,
             tradable_assets=[self.primary_asset],
-            trade_callback=self._on_trade_completed,
         )
 
         # Reward system
@@ -581,21 +568,10 @@ class TradingEnvironment(gym.Env):
         reset_point = self.reset_points[reset_point_idx]
         self.current_reset_idx = reset_point_idx
 
-        # Handle any open positions before reset
-        position_close_pnl = self._handle_open_positions_at_reset()
 
         # Reset episode state
         self.current_step = 0
-        self.invalid_action_count_episode = 0
         self.episode_total_reward = 0.0
-        self.episode_start_time = datetime.now().timestamp()
-
-        # Reset performance tracking
-        self.episode_fills = []
-        self.episode_peak_equity = 0.0
-        self.episode_max_drawdown = 0.0
-        self.action_counts = {"HOLD": 0, "BUY": 0, "SELL": 0}
-        self.win_loss_counts = {"wins": 0, "losses": 0}
 
         # Reset state tracking
         self.current_termination_reason = None
@@ -622,26 +598,7 @@ class TradingEnvironment(gym.Env):
             self.episode_start_time_utc + max_duration, market_close_utc
         )
 
-        # Start episode tracking
-        if self.callback_manager:
-            self.callback_manager.trigger(
-                "on_episode_start",
-                self.episode_number,
-                {
-                    "symbol": self.primary_asset,
-                    "date": self.current_session_date,
-                    "start_time": self.episode_start_time_utc,
-                    "reset_point": reset_point,
-                },
-            )
 
-        # Reset dashboard episode counters with new episode number
-        try:
-            from dashboard.shared_state import dashboard_state
-
-            dashboard_state.reset_episode_counters(episode_number=self.episode_number)
-        except ImportError:
-            pass  # Dashboard not available
 
         # Reset market simulator with adaptive randomization
         # Adjust randomization window based on pattern type and quality
@@ -731,9 +688,6 @@ class TradingEnvironment(gym.Env):
         if self.initial_capital_for_session is None:
             # self.logger.debug(f"DEBUG: Initial capital was None, using config value")
             self.initial_capital_for_session = self.config.simulation.initial_capital
-        # self.logger.debug(f"DEBUG: Setting episode peak equity to {self.initial_capital_for_session}")
-        self.episode_peak_equity = self.initial_capital_for_session
-        # self.logger.debug(f"DEBUG: Episode peak equity set")
 
         if hasattr(self.reward_calculator, "reset"):
             # self.logger.debug(f"DEBUG: About to reset reward calculator")
@@ -754,36 +708,13 @@ class TradingEnvironment(gym.Env):
             self.portfolio_manager.get_portfolio_state(current_sim_time)
         )
 
-        # Trigger episode visualization start
-        if self.callback_manager:
-            episode_date = self._safe_date_format(current_sim_time)
-            self.callback_manager.trigger(
-                "on_custom_event",
-                "episode_visualization_start",
-                {
-                    "episode_number": self.episode_number,
-                    "symbol": self.primary_asset,
-                    "date": episode_date,
-                },
-            )
 
         initial_info = self._get_current_info(
             reward=0.0,
             current_portfolio_state_for_info=self._last_portfolio_state_before_action,
         )
 
-        # Include position close P&L in initial info
-        if position_close_pnl is not None:
-            initial_info["position_close_pnl"] = position_close_pnl
-            initial_info["had_open_position_at_reset"] = True
-        else:
-            initial_info["had_open_position_at_reset"] = False
 
-        # Update dashboard with quality metrics from reset point
-        self._update_dashboard_quality_metrics(reset_point)
-
-        # Send initial chart data only when session changes (not every episode)
-        self._send_initial_chart_data()
 
         return self._last_observation, initial_info
 
@@ -1008,22 +939,7 @@ class TradingEnvironment(gym.Env):
         # Store decoded action for metrics and reward calculation
         self._last_decoded_action = execution_result.action_decode_result.to_dict()
 
-        # Track action counts and invalid actions
-        action_name = execution_result.action_decode_result.action_type
-        self.action_counts[action_name] = self.action_counts.get(action_name, 0) + 1
-        if not execution_result.action_decode_result.is_valid:
-            self.invalid_action_count_episode += 1
 
-        # Emit action to dashboard (invalid actions no longer tracked due to action masking)
-        from dashboard.event_stream import event_stream
-
-        event_stream.emit_action_decision(
-            action=action_name,
-            confidence=1.0,  # Default confidence
-            reasoning={},
-            features={},
-            is_invalid=False,  # Action masking prevents invalid actions
-        )
 
         # Handle fill if order was executed
         fill_details_list: List[FillDetails] = []
@@ -1033,25 +949,7 @@ class TradingEnvironment(gym.Env):
                 execution_result.fill_details
             )
             fill_details_list.append(enriched_fill)
-            self.episode_fills.append(enriched_fill)
 
-            # Emit enriched fill event to dashboard with correct P&L
-            from dashboard.event_stream import event_stream
-
-            event_stream.emit_trade(
-                side=enriched_fill.order_side.name,
-                quantity=int(enriched_fill.executed_quantity),
-                price=enriched_fill.executed_price,  # Use actual execution price
-                fill_price=enriched_fill.executed_price,
-                pnl=enriched_fill.realized_pnl or 0.0,  # Use portfolio-calculated P&L
-                commission=enriched_fill.commission,
-                order_id=f"fill_{enriched_fill.fill_timestamp.timestamp():.0f}",
-                slippage_cost=enriched_fill.slippage_cost_total,
-                timestamp=enriched_fill.fill_timestamp,
-                closes_position=enriched_fill.closes_position,
-                holding_time_minutes=enriched_fill.holding_time_minutes,
-                episode=self.episode_number,  # Add episode number for dashboard filtering
-            )
 
         # Update portfolio with current market prices
         time_for_pf_update = (
@@ -1104,18 +1002,6 @@ class TradingEnvironment(gym.Env):
             next_sim_time or time_for_pf_update
         )
 
-        # Track episode performance
-        current_equity = portfolio_state_next_t.get("total_equity", 0.0)
-        if current_equity is not None and current_equity > self.episode_peak_equity:
-            self.episode_peak_equity = current_equity
-
-        current_drawdown = 0.0
-        if self.episode_peak_equity > 0 and current_equity is not None:
-            current_drawdown = (
-                self.episode_peak_equity - current_equity
-            ) / self.episode_peak_equity
-        if current_drawdown > self.episode_max_drawdown:
-            self.episode_max_drawdown = current_drawdown
 
         # Get next observation
         observation_next_t = None
@@ -1230,11 +1116,6 @@ class TradingEnvironment(gym.Env):
             is_truncated=truncated,
         )
 
-        # Update callbacks with step data
-        if self.callback_manager:
-            self._trigger_step_callbacks(
-                portfolio_state_next_t, market_state_next_t, reward, fill_details_list
-            )
 
         # Episode end handling
         if terminated or truncated:
@@ -1242,222 +1123,27 @@ class TradingEnvironment(gym.Env):
 
         return observation_next_t, reward, terminated, truncated, info
 
-    def _trigger_step_callbacks(
-        self,
-        portfolio_state: PortfolioState,
-        market_state: Optional[Dict],
-        reward: float,
-        fill_details_list: List[FillDetails],
-    ):
-        """Trigger callbacks for environment step."""
-        if not self.callback_manager:
-            return
 
-        # Get action info
-        action_name = (
-            self._last_decoded_action.get("action_type", "UNKNOWN")
-            if self._last_decoded_action
-            else "UNKNOWN"
-        )
-
-        # Trigger episode step callback
-        self.callback_manager.trigger(
-            "on_episode_step",
-            {
-                "state": self._last_observation,
-                "action": action_name,
-                "reward": reward,
-                "next_state": None,  # Not needed for current callbacks
-                "info": {
-                    "reward_components": self.reward_calculator.get_last_reward_components(),
-                    "episode_reward": self.episode_total_reward,
-                    "current_step": self.current_step,
-                    "max_steps": self.max_steps,
-                    "episode_number": self.episode_number,
-                },
-                "step_num": self.current_step,
-            },
-        )
-
-        # Trigger portfolio update callback
-        self.callback_manager.trigger(
-            "on_portfolio_update",
-            {
-                "timestamp": portfolio_state.get("timestamp"),
-                "equity": portfolio_state["total_equity"],
-                "cash": portfolio_state["cash"],
-                "unrealized_pnl": portfolio_state["unrealized_pnl"],
-                "realized_pnl": portfolio_state["realized_pnl_session"],
-                "session_metrics": portfolio_state["session_metrics"],
-                "positions": portfolio_state["positions"],
-            },
-        )
-
-        # Trigger fill callbacks
-        for fill in fill_details_list:
-            self.callback_manager.trigger(
-                "on_order_filled",
-                {
-                    "symbol": fill.asset_id,
-                    "executed_quantity": fill.executed_quantity,
-                    "executed_price": fill.executed_price,
-                    "commission": fill.commission,
-                    "fees": fill.fees,
-                    "slippage_cost_total": fill.slippage_cost_total,
-                    "fill_timestamp": fill.fill_timestamp,
-                    "order_side": fill.order_side.name,
-                    "order_type": fill.order_type.name,
-                },
-            )
-
-        # Update dashboard with candle data every 5 steps for more responsive charts
-        if self.current_step % 5 == 0 and self.market_simulator:
-            # Get ALL 1-minute bars for the CURRENT trading day only (not warmup)
-            if (
-                hasattr(self.market_simulator, "combined_bars_1m")
-                and self.market_simulator.combined_bars_1m is not None
-            ):
-                # Filter to only include current day data (4 AM to 8 PM ET)
-                current_date = self.current_session_date.date()
-
-                # Create time boundaries in ET (NY time)
-                market_open_et = pd.Timestamp(
-                    f"{current_date} 04:00:00", tz="America/New_York"
-                )
-                market_close_et = pd.Timestamp(
-                    f"{current_date} 20:00:00", tz="America/New_York"
-                )
-
-                # Convert the entire day's 1m bars to list format for dashboard
-                candle_list = []
-                for timestamp, row in self.market_simulator.combined_bars_1m.iterrows():
-                    # Convert timestamp to ET for comparison
-                    ts = pd.Timestamp(timestamp)
-                    if ts.tz is None:
-                        # If no timezone, assume UTC
-                        ts_et = ts.tz_localize("UTC").tz_convert("America/New_York")
-                    else:
-                        # Already has timezone, just convert
-                        ts_et = ts.tz_convert("America/New_York")
-
-                    # Only include bars within the current trading day
-                    if market_open_et <= ts_et <= market_close_et:
-                        # Store timestamp in ET (NY time) for display, remove timezone
-                        candle_list.append(
-                            {
-                                "timestamp": ts_et.replace(
-                                    tzinfo=None
-                                ).isoformat(),  # Remove tz for consistency
-                                "open": float(row["open"]),
-                                "high": float(row["high"]),
-                                "low": float(row["low"]),
-                                "close": float(row["close"]),
-                                "volume": float(row.get("volume", 0)),
-                            }
-                        )
-
-                if candle_list:
-                    from dashboard.shared_state import dashboard_state
-
-                    dashboard_state.update_candle_data(candle_list)
 
     def _handle_episode_end(
         self, portfolio_state: PortfolioState, info: Dict[str, Any]
     ):
         """Handle episode termination."""
-        episode_duration = datetime.now().timestamp() - self.episode_start_time
-        try:
-            final_metrics = self.portfolio_manager.get_trading_metrics()
-            # Check if final_metrics is a real dict by trying to iterate its keys
-            if not isinstance(final_metrics, dict):
-                try:
-                    list(final_metrics.keys())
-                except (TypeError, AttributeError):
-                    final_metrics = {}
-        except (AttributeError, TypeError):
-            final_metrics = {}
-
-        # Episode summary - safely access portfolio state in case it's a mock
+        # Minimal episode end logging
         final_equity = (
             portfolio_state.get("total_equity", 0.0)
             if hasattr(portfolio_state, "get")
             else 0.0
         )
-        realized_pnl = (
-            portfolio_state.get("realized_pnl_session", 0.0)
-            if hasattr(portfolio_state, "get")
-            else 0.0
-        )
-        session_metrics = (
-            portfolio_state.get("session_metrics", {})
-            if hasattr(portfolio_state, "get")
-            else {}
-        )
-
-        # Only update info if it's a real dict, not a mock
-        episode_summary = {
-            "total_reward": self.episode_total_reward,
-            "steps": self.current_step,
-            "duration_seconds": episode_duration,
-            "final_equity": final_equity,
-            "peak_equity": self.episode_peak_equity,
-            "max_drawdown_pct": self.episode_max_drawdown * 100,
-            "session_realized_pnl_net": realized_pnl,
-            "session_net_profit_equity_change": final_equity
-            - (self.initial_capital_for_session or 0.0),
-            "session_total_commissions": session_metrics.get(
-                "total_commissions_session", 0.0
-            ),
-            "session_total_fees": session_metrics.get("total_fees_session", 0.0),
-            "session_total_slippage_cost": session_metrics.get(
-                "total_slippage_cost_session", 0.0
-            ),
-            "termination_reason": self.current_termination_reason or "UNKNOWN",
-            "invalid_actions_in_episode": self.invalid_action_count_episode,
-            "total_fills": len(self.episode_fills),
-            **final_metrics,
-        }
-
-        # Safely assign episode summary to info
-        if hasattr(info, "keys") and callable(getattr(info, "keys")):
-            try:
-                info["episode_summary"] = episode_summary
-            except (TypeError, AttributeError):
-                pass  # Skip if info is a mock
-
-        # End episode tracking
-        if self.callback_manager:
-            self.callback_manager.trigger(
-                "on_episode_end",
-                self.episode_number,
-                {
-                    "total_reward": self.episode_total_reward,
-                    "episode_length": self.current_step,
-                    "action_counts": self.action_counts,
-                    "final_portfolio_state": portfolio_state,
-                    "episode_summary": episode_summary,
-                },
-            )
-
-        # Episode summary logging
-        pnl = episode_summary.get("session_net_profit_equity_change", 0.0)
+        pnl = final_equity - (self.initial_capital_for_session or 0.0)
         pnl_pct = (
             (pnl / self.initial_capital_for_session) * 100
-            if self.initial_capital_for_session > 0
+            if self.initial_capital_for_session and self.initial_capital_for_session > 0
             else 0
         )
 
         self.logger.info(
-            f"🏁 EPISODE {self.episode_number} COMPLETE ({self.primary_asset})"
-        )
-        self.logger.info(
-            f"   💰 P&L: ${pnl:+.2f} ({pnl_pct:+.2f}%) | Reward: {self.episode_total_reward:.4f}"
-        )
-        self.logger.info(
-            f"   📊 Steps: {self.current_step} | Duration: {episode_duration:.1f}s"
-        )
-        self.logger.info(
-            f"   🔄 Reset Point: {self.current_reset_idx + 1}/{len(self.reset_points)}"
+            f"🏁 Episode {self.episode_number}: ${pnl:+.2f} ({pnl_pct:+.2f}%) | Reward: {self.episode_total_reward:.4f} | Steps: {self.current_step}"
         )
 
     def get_next_reset_point(self) -> Optional[Dict]:
@@ -1479,114 +1165,14 @@ class TradingEnvironment(gym.Env):
         is_terminated: bool = False,
         is_truncated: bool = False,
     ) -> Dict[str, Any]:
-        """Create info dictionary for step."""
-        # Get current market data
-        current_price = 0.0
-        bid_price = 0.0
-        ask_price = 0.0
-        volume = 0
-        timestamp = current_portfolio_state_for_info.get(
-            "timestamp", datetime.now(timezone.utc)
-        )
-
-        # Extract market data from market simulator if available
-        if hasattr(self, "market_simulator") and self.market_simulator:
-            current_market_data = self.market_simulator.get_current_market_data()
-            if current_market_data:
-                current_price = current_market_data.get(
-                    "close", current_market_data.get("price", 0.0)
-                )
-                bid_price = current_market_data.get("bid", current_price)
-                ask_price = current_market_data.get("ask", current_price)
-                volume = current_market_data.get("volume", 0)
-                # Use market simulator timestamp if available
-                if "timestamp" in current_market_data:
-                    timestamp = current_market_data["timestamp"]
-
-        # Get position details for dashboard
-        position_qty = 0.0
-        position_side = "FLAT"
-        avg_entry_price = 0.0
-
-        if self.primary_asset:
-            pos_detail = current_portfolio_state_for_info["positions"].get(
-                self.primary_asset, {}
-            )
-            position_qty = pos_detail.get("quantity", 0.0)
-            position_side_enum = pos_detail.get("current_side", PositionSideEnum.FLAT)
-            if hasattr(position_side_enum, "value"):
-                position_side = position_side_enum.value
-            else:
-                position_side = str(position_side_enum)
-            avg_entry_price = pos_detail.get("avg_entry_price", 0.0)
-
-        # Build comprehensive info dictionary
+        """Create minimal info dictionary for step."""
+        # Build minimal info dictionary with only essential fields
         info = {
-            # Episode/Step tracking
-            "timestamp": timestamp,
-            "timestamp_iso": timestamp.isoformat(),
             "step": self.current_step,
             "episode_number": self.episode_number,
-            "reset_point_idx": self.current_reset_idx,
-            "reset_points_total": len(self.reset_points),
-            # Rewards and actions
             "reward_step": reward,
             "episode_cumulative_reward": self.episode_total_reward,
-            "action_decoded": self._last_decoded_action,
-            "invalid_action_in_step": not self._last_decoded_action.get(
-                "is_valid", True
-            )
-            if self._last_decoded_action
-            else False,
-            "invalid_actions_total_episode": self.invalid_action_count_episode,
-            # Market data (crucial for dashboard)
-            "current_price": current_price,
-            "bid_price": bid_price,
-            "ask_price": ask_price,
-            "volume": volume,
-            # Portfolio state (renamed for dashboard compatibility)
-            "total_equity": current_portfolio_state_for_info.get("total_equity", 0.0),
-            "portfolio_equity": current_portfolio_state_for_info.get(
-                "total_equity", 0.0
-            ),
-            "cash": current_portfolio_state_for_info.get("cash", 0.0),
-            "portfolio_cash": current_portfolio_state_for_info.get("cash", 0.0),
-            "unrealized_pnl": current_portfolio_state_for_info.get(
-                "unrealized_pnl", 0.0
-            ),
-            "portfolio_unrealized_pnl": current_portfolio_state_for_info.get(
-                "unrealized_pnl", 0.0
-            ),
-            "realized_pnl": current_portfolio_state_for_info.get(
-                "realized_pnl_session", 0.0
-            ),
-            "portfolio_realized_pnl_session_net": current_portfolio_state_for_info.get(
-                "realized_pnl_session", 0.0
-            ),
-            "total_pnl": current_portfolio_state_for_info.get(
-                "realized_pnl_session", 0.0
-            )
-            + current_portfolio_state_for_info.get("unrealized_pnl", 0.0),
-            # Position data (both formats for compatibility)
-            "position": position_qty,
-            "position_qty": position_qty,
-            "position_side": position_side,
-            "avg_entry_price": avg_entry_price,
-            # Trading statistics
-            "total_trades": getattr(self, "win_loss_counts", {}).get("wins", 0)
-            + getattr(self, "win_loss_counts", {}).get("losses", 0),
-            "win_rate": self._calculate_win_rate(),
-            "num_trades": getattr(self, "win_loss_counts", {}).get("wins", 0)
-            + getattr(self, "win_loss_counts", {}).get("losses", 0),
-            # Trade execution details
-            "fills_step": fill_details_list if fill_details_list else [],
         }
-
-        # Legacy position details (maintain backward compatibility)
-        if self.primary_asset:
-            info[f"position_{self.primary_asset}_qty"] = position_qty
-            info[f"position_{self.primary_asset}_side"] = position_side
-            info[f"position_{self.primary_asset}_avg_entry"] = avg_entry_price
 
         # Termination info
         if is_terminated and termination_reason_enum:
@@ -1596,274 +1182,11 @@ class TradingEnvironment(gym.Env):
 
         return info
 
-    def _calculate_win_rate(self) -> float:
-        """Calculate current win rate based on completed trades."""
-        if not hasattr(self, "win_loss_counts"):
-            return 0.0
 
-        wins = self.win_loss_counts.get("wins", 0)
-        losses = self.win_loss_counts.get("losses", 0)
-        total_trades = wins + losses
 
-        if total_trades == 0:
-            return 0.0
 
-        return (wins / total_trades) * 100.0
 
-    def _update_dashboard_quality_metrics(self, reset_point: Dict):
-        """Update dashboard with quality metrics from the current reset point."""
-        try:
-            from dashboard.shared_state import dashboard_state
 
-            # Extract quality metrics from reset point
-            quality_metrics = {
-                "day_activity_score": reset_point.get("day_activity_score", 0.0),
-                "volume_ratio": reset_point.get("volume_ratio", 1.0),
-                "reset_point_quality": reset_point.get("combined_score", 0.0),
-                # 2-component scores from reset point
-                "current_roc_score": reset_point.get("roc_score", 0.0),
-                "current_activity_score": reset_point.get("activity_score", 0.0),
-            }
-
-            # Get day-level metrics from data manager momentum days
-            if self.data_manager and self.primary_asset and self.current_session_date:
-                momentum_days = self.data_manager.get_momentum_days(
-                    self.primary_asset, min_activity=0.0
-                )
-                if not momentum_days.empty:
-                    # Find the current day's data
-                    current_day_data = momentum_days[
-                        momentum_days["date"].dt.date
-                        == self.current_session_date.date()
-                    ]
-                    if not current_day_data.empty:
-                        day_data = current_day_data.iloc[0]
-                        quality_metrics.update(
-                            {
-                                "halt_count": day_data.get("halt_count", 0),
-                                "max_intraday_move": day_data.get(
-                                    "max_intraday_move", 0.0
-                                ),
-                            }
-                        )
-
-            # Calculate average spread from current market data if available
-            if self.market_simulator:
-                market_state = self.market_simulator.get_current_market_data()
-                if market_state:
-                    bid = market_state.get("best_bid_price", 0)
-                    ask = market_state.get("best_ask_price", 0)
-                    if bid > 0 and ask > 0:
-                        quality_metrics["avg_spread"] = ask - bid
-
-            # Note: Adaptive data management now handled by TrainingManager -> DataLifecycleManager
-
-            # Update dashboard state
-            dashboard_state.update_quality_metrics(quality_metrics)
-
-        except Exception as e:
-            self.logger.warning(f"Failed to update dashboard quality metrics: {e}")
-
-    def _handle_open_positions_at_reset(self) -> Optional[float]:
-        """Handle any open positions before episode reset.
-
-        Returns:
-            The P&L from closing positions, or None if no positions were open
-        """
-        if not self.portfolio_manager:
-            return None
-
-        # Get current portfolio state
-        market_data = self.market_simulator.get_current_market_data()
-        if market_data is None:
-            return None
-        current_time = market_data["timestamp"]
-        portfolio_state = self.portfolio_manager.get_portfolio_state(current_time)
-
-        # Check if we have any open positions
-        has_positions = False
-        total_close_pnl = 0.0
-
-        for asset_id, pos_data in portfolio_state["positions"].items():
-            if pos_data["quantity"] != 0:
-                has_positions = True
-
-                # Get current market prices
-                market_state = self.market_simulator.get_current_market_data()
-                current_price = (
-                    market_state.get("current_price", 0.0) if market_state else 0.0
-                )
-                if current_price <= 0:
-                    ask = market_state.get("best_ask", 0) if market_state else 0
-                    bid = market_state.get("best_bid", 0) if market_state else 0
-                    if ask > 0 and bid > 0:
-                        current_price = (ask + bid) / 2
-
-                # Calculate the P&L if we were to close this position
-                # This includes unrealized P&L + any trading costs
-                position_value = abs(pos_data["quantity"]) * current_price
-                unrealized_pnl = pos_data["unrealized_pnl"]
-
-                # Estimate trading costs for closing (commission + slippage)
-                est_commission = max(
-                    self.config.simulation.min_commission_per_order,
-                    position_value
-                    * self.config.simulation.commission_per_share
-                    * 0.01,  # Rough estimate
-                )
-                est_slippage = position_value * 0.001  # 0.1% slippage estimate
-
-                close_pnl = unrealized_pnl - est_commission - est_slippage
-                total_close_pnl += close_pnl
-
-                self.logger.info(
-                    f"🔄 Open position at reset: {asset_id} {pos_data['quantity']:.2f} @ avg ${pos_data['avg_entry_price']:.4f}"
-                    f" | Current ${current_price:.4f} | Unrealized P&L: ${unrealized_pnl:+.2f}"
-                    f" | Est. close P&L: ${close_pnl:+.2f}"
-                )
-
-        if has_positions:
-            # Apply a "reset penalty" to the reward system
-            # This ensures the model experiences the consequence of holding positions
-            if hasattr(self.reward_calculator, "apply_position_close_penalty"):
-                self.reward_calculator.apply_position_close_penalty(total_close_pnl)
-
-            # Track this in episode metrics
-            self.episode_total_reward += (
-                total_close_pnl * 0.1
-            )  # Scale down to match reward scaling
-
-            return total_close_pnl
-
-        return None
-
-    def _send_initial_chart_data(self):
-        """Send initial chart data to dashboard immediately to reduce display delay."""
-        try:
-            # Only send chart data when session date changes (not every episode)
-            if (self.current_session_date and
-                self.last_chart_data_session_date == self.current_session_date):
-                return  # Chart data already sent for this session
-
-            if not self.market_simulator or not hasattr(
-                self.market_simulator, "combined_bars_1m"
-            ):
-                return
-
-            # Get available 1m bars, even if limited
-            combined_bars_1m = self.market_simulator.combined_bars_1m
-            if combined_bars_1m is None or combined_bars_1m.empty:
-                return
-
-            # Filter to current day data (4 AM to 8 PM ET)
-            current_date = self.current_session_date.date()
-            market_open_et = pd.Timestamp(
-                f"{current_date} 04:00:00", tz="America/New_York"
-            )
-            market_close_et = pd.Timestamp(
-                f"{current_date} 20:00:00", tz="America/New_York"
-            )
-
-            # Convert available bars to list format
-            candle_list = []
-            for timestamp, row in combined_bars_1m.iterrows():
-                ts = pd.Timestamp(timestamp)
-                if ts.tz is None:
-                    ts_et = ts.tz_localize("UTC").tz_convert("America/New_York")
-                else:
-                    ts_et = ts.tz_convert("America/New_York")
-
-                # Only include bars within the current trading day
-                if market_open_et <= ts_et <= market_close_et:
-                    candle_list.append(
-                        {
-                            "timestamp": ts_et.replace(tzinfo=None).isoformat(),
-                            "open": float(row["open"]),
-                            "high": float(row["high"]),
-                            "low": float(row["low"]),
-                            "close": float(row["close"]),
-                            "volume": float(row.get("volume", 0)),
-                        }
-                    )
-
-            # Send to dashboard if we have any data
-            if candle_list:
-                from dashboard.shared_state import dashboard_state
-
-                dashboard_state.update_candle_data(candle_list)
-                self.last_chart_data_session_date = self.current_session_date  # Track when we sent data
-
-                # Debug logging for chart data format
-                if candle_list:
-                    sample_candle = candle_list[0]
-                    o, h, l, c = sample_candle['open'], sample_candle['high'], sample_candle['low'], sample_candle['close']
-                    self.logger.info(
-                        f"📊 Sent initial chart data: {len(candle_list)} candles. "
-                        f"Sample OHLC: O={o:.4f}, H={h:.4f}, L={l:.4f}, C={c:.4f}"
-                    )
-                    if o == h == l == c:
-                        self.logger.warning("⚠️ Initial chart data has flat OHLC values - candlesticks may appear as lines")
-                else:
-                    self.logger.info(f"📊 Sent initial chart data: {len(candle_list)} candles")
-
-        except Exception as e:
-            self.logger.warning(f"Failed to send initial chart data: {e}")
-
-    def _on_trade_completed(self, trade: Dict[str, Any]):
-        """Callback for completed trades."""
-        try:
-            # Update win/loss counts
-            pnl = trade.get("realized_pnl", 0.0)
-            if pnl > 0:
-                self.win_loss_counts["wins"] += 1
-            elif pnl < 0:
-                self.win_loss_counts["losses"] += 1
-
-            # Trigger position closed callback for completed trades
-            if self.callback_manager:
-                try:
-                    # Map asset_id to symbol for callback compatibility
-                    trade_data = dict(trade)
-                    if "asset_id" in trade_data and "symbol" not in trade_data:
-                        trade_data["symbol"] = trade_data["asset_id"]
-                    self.callback_manager.trigger("on_position_closed", trade_data)
-                except Exception as e:
-                    self.logger.warning(f"Error in position closed callback: {e}")
-
-            # Emit completed trade to dashboard
-            from dashboard.event_stream import event_stream
-
-            event_stream.emit_trade(
-                side=trade.get("side", "UNKNOWN"),
-                quantity=int(trade.get("entry_quantity", 0)),
-                price=trade.get("avg_entry_price", 0),
-                fill_price=trade.get("avg_exit_price", 0),
-                pnl=pnl,
-                commission=trade.get("total_commission", 0),
-                order_id=trade.get("trade_id", ""),
-                # Additional trade-specific data
-                entry_timestamp=trade.get("entry_timestamp"),
-                exit_timestamp=trade.get("exit_timestamp"),
-                holding_time_seconds=trade.get("holding_period_seconds", 0),
-                is_completed_trade=True,  # Flag to distinguish from executions
-                episode=self.episode_number,  # Add episode number for dashboard filtering
-            )
-        except Exception as e:
-            self.logger.warning(f"Error in trade callback: {e}")
-
-    def set_training_info(
-        self,
-        episode_num: int = 0,
-        total_episodes: int = 0,
-        total_steps: int = 0,
-        update_count: int = 0,
-    ):
-        """Set training information for metrics tracking."""
-        if episode_num > self.episode_number:
-            self.episode_number = episode_num
-        self.total_episodes = total_episodes
-        self.total_steps = total_steps
-        self.update_count = update_count
 
     def render(self, info_dict: Optional[Dict[str, Any]] = None):
         """Basic render method."""
