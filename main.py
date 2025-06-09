@@ -160,60 +160,6 @@ def create_model_components(
     return model, optimizer, model_manager
 
 
-def create_training_callbacks(
-    config: Config, model_manager, output_dir: str, loaded_metadata: dict = None
-) -> list:
-    """Create training callbacks with proper config passing"""
-    callbacks: list[TrainingCallback] = []
-
-    # Model checkpoint callback
-    callbacks.append(
-        ModelCheckpointCallback(
-            save_dir=str(Path(output_dir) / "models"),
-            save_freq=config.training.checkpoint_interval,
-            prefix="model",
-            save_best_only=True,
-        )
-    )
-
-    # Early stopping if configured
-    if config.training.early_stop_patience > 0:
-        callbacks.append(
-            EarlyStoppingCallback(
-                patience=config.training.early_stop_patience,
-                min_delta=config.training.early_stop_min_delta,
-            )
-        )
-        logging.info(
-            f"⏹️ Early stopping enabled (patience: {config.training.early_stop_patience})"
-        )
-
-    # Continuous training callback
-    if config.training.continue_training:
-        try:
-            continuous_callback = ContinuousTrainingCallback(
-                model_manager=model_manager,
-                reward_metric=config.training.best_model_metric,
-                checkpoint_sync_frequency=config.training.checkpoint_interval,
-                load_metadata=loaded_metadata or {},
-            )
-            callbacks.append(continuous_callback)
-            logging.info("🔄 Continuous training callback added")
-        except Exception as e:
-            logging.error(f"Failed to initialize continuous training callback: {e}")
-            logging.warning("Continuing without continuous training callback...")
-
-    # Momentum tracking callback for momentum-based training
-    if (
-        hasattr(config.env, "use_momentum_training")
-        and config.env.use_momentum_training
-    ):
-        momentum_callback = MomentumTrackingCallback(log_frequency=10)
-        callbacks.append(momentum_callback)
-        logging.info("🎯 Momentum tracking callback added")
-
-
-    return callbacks
 
 
 def train(config: Config):

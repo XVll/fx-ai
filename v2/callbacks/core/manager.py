@@ -16,10 +16,7 @@ from .context import (
     CustomEventContext,
     CallbackContext
 )
-from ...core.shutdown import IShutdownHandler
-
-
-class CallbackManager(IShutdownHandler):
+class CallbackManager:
     """
     Simplified callback manager for v2.
     
@@ -31,7 +28,7 @@ class CallbackManager(IShutdownHandler):
     - No dual usage patterns (manager only)
     - Comprehensive error isolation
     - Rich logging and debugging
-    - Graceful shutdown handling
+    - Focus on event coordination only (shutdown handled directly)
     """
     
     def __init__(self, callbacks: Optional[List[BaseCallback]] = None):
@@ -194,7 +191,6 @@ class CallbackManager(IShutdownHandler):
     
     def register_trainer(self, trainer) -> None:
         """Register trainer with callbacks that need it."""
-        self.trainer = trainer
         for callback in self.callbacks:
             if hasattr(callback, 'trainer') and callback.trainer is None:
                 callback.trainer = trainer
@@ -202,30 +198,19 @@ class CallbackManager(IShutdownHandler):
     
     def register_environment(self, environment) -> None:
         """Register environment with callbacks that need it."""
-        self.environment = environment
         for callback in self.callbacks:
             if hasattr(callback, 'environment') and callback.environment is None:
                 callback.environment = environment
         self.logger.info("Environment registered with callback manager")
     
-    def shutdown(self) -> None:
+    def get_callbacks(self) -> List[BaseCallback]:
         """
-        Shutdown all callbacks gracefully.
+        Get all managed callbacks.
         
-        Calls shutdown() on each callback to allow cleanup.
+        Returns:
+            List of callback instances
         """
-        self.logger.info("Shutting down callback manager")
-        
-        for callback in self.callbacks:
-            try:
-                callback.shutdown()
-            except Exception as e:
-                self.logger.error(f"Error shutting down {callback.name}: {e}")
-        
-        # Log final statistics
-        self.logger.info(f"Callback manager shutdown complete")
-        self.logger.info(f"  Total events processed: {self._total_events}")
-        self.logger.info(f"  Total errors: {self._error_count}")
+        return self.callbacks.copy()
     
     @property
     def callback_count(self) -> int:

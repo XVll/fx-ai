@@ -33,15 +33,17 @@ class BaseCallback(ABC,IShutdownHandler):
     - Error isolation
     """
     
-    def __init__(self, enabled: bool = True, name: Optional[str] = None):
+    def __init__(self, config=None, enabled: bool = True, name: Optional[str] = None):
         """
         Initialize base callback.
         
         Args:
-            enabled: Whether callback is active
+            config: Callback configuration (with shutdown_timeout)
+            enabled: Whether callback is active (overrides config if provided)
             name: Optional custom name (defaults to class name)
         """
-        self.enabled = enabled
+        self.config = config
+        self.enabled = enabled if config is None else config.enabled
         self.name = name or self.__class__.__name__
         self.logger = logging.getLogger(f"callback.{self.name}")
         
@@ -108,6 +110,17 @@ class BaseCallback(ABC,IShutdownHandler):
         to save state, close connections, etc.
         """
         self.logger.debug(f"Shutdown - {self.name}")
+    
+    def get_shutdown_timeout(self) -> float:
+        """
+        Get shutdown timeout from configuration.
+        
+        Returns:
+            Timeout in seconds from config or default
+        """
+        if self.config and hasattr(self.config, 'shutdown_timeout'):
+            return self.config.shutdown_timeout
+        return 10.0  # Default fallback
     
     # Helper methods for subclasses
     

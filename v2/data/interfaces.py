@@ -208,7 +208,7 @@ class IDataManager(IShutdownHandler, Configurable, Resettable):
         self,
         symbol: Symbol,
         date: date
-    ) -> list[dict[str, Any]]:
+    ) -> pd.DataFrame:
         """Get optimal episode reset points.
         
         Args:

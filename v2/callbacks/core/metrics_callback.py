@@ -21,7 +21,7 @@ class MetricsCallback(BaseCallback):
     
     def __init__(
         self,
-        enabled: bool = True,
+        config=None,
         log_freq: int = 10,
         console_output: bool = True,
         name: Optional[str] = None
@@ -30,14 +30,20 @@ class MetricsCallback(BaseCallback):
         Initialize metrics callback.
         
         Args:
-            enabled: Whether callback is active
-            log_freq: Frequency for logging metrics (episodes)
-            console_output: Whether to output to console
+            config: MetricsCallbackConfig with all settings
+            log_freq: Frequency for logging metrics (episodes) - overrides config
+            console_output: Whether to output to console - overrides config
             name: Optional custom name
         """
-        super().__init__(enabled, name)
-        self.log_freq = log_freq
-        self.console_output = console_output
+        super().__init__(config, name=name)
+        
+        # Use config values or fallback to parameters
+        if config:
+            self.log_freq = config.log_freq
+            self.console_output = config.console_output
+        else:
+            self.log_freq = log_freq
+            self.console_output = console_output
         
         # Metrics tracking
         self.episode_rewards = []

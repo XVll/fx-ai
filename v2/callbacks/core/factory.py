@@ -88,7 +88,7 @@ def _create_metrics_callback(
     try:
         from .metrics_callback import MetricsCallback
         return MetricsCallback(
-            enabled=config.enabled,
+            config=config,
             log_freq=config.log_freq,
             console_output=config.console_output
         )

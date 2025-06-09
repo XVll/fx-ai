@@ -14,6 +14,7 @@ class MetricsCallbackConfig(BaseModel):
     enabled: bool = Field(default=True, description="Whether callback is active")
     log_freq: int = Field(default=10, description="Episode frequency for logging metrics")
     console_output: bool = Field(default=True, description="Whether to output to console")
+    shutdown_timeout: float = Field(default=5.0, description="Shutdown timeout in seconds")
 
 
 class CheckpointCallbackConfig(BaseModel):
@@ -22,6 +23,7 @@ class CheckpointCallbackConfig(BaseModel):
     save_freq: int = Field(default=100, description="Episode frequency for saving checkpoints")
     keep_best: int = Field(default=5, description="Number of best models to keep")
     save_optimizer: bool = Field(default=True, description="Whether to save optimizer state")
+    shutdown_timeout: float = Field(default=30.0, description="Shutdown timeout in seconds")
 
 
 class WandBCallbackConfig(BaseModel):
@@ -36,6 +38,7 @@ class WandBCallbackConfig(BaseModel):
     log_gradients: bool = Field(default=False, description="Whether to log gradient norms")
     log_parameters: bool = Field(default=True, description="Whether to log model parameters")
     log_artifacts: bool = Field(default=True, description="Whether to log model artifacts")
+    shutdown_timeout: float = Field(default=60.0, description="Shutdown timeout in seconds")
 
 
 class AttributionCallbackConfig(BaseModel):
@@ -48,6 +51,7 @@ class AttributionCallbackConfig(BaseModel):
     )
     sample_size: int = Field(default=100, description="Number of samples for attribution analysis")
     save_visualizations: bool = Field(default=True, description="Whether to save attribution plots")
+    shutdown_timeout: float = Field(default=15.0, description="Shutdown timeout in seconds")
 
 
 class PerformanceCallbackConfig(BaseModel):
@@ -60,6 +64,7 @@ class PerformanceCallbackConfig(BaseModel):
     )
     rolling_window: int = Field(default=100, description="Rolling window for metric calculations")
     save_reports: bool = Field(default=True, description="Whether to save performance reports")
+    shutdown_timeout: float = Field(default=10.0, description="Shutdown timeout in seconds")
 
 
 class OptunaCallbackConfig(BaseModel):
@@ -69,6 +74,7 @@ class OptunaCallbackConfig(BaseModel):
     storage_url: Optional[str] = Field(default=None, description="Storage URL for study persistence")
     pruning_enabled: bool = Field(default=True, description="Whether to enable trial pruning")
     report_freq: int = Field(default=10, description="Episode frequency for reporting to Optuna")
+    shutdown_timeout: float = Field(default=5.0, description="Shutdown timeout in seconds")
 
 
 class EarlyStoppingCallbackConfig(BaseModel):
@@ -78,6 +84,7 @@ class EarlyStoppingCallbackConfig(BaseModel):
     min_delta: float = Field(default=0.001, description="Minimum improvement to consider as progress")
     metric: str = Field(default="episode_reward", description="Metric to monitor for early stopping")
     mode: str = Field(default="max", description="Whether to maximize or minimize metric")
+    shutdown_timeout: float = Field(default=5.0, description="Shutdown timeout in seconds")
 
 
 class CallbackConfig(BaseModel):

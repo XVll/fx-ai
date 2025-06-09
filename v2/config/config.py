@@ -17,7 +17,6 @@ from v2.config.optuna.optuna_config import StudyConfig, OptunaStudySpec
 class Config(BaseModel):
     """Main configuration container"""
     output_dir: str = Field("outputs", description="Base output directory for results")
-    model_config = ConfigDict(extra="forbid")
 
     # Core components
     model: ModelConfig = Field(default_factory=ModelConfig)
@@ -39,16 +38,6 @@ class Config(BaseModel):
     # Hyperparameter optimization
     optuna: Optional[StudyConfig] = Field(None, description="Optuna hyperparameter optimization config")
 
-    # Runtime settings
-    experiment_name: str = Field("momentum_training", description="Experiment name")
-    mode: Literal["train", "eval", "backtest"] = Field("train", description="Execution mode")
-
-    def model_post_init(self, __context):
-        """Post-initialization hook to resolve circular dependencies"""
-        # Set up training manager with data lifecycle if not already set
-        if self.env.training_manager is None:
-            self.env.training_manager = TrainingManagerConfig()
-
     @classmethod
     def load(cls, override_file: Optional[str] = None, spec_file: Optional[str] = None) -> "Config":
         """Load config with optional YAML overrides
@@ -63,8 +52,7 @@ class Config(BaseModel):
         import yaml
         import logging
         from pathlib import Path
-        from datetime import datetime
-        
+
         logger = logging.getLogger(__name__)
         
         # Start with defaults

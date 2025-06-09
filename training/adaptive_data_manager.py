@@ -102,14 +102,7 @@ class AdaptiveDataManager:
         
         self.logger.info(f"🎯 AdaptiveDataManager initialized with criteria: {self.current_criteria}")
     
-    def initialize(self) -> bool:
-        """Initialize adaptive data selection - select first day and reset points"""
-        try:
-            return self._advance_to_next_day()
-        except Exception as e:
-            self.logger.error(f"❌ Failed to initialize adaptive data: {e}")
-            return False
-    
+
     def should_terminate_data_lifecycle(self) -> Optional[DataTerminationReason]:
         """Check if data lifecycle should terminate"""
         if self.should_terminate:

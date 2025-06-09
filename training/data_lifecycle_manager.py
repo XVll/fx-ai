@@ -483,7 +483,6 @@ class DataLifecycleManager:
     """
     
     def __init__(self, config, available_days: List[DayInfo]):
-        self.config = config
         self.available_days = available_days
         self.logger = logging.getLogger(__name__)
         
@@ -672,8 +671,7 @@ class DataLifecycleManager:
         
         # Create a temporary stage config for compatibility
         # Handle both old and new config names
-        day_selection_mode = getattr(adaptive_config, 'day_selection_mode', 
-                                   getattr(adaptive_config, 'selection_mode', 'sequential'))
+        day_selection_mode = getattr(adaptive_config, 'day_selection_mode', getattr(adaptive_config, 'selection_mode', 'sequential'))
         
         temp_stage = StageConfig(
             name="adaptive",

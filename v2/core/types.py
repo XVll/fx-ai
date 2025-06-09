@@ -91,6 +91,18 @@ class TerminationReason(Enum):
     MANUAL = "MANUAL"                      # User intervention
     ERROR = "ERROR"                        # System error
     EXTERNAL_ERROR = "EXTERNAL_ERROR"      # External system error
+    
+    # Training termination reasons
+    MAX_EPISODES_REACHED = "MAX_EPISODES_REACHED"
+    MAX_UPDATES_REACHED = "MAX_UPDATES_REACHED"
+    MAX_CYCLES_REACHED = "MAX_CYCLES_REACHED"
+    PERFORMANCE_PLATEAU = "PERFORMANCE_PLATEAU"
+    PERFORMANCE_DEGRADATION = "PERFORMANCE_DEGRADATION"
+    USER_INTERRUPT = "USER_INTERRUPT"
+    SHUTDOWN_REQUESTED = "SHUTDOWN_REQUESTED"
+    TRAINER_STOPPED = "TRAINER_STOPPED"
+    DATA_EXHAUSTED = "DATA_EXHAUSTED"
+    TRAINING_ERROR = "TRAINING_ERROR"
 
 
 class RunMode(Enum):
@@ -103,6 +115,7 @@ class RunMode(Enum):
     BENCHMARK_EVALUATION = "BENCHMARK_EVALUATION"  # Performance evaluation
     OPTUNA_OPTIMIZATION = "OPTUNA_OPTIMIZATION"   # Hyperparameter optimization
     LIVE = "LIVE"                             # Live trading (future)
+
 
 
 class FeatureFrequency(Enum):
@@ -183,21 +196,6 @@ class ModelCheckpoint(TypedDict):
     metrics: dict[str, float]
 
 
-# Protocol definitions for duck typing
-class Configurable(Protocol):
-    """Protocol for configurable components.
-    
-    Design: Enables dynamic configuration without tight coupling.
-    """
-    def get_config(self) -> dict[str, Any]:
-        """Return current configuration."""
-        ...
-    
-    def update_config(self, config: dict[str, Any]) -> None:
-        """Update configuration dynamically."""
-        ...
-
-
 class Resettable(Protocol):
     """Protocol for components that maintain state.
     
@@ -205,18 +203,4 @@ class Resettable(Protocol):
     """
     def reset(self) -> None:
         """Reset internal state to initial conditions."""
-        ...
-
-
-class Serializable(Protocol):
-    """Protocol for components that can be serialized.
-    
-    Design: Enables checkpointing and distributed execution.
-    """
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize state to dictionary."""
-        ...
-    
-    def from_dict(self, data: dict[str, Any]) -> None:
-        """Restore state from dictionary."""
         ...

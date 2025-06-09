@@ -17,6 +17,7 @@ import torch
 
 from v2.agent.interfaces import IAgent
 from v2.callbacks import create_callbacks_from_config, CallbackManager
+from v2.core.logger import setup_rich_logging
 from v2.data.databento_file_provider import DatabentoFileProvider
 from v2.data.interfaces import IDataManager
 from v2.envs.interfaces import ITradingEnvironment
@@ -28,12 +29,12 @@ from v2.core.shutdown import (
     graceful_shutdown_context, get_global_shutdown_manager
 )
 from v2.config.config import Config
-from v2.utils.logger import setup_rich_logging, get_logger, console
+from v2.training.training_manager import TrainingManager
 
 logger = logging.getLogger(__name__)
 
 
-class ApplicationBootstrap(IShutdownHandler):
+class ApplicationBootstrap():
     """Bootstrap the FxAI application with proper dependency injection and graceful shutdown."""
 
     def __init__(self, shutdown_manager: Optional[ShutdownManager] = None):
@@ -50,19 +51,13 @@ class ApplicationBootstrap(IShutdownHandler):
         self.device: Optional[torch.device] = None
         self.callback_manager: Optional[CallbackManager] = None
 
-        # Register self for shutdown
-        self.shutdown_manager.register_component(
-            component=self,
-            timeout=30.0
-        )
-
     def initialize(self, args: Optional[argparse.Namespace]) -> None:
         """Initialize application with configuration."""
 
         self._setup_config(args.config, args.spec)
         self._setup_logging()
-        self.training_manager = self._create_training_manager()
         self._initialize_components()
+        self.training_manager = self._create_training_manager()
 
         self._setup_directories()
         self.config.save_used_config(str(self.output_path / "config.yaml"))
@@ -94,22 +89,14 @@ class ApplicationBootstrap(IShutdownHandler):
             compact_errors=True
         )
 
-    def _create_callback_manager(self) -> Any:
-        """Create and configure callback manager with v2 config."""
-        from v2.callbacks.callback_manager import CallbackManager
-
-        # Convert pydantic config to dict for callback manager
-        config_dict = self.config.model_dump()
-
-        return callback_manager
-
     def _create_training_manager(self) -> ITrainingManager:
-        """Create and configure training manager with v2 config."""
-        from v2.training.training_manager import create_training_manager
+        """Create and configure training manager with config."""
 
-        # Convert pydantic config to dict for training manager
-        config_dict = self.config.model_dump()
-        training_manager = create_training_manager(config_dict)
+        training_manager = TrainingManager(self.config.training.training_manager)
+        
+        # Set data manager reference for integrated data lifecycle
+        training_manager.data_manager = self.data_manager
+        training_manager.callback_manager = self.callback_manager
 
         return training_manager
 
@@ -140,11 +127,13 @@ class ApplicationBootstrap(IShutdownHandler):
         self.callback_manager.register_trainer(self.trainer)
         self.callback_manager.register_environment(self.environment)
 
-        # Register callback manager with shutdown system
-        self.shutdown_manager.register_component(
-            component=self.callback_manager,
-            timeout=self.config.callbacks.shutdown_timeout
-        )
+        # Register callbacks individually with shutdown system for parallel shutdown
+        for callback in self.callback_manager.get_callbacks():
+            self.shutdown_manager.register_component(
+                component=callback,
+                timeout=callback.get_shutdown_timeout(),
+                name=f"callback_{callback.name}"
+            )
 
         self.shutdown_manager.register_component(
             component=self.data_manager,
@@ -164,9 +153,6 @@ class ApplicationBootstrap(IShutdownHandler):
         )
 
         self.logger.info("✅ All components initialized successfully")
-        
-        # Trigger training start callback event
-        self._trigger_training_start()
 
     def _create_device(self) -> torch.device:
         """Create and configure PyTorch device."""
@@ -239,27 +225,6 @@ class ApplicationBootstrap(IShutdownHandler):
         self.logger.info("✅ Trainer created")
         return trainer
 
-    # IShutdownHandler implementation
-
-    def shutdown(self) -> None:
-        """Perform graceful shutdown - save state and cleanup resources."""
-        self.logger.info("🛑 Shutting down Application")
-
-        try:
-            # Reset component references
-            self.trainer = None
-            self.environment = None
-            self.data_manager = None
-            self.device = None
-            self.training_manager = None
-            self.callback_manager = None
-            self.config = None
-
-            self.logger.info("✅ Application shutdown completed")
-
-        except Exception as e:
-            self.logger.error(f"❌ Error during ApplicationBootstrap shutdown: {e}")
-
 
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments - simplified config-driven approach."""
@@ -305,8 +270,7 @@ def execute_training(training_manager: ITrainingManager, config: Config, app: 'A
     except Exception as e:
         logger.error(f"❌ Training failed: {e}")
         training_manager.request_termination(
-            reason=TerminationReason.EXTERNAL_ERROR,
-            mode_type=mode_type
+            reason=TerminationReason.EXTERNAL_ERROR
         )
         raise
 
