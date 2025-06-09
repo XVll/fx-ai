@@ -492,7 +492,7 @@ class PPOTrainer:
         Evaluate model performance over multiple episodes.
         
         Args:
-            environment: TrainingEnvironment instance (v2 compatible)
+            environment: TradingEnvironment instance (v2 compatible)
             n_episodes: Number of episodes to evaluate
             deterministic: Whether to use deterministic actions
             

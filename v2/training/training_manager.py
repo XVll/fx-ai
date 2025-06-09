@@ -11,7 +11,7 @@ from ..callbacks.core.context import TrainingStartContext, TrainingEndContext, E
 from ..core.types import TerminationReason
 from ..core.shutdown import IShutdownHandler, get_global_shutdown_manager
 from ..config.training.training_config import TrainingManagerConfig
-from ..envs.training_environment import TrainingEnvironment
+from ..envs import TradingEnvironment
 from utils.model_manager import ModelManager
 
 
@@ -68,7 +68,7 @@ class TrainingManager(IShutdownHandler):
 
         self.logger.info(f"🎯 TrainingManager initialized in {self.mode.value} mode")
 
-    def start(self, trainer: PPOTrainer, environment: TrainingEnvironment, data_manager: DataManager, callback_manager: CallbackManager) -> None:
+    def start(self, trainer: PPOTrainer, environment: TradingEnvironment, data_manager: DataManager, callback_manager: CallbackManager) -> None:
         """Start the main training loop - core of the system."""
 
         self.logger.info(f"🎯 TRAINING LIFECYCLE STARTUP")
