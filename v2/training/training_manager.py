@@ -3,6 +3,7 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 
+from data.data_manager import DataManager
 from .episode_manager import EpisodeManager, EpisodeTerminationReason
 from ..agent.ppo_agent import PPOTrainer
 from ..callbacks import CallbackManager
@@ -10,7 +11,7 @@ from ..callbacks.core.context import TrainingStartContext, TrainingEndContext, E
 from ..core.types import TerminationReason
 from ..core.shutdown import IShutdownHandler, get_global_shutdown_manager
 from ..config.training.training_config import TrainingManagerConfig
-from ..data.data_manager_impl import DataManager
+from ..envs.training_environment import TrainingEnvironment
 
 
 class TrainingMode(Enum):
@@ -65,7 +66,7 @@ class TrainingManager(IShutdownHandler):
 
         self.logger.info(f"🎯 TrainingManager initialized in {self.mode.value} mode")
 
-    def start(self, trainer: PPOTrainer, environment: Any, data_manager: DataManager, callback_manager: CallbackManager) -> None:
+    def start(self, trainer: PPOTrainer, environment: TrainingEnvironment, data_manager: DataManager, callback_manager: CallbackManager) -> None:
         """Start the main training loop - core of the system."""
 
         self.logger.info(f"🎯 TRAINING LIFECYCLE STARTUP")
@@ -80,8 +81,6 @@ class TrainingManager(IShutdownHandler):
         # Initialize training state
         self.state = TrainingState()
 
-        # Internal methods
-
         self.episode_manager = EpisodeManager(self.config, self.data_manager)
 
         if not self.episode_manager.initialize():
@@ -91,12 +90,35 @@ class TrainingManager(IShutdownHandler):
         context = self._create_training_start_context()
         self.callback_manager.trigger_training_start(context)
 
+        # Initialize environment with first episode
+        self._setup_next_episode()
+
         termination_reason: TerminationReason | EpisodeTerminationReason = None;
         try:
-            # Main training loop
+            # Main training loop - V2 design with clean separation
             while not self.should_terminate():
-                # Update training state from trainer
-                self._update_training_state()
+                # 1. Collect rollout data from environment (TrainingManager controls environment)
+                rollout_result = self.trainer.collect_rollout(self.environment)
+                
+                if rollout_result.interrupted:
+                    termination_reason = TerminationReason.TRAINER_STOPPED
+                    break
+                
+                # 2. Update policy if buffer is ready
+                if rollout_result.buffer_ready:
+                    update_result = self.trainer.update_policy()
+                    
+                    if update_result.interrupted:
+                        termination_reason = TerminationReason.TRAINER_STOPPED
+                        break
+                    
+                    # Update training state from trainer metrics
+                    self._update_training_state()
+                    
+                    # Trigger callbacks with training metrics
+                    metrics = self.trainer.get_training_metrics()
+                    context = self._create_episode_end_context(metrics, rollout_result, update_result)
+                    self.callback_manager.trigger_episode_end(context)
 
                 # Check if episode manager should terminate
                 episode_termination = self._should_terminate_episode_manager()
@@ -104,19 +126,11 @@ class TrainingManager(IShutdownHandler):
                     termination_reason = episode_termination
                     break
 
-                # Let trainer run one training step
-                should_continue = self.trainer.run_training_step()
-
-                if not should_continue:
-                    termination_reason = TerminationReason.TRAINER_STOPPED
-                    break
-
-                # Let callbacks handle their features
-                context = self._create_episode_end_context()
-                self.callback_manager.trigger_episode_end(context)
-
-                # Check episode advancement (episode manager)
-                self._advance_episode_on_completion()
+                # Advance to next episode if needed
+                if self._should_advance_episode(rollout_result):
+                    if not self._advance_episode_on_completion():
+                        termination_reason = TerminationReason.DATA_EXHAUSTED
+                        break
 
         except Exception as e:
             self.logger.error(f"🚨 Training error: {e}")
@@ -143,10 +157,11 @@ class TrainingManager(IShutdownHandler):
         return None
 
     def _update_training_state(self):
-        """Update training state from trainer."""
-        self.state.episodes = getattr(self.trainer, 'global_episode_counter', 0)
-        self.state.updates = getattr(self.trainer, 'global_update_counter', 0)
-        self.state.global_steps = getattr(self.trainer, 'global_step_counter', 0)
+        """Update training state from trainer metrics."""
+        metrics = self.trainer.get_training_metrics()
+        self.state.episodes = metrics.global_episodes
+        self.state.updates = metrics.global_updates
+        self.state.global_steps = metrics.global_steps
 
         # Update episode manager progress
         if self.episode_manager:
@@ -163,6 +178,18 @@ class TrainingManager(IShutdownHandler):
             return result
         return False
 
+    def _setup_next_episode(self):
+        """Setup environment for next episode."""
+        # For now, simple reset - will be enhanced with episode manager integration
+        if self.environment:
+            self.environment.reset()
+            self.logger.debug("Environment reset for next episode")
+
+    def _should_advance_episode(self, rollout_result) -> bool:
+        """Determine if we should advance to next episode."""
+        # For now, advance if any episodes completed in rollout
+        return rollout_result.total_episodes > 0
+
     def _create_training_start_context(self) -> TrainingStartContext:
         """Create a context dictionary for callbacks."""
         return TrainingStartContext(
@@ -176,6 +203,21 @@ class TrainingManager(IShutdownHandler):
             timestamp=None  # TodoTimestamp of what ?
         )
 
+
+    def _create_training_end_context(self, reason:TerminationReason | EpisodeTerminationReason) -> TrainingEndContext:
+        # Todo
+        pass
+
+
+    def _create_episode_end_context(self, metrics=None, rollout_result=None, update_result=None) -> EpisodeEndContext:
+        """Create episode end context for callbacks."""
+        # Todo: Implement proper context creation
+        return EpisodeEndContext(
+            episode_num=metrics.global_episodes if metrics else 0,
+            episode_reward=metrics.last_episode_reward if metrics else 0.0,
+            episode_length=metrics.last_episode_length if metrics else 0,
+            # Add more context as needed
+        )
     def shutdown(self) -> None:
         """Perform graceful shutdown - stop training and cleanup resources."""
         self.episode_manager = None
@@ -185,11 +227,3 @@ class TrainingManager(IShutdownHandler):
         self.data_manager = None
 
         self.logger.info("✅ TrainingManager shutdown completed")
-
-    def _create_training_end_context(self, reason:TerminationReason | EpisodeTerminationReason) -> TrainingEndContext:
-        # Todo
-        pass
-
-    def _create_episode_end_context(self) -> EpisodeEndContext:
-        # Todo
-        pass
