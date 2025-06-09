@@ -56,6 +56,12 @@ class MultiBranchTransformer(nn.Module):
         self.mf_seq_len = model_config.mf_seq_len
         self.lf_seq_len = model_config.lf_seq_len
         self.portfolio_seq_len = model_config.portfolio_seq_len
+        
+        # Cross-attention configuration
+        # Number of recent HF timesteps to use for cross-timeframe attention
+        self.cross_attn_hf_window = getattr(model_config, 'cross_attn_hf_window', 10)
+        # Ensure window size doesn't exceed sequence length
+        self.cross_attn_hf_window = min(self.cross_attn_hf_window, self.hf_seq_len)
 
         # Feature dimensions
         self.hf_feat_dim = model_config.hf_feat_dim
@@ -169,6 +175,33 @@ class MultiBranchTransformer(nn.Module):
             nn.Linear(model_config.d_fused // 2, 1),
         )
 
+        # Pre-compute time weights for temporal pooling
+        # These are constant and should not be recalculated on every forward pass
+        
+        # HF time weights with exponential decay from -2 to 0
+        hf_time_weights = torch.exp(torch.linspace(-2, 0, model_config.hf_seq_len))
+        hf_time_weights = hf_time_weights.unsqueeze(0).unsqueeze(-1)  # (1, seq_len, 1)
+        hf_time_weights = hf_time_weights / hf_time_weights.sum(dim=1, keepdim=True)
+        self.register_buffer('hf_time_weights', hf_time_weights)
+        
+        # MF time weights with exponential decay from -1.5 to 0
+        mf_time_weights = torch.exp(torch.linspace(-1.5, 0, model_config.mf_seq_len))
+        mf_time_weights = mf_time_weights.unsqueeze(0).unsqueeze(-1)  # (1, seq_len, 1)
+        mf_time_weights = mf_time_weights / mf_time_weights.sum(dim=1, keepdim=True)
+        self.register_buffer('mf_time_weights', mf_time_weights)
+        
+        # LF time weights with exponential decay from -1 to 0
+        lf_time_weights = torch.exp(torch.linspace(-1, 0, model_config.lf_seq_len))
+        lf_time_weights = lf_time_weights.unsqueeze(0).unsqueeze(-1)  # (1, seq_len, 1)
+        lf_time_weights = lf_time_weights / lf_time_weights.sum(dim=1, keepdim=True)
+        self.register_buffer('lf_time_weights', lf_time_weights)
+        
+        # Portfolio time weights with exponential decay from -1 to 0
+        portfolio_time_weights = torch.exp(torch.linspace(-1, 0, model_config.portfolio_seq_len))
+        portfolio_time_weights = portfolio_time_weights.unsqueeze(0).unsqueeze(-1)  # (1, seq_len, 1)
+        portfolio_time_weights = portfolio_time_weights / portfolio_time_weights.sum(dim=1, keepdim=True)
+        self.register_buffer('portfolio_time_weights', portfolio_time_weights)
+
         self.to(self.device)
 
     def forward(
@@ -276,13 +309,9 @@ class MultiBranchTransformer(nn.Module):
         hf_x = self.hf_encoder(hf_x)
         # Use temporal attention pooling to preserve pattern information
         # Recent timesteps get more weight (exponential decay)
-        seq_len = hf_x.size(1)
-        time_weights = torch.exp(torch.linspace(-2, 0, seq_len, device=hf_x.device))
-        time_weights = time_weights.unsqueeze(0).unsqueeze(-1)  # (1, seq_len, 1)
-        time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)  # Normalize
 
-        # Weighted temporal pooling
-        hf_weighted = hf_x * time_weights
+        # Weighted temporal pooling using pre-computed weights
+        hf_weighted = hf_x * self.hf_time_weights
         hf_rep = hf_weighted.sum(dim=1)  # (batch_size, d_model)
 
         # Process MF Branch
@@ -293,13 +322,9 @@ class MultiBranchTransformer(nn.Module):
         mf_x = self.mf_encoder(mf_x)
         # Use temporal attention pooling for medium frequency
         # Pattern recognition needs to see the whole sequence
-        seq_len = mf_x.size(1)
-        time_weights = torch.exp(torch.linspace(-1.5, 0, seq_len, device=mf_x.device))
-        time_weights = time_weights.unsqueeze(0).unsqueeze(-1)
-        time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)
 
-        # Weighted temporal pooling
-        mf_weighted = mf_x * time_weights
+        # Weighted temporal pooling using pre-computed weights
+        mf_weighted = mf_x * self.mf_time_weights
         mf_rep = mf_weighted.sum(dim=1)  # (batch_size, d_model)
 
         # Process LF Branch
@@ -310,13 +335,9 @@ class MultiBranchTransformer(nn.Module):
         lf_x = self.lf_encoder(lf_x)
         # Use temporal attention pooling for low frequency
         # Swing points and patterns across the full window
-        seq_len = lf_x.size(1)
-        time_weights = torch.exp(torch.linspace(-1, 0, seq_len, device=lf_x.device))
-        time_weights = time_weights.unsqueeze(0).unsqueeze(-1)
-        time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)
 
-        # Weighted temporal pooling
-        lf_weighted = lf_x * time_weights
+        # Weighted temporal pooling using pre-computed weights
+        lf_weighted = lf_x * self.lf_time_weights
         lf_rep = lf_weighted.sum(dim=1)  # (batch_size, d_model)
 
         # Process Portfolio Branch
@@ -326,15 +347,9 @@ class MultiBranchTransformer(nn.Module):
         # Shape: (batch_size, portfolio_seq_len, d_model)
         portfolio_x = self.portfolio_encoder(portfolio_x)
         # Portfolio uses recent history with decay
-        seq_len = portfolio_x.size(1)
-        time_weights = torch.exp(
-            torch.linspace(-1, 0, seq_len, device=portfolio_x.device)
-        )
-        time_weights = time_weights.unsqueeze(0).unsqueeze(-1)
-        time_weights = time_weights / time_weights.sum(dim=1, keepdim=True)
 
-        # Weighted temporal pooling
-        portfolio_weighted = portfolio_x * time_weights
+        # Weighted temporal pooling using pre-computed weights
+        portfolio_weighted = portfolio_x * self.portfolio_time_weights
         portfolio_rep = portfolio_weighted.sum(dim=1)  # (batch_size, d_model)
 
         # Cross-timeframe attention - HF attends to MF/LF patterns
@@ -345,7 +360,8 @@ class MultiBranchTransformer(nn.Module):
         )  # (batch, mf_len + lf_len, d_model)
 
         # Use recent HF data as query to find relevant patterns
-        hf_recent = hf_x[:, -10:, :]  # Last 10 seconds for entry timing
+        # Use configurable window size for recent HF data
+        hf_recent = hf_x[:, -self.cross_attn_hf_window:, :]
         cross_attn_output, cross_attn_weights = self.cross_timeframe_attention(
             query=hf_recent, key=pattern_context, value=pattern_context
         )
