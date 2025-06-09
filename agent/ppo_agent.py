@@ -17,17 +17,6 @@ from agent.callbacks import CallbackManager
 
 
 class V1PPOTrainer:
-    def _safe_date_format(self, date_obj) -> str:
-        """Safely format a date object to YYYY-MM-DD string"""
-        if isinstance(date_obj, str):
-            return date_obj  # Already a string
-        elif hasattr(date_obj, 'strftime'):
-            return date_obj.strftime('%Y-%m-%d')
-        elif hasattr(date_obj, 'date'):
-            return date_obj.date().strftime('%Y-%m-%d')
-        else:
-            return str(date_obj)
-
     def __init__(
         self,
         env: TradingEnvironment,
@@ -36,14 +25,17 @@ class V1PPOTrainer:
         config: Any,
         device: Optional[Union[str, torch.device]] = None,
         output_dir: str = "./ppo_output",
-        callbacks: Optional[List[V1TrainingCallback]] = None,
     ):
+        self.logger = logging.getLogger(__name__)
         self.env = env
         self.model = model
         self.config = config  # Store full config for curriculum access
         self.callback_manager = callback_manager
+        self.device = device
 
-        self.logger = logging.getLogger(__name__)
+        # Output directories
+        self.model_dir = os.path.join(output_dir, "models")
+        os.makedirs(self.model_dir, exist_ok=True)
 
         # Extract training parameters from config
         training_config = config.training
@@ -58,79 +50,18 @@ class V1PPOTrainer:
         self.batch_size = training_config.batch_size
         self.rollout_steps = training_config.rollout_steps
 
-        # Store model config - convert to dict if it's a Pydantic object
-        model_config = config.model
-        if model_config is not None:
-            if hasattr(model_config, "model_dump"):
-                # It's a Pydantic model, convert to dict for storage
-                self.model_config = model_config.model_dump()
-            else:
-                # Already a dict or other type
-                self.model_config = model_config
-        else:
-            self.model_config = {}
-
-        # Device setup
-        if device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        elif isinstance(device, str):
-            self.device = torch.device(device)
-        else:
-            self.device = device
-        self.model.to(self.device)
-
         # Optimizer
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
-
         # Replay Buffer
         self.buffer = ReplayBuffer(capacity=self.rollout_steps, device=self.device)
-
-        # Output directories
-        self.output_dir = output_dir
-        self.model_dir = os.path.join(output_dir, "models")
-        os.makedirs(self.model_dir, exist_ok=True)
-
-        # Callbacks
-        self.callbacks = callbacks if callbacks else []
-        
-        # Callbacks registered
 
         # Training state
         self.global_step_counter = 0
         self.global_episode_counter = 0
         self.global_update_counter = 0
 
-        # Initialize episode rewards for use in PPO metrics
-        self.recent_episode_rewards = []
-
         # Performance tracking
         self.is_evaluating = False
-        self.training_start_time = 0.0
-
-        # Stage timing
-        self.stage_timers = {}
-
-        # Timing metrics tracking
-        self.last_update_time = None
-        self.update_times = []
-        self.episode_times = []
-
-        # Momentum-based training configuration (managed by TrainingManager)
-        self.episode_selection_mode = "momentum_days"  # Enable momentum-based training
-
-        # Day selection configuration - extract from config or use defaults
-        day_selection_config = getattr(config, "day_selection", None)
-        if day_selection_config:
-            self.episodes_per_day = day_selection_config.episodes_per_day
-            self.reset_point_quality_range = (
-                day_selection_config.reset_point_quality_range or [0.0, 1.0]
-            )
-            self.day_switching_strategy = day_selection_config.day_switching_strategy
-        else:
-            # Default values if day_selection config not present
-            self.episodes_per_day = 10
-            self.reset_point_quality_range = [0.0, 1.0]
-            self.day_switching_strategy = "exhaustive"
 
         # Momentum training state
         self.current_momentum_day = None
@@ -140,23 +71,11 @@ class V1PPOTrainer:
         # Data quality filtering (managed by TrainingManager)
         self.quality_range = [0.7, 1.0]  # Default quality range
 
-        # Day episode tracking
-        self.episodes_completed_on_current_day = 0
-        self.reset_point_cycles_completed = 0
-
-        # Training Manager integration for data lifecycle
-        self.training_manager = None  # Will be set by TrainingManager
-
-        # Training control
-        self.stop_training = False
 
         self.logger.info(
             f"🤖 PPOTrainer initialized with callback system. Device: {self.device}"
         )
 
-    def set_training_manager(self, training_manager):
-        """Set the training manager for data lifecycle integration."""
-        self.training_manager = training_manager
 
     def get_current_training_data(self) -> Optional[Dict[str, Any]]:
         """Get current training data from TrainingManager."""
@@ -211,9 +130,7 @@ class V1PPOTrainer:
             self.logger.warning("🔄 Training data missing day_info")
             return False
 
-    def _get_filtered_reset_points_for_display(
-        self, reset_points_data: List[Dict]
-    ) -> List[Dict]:
+    def _get_filtered_reset_points_for_display(self, reset_points_data: List[Dict]) -> List[Dict]:
         """Filter reset points for display."""
         if not reset_points_data:
             return reset_points_data
@@ -233,17 +150,6 @@ class V1PPOTrainer:
         
         # Fallback to first reset point
         return 0
-
-    # Curriculum methods removed - now handled by TrainingManager with DataLifecycleManager
-
-
-    def _get_current_curriculum_stage(self):
-        """Placeholder for legacy curriculum stage - returns None since we use adaptive data lifecycle."""
-        return None
-
-    def _get_curriculum_stage_info(self):
-        """Placeholder for legacy curriculum stage info - returns empty dict since we use adaptive data lifecycle."""
-        return {}
 
     def _on_stage_change(self):
         """Called when curriculum stage changes."""
@@ -321,130 +227,6 @@ class V1PPOTrainer:
                 if hasattr(callback, "on_curriculum_complete"):
                     callback.on_curriculum_complete(self)  # type: ignore
 
-    def _emit_curriculum_progress(self):
-        """Trigger curriculum progress callback."""
-        stage = self._get_curriculum_stage_info()
-
-        # Calculate stage progress percentage
-        stage_progress = 0.0
-        stage_name = "unknown"
-        # Calculate stage progress percentage based on actual curriculum config
-        current_stage = self._get_current_curriculum_stage()
-        
-        if current_stage:
-            stage_name = self._get_stage_name(current_stage)
-            total_episodes = self.global_episode_counter
-            total_updates = self.global_update_counter
-            total_cycles = self.reset_point_cycles_completed
-            
-            # Calculate progress based on the primary completion criteria
-            max_progress = 0.0
-            
-            if current_stage.max_episodes is not None:
-                episode_progress = min(100.0, (total_episodes / current_stage.max_episodes) * 100)
-                max_progress = max(max_progress, episode_progress)
-                
-            if current_stage.max_updates is not None:
-                update_progress = min(100.0, (total_updates / current_stage.max_updates) * 100)
-                max_progress = max(max_progress, update_progress)
-                
-            if current_stage.max_cycles is not None:
-                cycle_progress = min(100.0, (total_cycles / current_stage.max_cycles) * 100)
-                max_progress = max(max_progress, cycle_progress)
-                
-            stage_progress = max_progress
-        else:
-            stage_progress = 100.0
-            stage_name = "stage_complete"
-
-        curriculum_data = {
-            "progress": self.curriculum_progress,
-            "stage": stage_name,
-            "roc_range": stage.roc_range if stage else [0.0, 1.0],
-            "activity_range": stage.activity_range if stage else [0.0, 1.0],
-            "total_episodes": self.global_episode_counter,
-            "stage_progress": stage_progress,
-        }
-        self.callback_manager.trigger(
-            "on_custom_event", "curriculum_progress", curriculum_data
-        )
-
-        # Also emit the detailed curriculum tracking
-        self._emit_curriculum_detail()
-
-    def _emit_curriculum_detail(self):
-        """Trigger detailed curriculum tracking callback."""
-        stage = self._get_curriculum_stage_info()
-
-        # Calculate episodes needed for next stage
-        episodes_to_next_stage = 0
-        next_stage_name = ""
-        current_stage_name = ""
-        total_episodes = self.global_episode_counter
-
-        # Calculate episodes needed for next stage based on actual curriculum config
-        current_stage = self._get_current_curriculum_stage()
-        if current_stage:
-            current_stage_name = self._get_stage_name(current_stage)
-            
-            # Calculate remaining based on configured completion criteria
-            remaining = float('inf')
-            completion_type = "none"
-            
-            if current_stage.max_episodes is not None:
-                episodes_remaining = current_stage.max_episodes - total_episodes
-                if episodes_remaining < remaining:
-                    remaining = episodes_remaining
-                    completion_type = "episodes"
-                    
-            if current_stage.max_updates is not None:
-                updates_remaining = current_stage.max_updates - self.global_update_counter
-                if updates_remaining < remaining:
-                    remaining = updates_remaining
-                    completion_type = "updates"
-                    
-            if current_stage.max_cycles is not None:
-                cycles_remaining = current_stage.max_cycles - self.reset_point_cycles_completed
-                if cycles_remaining < remaining:
-                    remaining = cycles_remaining
-                    completion_type = "cycles"
-            
-            # Set episodes_to_next_stage based on completion type
-            if completion_type == "episodes":
-                episodes_to_next_stage = max(0, int(remaining))
-            elif completion_type == "updates":
-                episodes_to_next_stage = max(0, int(remaining))  # Show updates as count
-            elif completion_type == "cycles":
-                episodes_to_next_stage = max(0, int(remaining))  # Show cycles as count
-            else:
-                episodes_to_next_stage = 0  # No completion criteria set
-                
-            # Get next stage name
-            next_stage = self._get_next_curriculum_stage()
-            next_stage_name = self._get_stage_name(next_stage) if next_stage else "Complete"
-        else:
-            current_stage_name = "Unknown"
-            next_stage_name = "Unknown"
-            episodes_to_next_stage = 0
-
-        curriculum_detail = {
-            "current_stage": current_stage_name,
-            "roc_range": stage.roc_range if stage else [0.0, 1.0],
-            "activity_range": stage.activity_range if stage else [0.0, 1.0],
-            "total_episodes": self.global_episode_counter,
-            "episodes_to_next_stage": episodes_to_next_stage,
-            "next_stage_name": next_stage_name,
-            "episodes_per_day_config": self.episodes_per_day,
-            "curriculum_method": self.curriculum_method,
-        }
-        self.callback_manager.trigger(
-            "on_custom_event", "curriculum_detail", curriculum_detail
-        )
-
-    def _emit_initial_curriculum_detail(self):
-        """Emit initial curriculum detail at training start."""
-        self._emit_curriculum_detail()
-
     def _emit_initial_cycle_tracking(self):
         """Trigger initial cycle tracking after day setup."""
         # Initial cycle tracking with zero values
@@ -462,31 +244,6 @@ class V1PPOTrainer:
         self.callback_manager.trigger(
             "on_custom_event", "cycle_completion", cycle_tracking
         )
-
-    def _update_curriculum_progress(self):
-        """Update curriculum progress based on training performance."""
-        # Always emit curriculum progress, even with limited data
-        if len(self.recent_episode_rewards) < 5:
-            self._emit_curriculum_progress()
-            return
-
-        # Calculate recent performance stability
-        recent_rewards = self.recent_episode_rewards[-20:]
-        if len(recent_rewards) >= 10:
-            mean_reward = np.mean(recent_rewards)
-            std_reward = np.std(recent_rewards)
-
-            # If performance is stable and positive, increase difficulty
-            if std_reward < abs(mean_reward) * 0.3 and mean_reward > 0:
-                self.curriculum_progress = min(
-                    1.0, self.curriculum_progress + 0.05
-                )  # Faster progression
-            # If performance is poor, decrease difficulty slightly
-            elif mean_reward < -1.0:
-                self.curriculum_progress = max(0.0, self.curriculum_progress - 0.02)
-
-            # Emit curriculum progress event
-            self._emit_curriculum_progress()
 
     def _should_switch_day(self) -> bool:
         """Determine if we should switch to a new day based on episodes per day configuration."""
@@ -653,18 +410,6 @@ class V1PPOTrainer:
             # Use standard reset
             return self.env.reset()
 
-    def _start_timer(self, stage: str):
-        """Start timing for a stage."""
-        self.stage_timers[stage] = time.time()
-
-    def _end_timer(self, stage: str) -> float:
-        """End timing for a stage and return duration."""
-        if stage in self.stage_timers:
-            duration = time.time() - self.stage_timers[stage]
-            del self.stage_timers[stage]
-            return duration
-        return 0.0
-
     def _convert_action_for_env(self, action_tensor: torch.Tensor) -> Any:
         """Converts model's action tensor to environment-compatible format."""
         # System only uses discrete actions
@@ -688,31 +433,11 @@ class V1PPOTrainer:
         Episodes that complete during rollout are automatically reset to continue
         collecting data until rollout_steps is reached.
         """
-        self._start_timer("rollout")
 
         self.logger.info(f"🎯 ROLLOUT START: Collecting {self.rollout_steps} steps")
-        self.logger.info(
-            "   ℹ️  PPO collects data across multiple episodes before training"
-        )
+        self.logger.info("   ℹ️  PPO collects data across multiple episodes before training")
         self.logger.info("   ℹ️  Episodes will reset automatically when they complete")
         self.buffer.clear()
-
-        # Trigger training update callback that we're in rollout phase
-        training_data = {
-            "mode": "Training",
-            "stage": "Collecting Rollout",
-            "updates": self.global_update_counter,
-            "global_steps": self.global_step_counter,
-            "total_episodes": self.global_episode_counter,
-            "stage_status": f"Collecting {self.rollout_steps} steps...",
-            "time_per_update": np.mean(self.update_times) if self.update_times else 0.0,
-            "time_per_episode": np.mean(self.episode_times)
-            if self.episode_times
-            else 0.0,
-        }
-        self.callback_manager.trigger(
-            "on_custom_event", "training_update", training_data
-        )
 
         current_env_state_np, _ = self._reset_environment_with_momentum()
 
@@ -742,17 +467,6 @@ class V1PPOTrainer:
         total_invalid_actions = 0
 
         while collected_steps < self.rollout_steps:
-            # Check for training interruption EVERY step for immediate response
-            if self.stop_training or (
-                hasattr(__import__("main"), "training_interrupted")
-                and __import__("main").training_interrupted
-            ):
-                self.logger.warning(
-                    f"Training interrupted during rollout collection at step {collected_steps}"
-                )
-                self.stop_training = True
-                break
-
             # Trigger rollout progress callback periodically
             if collected_steps % 100 == 0:
                 training_data = {
@@ -1609,13 +1323,6 @@ class V1PPOTrainer:
         return update_metrics
 
     def train_with_manager(self) -> Dict[str, Any]:
-        """
-        Train using the new TrainingManager system
-        This replaces the old curriculum-based train method
-        """
-        from training.training_manager import TrainingManager
-
-        # Get training manager configuration
         training_manager_config = self.config.env.training_manager
         mode = training_manager_config.mode
 
@@ -1690,11 +1397,6 @@ class V1PPOTrainer:
 
         self.logger.info(f"🎯 Starting training with TrainingManager in {mode} mode")
 
-        # Episode configuration is now handled directly via env.max_steps config
-        self.logger.info(f"🎯 Using episode configuration: max_steps={self.env.max_steps}")
-
-        # The training manager will call our training step methods
-        # We need to implement the interface it expects
         self.training_manager = training_manager
 
         # Start training with manager (it will control the lifecycle)
@@ -1708,77 +1410,29 @@ class V1PPOTrainer:
         Returns True if training should continue, False to stop
         """
         try:
-            # Check for training interruption
-            if (
-                hasattr(__import__("main"), "training_interrupted")
-                and __import__("main").training_interrupted
-            ):
-                self.logger.warning("Training interrupted during training step")
-                return False
-            
             # Collect rollout data
             rollout_info = self.collect_rollout_data()
-            
-            # Check for interruption after rollout
-            if (
-                hasattr(__import__("main"), "training_interrupted")
-                and __import__("main").training_interrupted
-            ):
-                self.logger.warning("Training interrupted after rollout collection")
-                return False
-            
+
             # Check buffer size
-            if (
-                self.buffer.get_size() < self.rollout_steps
-                and self.buffer.get_size() < self.batch_size
-            ):
+            if self.buffer.get_size() < self.rollout_steps and self.buffer.get_size() < self.batch_size:
                 if self.buffer.get_size() < self.batch_size:
                     return True  # Continue training, just skip this update
                     
             # Update policy
             update_metrics = self.update_policy()
             
-            # Check if update was interrupted
-            if update_metrics.get("interrupted", False):
-                self.logger.warning("Policy update was interrupted")
-                return False
-            
-            # Check for interruption after update
-            if (
-                hasattr(__import__("main"), "training_interrupted")
-                and __import__("main").training_interrupted
-            ):
-                self.logger.warning("Training interrupted after policy update")
-                return False
-            
             # Trigger callbacks
             for callback in self.callbacks:
                 callback.on_update_iteration_end(
                     self, self.global_update_counter, update_metrics, rollout_info
                 )
-            
-            # Check if TrainingManager wants us to stop
-            if hasattr(self, 'training_manager') and self.training_manager is not None:
-                return not self.training_manager.should_stop
-            
+
             return True  # Continue training
             
         except Exception as e:
             self.logger.error(f"Error in training step: {e}")
             return False  # Stop training on error
     
-    def apply_data_difficulty_change(self, change: Dict[str, Any]):
-        """Apply data difficulty changes from TrainingManager"""
-        if 'quality_range' in change:
-            quality_range = change['quality_range']
-            self.logger.info(f"📊 Applying data difficulty change: {quality_range}")
-            
-            # Update data filtering if we have momentum-based training
-            if self.episode_selection_mode == "momentum_days" and hasattr(self.env, 'data_manager'):
-                # Apply quality range to data manager
-                if hasattr(self.env.data_manager, 'set_quality_filter'):
-                    self.env.data_manager.set_quality_filter(quality_range)
-
     def train(self, eval_freq_steps: Optional[int] = None):
         """Main training loop with curriculum-driven stopping."""
         self.logger.info("🚀 TRAINING START: Curriculum-driven training")
@@ -2057,9 +1711,7 @@ class V1PPOTrainer:
 
         return final_stats
 
-    def evaluate(
-        self, n_episodes: int = 10, deterministic: bool = True
-    ) -> Dict[str, Any]:
+    def evaluate(self, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
         """Evaluation with detailed logging."""
         self.logger.info(f"🔍 EVALUATION START: {n_episodes} episodes")
         self._start_timer("evaluation")
@@ -2226,93 +1878,3 @@ class V1PPOTrainer:
             )
         except Exception as e:
             self.logger.error(f"Error loading model from {path}: {e}")
-
-    def _log_training_analysis(self, update_metrics: Dict[str, float]) -> None:
-        """Log comprehensive training analysis for interpretation."""
-        self.logger.info("=" * 80)
-        self.logger.info(
-            "🔬 TRAINING ANALYSIS - Update {}".format(self.global_update_counter)
-        )
-        self.logger.info("=" * 80)
-
-        # Performance trends
-        recent_rewards = (
-            self.recent_episode_rewards[-30:]
-            if len(self.recent_episode_rewards) > 0
-            else []
-        )
-        if len(recent_rewards) >= 10:
-            first_10 = np.mean(recent_rewards[:10])
-            last_10 = np.mean(recent_rewards[-10:])
-            trend = last_10 - first_10
-            trend_pct = (trend / abs(first_10) * 100) if first_10 != 0 else 0.0
-
-            self.logger.info("📈 PERFORMANCE TREND:")
-            self.logger.info(f"   First 10 episodes: {first_10:.3f}")
-            self.logger.info(f"   Last 10 episodes: {last_10:.3f}")
-            self.logger.info(f"   Trend: {trend:+.3f} ({trend_pct:+.1f}%)")
-
-            # Diagnose performance issues
-            if trend < -0.1:
-                self.logger.warning("   ⚠️  Performance declining - check for:")
-                self.logger.warning("      - Overfitting to recent data")
-                self.logger.warning("      - Learning rate too high")
-                self.logger.warning("      - Reward component imbalance")
-            elif abs(trend) < 0.01:
-                self.logger.warning("   ⚠️  Performance plateaued - consider:")
-                self.logger.warning(
-                    "      - Increasing exploration (entropy coefficient)"
-                )
-                self.logger.warning("      - Adjusting reward weights")
-                self.logger.warning("      - Checking for data diversity")
-
-        # Learning stability
-        self.logger.info("\n🧠 LEARNING STABILITY:")
-        kl = update_metrics.get("approx_kl", 0)
-        clipfrac = update_metrics.get("clipfrac", 0)
-        entropy = update_metrics.get("entropy", 0)
-
-        stability_score = "STABLE"
-        if kl > 0.02 or clipfrac > 0.3:
-            stability_score = "UNSTABLE"
-        elif kl > 0.01 or clipfrac > 0.2:
-            stability_score = "BORDERLINE"
-
-        self.logger.info(f"   Status: {stability_score}")
-        self.logger.info(f"   KL Divergence: {kl:.4f}")
-        self.logger.info(f"   Clip Fraction: {clipfrac * 100:.1f}%")
-        self.logger.info(f"   Entropy: {entropy:.4f}")
-
-        # Value function quality
-        explained_var = update_metrics.get("value_function_explained_variance", 0)
-        critic_loss = update_metrics.get("critic_loss", 0)
-
-        self.logger.info("\n📊 VALUE FUNCTION:")
-        self.logger.info(f"   Explained Variance: {explained_var * 100:.1f}%")
-        self.logger.info(f"   Critic Loss: {critic_loss:.4f}")
-
-        if explained_var < 0.7:
-            self.logger.warning("   ⚠️  Poor value estimation - actions:")
-            self.logger.warning("      - Increase critic coefficient")
-            self.logger.warning("      - Check feature quality")
-            self.logger.warning("      - Verify reward normalization")
-
-        # Action recommendations
-        self.logger.info("\n💡 RECOMMENDATIONS:")
-
-        if stability_score == "UNSTABLE":
-            self.logger.info("   1. Reduce learning rate by 50%")
-            self.logger.info("   2. Decrease PPO clip range")
-            self.logger.info("   3. Increase batch size")
-        elif stability_score == "BORDERLINE":
-            self.logger.info("   1. Monitor next few updates closely")
-            self.logger.info("   2. Consider small learning rate reduction")
-
-        if entropy < 0.01:
-            self.logger.info(
-                "   - Increase entropy coefficient to encourage exploration"
-            )
-        elif entropy > 0.1:
-            self.logger.info("   - Decrease entropy coefficient to focus learning")
-
-        self.logger.info("=" * 80)

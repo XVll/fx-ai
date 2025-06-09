@@ -93,11 +93,12 @@ class TrainingManager(IShutdownHandler):
 
         termination_reason: TerminationReason | EpisodeTerminationReason = None;
         try:
+            # Main training loop
             while not self.should_terminate():
                 # Update training state from trainer
                 self._update_training_state()
 
-                # Check episode manager termination first (highest priority)
+                # Check if episode manager should terminate
                 episode_termination = self._should_terminate_episode_manager()
                 if episode_termination:
                     termination_reason = episode_termination
@@ -105,6 +106,7 @@ class TrainingManager(IShutdownHandler):
 
                 # Let trainer run one training step
                 should_continue = self.trainer.run_training_step()
+
                 if not should_continue:
                     termination_reason = TerminationReason.TRAINER_STOPPED
                     break

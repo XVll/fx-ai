@@ -32,40 +32,6 @@ from simulators.portfolio_simulator import (
 )
 
 
-class ActionTypeEnum(Enum):
-    """Defines the type of action the agent can take."""
-
-    HOLD = 0
-    BUY = 1
-    SELL = 2
-
-
-class PositionSizeTypeEnum(Enum):
-    """Defines the relative size of the position for an action."""
-
-    SIZE_25 = 0  # 25%
-    SIZE_50 = 1  # 50%
-    SIZE_75 = 2  # 75%
-    SIZE_100 = 3  # 100%
-
-    @property
-    def value_float(self) -> float:
-        """Returns the float multiplier for the size (0.25, 0.50, 0.75, 1.0)."""
-        return (self.value + 1) * 0.25
-
-
-class TerminationReasonEnum(Enum):
-    """Reasons for episode termination."""
-
-    END_OF_SESSION_DATA = "END_OF_SESSION_DATA"
-    MAX_LOSS_REACHED = "MAX_LOSS_REACHED"
-    BANKRUPTCY = "BANKRUPTCY"
-    MAX_STEPS_REACHED = "MAX_STEPS_REACHED"
-    OBSERVATION_FAILURE = "OBSERVATION_FAILURE"
-    SETUP_FAILURE = "SETUP_FAILURE"
-    INVALID_ACTION_LIMIT_REACHED = "INVALID_ACTION_LIMIT_REACHED"
-    MARKET_CLOSE = "MARKET_CLOSE"
-    MAX_DURATION = "MAX_DURATION"
 
 
 class TradingEnvironment(gym.Env):
