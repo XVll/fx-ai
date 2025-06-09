@@ -15,7 +15,7 @@ def safe_format_date(date_obj) -> str:
         return str(date_obj)
 
 
-class TrainingCallback:
+class V1TrainingCallback:
     """
     Base callback class for training events.
     Implement specific callbacks by inheriting from this class.
@@ -64,7 +64,7 @@ class TrainingCallback:
         pass
 
 
-class ModelCheckpointCallback(TrainingCallback):
+class ModelCheckpointCallbackV1(V1TrainingCallback):
     """
     Callback to save model checkpoints during training.
     """
@@ -111,7 +111,7 @@ class ModelCheckpointCallback(TrainingCallback):
                 trainer.save_model(os.path.join(self.save_dir, filename))
 
 
-class EarlyStoppingCallback(TrainingCallback):
+class EarlyStoppingCallbackV1(V1TrainingCallback):
     """
     Early stopping callback to prevent overfitting.
     """
@@ -161,7 +161,7 @@ class EarlyStoppingCallback(TrainingCallback):
                 )
 
 
-class MomentumTrackingCallback(TrainingCallback):
+class MomentumTrackingCallbackV1(V1TrainingCallback):
     """Callback to track momentum-specific training metrics."""
 
     def __init__(self, log_frequency: int = 10):

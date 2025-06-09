@@ -5,11 +5,11 @@ import logging
 import numpy as np
 from typing import Dict, Any, Optional
 
-from agent.base_callbacks import TrainingCallback
+from agent.base_callbacks import V1TrainingCallback
 from utils.model_manager import ModelManager
 
 
-class ContinuousTrainingCallback(TrainingCallback):
+class ContinuousV1TrainingCallback(V1TrainingCallback):
     """Clean continuous training callback with minimal logging"""
 
     def __init__(

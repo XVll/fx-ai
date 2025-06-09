@@ -12,11 +12,11 @@ from datetime import datetime
 from envs.trading_environment import TradingEnvironment
 from ai.transformer import MultiBranchTransformer
 from agent.utils import ReplayBuffer, convert_state_dict_to_tensors
-from agent.base_callbacks import TrainingCallback
+from agent.base_callbacks import V1TrainingCallback
 from agent.callbacks import CallbackManager
 
 
-class PPOTrainer:
+class V1PPOTrainer:
     def _safe_date_format(self, date_obj) -> str:
         """Safely format a date object to YYYY-MM-DD string"""
         if isinstance(date_obj, str):
@@ -36,7 +36,7 @@ class PPOTrainer:
         config: Any,
         device: Optional[Union[str, torch.device]] = None,
         output_dir: str = "./ppo_output",
-        callbacks: Optional[List[TrainingCallback]] = None,
+        callbacks: Optional[List[V1TrainingCallback]] = None,
     ):
         self.env = env
         self.model = model
@@ -1607,6 +1607,100 @@ class PPOTrainer:
         )
 
         return update_metrics
+
+    def train_with_manager(self) -> Dict[str, Any]:
+        """
+        Train using the new TrainingManager system
+        This replaces the old curriculum-based train method
+        """
+        from training.training_manager import TrainingManager
+
+        # Get training manager configuration
+        training_manager_config = self.config.env.training_manager
+        mode = training_manager_config.mode
+
+        # Get available momentum days for data lifecycle with adaptive data filtering
+        available_days = []
+        if hasattr(self.env, 'data_manager') and hasattr(self.env.data_manager, 'get_all_momentum_days'):
+            # Extract date range and symbols from adaptive data configuration
+            adaptive_data_config = training_manager_config.data_lifecycle.adaptive_data
+            symbols = adaptive_data_config.symbols if adaptive_data_config.symbols else None
+
+            # Parse date range from config
+            start_date = None
+            end_date = None
+            start_date_str = None
+            end_date_str = None
+
+            if adaptive_data_config.date_range and len(adaptive_data_config.date_range) >= 2:
+                start_date_str = adaptive_data_config.date_range[0]
+                end_date_str = adaptive_data_config.date_range[1]
+
+                if start_date_str:
+                    start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+                if end_date_str:
+                    end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+
+            self.logger.info(f"🔍 Loading momentum days with filters:")
+            self.logger.info(f"   📊 Symbols: {symbols}")
+            self.logger.info(f"   📅 Date range: {start_date_str or 'None'} to {end_date_str or 'None'}")
+
+            momentum_days_dicts = self.env.data_manager.get_all_momentum_days(
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date,
+                min_activity=0.0  # No activity filtering here, let data lifecycle handle it
+            )
+
+            self.logger.info(f"   📊 Found {len(momentum_days_dicts)} momentum days after filtering")
+
+            # Convert dictionary format to DayInfo objects for DataLifecycleManager
+            from training.data_lifecycle_manager import DayInfo, ResetPointInfo
+            for day_dict in momentum_days_dicts:
+                # Get reset points for this day
+                reset_points = []
+                if hasattr(self.env.data_manager, 'get_reset_points'):
+                    reset_points_df = self.env.data_manager.get_reset_points(
+                        day_dict['symbol'], day_dict['date']
+                    )
+                    # Convert reset points to ResetPointInfo objects
+                    for _, rp_row in reset_points_df.iterrows():
+                        reset_point = ResetPointInfo(
+                            timestamp=rp_row['timestamp'],
+                            quality_score=rp_row.get('combined_score', 0.5),
+                            roc_score=rp_row.get('roc_score', 0.0),
+                            activity_score=rp_row.get('activity_score', 0.5),
+                            price=rp_row.get('price', 0.0)
+                        )
+                        reset_points.append(reset_point)
+
+                # Convert date to string format for DayInfo
+                date_str = self._safe_date_format(day_dict['date'])
+
+                day_info = DayInfo(
+                    date=date_str,
+                    symbol=day_dict['symbol'],
+                    day_score=day_dict.get('quality_score', 0.5),
+                    reset_points=reset_points
+                )
+                available_days.append(day_info)
+
+        # Initialize TrainingManager with available days
+        training_manager = TrainingManager(training_manager_config.__dict__, mode, available_days)
+
+        self.logger.info(f"🎯 Starting training with TrainingManager in {mode} mode")
+
+        # Episode configuration is now handled directly via env.max_steps config
+        self.logger.info(f"🎯 Using episode configuration: max_steps={self.env.max_steps}")
+
+        # The training manager will call our training step methods
+        # We need to implement the interface it expects
+        self.training_manager = training_manager
+
+        # Start training with manager (it will control the lifecycle)
+        final_stats = training_manager.start_training(self)
+
+        return final_stats
 
     def run_training_step(self) -> bool:
         """

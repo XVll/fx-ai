@@ -12,10 +12,10 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
 
-from agent.callbacks import BaseCallback
+from agent.callbacks import V1BaseCallback
 
 
-class WandBCallback(BaseCallback):
+class WandBCallbackV1(V1BaseCallback):
     """Callback for Weights & Biases experiment tracking.
 
     This callback:

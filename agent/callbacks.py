@@ -9,7 +9,7 @@ from abc import ABC
 from typing import Dict, Any, List, Optional
 
 
-class BaseCallback(ABC):
+class V1BaseCallback(ABC):
     """Base callback class with comprehensive hooks for all training events.
 
     This replaces the complex metrics system with a clean, extensible callback interface.
@@ -201,7 +201,7 @@ class BaseCallback(ABC):
 class CallbackManager:
     """Manages multiple callbacks and dispatches events."""
 
-    def __init__(self, callbacks: Optional[List[BaseCallback]] = None):
+    def __init__(self, callbacks: Optional[List[V1BaseCallback]] = None):
         """Initialize callback manager.
 
         Args:
@@ -210,7 +210,7 @@ class CallbackManager:
         self.callbacks = callbacks or []
         self.logger = logging.getLogger(__name__)
 
-    def add_callback(self, callback: BaseCallback) -> None:
+    def add_callback(self, callback: V1BaseCallback) -> None:
         """Add a callback to the manager."""
         if callback.enabled:
             self.callbacks.append(callback)
@@ -218,7 +218,7 @@ class CallbackManager:
                 f"Added {callback.__class__.__name__} to callback manager"
             )
 
-    def remove_callback(self, callback: BaseCallback) -> None:
+    def remove_callback(self, callback: V1BaseCallback) -> None:
         """Remove a callback from the manager."""
         if callback in self.callbacks:
             self.callbacks.remove(callback)
@@ -241,7 +241,7 @@ class CallbackManager:
                         f"Error in {callback.__class__.__name__}.{event_name}: {e}"
                     )
 
-    def get_callback(self, callback_type: type) -> Optional[BaseCallback]:
+    def get_callback(self, callback_type: type) -> Optional[V1BaseCallback]:
         """Get a specific callback by type."""
         for callback in self.callbacks:
             if isinstance(callback, callback_type):
@@ -269,9 +269,9 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
     Returns:
         Configured CallbackManager instance
     """
-    from agent.optuna_callback import OptunaCallback
-    from agent.wandb_callback import WandBCallback
-    from agent.captum_callback import CaptumCallback
+    from agent.optuna_callback import OptunaCallbackV1
+    from agent.wandb_callback import WandBCallbackV1
+    from agent.captum_callback import CaptumCallbackV1
     from feature.attribution.captum_attribution import AttributionConfig
 
     callbacks = []
@@ -283,7 +283,7 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
         metric_name = optuna_info.get("metric_name", "mean_reward")
 
         callbacks.append(
-            OptunaCallback(
+            OptunaCallbackV1(
                 trial=trial_obj,  # None for subprocess mode
                 metric_name=metric_name,
                 enabled=True,
@@ -292,7 +292,7 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
 
     # Add WandB callback if enabled
     if config.get("wandb", {}).get("enabled", False):
-        callbacks.append(WandBCallback(config=config.get("wandb", {}), enabled=True))
+        callbacks.append(WandBCallbackV1(config=config.get("wandb", {}), enabled=True))
 
 
     # Add Captum callback if configured
@@ -339,7 +339,7 @@ def create_callback_manager(config: Dict[str, Any]) -> CallbackManager:
                 attribution_config = AttributionConfig(**captum_dict)
                 
                 # Create Captum callback
-                captum_callback = CaptumCallback(
+                captum_callback = CaptumCallbackV1(
                     config=attribution_config,
                     analyze_every_n_episodes=callback_dict.get("analyze_every_n_episodes", 10),
                     analyze_every_n_updates=callback_dict.get("analyze_every_n_updates", 5),

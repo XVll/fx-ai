@@ -8,14 +8,14 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import io
 
-from agent.callbacks import BaseCallback
+from agent.callbacks import V1BaseCallback
 from feature.attribution.captum_attribution import (
     CaptumAttributionAnalyzer,
     AttributionConfig,
 )
 
 
-class CaptumCallback(BaseCallback):
+class CaptumCallbackV1(V1BaseCallback):
     """Callback for feature attribution analysis using Captum during training.
     
     This callback integrates Captum attribution analysis into the training loop,
@@ -363,7 +363,7 @@ class CaptumCallback(BaseCallback):
         import numpy as np
         from feature.attribution.captum_attribution import AttributionConfig
         
-        callback = CaptumCallback(
+        callback = CaptumCallbackV1(
             config=AttributionConfig(),
             enabled=False
         )

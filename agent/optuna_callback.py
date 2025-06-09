@@ -10,10 +10,10 @@ try:
 except ImportError:
     OPTUNA_AVAILABLE = False
 
-from agent.callbacks import BaseCallback
+from agent.callbacks import V1BaseCallback
 
 
-class OptunaCallback(BaseCallback):
+class OptunaCallbackV1(V1BaseCallback):
     """Callback for Optuna hyperparameter optimization.
 
     This callback:

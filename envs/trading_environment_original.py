@@ -119,6 +119,42 @@ class TradingEnvironment(gym.Env):
         # Fixed max loss threshold - 25% loss (6.25k out of 25k)
         self.max_session_loss_percentage: float = 0.25
 
+        # Action Space - execution simulator handles decoding now
+        self.action_space = spaces.MultiDiscrete(
+            [3, 4]
+        )  # [action_types, position_sizes]
+
+        # Observation Space - same as before
+        model_cfg = self.config.model
+        self.observation_space: spaces.Dict = spaces.Dict(
+            {
+                "hf": spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=(model_cfg.hf_seq_len, model_cfg.hf_feat_dim),
+                    dtype=np.float32,
+                ),
+                "mf": spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=(model_cfg.mf_seq_len, model_cfg.mf_feat_dim),
+                    dtype=np.float32,
+                ),
+                "lf": spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=(model_cfg.lf_seq_len, model_cfg.lf_feat_dim),
+                    dtype=np.float32,
+                ),
+                "portfolio": spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=(model_cfg.portfolio_seq_len, model_cfg.portfolio_feat_dim),
+                    dtype=np.float32,
+                ),
+            }
+        )
+
         # Core components - initialized in setup_session
         self.market_simulator: Optional[MarketSimulator] = None
         self.next_market_simulator: Optional[MarketSimulator] = (
@@ -173,6 +209,205 @@ class TradingEnvironment(gym.Env):
 
         self.render_mode = None
 
+    def setup_session(self, symbol: str, date: Union[str, datetime]):
+        """
+        Setup a new trading session for a specific date.
+        Uses the new MarketSimulator with pre-calculated features.
+        """
+        if not symbol or not isinstance(symbol, str):
+            raise ValueError("A valid symbol (string) must be provided.")
+
+        self.primary_asset = symbol
+
+        # Parse date
+        if isinstance(date, str):
+            self.current_session_date = pd.Timestamp(date).to_pydatetime()
+        else:
+            self.current_session_date = date
+
+        self.logger.info(
+            f"├── 🎯 Session setup: {self.primary_asset} on {self._safe_date_format(self.current_session_date)}"
+        )
+
+        # Create MarketSimulator for this session
+        self.market_simulator = MarketSimulator(
+            symbol=self.primary_asset,
+            data_manager=self.data_manager,
+            model_config=self.config.model,
+            simulation_config=self.config.simulation,
+        )
+
+        # Initialize day - this pre-calculates ALL features for the entire day
+        success = self.market_simulator.initialize_day(self.current_session_date)
+        if not success:
+            raise ValueError(
+                f"Failed to initialize {symbol} on {self.current_session_date}"
+            )
+
+        # Get session stats
+        stats = self.market_simulator.get_stats()
+        self.logger.info(
+            f"✅ Session ready: {stats['total_seconds']} seconds, "
+            f"warmup: {stats['warmup_info']['has_warmup']}"
+        )
+
+        # Load reset points from momentum indices (if available) or fallback to fixed points
+        self.reset_points = self._generate_reset_points()
+        self.current_reset_idx = 0
+
+        # Initialize other components
+        self._initialize_simulators()
+
+        self.logger.info(
+            f"🔄 {len(self.reset_points)} reset points available for training"
+        )
+
+    def _generate_fixed_reset_points(self) -> List[Dict]:
+        """Generate fixed reset points based on market hours."""
+        reset_points = []
+        base_date = self.current_session_date.date()
+
+        # Fixed reset times (ET) - convert to UTC
+        fixed_times = [
+            time(9, 30),  # Market open
+            time(10, 30),  # Post-open settlement
+            time(14, 0),  # Afternoon session
+            time(15, 30),  # Power hour
+        ]
+
+        for reset_time in fixed_times:
+            reset_dt = datetime.combine(base_date, reset_time)
+            # Convert ET to UTC (assuming EST/EDT handling is done elsewhere)
+            reset_dt_utc = (
+                pd.Timestamp(reset_dt, tz="US/Eastern")
+                .tz_convert("UTC")
+                .to_pydatetime()
+            )
+
+            reset_points.append(
+                {
+                    "timestamp": reset_dt_utc,
+                    "activity_score": 0.5,  # Default activity score
+                    "combined_score": 0.5,  # Default combined score
+                    "max_duration_hours": 4,
+                    "reset_type": "fixed",
+                }
+            )
+
+        return reset_points
+
+    def _generate_reset_points(self) -> List[Dict]:
+        """Generate reset points using momentum indices with intelligent fallback for gaps."""
+        # Try to get momentum-based reset points from data manager
+        momentum_reset_points = self.data_manager.get_reset_points(
+            self.primary_asset, self.current_session_date
+        )
+
+        if not momentum_reset_points.empty:
+            # Use momentum index reset points directly
+            reset_points = []
+            for _, row in momentum_reset_points.iterrows():
+                reset_points.append(
+                    {
+                        "timestamp": row["timestamp"],
+                        "activity_score": row.get("activity_score", 0.5),
+                        "combined_score": row.get("combined_score", 0.5),
+                        "day_activity_score": row.get("day_activity_score", 0.5),
+                        # Add 2-component scores for adaptive data system
+                        "roc_score": row.get("roc_score", 0.0),
+                        "max_duration_hours": self._get_duration_for_activity(
+                            row.get("activity_score", 0.5)
+                        ),
+                        "reset_type": "momentum",
+                        "volume_ratio": row.get("volume_ratio", 1.0),
+                        "price_change": row.get("price_change", 0.0),
+                        # Additional fields from scanner for completeness
+                        "price": row.get("price", 0.0),
+                        "volume": row.get("volume", 0),
+                        "session": row.get("session", "regular"),
+                    }
+                )
+
+            # Check for early trading hour gaps and supplement with fixed points if needed
+            reset_points = self._supplement_with_early_fixed_points(reset_points)
+
+            self.logger.info(
+                f"Using {len(reset_points)} reset points (momentum + early fixed supplements)"
+            )
+            return reset_points
+
+        else:
+            # Fallback to fixed reset points
+            self.logger.info("No momentum reset points found, using fixed schedule")
+            return self._generate_fixed_reset_points()
+
+    def _supplement_with_early_fixed_points(
+        self, momentum_reset_points: List[Dict]
+    ) -> List[Dict]:
+        """Supplement momentum reset points with fixed early points if there are gaps."""
+        if not momentum_reset_points:
+            return momentum_reset_points
+
+        # Find the earliest momentum reset point
+        earliest_momentum = min(rp["timestamp"] for rp in momentum_reset_points)
+
+        # Trading session starts at 4 AM ET, check if we have coverage
+        base_date = self.current_session_date.date()
+        session_start_et = datetime.combine(base_date, time(4, 0))
+        session_start_utc = (
+            pd.Timestamp(session_start_et, tz="US/Eastern")
+            .tz_convert("UTC")
+            .to_pydatetime()
+        )
+
+        # If momentum points start after 10 AM ET, add early fixed points
+        cutoff_et = datetime.combine(base_date, time(10, 0))
+        cutoff_utc = (
+            pd.Timestamp(cutoff_et, tz="US/Eastern").tz_convert("UTC").to_pydatetime()
+        )
+
+        if earliest_momentum > cutoff_utc:
+            # Add early fixed reset points to cover the gap
+            early_fixed_times = [
+                time(6, 0),  # Pre-market
+                time(9, 30),  # Market open
+            ]
+
+            early_points = []
+            for reset_time in early_fixed_times:
+                reset_dt = datetime.combine(base_date, reset_time)
+                reset_dt_utc = (
+                    pd.Timestamp(reset_dt, tz="US/Eastern")
+                    .tz_convert("UTC")
+                    .to_pydatetime()
+                )
+
+                # Only add if it's before the earliest momentum point
+                if reset_dt_utc < earliest_momentum:
+                    # Try to get a price for this timestamp from market data
+                    price = self._get_price_at_timestamp(reset_dt_utc)
+
+                    early_points.append(
+                        {
+                            "timestamp": reset_dt_utc,
+                            "price": price,
+                            "activity_score": 0.3,  # Lower activity for early supplemental points
+                            "combined_score": 0.3,
+                            "max_duration_hours": 4,
+                            "reset_type": "early_fixed_supplement",
+                        }
+                    )
+
+            if early_points:
+                self.logger.info(
+                    f"Added {len(early_points)} early fixed reset points to supplement momentum data"
+                )
+                # Combine and sort by timestamp
+                all_points = early_points + momentum_reset_points
+                all_points.sort(key=lambda x: x["timestamp"])
+                return all_points
+
+        return momentum_reset_points
 
     def _get_price_at_timestamp(self, timestamp: datetime) -> float:
         """Get price at a specific timestamp from market data, with fallback."""
@@ -236,6 +471,42 @@ class TradingEnvironment(gym.Env):
         else:
             return 4.0  # Low activity - longer episodes
 
+    def _initialize_simulators(self):
+        """Initialize all simulator components."""
+        if self.np_random is None:
+            _, _ = super().reset(seed=None)
+
+        # Portfolio simulator
+        self.portfolio_manager = PortfolioSimulator(
+            logger=logging.getLogger(f"{__name__}.PortfolioMgr"),
+            env_config=self.config.env,
+            simulation_config=self.config.simulation,
+            model_config=self.config.model,
+            tradable_assets=[self.primary_asset],
+            trade_callback=self._on_trade_completed,
+        )
+
+        # Reward system
+        self.reward_calculator = RewardSystem(
+            config=self.config.env.reward,
+            callback_manager=self.callback_manager,
+            logger=logging.getLogger(f"{__name__}.RewardSystem"),
+        )
+
+        # Execution simulator
+        self.execution_manager = ExecutionSimulator(
+            logger=logging.getLogger(f"{__name__}.ExecSim"),
+            simulation_config=self.config.simulation,
+            np_random=self.np_random,
+            market_simulator=self.market_simulator,
+        )
+
+        # Action masking system
+        self.action_mask = ActionMask(
+            config=self.config, logger=logging.getLogger(f"{__name__}.ActionMask")
+        )
+
+        self.logger.info("✅ All simulators initialized")
 
     def prepare_next_session(self, symbol: str, date: Union[str, datetime]):
         """Prepare next session in background for fast switching."""
@@ -325,7 +596,21 @@ class TradingEnvironment(gym.Env):
             "volume_multiplier": best_day.get("volume_multiplier", 1.0),
         }
 
-    def reset_at_point(self, reset_point_idx: int = None) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+    def reset_at_point(
+        self, reset_point_idx: int = None
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        """
+        Reset to a specific reset point within the loaded day.
+        This is the main reset method for momentum-based training.
+        """
+        if reset_point_idx is None:
+            reset_point_idx = self.current_reset_idx
+
+        if reset_point_idx >= len(self.reset_points):
+            self.logger.error(
+                f"Reset point index {reset_point_idx} out of range (max: {len(self.reset_points) - 1})"
+            )
+            return self._get_dummy_observation(), {"error": "Invalid reset point"}
 
         reset_point = self.reset_points[reset_point_idx]
         self.current_reset_idx = reset_point_idx
@@ -383,6 +668,14 @@ class TradingEnvironment(gym.Env):
                     "reset_point": reset_point,
                 },
             )
+
+        # Reset dashboard episode counters with new episode number
+        try:
+            from dashboard.shared_state import dashboard_state
+
+            dashboard_state.reset_episode_counters(episode_number=self.episode_number)
+        except ImportError:
+            pass  # Dashboard not available
 
         # Reset market simulator with adaptive randomization
         # Adjust randomization window based on pattern type and quality
@@ -457,14 +750,29 @@ class TradingEnvironment(gym.Env):
 
         # Reset simulators
         current_sim_time = initial_market_state.timestamp
+        # self.logger.debug(f"DEBUG: About to reset execution manager")
         self.execution_manager.reset(np_random_seed_source=self.np_random)
+        # self.logger.debug(f"DEBUG: Execution manager reset completed")
+
+        # self.logger.debug(f"DEBUG: About to reset portfolio manager at time {current_sim_time}")
         self.portfolio_manager.reset(session_start=current_sim_time)
+        # self.logger.debug(f"DEBUG: Portfolio manager reset completed")
+
+        # self.logger.debug(f"DEBUG: Getting initial capital from portfolio manager")
         self.initial_capital_for_session = self.portfolio_manager.initial_capital
+        # self.logger.debug(f"DEBUG: Set initial capital to {self.initial_capital_for_session}")
         # Ensure initial_capital_for_session is not None
         if self.initial_capital_for_session is None:
+            # self.logger.debug(f"DEBUG: Initial capital was None, using config value")
             self.initial_capital_for_session = self.config.simulation.initial_capital
+        # self.logger.debug(f"DEBUG: Setting episode peak equity to {self.initial_capital_for_session}")
         self.episode_peak_equity = self.initial_capital_for_session
+        # self.logger.debug(f"DEBUG: Episode peak equity set")
 
+        if hasattr(self.reward_calculator, "reset"):
+            # self.logger.debug(f"DEBUG: About to reset reward calculator")
+            self.reward_calculator.reset()
+            # self.logger.debug(f"DEBUG: Reward calculator reset completed")
 
         # Get initial observation using pre-calculated features
         # self.logger.debug(f"DEBUG: About to get initial observation")
@@ -508,8 +816,28 @@ class TradingEnvironment(gym.Env):
         # Update dashboard with quality metrics from reset point
         self._update_dashboard_quality_metrics(reset_point)
 
+        # Send initial chart data only when session changes (not every episode)
+        self._send_initial_chart_data()
 
         return self._last_observation, initial_info
+
+    def reset(
+        self, seed: Optional[int] = None, options: Optional[Dict] = None
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        """
+        Standard gym reset - defaults to first reset point.
+        For momentum training, use reset_at_point instead.
+        """
+        super().reset(seed=seed)
+        options = options or {}
+
+        if not self.market_simulator:
+            self.logger.error("Session not set up. Call setup_session first.")
+            return self._get_dummy_observation(), {"error": "Session not set up"}
+
+        # Use first reset point by default
+        reset_point_idx = options.get("reset_point_idx", 0)
+        return self.reset_at_point(reset_point_idx)
 
     def _get_observation(self) -> Optional[Dict[str, np.ndarray]]:
         """
@@ -1447,10 +1775,10 @@ class TradingEnvironment(gym.Env):
         """Send initial chart data to dashboard immediately to reduce display delay."""
         try:
             # Only send chart data when session date changes (not every episode)
-            if (self.current_session_date and 
+            if (self.current_session_date and
                 self.last_chart_data_session_date == self.current_session_date):
                 return  # Chart data already sent for this session
-                
+
             if not self.market_simulator or not hasattr(
                 self.market_simulator, "combined_bars_1m"
             ):
@@ -1498,7 +1826,7 @@ class TradingEnvironment(gym.Env):
 
                 dashboard_state.update_candle_data(candle_list)
                 self.last_chart_data_session_date = self.current_session_date  # Track when we sent data
-                
+
                 # Debug logging for chart data format
                 if candle_list:
                     sample_candle = candle_list[0]
