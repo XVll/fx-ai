@@ -5,13 +5,13 @@ import torch.nn.functional as F
 import numpy as np
 from typing import Dict, Tuple, Optional, Union
 
-from ai.layers import (
+from v2.model.layers import (
     PositionalEncoding,
     TransformerEncoderLayer,
     TransformerEncoder,
     AttentionFusion,
 )
-from config.config import ModelConfig
+from v2.config import Config
 
 
 class MultiBranchTransformer(nn.Module):
@@ -24,7 +24,7 @@ class MultiBranchTransformer(nn.Module):
 
     def __init__(
         self,
-        model_config: ModelConfig,
+        model_config,  # Config.model
         device: Union[str, torch.device] = None,
         logger: Optional[object] = None,  # Logger for debugging
     ):

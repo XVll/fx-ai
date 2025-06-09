@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+import copy
 
 
 class PositionalEncoding(nn.Module):
@@ -87,7 +88,10 @@ class TransformerEncoder(nn.Module):
 
     def __init__(self, encoder_layer, num_layers):
         super().__init__()
-        self.layers = nn.ModuleList([encoder_layer for _ in range(num_layers)])
+        # Create independent copies of the encoder layer
+        self.layers = nn.ModuleList([
+            copy.deepcopy(encoder_layer) for _ in range(num_layers)
+        ])
         self.norm = nn.LayerNorm(encoder_layer.norm1.normalized_shape[0])
 
     def forward(self, src, mask=None, src_key_padding_mask=None):

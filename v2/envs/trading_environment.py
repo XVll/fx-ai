@@ -23,14 +23,14 @@ from gymnasium import spaces
 from numpy.typing import NDArray
 
 from data.data_manager import DataManager
-from simulators.market_simulator import MarketSimulator
-from simulators.execution_simulator import ExecutionSimulator
-from simulators.portfolio_simulator import (
+from v2.simulators.market_simulator import MarketSimulator
+from v2.simulators.execution_simulator import ExecutionSimulator
+from v2.simulators.portfolio_simulator import (
     PortfolioSimulator, 
     PortfolioState,
     FillDetails,
 )
-from rewards.calculator import RewardSystem
+from v2.rewards.calculator import RewardSystem
 
 from v2.config import Config
 from v2.core.types import (
