@@ -91,7 +91,8 @@ class TrainingManager(IShutdownHandler):
         self.callback_manager.trigger_training_start(context)
 
         # Initialize environment with first episode
-        self._setup_next_episode()
+        if not self._setup_next_episode():
+            return self._finalize_training(TerminationReason.ERROR)
 
         termination_reason: TerminationReason | EpisodeTerminationReason = None;
         try:
@@ -128,16 +129,22 @@ class TrainingManager(IShutdownHandler):
 
                 # Advance to next episode if needed
                 if self._should_advance_episode(rollout_result):
+                    # Advance episode manager to next reset point
                     if not self._advance_episode_on_completion():
                         termination_reason = TerminationReason.DATA_EXHAUSTED
+                        break
+                    
+                    # Setup environment for the new episode
+                    if not self._setup_next_episode():
+                        self.logger.error("Failed to setup next episode")
+                        termination_reason = TerminationReason.ERROR
                         break
 
         except Exception as e:
             self.logger.error(f"🚨 Training error: {e}")
             termination_reason = TerminationReason.ERROR
 
-        self.callback_manager.trigger_training_end(self._create_training_end_context(termination_reason))
-        return None
+        return self._finalize_training(termination_reason)
 
     def should_terminate(self) -> bool:
         """Check if training should terminate."""
@@ -179,11 +186,38 @@ class TrainingManager(IShutdownHandler):
         return False
 
     def _setup_next_episode(self):
-        """Setup environment for next episode."""
-        # For now, simple reset - will be enhanced with episode manager integration
-        if self.environment:
-            self.environment.reset()
-            self.logger.debug("Environment reset for next episode")
+        """Setup environment for next episode using EpisodeManager configuration."""
+        if not self.episode_manager or not self.environment:
+            self.logger.error("Missing episode_manager or environment for episode setup")
+            return False
+        
+        # Get current episode configuration from EpisodeManager
+        episode_config = self.episode_manager.get_current_episode_config()
+        if not episode_config:
+            self.logger.error("Failed to get episode configuration from EpisodeManager")
+            return False
+        
+        try:
+            # Extract session info from episode config
+            day_info = episode_config['day_info']
+            symbol = day_info['symbol']
+            date = day_info['date']
+            reset_point_index = episode_config['reset_point_index']
+            
+            self.logger.info(f"🎯 Setting up episode: {symbol} {date} at reset point {reset_point_index}")
+            
+            # Setup trading session in environment
+            self.environment.setup_session(symbol, date)
+            
+            # Reset environment to specific reset point
+            initial_state, info = self.environment.reset_at_point(reset_point_index)
+            
+            self.logger.debug(f"✅ Episode setup complete: {symbol} {date} at reset point {reset_point_index}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to setup episode: {e}")
+            return False
 
     def _should_advance_episode(self, rollout_result) -> bool:
         """Determine if we should advance to next episode."""
@@ -204,9 +238,19 @@ class TrainingManager(IShutdownHandler):
         )
 
 
-    def _create_training_end_context(self, reason:TerminationReason | EpisodeTerminationReason) -> TrainingEndContext:
-        # Todo
-        pass
+    def _create_training_end_context(self, reason: TerminationReason | EpisodeTerminationReason) -> Optional[TrainingEndContext]:
+        """Create training end context for callbacks."""
+        try:
+            return TrainingEndContext(
+                termination_reason=reason,
+                final_metrics=self.trainer.get_training_metrics() if self.trainer else None,
+                total_episodes=self.state.episodes,
+                total_updates=self.state.updates,
+                total_cycles=self.state.cycles
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to create training end context: {e}")
+            return None
 
 
     def _create_episode_end_context(self, metrics=None, rollout_result=None, update_result=None) -> EpisodeEndContext:
@@ -227,3 +271,19 @@ class TrainingManager(IShutdownHandler):
         self.data_manager = None
 
         self.logger.info("✅ TrainingManager shutdown completed")
+    
+    def _finalize_training(self, termination_reason: TerminationReason | EpisodeTerminationReason):
+        """Finalize training with proper cleanup and callbacks."""
+        self.logger.info(f"🏁 Training finalized. Reason: {termination_reason}")
+        
+        # Trigger training end callback
+        context = self._create_training_end_context(termination_reason)
+        if self.callback_manager and context:
+            self.callback_manager.trigger_training_end(context)
+        
+        # Log final stats
+        if self.trainer:
+            metrics = self.trainer.get_training_metrics()
+            self.logger.info(f"📊 Final stats: {metrics.global_episodes} episodes, {metrics.global_updates} updates")
+        
+        return None

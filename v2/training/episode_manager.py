@@ -258,7 +258,7 @@ class EpisodeManager:
             self.logger.error(f"Failed to initialize episode manager: {e}")
             return False
     
-    def should_terminate_episode_manager(self) -> Optional[EpisodeTerminationReason]:
+    def should_terminate(self) -> Optional[EpisodeTerminationReason]:
         """Check if episode manager should terminate"""
         if self.state.should_terminate:
             return self.state.termination_reason

@@ -503,3 +503,131 @@ class PPOTrainer:
             )
         except Exception as e:
             self.logger.error(f"Error loading model from {path}: {e}")
+
+    def evaluate(self, environment, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
+        """
+        Evaluate model performance over multiple episodes.
+        
+        Args:
+            environment: TrainingEnvironment instance (v2 compatible)
+            n_episodes: Number of episodes to evaluate
+            deterministic: Whether to use deterministic actions
+            
+        Returns:
+            Dictionary with evaluation metrics
+        """
+        self.logger.info(f"🔍 Starting evaluation: {n_episodes} episodes (deterministic={deterministic})")
+        
+        # Set model to evaluation mode
+        was_training = self.model.training
+        self.model.eval()
+        
+        episode_rewards = []
+        episode_lengths = []
+        episode_details = []
+        
+        try:
+            for episode_idx in range(n_episodes):
+                self.logger.debug(f"Evaluation episode {episode_idx + 1}/{n_episodes}")
+                
+                # Get initial state from environment (should already be setup by caller)
+                current_state = environment.get_current_state()
+                if current_state is None:
+                    self.logger.warning(f"No initial state available for evaluation episode {episode_idx + 1}")
+                    break
+                
+                episode_reward = 0.0
+                episode_length = 0
+                done = False
+                
+                while not done:
+                    # Convert state to tensors for model
+                    state_tensors = self._convert_state_to_tensors(current_state)
+                    
+                    # Get action from model (deterministic or stochastic)
+                    with torch.no_grad():
+                        action_tensor, action_info = self.model.get_action(
+                            state_tensors, deterministic=deterministic
+                        )
+                    
+                    # Convert action for environment
+                    env_action = self._convert_action_for_env(action_tensor)
+                    
+                    # Take environment step
+                    try:
+                        next_state, reward, terminated, truncated, info = environment.step(env_action)
+                        done = terminated or truncated
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error during evaluation step: {e}")
+                        # Graceful degradation - end episode on error
+                        done = True
+                        reward = 0.0
+                        info = {}
+                    
+                    # Update episode tracking
+                    current_state = next_state
+                    episode_reward += reward
+                    episode_length += 1
+                    
+                    # Safety check for runaway episodes
+                    if episode_length > 10000:  # Configurable limit
+                        self.logger.warning(f"Episode {episode_idx + 1} exceeded length limit, terminating")
+                        done = True
+                
+                # Store episode results
+                episode_rewards.append(episode_reward)
+                episode_lengths.append(episode_length)
+                episode_details.append({
+                    "episode": episode_idx + 1,
+                    "reward": episode_reward,
+                    "length": episode_length,
+                    "final_info": info
+                })
+                
+                self.logger.debug(
+                    f"Episode {episode_idx + 1} complete: reward={episode_reward:.3f}, length={episode_length}"
+                )
+        
+        finally:
+            # Restore model training mode
+            if was_training:
+                self.model.train()
+        
+        # Calculate evaluation metrics
+        if episode_rewards:
+            eval_results = {
+                "n_episodes": len(episode_rewards),
+                "mean_reward": float(np.mean(episode_rewards)),
+                "std_reward": float(np.std(episode_rewards)),
+                "min_reward": float(np.min(episode_rewards)),
+                "max_reward": float(np.max(episode_rewards)),
+                "mean_length": float(np.mean(episode_lengths)),
+                "std_length": float(np.std(episode_lengths)),
+                "episode_rewards": episode_rewards,
+                "episode_lengths": episode_lengths,
+                "episode_details": episode_details
+            }
+        else:
+            # No episodes completed
+            eval_results = {
+                "n_episodes": 0,
+                "mean_reward": 0.0,
+                "std_reward": 0.0,
+                "min_reward": 0.0,
+                "max_reward": 0.0,
+                "mean_length": 0.0,
+                "std_length": 0.0,
+                "episode_rewards": [],
+                "episode_lengths": [],
+                "episode_details": []
+            }
+        
+        # Log comprehensive evaluation summary
+        self.logger.info("🔍 EVALUATION COMPLETE:")
+        self.logger.info(f"   📊 Episodes: {eval_results['n_episodes']}")
+        self.logger.info(f"   💰 Mean Reward: {eval_results['mean_reward']:.3f} ± {eval_results['std_reward']:.3f}")
+        self.logger.info(f"   📈 Range: [{eval_results['min_reward']:.3f}, {eval_results['max_reward']:.3f}]")
+        self.logger.info(f"   📏 Mean Length: {eval_results['mean_length']:.1f} ± {eval_results['std_length']:.1f}")
+        
+        return eval_results
