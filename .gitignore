@@ -66,11 +66,16 @@ logs/
 
 # Data files (keep your market data)
 # *.csv
-# *.parquet
 # *.h5
 # But keep the data structure
 !dnb/
 !dnb/**/*
+
+# Cache files
+*.parquet
+*.pkl
+cache/features/
+cache/indices/
 
 # Temporary files
 *.tmp
