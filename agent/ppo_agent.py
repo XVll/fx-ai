@@ -1,12 +1,10 @@
-import os
 import logging
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, Optional
 import torch.nn.functional as nnf
-from dataclasses import dataclass
 
 from agent.replay_buffer import ReplayBuffer
 from config import TrainingConfig
@@ -14,32 +12,14 @@ from model.transformer import MultiBranchTransformer
 from core.types import RolloutResult, UpdateResult
 
 
-@dataclass
-class TrainingMetrics:
-    """Current training metrics for TrainingManager visibility"""
-    global_steps: int
-    global_episodes: int
-    global_updates: int
-    last_episode_reward: float
-    last_episode_length: int
-    mean_episode_reward: float
-    policy_loss: float
-    value_loss: float
 
 
 class PPOTrainer:
     """
-    V2 PPOTrainer - Clean separation of concerns
-    
     Responsibilities:
-    - PPO algorithm implementation (rollout collection + policy updates)
+    - PPO algorithm implementation (rollout collection and policy updates)
     - Model training and optimization
     - Buffer management
-    
-    NOT responsible for:
-    - Environment management (handled by TrainingManager)
-    - Episode advancement decisions (handled by TrainingManager)
-    - Training termination (handled by TrainingManager)
     """
 
     def __init__(
@@ -63,21 +43,12 @@ class PPOTrainer:
         self.max_grad_norm = config.max_grad_norm
         self.ppo_epochs = config.n_epochs
         self.batch_size = config.batch_size
-        self.rollout_steps = config.rollout_steps
+        self.rollout_steps = config.training_manager.rollout_steps
 
         # Optimizer and buffer
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.buffer = ReplayBuffer(capacity=self.rollout_steps, device=self.device)
 
-        # Episode tracking (for internal metrics only - TrainingManager is source of truth)
-        self.recent_episode_rewards: List[float] = []
-        self.recent_episode_lengths: List[int] = []
-        self.last_episode_reward = 0.0
-        self.last_episode_length = 0
-        
-        # Training state
-        self.last_policy_loss = 0.0
-        self.last_value_loss = 0.0
 
         self.logger.info(f"🤖 V2 PPOTrainer initialized. Device: {self.device}")
 
@@ -92,7 +63,8 @@ class PPOTrainer:
         Returns:
             RolloutResult with rollout statistics and buffer readiness
         """
-        num_steps = num_steps or self.rollout_steps
+        if num_steps is None:
+            num_steps = self.rollout_steps
         self.buffer.clear()
         
         # Get initial state from environment (TrainingManager should have set this up)
@@ -102,23 +74,17 @@ class PPOTrainer:
                 steps_collected=0,
                 episodes_completed=0,
                 buffer_ready=False,
-                episode_rewards=[],
-                episode_lengths=[],
-                episode_metrics=[],
                 interrupted=True
             )
         
         collected_steps = 0
-        episode_rewards = []
-        episode_lengths = []
-        current_episode_reward = 0.0
-        current_episode_length = 0
+        episodes_completed = 0
         
-        while collected_steps < num_steps:
-            # Convert state to tensors for model
+        while num_steps is not None and collected_steps < num_steps:
+            # Convert state to tensors for a model
             state_tensors = self._convert_state_to_tensors(current_state)
             
-            # Get action from model
+            # Get action from a model
             with torch.no_grad():
                 action_tensor, action_info = self.model.get_action(
                     state_tensors, deterministic=False
@@ -146,31 +112,13 @@ class PPOTrainer:
                 action_info,
             )
             
-            # Update counters and state
+            # Update state and counters
             current_state = next_state
             collected_steps += 1
-            current_episode_reward += reward
-            current_episode_length += 1
             
             # Handle episode completion
             if done:
-                episode_rewards.append(current_episode_reward)
-                episode_lengths.append(current_episode_length)
-                
-                # Track for metrics
-                self.last_episode_reward = current_episode_reward
-                self.last_episode_length = current_episode_length
-                self.recent_episode_rewards.append(current_episode_reward)
-                self.recent_episode_lengths.append(current_episode_length)
-                
-                # Keep only recent episodes (last 100)
-                if len(self.recent_episode_rewards) > 100:
-                    self.recent_episode_rewards.pop(0)
-                    self.recent_episode_lengths.pop(0)
-                
-                # Reset episode tracking
-                current_episode_reward = 0.0
-                current_episode_length = 0
+                episodes_completed += 1
                 
                 # Get next episode state from environment 
                 # (TrainingManager handles episode advancement)
@@ -183,11 +131,8 @@ class PPOTrainer:
         
         return RolloutResult(
             steps_collected=collected_steps,
-            episodes_completed=len(episode_rewards),
+            episodes_completed=episodes_completed,
             buffer_ready=self.buffer.get_size() >= self.batch_size,
-            episode_rewards=episode_rewards,
-            episode_lengths=episode_lengths,
-            episode_metrics=[]  # Can be expanded later with additional metrics
         )
 
     def update_policy(self) -> UpdateResult:
@@ -202,7 +147,7 @@ class PPOTrainer:
                 policy_loss=0.0,
                 value_loss=0.0,
                 entropy_loss=0.0,
-                update_counter=0,  # TrainingManager tracks this
+                total_loss=0.0,
                 interrupted=True
             )
         
@@ -215,7 +160,7 @@ class PPOTrainer:
                 policy_loss=0.0,
                 value_loss=0.0,
                 entropy_loss=0.0,
-                update_counter=0,  # TrainingManager tracks this
+                total_loss=0.0,
                 interrupted=True
             )
         
@@ -234,13 +179,12 @@ class PPOTrainer:
                 policy_loss=0.0,
                 value_loss=0.0,
                 entropy_loss=0.0,
-                update_counter=0,  # TrainingManager tracks this
+                total_loss=0.0,
                 interrupted=True
             )
         
         indices = np.arange(num_samples)
-        total_actor_loss, total_critic_loss, total_entropy_loss = 0, 0, 0
-        num_updates_in_epoch = 0
+        actor_loss = critic_loss = entropy_loss = 0.0
         
         # PPO epochs
         for epoch in range(self.ppo_epochs):
@@ -318,51 +262,24 @@ class PPOTrainer:
                     nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
                 self.optimizer.step()
                 
-                # Track losses
-                total_actor_loss += actor_loss.item()
-                total_critic_loss += critic_loss.item()
-                total_entropy_loss += entropy_loss.item()
-                num_updates_in_epoch += 1
         
-        # Calculate averages
-        avg_actor_loss = total_actor_loss / max(1, num_updates_in_epoch)
-        avg_critic_loss = total_critic_loss / max(1, num_updates_in_epoch)
-        avg_entropy_loss = total_entropy_loss / max(1, num_updates_in_epoch)
-        
-        # Store for metrics
-        self.last_policy_loss = avg_actor_loss
-        self.last_value_loss = avg_critic_loss
-        
+        # Return last computed losses (already calculated for training)
         return UpdateResult(
-            policy_loss=avg_actor_loss,
-            value_loss=avg_critic_loss,
-            entropy_loss=avg_entropy_loss,
-            update_counter=0,  # TrainingManager tracks this
+            policy_loss=actor_loss.item(),
+            value_loss=critic_loss.item(),
+            entropy_loss=entropy_loss.item(),
+            total_loss=(actor_loss + critic_loss + entropy_loss).item(),
         )
 
-    def get_training_metrics(self) -> TrainingMetrics:
-        """Get current training metrics for TrainingManager visibility."""
-        mean_reward = np.mean(self.recent_episode_rewards) if self.recent_episode_rewards else 0.0
-        
-        return TrainingMetrics(
-            global_steps=0,  # TrainingManager tracks this
-            global_episodes=0,  # TrainingManager tracks this
-            global_updates=0,  # TrainingManager tracks this
-            last_episode_reward=self.last_episode_reward,
-            last_episode_length=self.last_episode_length,
-            mean_episode_reward=mean_reward,
-            policy_loss=self.last_policy_loss,
-            value_loss=self.last_value_loss,
-        )
 
     def _convert_state_to_tensors(self, state_dict: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
-        """Convert state dictionary to tensors for model."""
+        """Convert state dictionary to tensors for a model."""
         state_tensors = {}
         for key, np_array in state_dict.items():
             # Convert to tensor and add batch dimension if needed
             tensor = torch.as_tensor(np_array, dtype=torch.float32).to(self.device)
             
-            # Add batch dimension for model
+            # Add batch dimension for a model
             if key in ["hf", "mf", "lf", "portfolio"]:
                 if tensor.ndim == 2:  # [seq_len, feat_dim] -> [1, seq_len, feat_dim]
                     tensor = tensor.unsqueeze(0)
@@ -374,7 +291,8 @@ class PPOTrainer:
         
         return state_tensors
 
-    def _convert_action_for_env(self, action_tensor: torch.Tensor) -> Any:
+    @staticmethod
+    def _convert_action_for_env(action_tensor: torch.Tensor) -> Any:
         """Convert model action tensor to environment format."""
         if action_tensor.ndim > 0 and action_tensor.shape[-1] == 2:
             return action_tensor.cpu().numpy().squeeze().astype(int)
@@ -471,12 +389,13 @@ class PPOTrainer:
                 episode_reward = 0.0
                 episode_length = 0
                 done = False
+                info = {}  # Initialize info to handle edge cases
                 
                 while not done:
-                    # Convert state to tensors for model
+                    # Convert state to tensors for a model
                     state_tensors = self._convert_state_to_tensors(current_state)
                     
-                    # Get action from model (deterministic or stochastic)
+                    # Get action from a model (deterministic or stochastic)
                     with torch.no_grad():
                         action_tensor, action_info = self.model.get_action(
                             state_tensors, deterministic=deterministic
@@ -485,7 +404,7 @@ class PPOTrainer:
                     # Convert action for environment
                     env_action = self._convert_action_for_env(action_tensor)
                     
-                    # Take environment step
+                    # Take an environment step
                     try:
                         next_state, reward, terminated, truncated, info = environment.step(env_action)
                         done = terminated or truncated
@@ -493,6 +412,7 @@ class PPOTrainer:
                     except Exception as e:
                         self.logger.error(f"Error during evaluation step: {e}")
                         # Graceful degradation - end episode on error
+                        next_state = current_state  # Keep the current state
                         done = True
                         reward = 0.0
                         info = {}

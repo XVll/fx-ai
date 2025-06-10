@@ -267,13 +267,7 @@ class RolloutResult:
     steps_collected: int
     episodes_completed: int  
     buffer_ready: bool
-    episode_metrics: List[Any] = None
     interrupted: bool = False
-    
-    def __post_init__(self):
-        if self.episode_metrics is None:
-            self.episode_metrics = []
-
 
 @dataclass 
 class UpdateResult:
@@ -286,14 +280,9 @@ class UpdateResult:
     value_loss: float
     entropy_loss: float
     total_loss: float
-    learning_rate: float
-    clip_epsilon: float
-    batch_size: int
-    n_epochs: int
     kl_divergence: float = 0.0
     clip_fraction: float = 0.0
     gradient_norm: float = 0.0
     explained_variance: float = 0.0
     advantage_mean: float = 0.0
-    advantage_std: float = 0.0
     interrupted: bool = False
