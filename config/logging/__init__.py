@@ -1,5 +1,5 @@
 """Logging configuration module."""
 
-from .logging_config import LoggingConfig, WandbConfig
+from .logging_config import LoggingConfig
 
-__all__ = ["LoggingConfig", "WandbConfig"]
+__all__ = ["LoggingConfig"]
