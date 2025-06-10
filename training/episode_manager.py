@@ -181,13 +181,8 @@ class EpisodeManager:
 
         if not self.data_manager: return available_days
 
-        # Parse date range from config using pendulum
-        start_date = None
-        end_date = None
-
-        if not self.date_range or len(self.date_range) != 2:
-            self.logger.error(f"Invalid date range format: {self.date_range}")
-            return available_days
+        start_date: Date
+        end_date: Date
 
         try:
             start_date = pendulum.parse(self.date_range[0])
@@ -243,27 +238,23 @@ class EpisodeManager:
                 except Exception as e:
                     self.logger.warning(f"Failed to load reset points for {day_dict['symbol']} {day_dict['date']}: {e}")
 
-                # Validate required day fields - no fallback values for quality
                 if 'quality_score' not in day_dict or day_dict['quality_score'] is None:
                     self.logger.warning(f"Skipping day {day_dict['symbol']} {day_dict['date']} - missing quality_score")
-                    continue
-                if 'symbol' not in day_dict or not day_dict['symbol']:
-                    self.logger.warning(f"Skipping day - missing or empty symbol")
                     continue
 
                 # Convert date to string format using pendulum
                 try:
-                    date_str = pendulum.parse(day_dict['date'])
+                    day = pendulum.parse(day_dict['date'])
                 except Exception as e:
                     self.logger.warning(f"Skipping day {day_dict['symbol']} - invalid date format: {e}")
                     continue
 
                 if not reset_points:
-                    self.logger.warning(f"Skipping day {day_dict['symbol']} {date_str} - no valid reset points")
+                    self.logger.warning(f"Skipping day {day_dict['symbol']} {day} - no valid reset points")
                     continue
 
                 day_info = DayInfo(
-                    date=date_str,
+                    date=day,
                     symbol=day_dict['symbol'],
                     day_score=float(day_dict['quality_score']),
                     reset_points=reset_points
