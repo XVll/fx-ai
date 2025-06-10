@@ -6,7 +6,6 @@ Consolidated from DataLifecycleManager for v2 architecture.
 
 import random
 import logging
-from datetime import datetime
 from typing import Dict, Any, Optional, List, Set
 from dataclasses import dataclass, field
 from enum import Enum
@@ -14,8 +13,10 @@ from enum import Enum
 from pendulum import Date
 
 from core.utils import day_in_range
-
-import pendulum
+from core.utils.time_utils import (
+    to_date, format_date, now_utc, parse_market_timestamp,
+    DATE_FORMAT
+)
 
 from config.training.training_config import TrainingManagerConfig
 
@@ -48,7 +49,7 @@ class ResetPointInfo:
     activity_score: float
     price: float = 0.0
     used_count: int = 0
-    last_used: Optional[datetime] = None
+    last_used: Optional[str] = None  # Store as formatted string for consistency
     index: int = 0  # Index within the day for environment reset
 
     def meets_criteria(self, quality_range: List[float], roc_range: List[float],
@@ -62,12 +63,12 @@ class ResetPointInfo:
 @dataclass
 class DayInfo:
     """Information about a trading day"""
-    date: Date  # Keep as string for simplicity - YYYY-MM-DD format
+    date: Date  # Pendulum Date object
     symbol: str
     day_score: float
     reset_points: List[ResetPointInfo] = field(default_factory=list)
     used_count: int = 0
-    last_used: Optional[datetime] = None
+    last_used: Optional[str] = None  # Store as formatted string for consistency
 
     def get_available_reset_points(self, quality_range: List[float],
                                    roc_range: List[float], activity_range: List[float],
@@ -130,7 +131,7 @@ class EpisodeManagerState:
 class EpisodeContext:
     """Context for a training episode."""
     symbol: str
-    date: str
+    date: Date  # Pendulum Date object
     reset_point: ResetPointInfo
     day_info: DayInfo
 
@@ -181,19 +182,16 @@ class EpisodeManager:
 
         if not self.data_manager: return available_days
 
-        start_date: Date
-        end_date: Date
-
-        try:
-            start_date = pendulum.parse(self.date_range[0])
-            end_date = pendulum.parse(self.date_range[1])
-        except Exception as e:
-            self.logger.error(f"Invalid date range format: {self.date_range} - {e}")
+        start_date = to_date(self.date_range[0])
+        end_date = to_date(self.date_range[1])
+        
+        if not start_date or not end_date:
+            self.logger.error(f"Invalid date range format: {self.date_range}")
             return available_days
 
         self.logger.info("🔍 Loading momentum days with filters:")
         self.logger.info(f"   📊 Symbols: {self.symbols}")
-        self.logger.info(f"   📅 Date range: {start_date or 'None'} to {end_date or 'None'}")
+        self.logger.info(f"   📅 Date range: {format_date(start_date)} to {format_date(end_date)}")
 
         try:
             # Get momentum days from data manager
@@ -242,15 +240,14 @@ class EpisodeManager:
                     self.logger.warning(f"Skipping day {day_dict['symbol']} {day_dict['date']} - missing quality_score")
                     continue
 
-                # Convert date to string format using pendulum
-                try:
-                    day = pendulum.parse(day_dict['date'])
-                except Exception as e:
-                    self.logger.warning(f"Skipping day {day_dict['symbol']} - invalid date format: {e}")
+                # Convert date string to Date object
+                day = to_date(day_dict['date'])
+                if not day:
+                    self.logger.warning(f"Skipping day {day_dict['symbol']} - invalid date format: {day_dict['date']}")
                     continue
 
                 if not reset_points:
-                    self.logger.warning(f"Skipping day {day_dict['symbol']} {day} - no valid reset points")
+                    self.logger.warning(f"Skipping day {day_dict['symbol']} {format_date(day)} - no valid reset points")
                     continue
 
                 day_info = DayInfo(
@@ -281,7 +278,7 @@ class EpisodeManager:
                 reset_count = len(self.state.ordered_reset_points)
                 quality = self.state.current_day.day_score
 
-                self.logger.info(f"📅 Selected: {symbol} {day_date} (quality: {quality:.3f})")
+                self.logger.info(f"📅 Selected: {symbol} {format_date(day_date)} (quality: {quality:.3f})")
                 self.logger.info(f"🔄 Reset points: {reset_count} available")
             return True
         except Exception as e:
@@ -360,7 +357,7 @@ class EpisodeManager:
         """Force termination of episode manager"""
         self.state.should_terminate = True
         self.state.termination_reason = reason
-        self.logger.info(f"🛑 Episode manager terminated: {reason.value}")
+        self.logger.info(f"🛑 Force terminating episode manager: {reason.value}")
 
     # Private methods for internal logic
 
@@ -393,19 +390,19 @@ class EpisodeManager:
         self.state.reset_for_new_day()
         self.state.current_day = next_day
 
-        # Track usage
-        self.state.used_days.add(next_day.date)
+        # Track usage - convert Date to string for set storage
+        self.state.used_days.add(format_date(next_day.date))
 
         # Initialize reset points for this day
         if not self._initialize_reset_points_for_day(next_day):
-            self.logger.warning(f"Failed to initialize reset points for day {next_day.date}")
+            self.logger.warning(f"Failed to initialize reset points for day {format_date(next_day.date)}")
             return False
 
         # Get first reset point
         if not self._advance_to_next_reset_point():
             return False
 
-        self.logger.info(f"🏙️ Advanced to new day: {next_day.date} ({next_day.symbol})")
+        self.logger.info(f"🏙️ Advanced to new day: {format_date(next_day.date)} ({next_day.symbol})")
         return True
 
     def _select_day(self) -> Optional[DayInfo]:
@@ -429,7 +426,7 @@ class EpisodeManager:
                             if available_rps:
                                 filtered_days.append(day)
             except Exception as e:
-                self.logger.warning(f"Error filtering day {day.date}: {e}")
+                self.logger.warning(f"Error filtering day {format_date(day.date)}: {e}")
                 continue
 
         if not filtered_days:
@@ -438,7 +435,7 @@ class EpisodeManager:
 
         # Remove recently used days (unless using random mode)
         if self.day_selection_mode != SelectionMode.RANDOM:
-            unused_days = [day for day in filtered_days if day.date not in self.state.used_days]
+            unused_days = [day for day in filtered_days if format_date(day.date) not in self.state.used_days]
             if unused_days:
                 filtered_days = unused_days
             else:
@@ -455,19 +452,19 @@ class EpisodeManager:
             selected = filtered_days[0]
         else:  # SEQUENTIAL
             # Sort by date (earliest first)
-            filtered_days.sort(key=lambda day: pendulum.parse(day.date))
+            filtered_days.sort(key=lambda day: day.date)
             selected = filtered_days[0]
 
         # Mark as used
         selected.used_count += 1
-        selected.last_used = datetime.now()
+        selected.last_used = format_date(now_utc().date())  # Store as date string
 
         return selected
 
     def _initialize_reset_points_for_day(self, day: DayInfo) -> bool:
         """Initialize reset point order for a new day"""
         if not day or not day.reset_points:
-            self.logger.error(f"Invalid day info or no reset points: {day}")
+            self.logger.error(f"Invalid day info or no reset points: {format_date(day.date) if day else 'None'}")
             return False
 
         # Get all suitable reset points
@@ -481,7 +478,7 @@ class EpisodeManager:
                 continue
 
         if not available:
-            self.logger.warning(f"No suitable reset points for day {day.date}")
+            self.logger.warning(f"No suitable reset points for day {format_date(day.date)}")
             # Fallback: use all reset points if none meet criteria
             if day.reset_points:
                 self.logger.info("Using all available reset points as fallback")
@@ -505,7 +502,7 @@ class EpisodeManager:
         self.state.current_reset_point_index = 0
 
         self.logger.info(
-            f"🔄 Initialized {len(self.state.ordered_reset_points)} reset points for day {day.date} in {self.reset_point_selection_mode.value} mode")
+            f"🔄 Initialized {len(self.state.ordered_reset_points)} reset points for day {format_date(day.date)} in {self.reset_point_selection_mode.value} mode")
         return True
 
     def _advance_to_next_reset_point(self) -> bool:

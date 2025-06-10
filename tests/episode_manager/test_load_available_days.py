@@ -163,7 +163,7 @@ class TestLoadAvailableDays:
         momentum_days = [
             {
                 'symbol': 'AAPL',
-                'date': 'invalid-date-format',
+                'date': 'not-a-real-date-at-all',  # Truly invalid date
                 'quality_score': 0.75
             },
             {
@@ -177,7 +177,7 @@ class TestLoadAvailableDays:
         
         result = episode_manager._load_available_days()
         
-        # Only TSLA should be included
+        # Invalid dates should be skipped
         assert len(result) == 1
         assert result[0].symbol == "TSLA"
 
@@ -322,8 +322,8 @@ class TestLoadAvailableDays:
         # Verify get_all_momentum_days was called with correct parameters
         mock_data_manager.get_all_momentum_days.assert_called_once_with(
             symbols=["AAPL", "TSLA"],
-            start_date=pendulum.parse("2024-01-01"),
-            end_date=pendulum.parse("2024-01-31")
+            start_date=pendulum.parse("2024-01-01").date(),
+            end_date=pendulum.parse("2024-01-31").date()
         )
         
         # Verify get_reset_points was called for each day
@@ -349,8 +349,8 @@ class TestLoadAvailableDays:
         
         assert result == []
 
-    def test_datetime_objects_in_date_field_are_skipped(self, mock_config, mock_data_manager):
-        """Test that datetime objects in date field are skipped due to pendulum parsing issue."""
+    def test_datetime_objects_in_date_field_are_handled(self, mock_config, mock_data_manager):
+        """Test that datetime objects in date field are properly handled by to_date()."""
         momentum_days = [
             {
                 'symbol': 'AAPL',
@@ -363,8 +363,9 @@ class TestLoadAvailableDays:
         
         result = episode_manager._load_available_days()
         
-        # Should be skipped due to pendulum parsing error
-        assert len(result) == 0
+        # Should be handled correctly by to_date() which converts datetime to date
+        assert len(result) == 1
+        assert result[0].date == pendulum.date(2024, 1, 15)
 
     def test_large_dataset_performance(self, mock_config, mock_data_manager):
         """Test performance with larger dataset."""
