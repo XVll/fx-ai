@@ -46,6 +46,7 @@ class ResetPointInfo:
     price: float = 0.0
     used_count: int = 0
     last_used: Optional[datetime] = None
+    index: int = 0  # Index within the day for environment reset
     
     def meets_criteria(self, quality_range: List[float], roc_range: List[float], 
                       activity_range: List[float]) -> bool:
@@ -215,13 +216,14 @@ class EpisodeManager:
                             day_dict['symbol'], day_dict['date']
                         )
                         # Convert reset points to ResetPointInfo objects
-                        for _, rp_row in reset_points_df.iterrows():
+                        for idx, (_, rp_row) in enumerate(reset_points_df.iterrows()):
                             reset_point = ResetPointInfo(
                                 timestamp=str(rp_row['timestamp']),
                                 quality_score=rp_row.get('combined_score', 0.5),
                                 roc_score=rp_row.get('roc_score', 0.0),
                                 activity_score=rp_row.get('activity_score', 0.5),
-                                price=rp_row.get('price', 0.0)
+                                price=rp_row.get('price', 0.0),
+                                index=idx  # Set the index
                             )
                             reset_points.append(reset_point)
                     except Exception as e:

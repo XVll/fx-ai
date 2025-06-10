@@ -11,27 +11,7 @@ from dataclasses import dataclass
 from agent.replay_buffer import ReplayBuffer
 from config import TrainingConfig
 from model.transformer import MultiBranchTransformer
-
-
-@dataclass
-class RolloutResult:
-    """Result from collecting rollout data"""
-    collected_steps: int
-    episode_rewards: List[float]
-    episode_lengths: List[int]
-    total_episodes: int
-    buffer_ready: bool
-    interrupted: bool = False
-
-
-@dataclass  
-class UpdateResult:
-    """Result from policy update"""
-    policy_loss: float
-    value_loss: float
-    entropy_loss: float
-    update_counter: int
-    interrupted: bool = False
+from core.types import RolloutResult, UpdateResult
 
 
 @dataclass
@@ -89,12 +69,7 @@ class PPOTrainer:
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.buffer = ReplayBuffer(capacity=self.rollout_steps, device=self.device)
 
-        # Training counters
-        self.global_step_counter = 0
-        self.global_episode_counter = 0
-        self.global_update_counter = 0
-        
-        # Episode tracking
+        # Episode tracking (for internal metrics only - TrainingManager is source of truth)
         self.recent_episode_rewards: List[float] = []
         self.recent_episode_lengths: List[int] = []
         self.last_episode_reward = 0.0
@@ -124,11 +99,12 @@ class PPOTrainer:
         current_state = environment.get_current_state()
         if current_state is None:
             return RolloutResult(
-                collected_steps=0,
+                steps_collected=0,
+                episodes_completed=0,
+                buffer_ready=False,
                 episode_rewards=[],
                 episode_lengths=[],
-                total_episodes=0,
-                buffer_ready=False,
+                episode_metrics=[],
                 interrupted=True
             )
         
@@ -175,11 +151,9 @@ class PPOTrainer:
             collected_steps += 1
             current_episode_reward += reward
             current_episode_length += 1
-            self.global_step_counter += 1
             
             # Handle episode completion
             if done:
-                self.global_episode_counter += 1
                 episode_rewards.append(current_episode_reward)
                 episode_lengths.append(current_episode_length)
                 
@@ -208,11 +182,12 @@ class PPOTrainer:
         self.buffer.prepare_data_for_training()
         
         return RolloutResult(
-            collected_steps=collected_steps,
-            episode_rewards=episode_rewards,
-            episode_lengths=episode_lengths, 
-            total_episodes=len(episode_rewards),
+            steps_collected=collected_steps,
+            episodes_completed=len(episode_rewards),
             buffer_ready=self.buffer.get_size() >= self.batch_size,
+            episode_rewards=episode_rewards,
+            episode_lengths=episode_lengths,
+            episode_metrics=[]  # Can be expanded later with additional metrics
         )
 
     def update_policy(self) -> UpdateResult:
@@ -227,7 +202,7 @@ class PPOTrainer:
                 policy_loss=0.0,
                 value_loss=0.0,
                 entropy_loss=0.0,
-                update_counter=self.global_update_counter,
+                update_counter=0,  # TrainingManager tracks this
                 interrupted=True
             )
         
@@ -240,7 +215,7 @@ class PPOTrainer:
                 policy_loss=0.0,
                 value_loss=0.0,
                 entropy_loss=0.0,
-                update_counter=self.global_update_counter,
+                update_counter=0,  # TrainingManager tracks this
                 interrupted=True
             )
         
@@ -259,7 +234,7 @@ class PPOTrainer:
                 policy_loss=0.0,
                 value_loss=0.0,
                 entropy_loss=0.0,
-                update_counter=self.global_update_counter,
+                update_counter=0,  # TrainingManager tracks this
                 interrupted=True
             )
         
@@ -349,9 +324,6 @@ class PPOTrainer:
                 total_entropy_loss += entropy_loss.item()
                 num_updates_in_epoch += 1
         
-        # Update counter and metrics
-        self.global_update_counter += 1
-        
         # Calculate averages
         avg_actor_loss = total_actor_loss / max(1, num_updates_in_epoch)
         avg_critic_loss = total_critic_loss / max(1, num_updates_in_epoch)
@@ -365,7 +337,7 @@ class PPOTrainer:
             policy_loss=avg_actor_loss,
             value_loss=avg_critic_loss,
             entropy_loss=avg_entropy_loss,
-            update_counter=self.global_update_counter,
+            update_counter=0,  # TrainingManager tracks this
         )
 
     def get_training_metrics(self) -> TrainingMetrics:
@@ -373,9 +345,9 @@ class PPOTrainer:
         mean_reward = np.mean(self.recent_episode_rewards) if self.recent_episode_rewards else 0.0
         
         return TrainingMetrics(
-            global_steps=self.global_step_counter,
-            global_episodes=self.global_episode_counter,
-            global_updates=self.global_update_counter,
+            global_steps=0,  # TrainingManager tracks this
+            global_episodes=0,  # TrainingManager tracks this
+            global_updates=0,  # TrainingManager tracks this
             last_episode_reward=self.last_episode_reward,
             last_episode_length=self.last_episode_length,
             mean_episode_reward=mean_reward,
@@ -472,9 +444,7 @@ class PPOTrainer:
                 {
                     "model_state_dict": self.model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
-                    "global_step_counter": self.global_step_counter,
-                    "global_episode_counter": self.global_episode_counter,
-                    "global_update_counter": self.global_update_counter,
+                    # TrainingManager handles global counters
                 },
                 path,
             )

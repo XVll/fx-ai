@@ -191,7 +191,7 @@ class TrainingManager(IShutdownHandler):
             self.environment.setup_session(symbol, date)
             
             # Reset environment to specific reset point
-            initial_state, info = self.environment.reset_at_point(reset_point.index if hasattr(reset_point, 'index') else 0)
+            initial_state, info = self.environment.reset_at_point(reset_point.index)
             
             self.logger.debug(f"✅ Episode setup complete: {symbol} {date}")
             return True

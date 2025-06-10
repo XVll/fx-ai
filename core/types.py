@@ -8,7 +8,7 @@ across all components of the system.
 from typing import TypedDict, NewType, Union, Any, Protocol, TypeVar, Generic, List, Optional
 from datetime import datetime
 from enum import Enum, IntEnum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -98,15 +98,39 @@ class TerminationReason(Enum):
     MAX_UPDATES_REACHED = "MAX_UPDATES_REACHED"
     MAX_CYCLES_REACHED = "MAX_CYCLES_REACHED"
     PERFORMANCE_PLATEAU = "PERFORMANCE_PLATEAU"
-    PERFORMANCE_DEGRADATION = "PERFORMANCE_DEGRADATION"
-    USER_INTERRUPT = "USER_INTERRUPT"
-    SHUTDOWN_REQUESTED = "SHUTDOWN_REQUESTED"
-    TRAINER_STOPPED = "TRAINER_STOPPED"
-    DATA_EXHAUSTED = "DATA_EXHAUSTED"
-    TRAINING_ERROR = "TRAINING_ERROR"
-    EPISODE_MANAGER_FAILED = "EPISODE_MANAGER_FAILED"
-    ENVIRONMENT_SETUP_FAILED = "ENVIRONMENT_SETUP_FAILED"
-    NO_MORE_DATA = "NO_MORE_DATA"
+
+
+class TerminationReasonEnum(Enum):
+    """Episode termination reasons for environment."""
+    BANKRUPTCY = "bankruptcy"
+    MAX_LOSS_REACHED = "max_loss_reached"
+    END_OF_SESSION_DATA = "end_of_session_data"
+    MAX_STEPS_REACHED = "max_steps_reached"
+    MAX_DURATION = "max_duration"
+    OBSERVATION_FAILURE = "observation_failure"
+    ERROR = "error"
+
+
+@dataclass
+class RolloutResult:
+    """Result from collecting rollout data."""
+    steps_collected: int
+    episodes_completed: int
+    buffer_ready: bool
+    episode_rewards: List[float]
+    episode_lengths: List[int]
+    episode_metrics: List[Any] = field(default_factory=list)  # For additional metrics if needed
+    interrupted: bool = False
+
+
+@dataclass  
+class UpdateResult:
+    """Result from policy update."""
+    policy_loss: float
+    value_loss: float
+    entropy_loss: float
+    update_counter: int
+    interrupted: bool = False
 
 
 class ActionTypeEnum(Enum):
@@ -131,18 +155,6 @@ class PositionSizeTypeEnum(Enum):
         return (self.value + 1) * 0.25
 
 
-class TerminationReasonEnum(Enum):
-    """Reasons for episode termination."""
-
-    END_OF_SESSION_DATA = "END_OF_SESSION_DATA"
-    MAX_LOSS_REACHED = "MAX_LOSS_REACHED"
-    BANKRUPTCY = "BANKRUPTCY"
-    MAX_STEPS_REACHED = "MAX_STEPS_REACHED"
-    OBSERVATION_FAILURE = "OBSERVATION_FAILURE"
-    SETUP_FAILURE = "SETUP_FAILURE"
-    INVALID_ACTION_LIMIT_REACHED = "INVALID_ACTION_LIMIT_REACHED"
-    MARKET_CLOSE = "MARKET_CLOSE"
-    MAX_DURATION = "MAX_DURATION"
 class RunMode(Enum):
     """System execution modes.
     
