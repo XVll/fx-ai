@@ -535,23 +535,7 @@ class EpisodeManager:
         self.state.used_reset_points.add(reset_point.timestamp)
         
         return True
-    
-    def start(self, symbols: List[str], date_range: List[Optional[str]], daily_limits: Dict[str, Optional[int]]) -> bool:
-        """Start the episode manager with its own day/reset point management loop."""
-        try:
-            # Update configuration from parameters
-            self.symbols = symbols
-            self.date_range = date_range
-            self.daily_max_episodes = daily_limits.get('max_episodes')
-            self.daily_max_updates = daily_limits.get('max_updates')
-            self.daily_max_cycles = daily_limits.get('max_cycles')
-            
-            # Initialize with first day
-            return self.initialize()
-        except Exception as e:
-            self.logger.error(f"Failed to start episode manager: {e}")
-            return False
-    
+
     def get_next_episode(self) -> Optional[EpisodeContext]:
         """Get next episode context, handling day/reset point transitions internally."""
         
@@ -575,7 +559,7 @@ class EpisodeManager:
             day_info=self.state.current_day
         )
     
-    def on_episodes_completed(self, count: int, metrics: List[Any]):
+    def on_episodes_completed(self, count: int):
         """Handle notification of completed episodes."""
         self.state.current_day_episodes += count
         self.state.episodes_in_current_day += count

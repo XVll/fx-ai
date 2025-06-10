@@ -217,6 +217,7 @@ class ModelManager:
                 "global_step": checkpoint.get("global_step_counter", 0),
                 "global_episode": checkpoint.get("global_episode_counter", 0),
                 "global_update": checkpoint.get("global_update_counter", 0),
+                "global_cycle": checkpoint.get("global_cycle_counter", 0),
                 "metadata": metadata,
             }
 
@@ -233,6 +234,7 @@ class ModelManager:
         global_step_counter: int,
         global_episode_counter: int,
         global_update_counter: int,
+        global_cycle_counter: int,
         metadata: Dict[str, Any],
         checkpoint_path: Optional[str] = None,
     ) -> str:
@@ -247,6 +249,7 @@ class ModelManager:
                 "global_step_counter": global_step_counter,
                 "global_episode_counter": global_episode_counter,
                 "global_update_counter": global_update_counter,
+                "global_cycle_counter": global_cycle_counter,
                 "metadata": metadata,
                 "timestamp": datetime.now().isoformat(),
             }
@@ -291,6 +294,7 @@ class ModelManager:
                 "global_step": checkpoint.get("global_step_counter", 0),
                 "global_episode": checkpoint.get("global_episode_counter", 0),
                 "global_update": checkpoint.get("global_update_counter", 0),
+                "global_cycle": checkpoint.get("global_cycle_counter", 0),
                 "metadata": checkpoint.get("metadata", {}),
                 "timestamp": checkpoint.get("timestamp", ""),
             }

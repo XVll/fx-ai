@@ -25,16 +25,14 @@ class TrainingMode(Enum):
 @dataclass
 class TrainingState:
     """Training state - a single source of truth for all training progress"""
+    initial_model_metadata: Dict[str, Any] = None
     # Global counters (authoritative)
-    total_episodes: int = 0
-    total_updates: int = 0
-    total_cycles: int = 0
     global_steps: int = 0
+    global_episodes: int = 0
+    global_updates: int = 0
+    global_cycles: int = 0
 
-    # Training session info
-    session_start_time: Optional[datetime] = None
-    last_update_time: Optional[datetime] = None
-    last_episode_time: Optional[datetime] = None
+    start_timestamp: datetime = datetime.now()
 
 
 class TrainingManager(IShutdownHandler):
@@ -53,11 +51,8 @@ class TrainingManager(IShutdownHandler):
         self.mode = TrainingMode(config.mode)
         self.logger = logging.getLogger(f"{__name__}.TrainingManager")
 
-        # Context parameters
-        self.start_timestamp = datetime.now()
-
         # Core state - single source of truth
-        self.state = TrainingState(session_start_time=self.start_timestamp)
+        self.state = TrainingState()
         self.termination_reason: Optional[str] = None
 
         # Component references (set during start)
@@ -69,8 +64,7 @@ class TrainingManager(IShutdownHandler):
 
         self.logger.info(f"🎯 TrainingManager initialized in {self.mode.value} mode as single source of truth")
 
-
-    def start(self, trainer: PPOTrainer, environment: TradingEnvironment, data_manager: DataManager, callback_manager: CallbackManager) -> None:
+    def start(self, trainer: PPOTrainer, environment: TradingEnvironment, data_manager: DataManager, callback_manager: CallbackManager):
         """Start the main training loop with distributed loop design and single source of truth."""
 
         self.logger.info(f"🎯 TRAINING LIFECYCLE STARTUP")
@@ -83,21 +77,13 @@ class TrainingManager(IShutdownHandler):
         self.callback_manager = callback_manager
 
         # Handle model loading if continuing training
-        loaded_metadata = self._load_model()
+        self.state.initial_model_metadata = self._load_model()
 
         # Create episode manager with its own loop
         self.episode_manager = EpisodeManager(self.config, self.data_manager)
 
-        # Start episode manager (it manages day/reset point loops internally)
-        if not self.episode_manager.start(
-                symbols=self.config.symbols,
-                date_range=self.config.date_range,
-                daily_limits={
-                    'max_episodes': self.config.daily_max_episodes,
-                    'max_updates': self.config.daily_max_updates,
-                    'max_cycles': self.config.daily_max_cycles
-                }
-        ):
+        # Initialize episode manager (it manages day/reset point loops internally)
+        if not self.episode_manager.initialize():
             return self._finalize_training("episode_manager_failed")
 
         # Initialize callbacks
@@ -129,7 +115,7 @@ class TrainingManager(IShutdownHandler):
 
                 # 4. Update state (TrainingManager is source of truth)
                 self.state.global_steps += rollout_result.steps_collected
-                self.state.total_episodes += rollout_result.episodes_completed
+                self.state.global_episodes += rollout_result.episodes_completed
                 if rollout_result.episodes_completed > 0:
                     self.state.last_episode_time = datetime.now()
 
@@ -138,7 +124,7 @@ class TrainingManager(IShutdownHandler):
                     update_info: UpdateResult = self.trainer.update_policy()  # Pure execution
 
                     # Update state (single source of truth)
-                    self.state.total_updates += 1
+                    self.state.global_updates += 1
                     self.state.last_update_time = datetime.now()
 
                     # Notify episode manager about update
@@ -149,10 +135,7 @@ class TrainingManager(IShutdownHandler):
 
                 # 6. Notify episode manager about episode completions
                 if rollout_result.episodes_completed > 0:
-                    self.episode_manager.on_episodes_completed(
-                        count=rollout_result.episodes_completed,
-                        metrics=getattr(rollout_result, 'episode_metrics', [])
-                    )
+                    self.episode_manager.on_episodes_completed(count=rollout_result.episodes_completed)
 
                     # Trigger episode callbacks (for intelligent management)
                     self._trigger_episode_callbacks(rollout_result)
@@ -161,7 +144,7 @@ class TrainingManager(IShutdownHandler):
             self.logger.error(f"🚨 Training error: {e}", exc_info=True)
             self.termination_reason = "error"
 
-        return self._finalize_training(self.termination_reason)
+        self._finalize_training(self.termination_reason)
 
     def _setup_environment_with_context(self, episode_context) -> bool:
         """Setup environment with episode context from episode manager."""
@@ -201,7 +184,7 @@ class TrainingManager(IShutdownHandler):
     def _trigger_update_callbacks(self, update_info):
         """Trigger callbacks for policy updates - minimal for now."""
         if self.callback_manager:
-            self.logger.debug(f"Update completed: {self.state.total_updates}")
+            self.logger.debug(f"Update completed: {self.state.global_updates}")
 
     def _trigger_episode_callbacks(self, rollout_result):
         """Trigger callbacks for episode completions - minimal for now."""
@@ -212,15 +195,15 @@ class TrainingManager(IShutdownHandler):
         """Check if training should terminate based on global limits."""
         # Note: Intelligent termination will be handled by callbacks
 
-        if self.config.termination_max_episodes and self.state.total_episodes >= self.config.termination_max_episodes:
+        if self.config.termination_max_episodes and self.state.global_episodes >= self.config.termination_max_episodes:
             self.termination_reason = f"max_episodes_reached_{self.config.termination_max_episodes}"
             return True
 
-        if self.config.termination_max_updates and self.state.total_updates >= self.config.termination_max_updates:
+        if self.config.termination_max_updates and self.state.global_updates >= self.config.termination_max_updates:
             self.termination_reason = f"max_updates_reached_{self.config.termination_max_updates}"
             return True
 
-        if self.config.termination_max_cycles and self.state.total_cycles >= self.config.termination_max_cycles:
+        if self.config.termination_max_cycles and self.state.global_cycles >= self.config.termination_max_cycles:
             self.termination_reason = f"max_cycles_reached_{self.config.termination_max_cycles}"
             return True
 
@@ -291,33 +274,23 @@ class TrainingManager(IShutdownHandler):
     def _should_advance_episode(self, rollout_result) -> bool:
         """Determine if we should advance to next episode."""
         # For now, advance if any episodes completed in rollout
-        return rollout_result.total_episodes > 0
+        return rollout_result.global_episodes > 0
 
     def _create_training_start_context(self) -> TrainingStartContext:
         """Create training start context for callbacks."""
         return TrainingStartContext(
-            config=self.config,
-            trainer=self.trainer,
-            environment=self.environment,
-            model=self.trainer.model,
-            timestamp=self.start_timestamp
+            timestamp=self.state.start_timestamp,
         )
 
     def _create_training_end_context(self, reason: str) -> Optional[TrainingEndContext]:
         """Create training end context for callbacks."""
         try:
-            from datetime import timedelta
-            duration = datetime.now() - self.state.session_start_time if self.state.session_start_time else timedelta(0)
-
             return TrainingEndContext(
-                final_metrics=None,  # Will be populated by callbacks if needed
-                total_episodes=self.state.total_episodes,
-                total_updates=self.state.total_updates,
-                duration=duration,
+                global_episodes=self.state.global_episodes,
+                global_updates=self.state.global_updates,
+                global_steps=self.state.global_steps,
+                global_cycles=self.state.global_cycles,
                 reason=reason,
-                best_reward=0.0,  # Will be populated by callbacks if needed
-                average_reward=0.0,  # Will be populated by callbacks if needed
-                timestamp=datetime.now()
             )
         except Exception as e:
             self.logger.warning(f"Failed to create training end context: {e}")
@@ -349,7 +322,7 @@ class TrainingManager(IShutdownHandler):
 
     def _finalize_training(self, termination_reason: Optional[str]):
         """Finalize training with proper cleanup and callbacks."""
-        reason_str = termination_reason or "unknown"
+        reason_str = termination_reason or "UNKNOWN"
         self.logger.info(f"🏁 Training finalized. Reason: {reason_str}")
 
         # Minimal callback triggering for now
@@ -358,8 +331,9 @@ class TrainingManager(IShutdownHandler):
             if context:
                 self.callback_manager.trigger_training_end(context)
 
-        # Log final stats from authoritative source
-        self.logger.info(f"📊 Final stats: {self.state.total_episodes} episodes, {self.state.total_updates} updates, {self.state.global_steps} steps")
+        # Log final stats from an authoritative source
+        self.logger.info(
+            f"📊 Final stats: {self.state.global_cycles} cycles,{self.state.global_updates} updates,{self.state.global_episodes} episodes, ""{self.state.global_steps} steps")
 
         return None
 
@@ -367,7 +341,7 @@ class TrainingManager(IShutdownHandler):
         """Handle model loading if continuing training."""
         loaded_metadata = {}
 
-        if self.config.continue_training:
+        if self.config.continue_with_best_model:
             best_model_info = self.model_manager.find_best_model()
             if best_model_info:
                 self.logger.info(f"📂 Loading best model: {best_model_info['path']}")
@@ -378,15 +352,15 @@ class TrainingManager(IShutdownHandler):
                     self.trainer.optimizer,
                     best_model_info["path"]
                 )
-
+                # Todo : We should use typed model state and metadata, both here and model_manager
                 # Restore training state (TrainingManager is source of truth)
                 self.state.global_steps = model_state.get("global_step", 0)
-                self.state.total_episodes = model_state.get("global_episode", 0)
-                self.state.total_updates = model_state.get("global_update", 0)
-
-                # Trainer doesn't track state - no counters to restore
+                self.state.global_episodes = model_state.get("global_episode", 0)
+                self.state.global_updates = model_state.get("global_update", 0)
+                self.state.global_cycles = model_state.get("global_cycle", 0)
 
                 loaded_metadata = model_state.get("metadata", {})
+
                 self.logger.info(f"✅ Model loaded: step={model_state.get('global_step', 0)}")
             else:
                 self.logger.info("🆕 No previous model found. Starting fresh.")

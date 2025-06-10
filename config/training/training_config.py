@@ -57,7 +57,7 @@ class TrainingManagerConfig:
 
     # Model management
     best_model_metric: str = "mean_reward"           # Metric for best model selection
-    continue_training: bool = False                  # Continue from best saved model
+    continue_with_best_model: bool = True                 # Continue from best saved model
     keep_best_n_models: int = 5                      # Number of best models to keep
     checkpoint_frequency: Optional[int] = 25         # Updates between checkpoints (None to disable)
 

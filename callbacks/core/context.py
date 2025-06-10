@@ -109,12 +109,8 @@ class PerformanceMetrics(BaseModel):
 
 class TrainingStartContext(BaseModel):
     """Context for training start event."""
-    config: Any = Field(description="Training configuration")
-    trainer: Any = Field(description="PPO trainer instance")
-    environment: Any = Field(description="Trading environment")
-    model: Any = Field(description="Neural network model")
     timestamp: datetime = Field(default_factory=datetime.now, description="Training start time")
-    
+
     class Config:
         arbitrary_types_allowed = True
 
@@ -149,14 +145,11 @@ class UpdateEndContext(BaseModel):
 
 class TrainingEndContext(BaseModel):
     """Context for training end event."""
-    final_metrics: TradingMetrics = Field(description="Final training metrics")
-    total_episodes: int = Field(description="Total episodes completed")
-    total_updates: int = Field(description="Total updates completed")
-    duration: timedelta = Field(description="Training duration")
+    global_episodes: int = Field(description="Total episodes completed")
+    global_updates: int = Field(description="Total updates completed")
+    global_steps: int = Field(description="Total steps completed")
+    global_cycles: int = Field(description="Total cycles completed")
     reason: str = Field(description="Training termination reason")
-    best_reward: float = Field(description="Best reward achieved")
-    average_reward: float = Field(description="Average reward")
-    timestamp: datetime = Field(default_factory=datetime.now, description="Training end time")
 
 
 class CustomEventContext(BaseModel):
