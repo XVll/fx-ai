@@ -64,12 +64,8 @@ logs/
 !best_models/**/*.pt
 !best_models/**/*.json
 
-# Data files (keep your market data)
-# *.csv
-# *.h5
-# But keep the data structure
-!dnb/
-!dnb/**/*
+# Data files
+dnb/
 
 # Cache files
 *.parquet
