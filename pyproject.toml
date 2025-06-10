@@ -8,18 +8,18 @@ package-mode = false
 
 [tool.poe.tasks]
 # Momentum Training (RECOMMENDED - uses smart day selection and curriculum learning)
-momentum = "poetry run python main.py --config training.yaml"
-momentum-continue = "poetry run python main.py --config training --continue"
+momentum = "poetry run python main.py training=momentum"
+momentum-continue = "poetry run python main.py training=momentum training.training_manager.continue_training=true"
 build-index = "poetry run python scripts/build_index.py"
 
 # Legacy Training (standard single-day training)  
-quick = "poetry run python main.py --config quick.yaml"
+quick = "poetry run python main.py training=quick"
 init = "poetry run python main.py"
-train = "poetry run python main.py --config training --continue"
+train = "poetry run python main.py training.training_manager.continue_training=true"
 
 # Backtest
-backtest = "poetry run python main.py --config backtest"
-backtest-date = "poetry run python main.py --config backtest --date {{date}}"
+backtest = "poetry run python main.py training=benchmark"
+backtest-date = "poetry run python main.py training=benchmark training.training_manager.date_range=['{{date}}','{{date}}']"
 
 # Scan for momentum days in data
 scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.5"
@@ -56,7 +56,6 @@ poetry-core = ">=1.0.0"
 ta = "^0.11.0"
 torch = "^2.7.0"
 rich = "^14.0.0"
-pydantic = "^2.11.5"
 setuptools = "==80.8.0"
 dash = "^3.0.4"
 plotly = "^6.1.1"
@@ -67,6 +66,7 @@ joblib = "^1.4.2"
 scikit-learn = "^1.6.0"
 captum = "^0.7.0"
 pendulum = "^3.1.0"
+hydra-core = "^1.3.2"
 
 [tool.poetry.group.dev.dependencies]
 poethepoet = "^0.24.0"

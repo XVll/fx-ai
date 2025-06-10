@@ -1,49 +1,65 @@
 """
-Reward system configuration for modular reward components.
+Reward system configuration for modular reward components - Hydra version.
 """
 
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
 
 
-class RewardConfig(BaseModel):
+@dataclass
+class RewardConfig:
     """Modular reward system configuration"""
 
     # Core PnL rewards
-    pnl_coefficient: float = Field(100.0, description="P&L scaling coefficient")
+    pnl_coefficient: float = 100.0                    # P&L scaling coefficient
 
     # Risk management
-    holding_penalty_coefficient: float = Field(2.0, description="Holding time penalty")
-    drawdown_penalty_coefficient: float = Field(5.0, description="Drawdown penalty")
-    bankruptcy_penalty_coefficient: float = Field(50.0, description="Bankruptcy penalty")
+    holding_penalty_coefficient: float = 2.0          # Holding time penalty
+    drawdown_penalty_coefficient: float = 5.0         # Drawdown penalty  
+    bankruptcy_penalty_coefficient: float = 50.0      # Bankruptcy penalty
 
     # MFE/MAE penalties
-    profit_giveback_penalty_coefficient: float = Field(2.0, description="Profit giveback penalty")
-    profit_giveback_threshold: float = Field(0.3, description="Giveback threshold")
-    max_drawdown_penalty_coefficient: float = Field(15.0, description="Max drawdown penalty")
-    max_drawdown_threshold_percent: float = Field(0.01, description="MAE threshold")
+    profit_giveback_penalty_coefficient: float = 2.0  # Profit giveback penalty
+    profit_giveback_threshold: float = 0.3            # Giveback threshold (0.0-1.0)
+    max_drawdown_penalty_coefficient: float = 15.0    # Max drawdown penalty
+    max_drawdown_threshold_percent: float = 0.01      # MAE threshold (0.01 = 1%)
 
     # Trading bonuses
-    profit_closing_bonus_coefficient: float = Field(100.0, description="Profit closing bonus")
-    base_multiplier: float = Field(5000, description="Clean trade base multiplier")
-    max_mae_threshold: float = Field(0.02, description="Max allowed MAE")
-    min_gain_threshold: float = Field(0.01, description="Min gain for clean trade")
+    profit_closing_bonus_coefficient: float = 100.0   # Profit closing bonus
+    base_multiplier: float = 5000                     # Clean trade base multiplier
+    max_mae_threshold: float = 0.02                   # Max allowed MAE (0.02 = 2%)
+    min_gain_threshold: float = 0.01                  # Min gain for clean trade (0.01 = 1%)
 
     # Activity incentives
-    activity_bonus_per_trade: float = Field(0.025, description="Trading activity bonus")
-    hold_penalty_per_step: float = Field(0.01, description="Hold action penalty")
-    action_penalty_coefficient: float = Field(0.1, description="Action penalty coefficient")
-    quick_profit_bonus_coefficient: float = Field(1.0, description="Quick profit bonus coefficient")
+    activity_bonus_per_trade: float = 0.025           # Trading activity bonus
+    hold_penalty_per_step: float = 0.01               # Hold action penalty
+    action_penalty_coefficient: float = 0.1           # Action penalty coefficient
+    quick_profit_bonus_coefficient: float = 1.0       # Quick profit bonus coefficient
 
     # Limits
-    max_holding_time_steps: int = Field(180, description="Max holding time")
+    max_holding_time_steps: int = 180                 # Max holding time in steps
 
     # Component toggles
-    enable_pnl_reward: bool = Field(True, description="Enable P&L reward")
-    enable_holding_penalty: bool = Field(True, description="Enable holding penalty")
-    enable_drawdown_penalty: bool = Field(True, description="Enable drawdown penalty")
-    enable_profit_giveback_penalty: bool = Field(True, description="Enable giveback penalty")
-    enable_max_drawdown_penalty: bool = Field(True, description="Enable max drawdown penalty")
-    enable_profit_closing_bonus: bool = Field(True, description="Enable profit bonus")
-    enable_clean_trade_bonus: bool = Field(True, description="Enable clean trade bonus")
-    enable_trading_activity_bonus: bool = Field(True, description="Enable activity bonus")
-    enable_inactivity_penalty: bool = Field(True, description="Enable inactivity penalty")
+    enable_pnl_reward: bool = True                    # Enable P&L reward component
+    enable_holding_penalty: bool = True               # Enable holding penalty component
+    enable_drawdown_penalty: bool = True              # Enable drawdown penalty component
+    enable_profit_giveback_penalty: bool = True       # Enable giveback penalty component
+    enable_max_drawdown_penalty: bool = True          # Enable max drawdown penalty component
+    enable_profit_closing_bonus: bool = True          # Enable profit bonus component
+    enable_clean_trade_bonus: bool = True             # Enable clean trade bonus component
+    enable_trading_activity_bonus: bool = True        # Enable activity bonus component
+    enable_inactivity_penalty: bool = True            # Enable inactivity penalty component
+
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        # Validate thresholds are percentages
+        if not 0.0 <= self.profit_giveback_threshold <= 1.0:
+            raise ValueError(f"profit_giveback_threshold {self.profit_giveback_threshold} must be in range [0.0, 1.0]")
+        
+        if not 0.0 <= self.max_drawdown_threshold_percent <= 1.0:
+            raise ValueError(f"max_drawdown_threshold_percent {self.max_drawdown_threshold_percent} must be in range [0.0, 1.0]")
+        
+        if not 0.0 <= self.max_mae_threshold <= 1.0:
+            raise ValueError(f"max_mae_threshold {self.max_mae_threshold} must be in range [0.0, 1.0]")
+        
+        if not 0.0 <= self.min_gain_threshold <= 1.0:
+            raise ValueError(f"min_gain_threshold {self.min_gain_threshold} must be in range [0.0, 1.0]")

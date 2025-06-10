@@ -1,0 +1,18 @@
+# Main Hydra configuration file
+# This defines the default configuration composition
+
+defaults:
+  - _self_
+  - training: default
+  - model: transformer
+  - env: trading
+  - data: databento
+  - simulation: default
+  - scanner: momentum
+  - logging: default
+  - callbacks: default
+
+# Override options can be specified here
+# hydra:
+#   run:
+#     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}

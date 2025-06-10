@@ -1,11 +1,13 @@
 import sys
 import logging
-import argparse
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
 import numpy as np
 import torch
+import hydra
+from hydra.core.config_store import ConfigStore
+from omegaconf import DictConfig
 from data.data_manager import DataManager
 from data.scanner.momentum_scanner import MomentumScanner
 from data import DatabentoFileProvider
@@ -19,7 +21,7 @@ from core.shutdown import (
     ShutdownReason,
     graceful_shutdown_context, get_global_shutdown_manager
 )
-from config.config import Config
+from config.config import Config, register_configs
 from training.training_manager import TrainingManager, TrainingMode
 
 logger = logging.getLogger(__name__)
@@ -28,9 +30,10 @@ logger = logging.getLogger(__name__)
 class ApplicationBootstrap:
     """Bootstrap the FxAI application with proper dependency injection and graceful shutdown."""
 
-    def __init__(self):
-        self.output_path: Optional[Path] = None
-        self.config: Optional[Config] = None
+    def __init__(self, cfg: DictConfig):
+        # Hydra automatically manages output directory
+        self.output_path: Path = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+        self.config: Config = hydra.utils.instantiate(cfg, _recursive_=False)
         self.logger = logging.getLogger(f"{__name__}.Application")
         self.shutdown_manager = get_global_shutdown_manager()
 
@@ -42,32 +45,19 @@ class ApplicationBootstrap:
         self.device: Optional[torch.device] = None
         self.callback_manager: Optional[CallbackManager] = None
 
-    def initialize(self, args: Optional[argparse.Namespace]) -> None:
-        """Initialize the application with configuration."""
+    def initialize(self) -> None:
+        """Initialize the application with Hydra configuration."""
 
-        self._setup_config(args.config, args.spec)
         self._setup_logging()
-        self._setup_directories()  # Must happen before components need output_path
         self._initialize_components()
 
-        self.config.save_used_config(str(self.output_path / "config.yaml"))
-
         logger.info("=" * 80)
-        logger.info(f"[bold green] Loaded configuration:[/bold green] {self.config or 'defaults'}")
-        logger.info(f"[bold green] Output directory created:[/bold green] {self.output_path}")
+        logger.info(f"[bold green] Hydra output directory:[/bold green] {self.output_path}")
+        logger.info(f"[bold green] Configuration loaded successfully[/bold green]")
         logger.info("🚀 FxAI Application bootstrapped successfully")
         logger.info("=" * 80)
 
-    def _setup_directories(self) -> None:
-        """Set up the necessary directories for outputs and logs."""
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        output_dir = Path(self.config.output_dir) / f"run_{timestamp}"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        self.output_path = output_dir
-
-    def _setup_config(self, config: Optional[str], spec: Optional[str]) -> None:
-        """Setup application configuration."""
-        self.config = Config.load(config, spec)
+    # Hydra handles directory setup automatically
 
     def _setup_logging(self) -> None:
         """Setup application logging with rich formatting."""
@@ -90,7 +80,7 @@ class ApplicationBootstrap:
             model_manager=model_manager,
             device=self.device,
             output_path=self.output_path,
-            run_id=f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            run_id=self.output_path.name  # Use Hydra's directory name as run_id
         )
         
         # Set data manager reference for integrated data lifecycle
@@ -195,12 +185,7 @@ class ApplicationBootstrap:
         return model
 
 
-def parse_arguments() -> argparse.Namespace:
-    """Parse command line arguments - simplified config-driven approach."""
-    parser = argparse.ArgumentParser(description="Fx-AI Trading System", formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--config", type=str, default="training-default", help="Configuration override file (determines training mode and all settings)")
-    parser.add_argument("--spec", type=str, default=None, help="Optuna study specification file (only for optuna configs)")
-    return parser.parse_args()
+# Hydra handles argument parsing automatically
 
 
 def execute_training(training_manager: TrainingManager, config: Config, app: 'ApplicationBootstrap') -> None:
@@ -219,23 +204,24 @@ def execute_training(training_manager: TrainingManager, config: Config, app: 'Ap
 
 
 
-def main() -> int:
+@hydra.main(version_base=None, config_path="config", config_name="config")
+def main(cfg: DictConfig) -> int:
     """
-    Main entry point for the FxAI trading system.
+    Main entry point for the FxAI trading system using Hydra.
     
+    Args:
+        cfg: Hydra configuration object
+        
     Returns:
         int: Exit code (0 for success, 130 for graceful shutdown, 1 for error)
     """
     with graceful_shutdown_context() as shutdown_manager:
         try:
-            # Parse simplified arguments
-            args = parse_arguments()
+            # Create application with Hydra config
+            app = ApplicationBootstrap(cfg)
 
-            # Create application with shutdown manager
-            app = ApplicationBootstrap()
-
-            # Initialize application (now includes components)
-            app.initialize(args)
+            # Initialize application
+            app.initialize()
 
             logger.info("🚀 Starting training with graceful shutdown support")
 
@@ -260,5 +246,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # Register structured configs with Hydra
+    register_configs()
+    
+    # Hydra will handle the rest
     exit_code = main()
     sys.exit(exit_code)

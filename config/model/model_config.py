@@ -1,98 +1,74 @@
 """
-Model configuration for transformer architecture.
+Model configuration for transformer architecture - Hydra version.
 """
 
-from typing import List, Any
-from pydantic import BaseModel, Field, field_validator
+from dataclasses import dataclass, field
+from typing import List
 
 
-class ModelConfig(BaseModel):
+@dataclass
+class ModelConfig:
     """Multi-branch transformer model configuration"""
 
-    model_config = {"protected_namespaces": ()}
-
     # Core architecture
-    d_model: int = Field(128, description="Model dimension")
-    d_fused: int = Field(512, description="Fused representation dimension")
-    n_heads: int = Field(8, description="Attention heads")
-    n_layers: int = Field(6, description="Transformer layers")
-    d_ff: int = Field(2048, description="Feed-forward dimension")
-    dropout: float = Field(0.1, ge=0.0, le=1.0, description="Dropout rate")
+    d_model: int = 128                               # Model dimension (typical: 64, 128, 256, 512)
+    d_fused: int = 512                              # Fused representation dimension
+    n_heads: int = 8                                # Attention heads (typical: 4, 8, 16)
+    n_layers: int = 6                               # Transformer layers (typical: 3-12)
+    d_ff: int = 2048                                # Feed-forward dimension (usually 4x d_model)
+    dropout: float = 0.1                            # Dropout rate (0.0-0.5)
 
     # Branch-specific configuration
-    hf_layers: int = Field(3, description="High-frequency branch layers")
-    mf_layers: int = Field(3, description="Medium-frequency branch layers")
-    lf_layers: int = Field(2, description="Low-frequency branch layers")
-    portfolio_layers: int = Field(2, description="Portfolio branch layers")
+    hf_layers: int = 3                              # High-frequency branch layers
+    mf_layers: int = 3                              # Medium-frequency branch layers  
+    lf_layers: int = 2                              # Low-frequency branch layers
+    portfolio_layers: int = 2                       # Portfolio branch layers
 
-    hf_heads: int = Field(8, description="High-frequency attention heads")
-    mf_heads: int = Field(8, description="Medium-frequency attention heads")
-    lf_heads: int = Field(4, description="Low-frequency attention heads")
-    portfolio_heads: int = Field(4, description="Portfolio attention heads")
+    hf_heads: int = 8                               # High-frequency attention heads
+    mf_heads: int = 8                               # Medium-frequency attention heads
+    lf_heads: int = 4                               # Low-frequency attention heads
+    portfolio_heads: int = 4                        # Portfolio attention heads
 
-    # Feature dimensions - dynamically set from FeatureRegistry
-    hf_seq_len: int = Field(60, description="High-frequency sequence length")
-    hf_feat_dim: int = Field(9, description="High-frequency features")
-    mf_seq_len: int = Field(30, description="Medium-frequency sequence length")
-    mf_feat_dim: int = Field(43, description="Medium-frequency features")
-    lf_seq_len: int = Field(30, description="Low-frequency sequence length")
-    lf_feat_dim: int = Field(19, description="Low-frequency features")
-    portfolio_seq_len: int = Field(5, description="Portfolio sequence length")
-    portfolio_feat_dim: int = Field(10, description="Portfolio features")
+    # Feature dimensions (set from FeatureRegistry)
+    hf_seq_len: int = 60                            # High-frequency sequence length (1s data)
+    hf_feat_dim: int = 9                            # High-frequency features count
+    mf_seq_len: int = 30                            # Medium-frequency sequence length (1m data)
+    mf_feat_dim: int = 43                           # Medium-frequency features count
+    lf_seq_len: int = 30                            # Low-frequency sequence length (5m+ data)
+    lf_feat_dim: int = 19                           # Low-frequency features count
+    portfolio_seq_len: int = 5                      # Portfolio sequence length
+    portfolio_feat_dim: int = 10                    # Portfolio features count
 
-    # Todo : action_space_size
-    
-    @field_validator("hf_feat_dim", "mf_feat_dim", "lf_feat_dim", "portfolio_feat_dim", mode="before")
-    @classmethod
-    def validate_dimensions(cls, v, info):
-        """Validate feature dimensions match FeatureRegistry."""
-        from feature.feature_registry import FeatureRegistry
+    # Action space
+    action_dim: List[int] = field(default_factory=lambda: [3, 4])  # [action_types, position_sizes] = [BUY/SELL/HOLD, 25%/50%/75%/100%]
+
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        # Validate dropout range
+        if not 0.0 <= self.dropout <= 1.0:
+            raise ValueError(f"dropout {self.dropout} must be in range [0.0, 1.0]")
         
-        # Get expected dimensions from registry
-        dims = FeatureRegistry.get_feature_dimensions(active_only=True)
+        # Validate action dimensions
+        if len(self.action_dim) != 2:
+            raise ValueError("action_dim must have exactly 2 elements [action_types, position_sizes]")
+        if self.action_dim[0] != 3:
+            raise ValueError("action_types must be 3 (BUY, SELL, HOLD)")
+        if self.action_dim[1] != 4:
+            raise ValueError("position_sizes must be 4 (25%, 50%, 75%, 100%)")
         
-        # Map field names to category names
-        field_to_category = {
-            "hf_feat_dim": "hf",
-            "mf_feat_dim": "mf", 
-            "lf_feat_dim": "lf",
-            "portfolio_feat_dim": "portfolio"
-        }
-        
-        field_name = info.field_name
-        category = field_to_category.get(field_name)
-        
-        if category and v != dims[category]:
-            # Log warning but allow the value for backward compatibility
-            import logging
-            logging.getLogger(__name__).warning(
-                f"Feature dimension mismatch: {field_name}={v} but FeatureRegistry has {dims[category]} active features"
-            )
-        
-        return v
-    
+        # Validate attention heads divide evenly into d_model
+        if self.d_model % self.n_heads != 0:
+            raise ValueError(f"d_model {self.d_model} must be divisible by n_heads {self.n_heads}")
+
     @classmethod
     def from_registry(cls):
         """Create ModelConfig with dimensions from FeatureRegistry."""
         from feature.feature_registry import FeatureRegistry
         dims = FeatureRegistry.get_feature_dimensions(active_only=True)
         
-        # Create with registry dimensions
         return cls(
             hf_feat_dim=dims['hf'],
             mf_feat_dim=dims['mf'],
             lf_feat_dim=dims['lf'],
             portfolio_feat_dim=dims['portfolio']
         )
-
-    # Action space
-    action_dim: List[int] = Field([3, 4], description="[action_types, position_sizes]")
-
-    @field_validator("action_dim", mode="before")
-    @classmethod
-    def validate_action_dim(cls, v: Any) -> Any:
-        if len(v) != 2:
-            raise ValueError("action_dim must have exactly 2 elements")
-        if v[0] != 3:
-            raise ValueError("action_types must be 3 (BUY, SELL, HOLD)")
-        return v
