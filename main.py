@@ -1,37 +1,31 @@
-"""
-V2 FxAI Main Entry Point - TDD Implementation (Config-Driven)
-
-This is the new entry point for the FxAI trading system using TDD approach.
-Features purely config-driven training with minimal CLI arguments.
-"""
-
 import sys
 import logging
 import argparse
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 from datetime import datetime
-
 import numpy as np
 import torch
-
 from data.data_manager import DataManager
+from data.scanner.momentum_scanner import MomentumScanner
 from data import DatabentoFileProvider
+from envs.trading_environment import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
+from model.transformer import MultiBranchTransformer
 from callbacks import create_callbacks_from_config, CallbackManager
 from core.logger import setup_rich_logging
+from core.model_manager import ModelManager
 from core.shutdown import (
     ShutdownReason,
     graceful_shutdown_context, get_global_shutdown_manager
 )
 from config.config import Config
-from envs import TradingEnvironment
 from training.training_manager import TrainingManager, TrainingMode
 
 logger = logging.getLogger(__name__)
 
 
-class ApplicationBootstrap():
+class ApplicationBootstrap:
     """Bootstrap the FxAI application with proper dependency injection and graceful shutdown."""
 
     def __init__(self):
@@ -49,14 +43,13 @@ class ApplicationBootstrap():
         self.callback_manager: Optional[CallbackManager] = None
 
     def initialize(self, args: Optional[argparse.Namespace]) -> None:
-        """Initialize application with configuration."""
+        """Initialize the application with configuration."""
 
         self._setup_config(args.config, args.spec)
         self._setup_logging()
+        self._setup_directories()  # Must happen before components need output_path
         self._initialize_components()
-        self.training_manager = self._create_training_manager()
 
-        self._setup_directories()
         self.config.save_used_config(str(self.output_path / "config.yaml"))
 
         logger.info("=" * 80)
@@ -66,18 +59,18 @@ class ApplicationBootstrap():
         logger.info("=" * 80)
 
     def _setup_directories(self) -> None:
-        """Setup necessary directories for outputs and logs."""
+        """Set up the necessary directories for outputs and logs."""
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output_dir = Path(self.config.output_dir) / f"run_{timestamp}"
         output_dir.mkdir(parents=True, exist_ok=True)
         self.output_path = output_dir
 
     def _setup_config(self, config: Optional[str], spec: Optional[str]) -> None:
-        """Setup application configuration from v2 config."""
+        """Setup application configuration."""
         self.config = Config.load(config, spec)
 
     def _setup_logging(self) -> None:
-        """Setup application logging using v2 rich logging system."""
+        """Setup application logging with rich formatting."""
         log_level = getattr(logging, self.config.logging.level.upper(), logging.INFO)
         setup_rich_logging(
             level=log_level,
@@ -87,15 +80,17 @@ class ApplicationBootstrap():
         )
 
     def _create_training_manager(self) -> TrainingManager:
-        """Create and configure training manager with config."""
+        """Create and configure a training manager with config."""
         
-        # Create model manager
-        from core.model_manager import ModelManager
+        # Create a model manager
         model_manager = ModelManager()
 
         training_manager = TrainingManager(
             config=self.config.training.training_manager,
-            model_manager=model_manager
+            model_manager=model_manager,
+            device=self.device,
+            output_path=self.output_path,
+            run_id=f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         )
         
         # Set data manager reference for integrated data lifecycle
@@ -105,61 +100,35 @@ class ApplicationBootstrap():
         return training_manager
 
     def _initialize_components(self) -> None:
-        """Initialize application components.
+        """Initialize application components"""
         
-        This method will create data managers, environments, etc.
-        """
         self.logger.info("🔧 Initializing application components")
 
-        # Create device first
         self.device = self._create_device()
 
-        # Create callback manager first (before other components)
         self.callback_manager = create_callbacks_from_config(
             config=self.config.callbacks,
             trainer=None,  # Will be set after creation
             environment=None,  # Will be set after creation
             output_path=self.output_path,
+            shutdown_manager=self.shutdown_manager
         )
 
-        # Create core components
         self.data_manager = self._create_data_manager()
         self.environment = self._create_environment()
         self.trainer = self._create_trainer()
+        self.training_manager = self._create_training_manager()
 
-        # Register components with callback manager after creation
-        self.callback_manager.register_trainer(self.trainer)
-        self.callback_manager.register_environment(self.environment)
+        self.callback_manager.register_trainer(trainer=self.trainer)
+        self.callback_manager.register_environment(environment=self.environment)
 
-        # Register callbacks individually with shutdown system for parallel shutdown
-        for callback in self.callback_manager.get_callbacks():
-            self.shutdown_manager.register_component(
-                component=callback,
-                timeout=callback.get_shutdown_timeout(),
-                name=f"callback_{callback.name}"
-            )
-
-        self.shutdown_manager.register_component(
-            component=self.data_manager,
-            timeout=self.config.data.shutdown_timeout
-        )
-        self.shutdown_manager.register_component(
-            component=self.environment,
-            timeout=self.config.env.shutdown_timeout
-        )
-        self.shutdown_manager.register_component(
-            component=self.trainer,
-            timeout=self.config.training.shutdown_timeout
-        )
-        self.shutdown_manager.register_component(
-            component=self.training_manager,
-            timeout=self.config.training.shutdown_timeout
-        )
+        # Register components for shutdown
+        self.training_manager.register_shutdown(self.shutdown_manager)
 
         self.logger.info("✅ All components initialized successfully")
 
     def _create_device(self) -> torch.device:
-        """Create and configure PyTorch device."""
+        """Create and configure a PyTorch device."""
         np.random.seed(self.config.training.seed)
         torch.manual_seed(self.config.training.seed)
 
@@ -175,13 +144,9 @@ class ApplicationBootstrap():
         self.logger.info(f"🔧 Using device: {device}")
         return device
 
-    def _create_data_manager(self) -> Any:
-        """Create data manager from configuration."""
+    def _create_data_manager(self) -> DataManager:
+        """Create a data manager from configuration."""
         self.logger.info("📊 Creating data manager")
-
-        # Import v1 data manager implementation (temporary)
-        from data.data_manager import DataManager
-        from data.scanner.momentum_scanner import MomentumScanner
 
         # Create data provider
         if self.config.data.provider == "databento":
@@ -190,19 +155,16 @@ class ApplicationBootstrap():
             raise ValueError(f"Unsupported data provider: {self.config.data.provider}")
 
         momentum_scanner = MomentumScanner(config=self.config.scanner)
-        data_manager = DataManager(provider=data_provider, momentum_scanner=momentum_scanner, config=self.config.data, logger=self.logger)
+        data_manager = DataManager(provider=data_provider, momentum_scanner=momentum_scanner, config=self.config.data)
 
         self.logger.info("✅ Data manager created")
         return data_manager
 
-    def _create_environment(self) -> Any:
-        """Create trading environment from configuration."""
+    def _create_environment(self) -> TradingEnvironment:
+        """Create a trading environment from configuration."""
         self.logger.info("🏢 Creating trading environment")
 
-        # Import v2 environment implementation
-        from envs.trading_environment import TradingEnvironment
-
-        # Create trading environment
+        # Create a trading environment
         environment = TradingEnvironment(
             config=self.config,
             data_manager=self.data_manager,
@@ -212,12 +174,9 @@ class ApplicationBootstrap():
         self.logger.info("✅ Trading environment created")
         return environment
 
-    def _create_trainer(self) -> Any:
-        """Create trainer/agent from configuration."""
+    def _create_trainer(self) -> PPOTrainer:
+        """Create a trainer / agent from configuration."""
         self.logger.info("🤖 Creating trainer")
-
-        # Import v2 trainer implementation
-        from agent.ppo_agent import PPOTrainer
 
         # Create trainer with callback manager
         trainer = PPOTrainer(
@@ -229,14 +188,9 @@ class ApplicationBootstrap():
         self.logger.info("✅ Trainer created")
         return trainer
 
-    def _create_model(self):
-        """Create model instance."""
-        from model.transformer import MultiBranchTransformer
-        
-        model = MultiBranchTransformer(
-            config=self.config.model,
-            action_space_size=self.config.model.action_space_size,
-        ).to(self.device)
+    def _create_model(self) -> MultiBranchTransformer:
+        """Create a model instance."""
+        model = MultiBranchTransformer(model_config=self.config.model, device=self.device).to(self.device)
         
         return model
 
@@ -256,7 +210,7 @@ def execute_training(training_manager: TrainingManager, config: Config, app: 'Ap
 
     training_manager.start(
         trainer=app.trainer,
-        environment= app.environment,
+        environment=app.environment,
         data_manager=app.data_manager,
         callback_manager=app.callback_manager,
     )
@@ -266,12 +220,12 @@ def execute_training(training_manager: TrainingManager, config: Config, app: 'Ap
 
 
 def main() -> int:
-    """Main entry point for V2 FxAI system with graceful shutdown support.
+    """
+    Main entry point for the FxAI trading system.
     
     Returns:
-        Exit code (0 for success, non-zero for failure)
+        int: Exit code (0 for success, 130 for graceful shutdown, 1 for error)
     """
-    # Use graceful shutdown context manager
     with graceful_shutdown_context() as shutdown_manager:
         try:
             # Parse simplified arguments

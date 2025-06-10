@@ -122,6 +122,15 @@ class EpisodeManagerState:
         self.current_day = None
 
 
+@dataclass
+class EpisodeContext:
+    """Context for a training episode."""
+    symbol: str
+    date: str
+    reset_point: ResetPointInfo
+    day_info: DayInfo
+
+
 class EpisodeManager:
     """
     Episode Manager - Authority for Training Episode Management
@@ -525,6 +534,63 @@ class EpisodeManager:
         
         return True
     
+    def start(self, symbols: List[str], date_range: List[Optional[str]], daily_limits: Dict[str, Optional[int]]) -> bool:
+        """Start the episode manager with its own day/reset point management loop."""
+        try:
+            # Update configuration from parameters
+            self.symbols = symbols
+            self.date_range = date_range
+            self.daily_max_episodes = daily_limits.get('max_episodes')
+            self.daily_max_updates = daily_limits.get('max_updates')
+            self.daily_max_cycles = daily_limits.get('max_cycles')
+            
+            # Initialize with first day
+            return self.initialize()
+        except Exception as e:
+            self.logger.error(f"Failed to start episode manager: {e}")
+            return False
+    
+    def get_next_episode(self) -> Optional[EpisodeContext]:
+        """Get next episode context, handling day/reset point transitions internally."""
+        
+        # Check if we need to switch days
+        if self._should_switch_day():
+            if not self._advance_to_next_day():
+                self.logger.info("No more days available")
+                return None
+        
+        # Get next reset point (handles cycling internally)
+        if not self.state.current_reset_point:
+            if not self._advance_to_next_reset_point():
+                self.logger.warning("No reset points available")
+                return None
+        
+        # Create episode context
+        return EpisodeContext(
+            symbol=self.state.current_day.symbol,
+            date=self.state.current_day.date,
+            reset_point=self.state.current_reset_point,
+            day_info=self.state.current_day
+        )
+    
+    def on_episodes_completed(self, count: int, metrics: List[Any]):
+        """Handle notification of completed episodes."""
+        self.state.current_day_episodes += count
+        self.state.episodes_in_current_day += count
+        self.state.episodes_in_current_cycle += count
+        
+        self.logger.debug(f"Episodes completed: +{count}, day total: {self.state.current_day_episodes}")
+        
+        # Advance to next reset point after episode completion
+        if not self._advance_to_next_reset_point():
+            self.logger.debug("Completed all reset points in current cycle")
+    
+    def on_update_completed(self, update_info: Any):
+        """Handle notification of completed policy update."""
+        self.state.current_day_updates += 1
+        
+        self.logger.debug(f"Update completed, day total: {self.state.current_day_updates}")
+    
     def get_cycle_status(self) -> Dict[str, Any]:
         """Get current cycle status"""
         return {
@@ -534,5 +600,7 @@ class EpisodeManager:
             'progress_in_cycle': self.state.current_reset_point_index / max(1, len(self.state.ordered_reset_points)),
             'episodes_in_cycle': self.state.episodes_in_current_cycle,
             'episodes_in_day': self.state.episodes_in_current_day,
-            'total_cycles_completed': self.state.total_cycles_completed
+            'total_cycles_completed': self.state.total_cycles_completed,
+            'current_day_episodes': self.state.current_day_episodes,
+            'current_day_updates': self.state.current_day_updates
         }

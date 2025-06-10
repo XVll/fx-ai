@@ -14,6 +14,8 @@ from tqdm import tqdm
 
 import sys
 
+from config import DataConfig
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from data.utils.helpers import ensure_timezone_aware
@@ -25,10 +27,8 @@ class MomentumScanner:
 
     def __init__(
         self,
-        data_dir: str,
-        output_dir: str,
+        config:ScannerConfig,
         scanner_config: Optional[ScannerConfig] = None,
-        logger: Optional[logging.Logger] = None,
     ):
         """Initialize the momentum scanner.
 

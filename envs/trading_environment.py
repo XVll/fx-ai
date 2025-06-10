@@ -13,11 +13,10 @@ by EpisodeManager in the v2 architecture.
 
 import logging
 from typing import Dict, Any, Optional, Tuple, Union
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 import numpy as np
-import pandas as pd
 import gymnasium as gym
 from gymnasium import spaces
 from numpy.typing import NDArray
@@ -628,73 +627,73 @@ class TradingEnvironment(gym.Env):
             f"Reward: {self.episode_reward:.4f}"
         )
     
-    def setup_session(self, symbol: str, date: Union[str, datetime]) -> None:
+    
+    def setup_session(self, symbol: Symbol, date: datetime) -> bool:
         """
-        Setup a trading session - adapter method for v2 compatibility.
+        Legacy compatibility method for TrainingManager.
         
-        Note: In v2, actual episode configuration happens separately.
-        This just prepares the base session.
+        This method bridges the old interface to the new setup_episode approach.
         
         Args:
             symbol: Trading symbol
             date: Trading date
+            
+        Returns:
+            True if setup successful, False otherwise
         """
-        # Store session info for later episode setup
-        self._session_symbol = symbol
-        self._session_date = pd.Timestamp(date).to_pydatetime() if isinstance(date, str) else date
-        self.logger.debug(f"Session info stored: {symbol} on {self._session_date.strftime('%Y-%m-%d')}")
-    
-    def reset_at_point(self, reset_point_idx: int = 0) -> Tuple[Dict[str, ObservationArray], Dict[str, Any]]:
-        """
-        Reset to a specific reset point - adapter method for v2 compatibility.
+        # Create episode config from legacy parameters
+        # Use full trading day (4 AM - 8 PM ET) as default
+        start_time = date.replace(hour=4, minute=0, second=0, microsecond=0)
+        end_time = date.replace(hour=20, minute=0, second=0, microsecond=0)
         
-        Note: In v2, reset points are managed by EpisodeManager.
-        This method creates an episode config and delegates to the new setup.
+        episode_config = EpisodeConfig(
+            symbol=symbol,
+            date=date,
+            start_time=start_time,
+            end_time=end_time,
+            max_steps=None,
+            reset_point_info=None
+        )
+        
+        return self.setup_episode(episode_config)
+    
+    def reset_at_point(self, reset_point_index: int) -> Tuple[Dict[str, ObservationArray], Dict[str, Any]]:
+        """
+        Legacy compatibility method for TrainingManager.
+        
+        This method resets the environment to a specific reset point within the current episode.
         
         Args:
-            reset_point_idx: Index of reset point (managed by EpisodeManager)
+            reset_point_index: Index of the reset point to start from
             
         Returns:
             Tuple of (initial_observation, info)
         """
-        if not hasattr(self, '_session_symbol') or not hasattr(self, '_session_date'):
-            raise RuntimeError("Session not configured. Call setup_session first.")
+        if not self.episode_config:
+            raise RuntimeError("Episode not configured. Call setup_session/setup_episode first.")
         
-        # Create episode config from session info
-        # Note: In production, reset point details would come from EpisodeManager
-        session_start = datetime.combine(self._session_date.date(), time(4, 0))  # 4 AM ET
-        session_end = datetime.combine(self._session_date.date(), time(20, 0))   # 8 PM ET
+        if not self.market_simulator:
+            raise RuntimeError("Market simulator not initialized")
         
-        # Convert to UTC (simple offset for now, production would use proper timezone handling)
-        session_start_utc = session_start + timedelta(hours=5)  # Assume EST
-        session_end_utc = session_end + timedelta(hours=5)
+        # For now, map reset_point_index to time offset within episode
+        # This is a simplified implementation - real reset points would need
+        # to be defined by the EpisodeManager
         
-        # For reset points, we'd normally get timing from EpisodeManager
-        # For now, use simple logic based on index
-        reset_offsets = [
-            timedelta(hours=5, minutes=30),   # 9:30 AM ET
-            timedelta(hours=6, minutes=30),   # 10:30 AM ET  
-            timedelta(hours=10),              # 2:00 PM ET
-            timedelta(hours=11, minutes=30),  # 3:30 PM ET
-        ]
+        # Calculate time based on reset point (assume hourly intervals for simplicity)
+        episode_duration_hours = (self.episode_config.end_time - self.episode_config.start_time).total_seconds() / 3600
+        max_reset_points = max(1, int(episode_duration_hours))
         
-        reset_offset = reset_offsets[reset_point_idx % len(reset_offsets)]
-        episode_start = session_start_utc + reset_offset
-        episode_end = min(episode_start + timedelta(hours=2), session_end_utc)
+        if reset_point_index >= max_reset_points:
+            reset_point_index = max_reset_points - 1
         
-        # Create episode config
-        episode_config = EpisodeConfig(
-            symbol=self._session_symbol,
-            date=self._session_date,
-            start_time=episode_start,
-            end_time=episode_end,
-            reset_point_info={'index': reset_point_idx}
-        )
+        # Calculate reset time
+        time_offset_hours = (reset_point_index / max_reset_points) * episode_duration_hours
+        reset_time = self.episode_config.start_time + timedelta(seconds=int(time_offset_hours * 3600))
         
-        # Setup and reset
-        if not self.setup_episode(episode_config):
-            raise RuntimeError("Failed to setup episode")
+        # Update episode config with new start time
+        self.episode_config.start_time = reset_time
         
+        # Reset environment normally
         return self.reset()
     
     def close(self):

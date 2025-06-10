@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import numpy as np
 from typing import Dict, Tuple, Optional, Union
 
+from config import ModelConfig
 from model.layers import (
     PositionalEncoding,
     TransformerEncoderLayer,
@@ -23,12 +24,11 @@ class MultiBranchTransformer(nn.Module):
 
     def __init__(
         self,
-        model_config,  # Config.model
+        model_config:ModelConfig,  # Config.model
         device: Union[str, torch.device] = None,
-        logger: Optional[object] = None,  # Logger for debugging
     ):
         super().__init__()
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
 
         # Set device
         if device is None:

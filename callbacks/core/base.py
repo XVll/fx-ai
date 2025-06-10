@@ -8,7 +8,9 @@ from typing import Optional
 from abc import ABC
 import logging
 
-from core.shutdown import IShutdownHandler
+from agent.ppo_agent import PPOTrainer
+from core.shutdown import IShutdownHandler, IShutdownManager
+from envs import TradingEnvironment
 from .context import (
     TrainingStartContext,
     EpisodeEndContext,
@@ -51,6 +53,17 @@ class BaseCallback(ABC,IShutdownHandler):
         self._training_started = False
         self._episode_count = 0
         self._update_count = 0
+        self.trainer:PPOTrainer
+        self.environment:TradingEnvironment
+    
+    def register_shutdown(self, shutdown_manager: IShutdownManager) -> None:
+        """Register this callback with the shutdown manager."""
+        shutdown_manager.register_component(
+            component=self,
+            timeout=self.get_shutdown_timeout(),
+            name=f"callback_{self.name}"
+        )
+        self.logger.debug(f"📝 Callback {self.name} registered with shutdown manager")
     
     def on_training_start(self, context: TrainingStartContext) -> None:
         """

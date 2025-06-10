@@ -5,9 +5,10 @@ These types provide the foundation for type safety and consistency
 across all components of the system.
 """
 
-from typing import TypedDict, NewType, Union, Any, Protocol, TypeVar, Generic
+from typing import TypedDict, NewType, Union, Any, Protocol, TypeVar, Generic, List, Optional
 from datetime import datetime
 from enum import Enum, IntEnum
+from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -103,6 +104,9 @@ class TerminationReason(Enum):
     TRAINER_STOPPED = "TRAINER_STOPPED"
     DATA_EXHAUSTED = "DATA_EXHAUSTED"
     TRAINING_ERROR = "TRAINING_ERROR"
+    EPISODE_MANAGER_FAILED = "EPISODE_MANAGER_FAILED"
+    ENVIRONMENT_SETUP_FAILED = "ENVIRONMENT_SETUP_FAILED"
+    NO_MORE_DATA = "NO_MORE_DATA"
 
 
 class ActionTypeEnum(Enum):
@@ -238,3 +242,46 @@ class Resettable(Protocol):
     def reset(self) -> None:
         """Reset internal state to initial conditions."""
         ...
+
+
+# Training system data structures
+@dataclass
+class RolloutResult:
+    """Result from trainer rollout collection.
+    
+    Design: Encapsulates all information from rollout phase for
+    training manager decision making.
+    """
+    steps_collected: int
+    episodes_completed: int  
+    buffer_ready: bool
+    episode_metrics: List[Any] = None
+    interrupted: bool = False
+    
+    def __post_init__(self):
+        if self.episode_metrics is None:
+            self.episode_metrics = []
+
+
+@dataclass 
+class UpdateResult:
+    """Result from trainer policy update.
+    
+    Design: Contains all metrics and status information from
+    a single policy update for callbacks and analysis.
+    """
+    policy_loss: float
+    value_loss: float
+    entropy_loss: float
+    total_loss: float
+    learning_rate: float
+    clip_epsilon: float
+    batch_size: int
+    n_epochs: int
+    kl_divergence: float = 0.0
+    clip_fraction: float = 0.0
+    gradient_norm: float = 0.0
+    explained_variance: float = 0.0
+    advantage_mean: float = 0.0
+    advantage_std: float = 0.0
+    interrupted: bool = False

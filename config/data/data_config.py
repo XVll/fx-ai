@@ -13,3 +13,4 @@ class DataConfig(BaseModel):
     data_dir: str = Field("dnb", description="Data directory")
     index_dir: str = Field("cache/indices", description="Index directory")
     auto_build_index: bool = Field(True, description="Auto-build index")
+    include_weekends: bool = Field(False, description="Include weekends in data")

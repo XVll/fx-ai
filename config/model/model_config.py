@@ -39,6 +39,8 @@ class ModelConfig(BaseModel):
     lf_feat_dim: int = Field(19, description="Low-frequency features")
     portfolio_seq_len: int = Field(5, description="Portfolio sequence length")
     portfolio_feat_dim: int = Field(10, description="Portfolio features")
+
+    # Todo : action_space_size
     
     @field_validator("hf_feat_dim", "mf_feat_dim", "lf_feat_dim", "portfolio_feat_dim", mode="before")
     @classmethod

@@ -8,19 +8,22 @@ based on strongly typed Pydantic configurations.
 from typing import List, Optional, TYPE_CHECKING
 from pathlib import Path
 import logging
+
+from agent.ppo_agent import PPOTrainer
+from envs import TradingEnvironment
 from .base import BaseCallback
 from .manager import CallbackManager
-from ...agent.interfaces import IAgent
 from ...config import Config, CallbackConfig
-from ...envs.interfaces import ITradingEnvironment
+from ...core.shutdown import IShutdownManager
 
 
 
 def create_callbacks_from_config(
     config: CallbackConfig,
-    trainer: Optional[IAgent] = None,
-    environment: Optional[ITradingEnvironment] = None,
-    output_path: Optional[Path] = None
+    trainer: Optional[PPOTrainer] = None,
+    environment: Optional[TradingEnvironment] = None,
+    output_path: Optional[Path] = None,
+    shutdown_manager: Optional[IShutdownManager] = None
 ) -> CallbackManager:
     """
     Create callback manager with callbacks from strongly typed configuration.
@@ -30,6 +33,7 @@ def create_callbacks_from_config(
         trainer: PPO trainer instance (for callbacks that need model access)
         environment: Trading environment (for callbacks that need env access)
         output_path: Output directory path
+        shutdown_manager: Shutdown manager for registering callbacks (optional)
         
     Returns:
         Configured CallbackManager instance with enabled callbacks
@@ -76,6 +80,13 @@ def create_callbacks_from_config(
             callbacks.append(early_stopping_callback)
     
     logger.info(f"Created {len(callbacks)} callbacks from configuration")
+    
+    # Register callbacks with shutdown manager if provided
+    if shutdown_manager is not None:
+        for callback in callbacks:
+            callback.register_shutdown(shutdown_manager)
+        logger.info(f"Registered {len(callbacks)} callbacks with shutdown manager")
+    
     return CallbackManager(callbacks)
 
 

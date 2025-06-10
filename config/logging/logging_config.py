@@ -15,10 +15,3 @@ class LoggingConfig(BaseModel):
     file_enabled: bool = Field(True, description="File logging")
     log_dir: str = Field("logs", description="Log directory")
     log_interval: int = Field(10, description="Metric log interval")
-
-    # Component logging
-    log_rewards: bool = Field(True, description="Log rewards")
-    log_actions: bool = Field(True, description="Log actions")
-    log_features: bool = Field(False, description="Log features")
-    log_portfolio: bool = Field(True, description="Log portfolio")
-

@@ -6,6 +6,7 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+from config import DataConfig
 from .provider.data_provider import (
     DataProvider,
     HistoricalDataProvider,
@@ -27,13 +28,10 @@ class DataManager:
     """
 
     def __init__(
-        self,
-        provider: DataProvider,
-        momentum_scanner: Optional[MomentumScanner] = None,
-        preload_days: int = 2,
-        logger=None,
-        date_range: Optional[List[str]] = None,
-        include_weekends: bool = False,
+            self,
+            provider: DataProvider,
+            momentum_scanner: Optional[MomentumScanner],
+            config: DataConfig,
     ):
         """
         Initialize the enhanced data manager.
@@ -100,7 +98,7 @@ class DataManager:
         """Helper method for logging."""
         if self.logger:
             self.logger.log(level, message)
-    
+
     def set_date_range(self, date_range: Optional[List[str]]):
         """Update the date range filter for preloading."""
         self.date_range = date_range
@@ -122,7 +120,7 @@ class DataManager:
                 self._log(f"Error loading momentum indices: {e}", logging.WARNING)
 
     def load_day(
-        self, symbol: str, date: datetime, data_types: Optional[List[str]] = None
+            self, symbol: str, date: datetime, data_types: Optional[List[str]] = None
     ) -> Dict[str, pd.DataFrame]:
         """Load a full day's data (4 AM - 8 PM ET) with previous day for lookback.
 
@@ -139,8 +137,8 @@ class DataManager:
         """
         # Check L1 cache first
         if (
-            self.l1_cache["symbol"] == symbol
-            and self.l1_cache["date"] == pd.Timestamp(date).date()
+                self.l1_cache["symbol"] == symbol
+                and self.l1_cache["date"] == pd.Timestamp(date).date()
         ):
             self.session_stats["l1_hits"] += 1
             self._log(f"L1 cache hit for {symbol} on {date}")
@@ -190,7 +188,7 @@ class DataManager:
         return day_data
 
     def _load_full_day(
-        self, symbol: str, date: datetime, data_types: Optional[List[str]] = None, loading_context: str = "training"
+            self, symbol: str, date: datetime, data_types: Optional[List[str]] = None, loading_context: str = "training"
     ) -> Dict[str, pd.DataFrame]:
         """Load full trading day data (4 AM - 8 PM ET)."""
         # Convert date to timezone-aware timestamps for full trading day
@@ -217,7 +215,7 @@ class DataManager:
         return result.get(symbol, {})
 
     def _load_previous_day(
-        self, symbol: str, date: datetime, data_types: Optional[List[str]] = None
+            self, symbol: str, date: datetime, data_types: Optional[List[str]] = None
     ) -> Dict[str, pd.DataFrame]:
         """Load previous trading day for lookback calculations."""
         # Find previous trading day
@@ -229,7 +227,7 @@ class DataManager:
         date_str = date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date)
         prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
         self._log(f"│   ├── 🔄 Warmup Data Loading: {symbol} on {prev_date_str} (for training day {date_str})")
-        
+
         return self._load_full_day(symbol, prev_date, data_types, loading_context="warmup")
 
     def _get_previous_trading_day(self, date: datetime) -> Optional[datetime]:
@@ -254,7 +252,7 @@ class DataManager:
 
         current_date_str = current_date.strftime('%Y-%m-%d') if hasattr(current_date, 'strftime') else str(current_date)
         self._log(f"📅 Triggering background preload for {symbol} after loading {current_date_str}")
-        
+
         self.preload_future = self.preload_executor.submit(
             self._preload_next_days, symbol, current_date
         )
@@ -300,23 +298,23 @@ class DataManager:
             self._log(f"Error in preload task: {e}", logging.ERROR)
 
     def _get_next_momentum_days(
-        self, symbol: str, current_date: datetime, count: int
+            self, symbol: str, current_date: datetime, count: int
     ) -> List[pd.Timestamp]:
         """Get next momentum days from index or fallback to sequential days."""
         if self.momentum_days_cache is not None and not self.momentum_days_cache.empty:
             # Filter momentum days for symbol after current date
             current_date_obj = pd.Timestamp(current_date).date()
             mask = (
-                (self.momentum_days_cache["symbol"] == symbol.upper())
-                & (self.momentum_days_cache["date"].dt.date > current_date_obj)
+                    (self.momentum_days_cache["symbol"] == symbol.upper())
+                    & (self.momentum_days_cache["date"].dt.date > current_date_obj)
             )
-            
+
             # Apply date range filter if configured
             if self.date_range and self.date_range[1]:  # Check end date
                 end_date = datetime.strptime(self.date_range[1], "%Y-%m-%d").date()
                 mask = mask & (self.momentum_days_cache["date"].dt.date <= end_date)
                 self._log(f"📅 Applying date range filter: preload limited to <= {self.date_range[1]}")
-            
+
             symbol_days = self.momentum_days_cache[mask].sort_values("date")
 
             if not symbol_days.empty:
@@ -331,7 +329,7 @@ class DataManager:
         # Fallback to next sequential trading days (with date range respect)
         next_days = []
         current = pd.Timestamp(current_date).date()
-        
+
         # Determine end date limit
         end_date_limit = None
         if self.date_range and self.date_range[1]:
@@ -340,21 +338,24 @@ class DataManager:
 
         while len(next_days) < count:
             current += timedelta(days=1)
-            
+
             # Check date range limit (inclusive)
             if end_date_limit and current > end_date_limit:
                 self._log(f"📅 Reached date range limit ({self.date_range[1]}) - stopping preload")
                 break
-                
+
             # Skip weekends unless include_weekends is True (Saturday=5, Sunday=6)
             if current.weekday() < 5 or self.include_weekends:
                 next_days.append(pd.Timestamp(current))
                 if current.weekday() >= 5:
-                    self._log(f"📅 Added weekend day for preload: {current.strftime('%Y-%m-%d')} (weekday: {current.weekday()}) - weekends enabled")
+                    self._log(
+                        f"📅 Added weekend day for preload: {current.strftime('%Y-%m-%d')} (weekday: {current.weekday()}) - weekends enabled")
                 else:
-                    self._log(f"📅 Added sequential day for preload: {current.strftime('%Y-%m-%d')} (weekday: {current.weekday()})")
+                    self._log(
+                        f"📅 Added sequential day for preload: {current.strftime('%Y-%m-%d')} (weekday: {current.weekday()})")
             else:
-                self._log(f"📅 Skipped weekend day: {current.strftime('%Y-%m-%d')} (weekday: {current.weekday()}) - weekends disabled")
+                self._log(
+                    f"📅 Skipped weekend day: {current.strftime('%Y-%m-%d')} (weekday: {current.weekday()}) - weekends disabled")
 
         if next_days:
             self._log(f"📅 Fallback sequential days for preload: {[d.strftime('%Y-%m-%d') for d in next_days]}")
@@ -371,8 +372,8 @@ class DataManager:
     def get_previous_day_data(self, data_type: str) -> Optional[pd.DataFrame]:
         """Get previous day data from L1 cache for lookback calculations."""
         if (
-            self.l1_cache["prev_day_data"]
-            and data_type in self.l1_cache["prev_day_data"]
+                self.l1_cache["prev_day_data"]
+                and data_type in self.l1_cache["prev_day_data"]
         ):
             return self.l1_cache["prev_day_data"][data_type]
         return None
@@ -387,7 +388,7 @@ class DataManager:
 
         # Filter by symbol and activity score
         mask = (self.momentum_days_cache["symbol"] == symbol.upper()) & (
-            self.momentum_days_cache["activity_score"] >= min_activity
+                self.momentum_days_cache["activity_score"] >= min_activity
         )
 
         return self.momentum_days_cache[mask].sort_values(
@@ -395,11 +396,11 @@ class DataManager:
         )
 
     def get_all_momentum_days(
-        self,
-        symbols: Optional[List[str]] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        min_activity: float = 0.0
+            self,
+            symbols: Optional[List[str]] = None,
+            start_date: Optional[datetime] = None,
+            end_date: Optional[datetime] = None,
+            min_activity: float = 0.0
     ) -> List[Dict[str, Any]]:
         """Get momentum days as a list of dictionaries with optional filtering.
 
@@ -417,31 +418,31 @@ class DataManager:
 
         # Apply filters
         filtered_cache = self.momentum_days_cache.copy()
-        
+
         # Filter by symbols
         if symbols:
             filtered_cache = filtered_cache[
                 filtered_cache["symbol"].isin([s.upper() for s in symbols])
             ]
-        
+
         # Filter by date range
         if start_date:
             start_date_obj = pd.Timestamp(start_date).date()
             filtered_cache = filtered_cache[
                 filtered_cache["date"].dt.date >= start_date_obj
-            ]
-        
+                ]
+
         if end_date:
             end_date_obj = pd.Timestamp(end_date).date()
             filtered_cache = filtered_cache[
                 filtered_cache["date"].dt.date <= end_date_obj
-            ]
-        
+                ]
+
         # Filter by activity score
         if min_activity > 0.0:
             filtered_cache = filtered_cache[
                 filtered_cache["activity_score"] >= min_activity
-            ]
+                ]
 
         # Convert DataFrame to list of dicts
         momentum_days = []
@@ -462,11 +463,11 @@ class DataManager:
         return momentum_days
 
     def get_reset_points(
-        self,
-        symbol: str,
-        date: datetime,
-        min_roc: float = 0.0,
-        min_activity: float = 0.0,
+            self,
+            symbol: str,
+            date: datetime,
+            min_roc: float = 0.0,
+            min_activity: float = 0.0,
     ) -> pd.DataFrame:
         """Get reset points for a symbol on a specific date with 2-component filtering.
 
@@ -484,7 +485,7 @@ class DataManager:
 
         date_obj = pd.Timestamp(date).date()
         mask = (self.reset_points_cache["symbol"] == symbol.upper()) & (
-            self.reset_points_cache["date"] == date_obj
+                self.reset_points_cache["date"] == date_obj
         )
 
         # Apply 3-component filters if available (use absolute ROC for directional momentum)
@@ -506,7 +507,7 @@ class DataManager:
             return result
 
     def _check_memory_cache(
-        self, symbol: str, data_type: str, start_time: datetime, end_time: datetime
+            self, symbol: str, data_type: str, start_time: datetime, end_time: datetime
     ) -> Optional[pd.DataFrame]:
         """Check if data is in memory cache and return it if found."""
 
@@ -545,12 +546,12 @@ class DataManager:
         return None
 
     def _save_to_memory_cache(
-        self,
-        symbol: str,
-        data_type: str,
-        start_time: datetime,
-        end_time: datetime,
-        df: pd.DataFrame,
+            self,
+            symbol: str,
+            data_type: str,
+            start_time: datetime,
+            end_time: datetime,
+            df: pd.DataFrame,
     ) -> None:
         """Save data to memory cache."""
         if df.empty:
@@ -572,7 +573,7 @@ class DataManager:
         return f"{start_str}_{end_str}"
 
     def _update_loaded_ranges(
-        self, symbol: str, data_type: str, start_time: datetime, end_time: datetime
+            self, symbol: str, data_type: str, start_time: datetime, end_time: datetime
     ) -> None:
         """Update the tracking of loaded date ranges."""
         if symbol not in self.loaded_ranges:
@@ -600,12 +601,12 @@ class DataManager:
             self.loaded_ranges[symbol][data_type] = merged
 
     def load_data(
-        self,
-        symbols: Union[str, List[str]],
-        start_time: Union[datetime, str],
-        end_time: Union[datetime, str],
-        data_types: List[str] = None,
-        loading_context: str = "general",
+            self,
+            symbols: Union[str, List[str]],
+            start_time: Union[datetime, str],
+            end_time: Union[datetime, str],
+            data_types: List[str] = None,
+            loading_context: str = "general",
     ) -> Dict[str, Dict[str, pd.DataFrame]]:
         """
         Load data for symbols in a date range with comprehensive logging.
@@ -713,12 +714,12 @@ class DataManager:
         if successful_loads or failed_loads:
             context_label = {
                 "training": "Training Data Loading",
-                "warmup": "Warmup Data Loading", 
+                "warmup": "Warmup Data Loading",
                 "preload": "Preload Data Loading",
                 "legacy": "Legacy API Data Loading",
                 "general": "Bulk Data Loading"
             }.get(loading_context, "Data Loading")
-            
+
             self._log(f"│   ├── 📊 {context_label} Summary:")
             self._log(f"│   │   ├── ⏱️  Duration: {load_duration:.2f}s")
             self._log(f"│   │   ├── 📊 Total rows: {total_rows_this_load:,}")
@@ -737,14 +738,14 @@ class DataManager:
                     f"   ❌ Failed: {len(failed_loads)} data types", logging.WARNING
                 )
                 for data_type, error in list(failed_loads.items())[
-                    :2
-                ]:  # Show only first 2 errors
+                                        :2
+                                        ]:  # Show only first 2 errors
                     self._log(f"      • {data_type}: {error}", logging.WARNING)
 
         return results
 
     def _load_from_provider(
-        self, symbol: str, data_type: str, start_dt: datetime, end_dt: datetime
+            self, symbol: str, data_type: str, start_dt: datetime, end_dt: datetime
     ) -> pd.DataFrame:
         """Load data from the provider based on data type."""
         provider: HistoricalDataProvider = self.provider
@@ -762,11 +763,11 @@ class DataManager:
             return pd.DataFrame()
 
     def get_bars(
-        self,
-        symbol: str = None,
-        timeframe: str = "1m",
-        start_time: Union[datetime, str] = None,
-        end_time: Union[datetime, str] = None,
+            self,
+            symbol: str = None,
+            timeframe: str = "1m",
+            start_time: Union[datetime, str] = None,
+            end_time: Union[datetime, str] = None,
     ) -> pd.DataFrame:
         """
         Get bars data for a specific timeframe.
@@ -815,10 +816,10 @@ class DataManager:
             return pd.DataFrame()
 
     def get_trades(
-        self,
-        symbol: str = None,
-        start_time: Union[datetime, str] = None,
-        end_time: Union[datetime, str] = None,
+            self,
+            symbol: str = None,
+            start_time: Union[datetime, str] = None,
+            end_time: Union[datetime, str] = None,
     ) -> pd.DataFrame:
         """Get trades data."""
         symbol = symbol or self.current_symbol
@@ -851,10 +852,10 @@ class DataManager:
             return pd.DataFrame()
 
     def get_quotes(
-        self,
-        symbol: str = None,
-        start_time: Union[datetime, str] = None,
-        end_time: Union[datetime, str] = None,
+            self,
+            symbol: str = None,
+            start_time: Union[datetime, str] = None,
+            end_time: Union[datetime, str] = None,
     ) -> pd.DataFrame:
         """Get quotes data."""
         symbol = symbol or self.current_symbol
@@ -883,10 +884,10 @@ class DataManager:
             return pd.DataFrame()
 
     def get_status(
-        self,
-        symbol: str = None,
-        start_time: Union[datetime, str] = None,
-        end_time: Union[datetime, str] = None,
+            self,
+            symbol: str = None,
+            start_time: Union[datetime, str] = None,
+            end_time: Union[datetime, str] = None,
     ) -> pd.DataFrame:
         """Get status data."""
         symbol = symbol or self.current_symbol
@@ -1000,9 +1001,9 @@ class DataManager:
     def get_session_stats(self) -> Dict[str, Any]:
         """Get comprehensive session statistics."""
         total_hits = (
-            self.session_stats["cache_hits"]
-            + self.session_stats["l1_hits"]
-            + self.session_stats["l2_hits"]
+                self.session_stats["cache_hits"]
+                + self.session_stats["l1_hits"]
+                + self.session_stats["l2_hits"]
         )
         total_requests = total_hits + self.session_stats["cache_misses"]
 
@@ -1012,7 +1013,7 @@ class DataManager:
             "l1_hit_rate": self.session_stats["l1_hits"] / max(1, total_requests) * 100,
             "l2_hit_rate": self.session_stats["l2_hits"] / max(1, total_requests) * 100,
             "cached_symbols": len(set(k[0] for k in self.l2_cache.keys()))
-            + (1 if self.l1_cache["symbol"] else 0),
+                              + (1 if self.l1_cache["symbol"] else 0),
             "l2_cache_size": len(self.l2_cache),
             "data_types_loaded": list(self.session_stats["data_types_loaded"]),
             "symbols_loaded": list(self.session_stats["symbols_loaded"]),
@@ -1026,18 +1027,18 @@ class DataManager:
         """
         # Check if this is the active day
         if (
-            self.l1_cache["symbol"] == symbol
-            and self.l1_cache["date"]
-            and self.l1_cache["date"].date() == date.date()
+                self.l1_cache["symbol"] == symbol
+                and self.l1_cache["date"]
+                and self.l1_cache["date"].date() == date.date()
         ):
             return self.l1_cache["data"].copy()
 
         # Check L2 cache
         for day_data in self.l2_cache:
             if (
-                day_data["symbol"] == symbol
-                and day_data["date"]
-                and day_data["date"].date() == date.date()
+                    day_data["symbol"] == symbol
+                    and day_data["date"]
+                    and day_data["date"].date() == date.date()
             ):
                 return day_data["data"].copy()
 
@@ -1053,7 +1054,7 @@ class DataManager:
         return self.provider
 
     def preload_day_async(
-        self, symbol: str, date: datetime, with_lookback: bool = False
+            self, symbol: str, date: datetime, with_lookback: bool = False
     ):
         """Asynchronously preload a day's data."""
         from concurrent.futures import Future
