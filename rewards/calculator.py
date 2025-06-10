@@ -4,8 +4,8 @@ import logging
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 
-from config.config import RewardConfig
-from agent.callbacks import CallbackManager
+from config import Config
+from callbacks import CallbackManager
 from rewards.core import RewardState
 from rewards.components import (
     PnLReward,
@@ -39,23 +39,23 @@ class TradeTracker:
 
 class RewardSystem:
     """
-    Clean percentage-based reward system without clipping or smoothing
+    Clean percentage-based reward system without complex metrics
     """
 
     def __init__(
         self,
-        config: RewardConfig,
+        config: Config,
         callback_manager: Optional[CallbackManager] = None,
         logger: Optional[logging.Logger] = None,
     ):
-        self.config = config
-        self.callback_manager = callback_manager or CallbackManager([])
+        self.config = config.env.reward
+        self.callback_manager = callback_manager or CallbackManager(config=None)
         self.logger = logger or logging.getLogger(__name__)
 
         # Initialize components based on new config
         self.components = self._initialize_components()
 
-        # Simple tracking - no complex aggregator
+        # Simple tracking
         self.step_count = 0
         self.current_trade: Optional[TradeTracker] = None
         self.episode_total_reward = 0.0
@@ -76,7 +76,7 @@ class RewardSystem:
         if self.config.enable_pnl_reward:
             pnl_config = {"pnl_coefficient": self.config.pnl_coefficient}
             components.append(PnLReward(pnl_config, self.logger))
-            self.logger.info(
+            self.logger.debug(
                 f"Enabled P&L reward (coefficient: {self.config.pnl_coefficient})"
             )
 
@@ -87,7 +87,7 @@ class RewardSystem:
                 "max_holding_time_steps": self.config.max_holding_time_steps,
             }
             components.append(HoldingTimePenalty(holding_config, self.logger))
-            self.logger.info(
+            self.logger.debug(
                 f"Enabled holding penalty (coefficient: {self.config.holding_penalty_coefficient})"
             )
 
@@ -97,7 +97,7 @@ class RewardSystem:
                 "drawdown_penalty_coefficient": self.config.drawdown_penalty_coefficient
             }
             components.append(DrawdownPenalty(drawdown_config, self.logger))
-            self.logger.info(
+            self.logger.debug(
                 f"Enabled drawdown penalty (coefficient: {self.config.drawdown_penalty_coefficient})"
             )
 
@@ -110,7 +110,7 @@ class RewardSystem:
             components.append(
                 ProfitGivebackPenalty(profit_giveback_config, self.logger)
             )
-            self.logger.info(
+            self.logger.debug(
                 f"Enabled profit giveback penalty (coefficient: {self.config.profit_giveback_penalty_coefficient})"
             )
 
@@ -121,7 +121,7 @@ class RewardSystem:
                 "max_drawdown_threshold_percent": self.config.max_drawdown_threshold_percent,
             }
             components.append(MaxDrawdownPenalty(max_drawdown_config, self.logger))
-            self.logger.info(
+            self.logger.debug(
                 f"Enabled max drawdown penalty (coefficient: {self.config.max_drawdown_penalty_coefficient})"
             )
 
@@ -131,7 +131,7 @@ class RewardSystem:
                 "profit_closing_bonus_coefficient": self.config.profit_closing_bonus_coefficient
             }
             components.append(ProfitClosingBonus(profit_closing_config, self.logger))
-            self.logger.info(
+            self.logger.debug(
                 f"Enabled profit closing bonus (coefficient: {self.config.profit_closing_bonus_coefficient})"
             )
 
@@ -143,8 +143,8 @@ class RewardSystem:
                 "min_gain_threshold": self.config.min_gain_threshold,
             }
             components.append(CleanTradeBonus(clean_trade_config, self.logger))
-            self.logger.info(
-                f"Enabled clean trade bonus (base_multiplier: {self.config.base_multiplier}, max_mae_threshold: {self.config.max_mae_threshold}, min_gain_threshold: {self.config.min_gain_threshold})"
+            self.logger.debug(
+                f"Enabled clean trade bonus (base_multiplier: {self.config.base_multiplier})"
             )
 
         # Trading activity bonus
@@ -153,7 +153,7 @@ class RewardSystem:
                 "activity_bonus_per_trade": self.config.activity_bonus_per_trade
             }
             components.append(TradingActivityBonus(activity_config, self.logger))
-            self.logger.info(
+            self.logger.debug(
                 f"Enabled trading activity bonus (bonus per trade: {self.config.activity_bonus_per_trade})"
             )
 
@@ -163,7 +163,7 @@ class RewardSystem:
                 "hold_penalty_per_step": self.config.hold_penalty_per_step
             }
             components.append(InactivityPenalty(inactivity_config, self.logger))
-            self.logger.info(
+            self.logger.debug(
                 f"Enabled inactivity penalty (penalty per HOLD step: {self.config.hold_penalty_per_step})"
             )
 
@@ -172,7 +172,7 @@ class RewardSystem:
             "bankruptcy_penalty_coefficient": self.config.bankruptcy_penalty_coefficient
         }
         components.append(BankruptcyPenalty(bankruptcy_config, self.logger))
-        self.logger.info(
+        self.logger.debug(
             f"Enabled bankruptcy penalty (coefficient: {self.config.bankruptcy_penalty_coefficient})"
         )
 
@@ -184,6 +184,7 @@ class RewardSystem:
         self.current_trade = None
         self.episode_total_reward = 0.0
         self.component_totals = {}
+        self._last_component_rewards = {}
 
         # Reset components that have state
         for component in self.components:
@@ -226,7 +227,7 @@ class RewardSystem:
         termination_reason: Optional[Any],
     ) -> float:
         """
-        Calculate total reward without clipping or smoothing
+        Calculate total reward without complex metrics
         """
 
         # Create reward state
@@ -282,20 +283,20 @@ class RewardSystem:
         # Update episode total
         self.episode_total_reward += total_reward
 
-        # Trigger callback with reward component data
-        self.callback_manager.trigger(
-            "on_custom_event",
-            "reward_calculation",
-            {
-                "reward": total_reward,
-                "reward_components": component_rewards,
-                "component_totals": self.component_totals.copy(),
-                "action": str(decoded_action.get("type", "unknown")),
-                "is_invalid": bool(decoded_action.get("invalid_reason")),
-                "step_count": self.step_count,
-                "episode_total_reward": self.episode_total_reward,
-            },
-        )
+        # Simplified callback - no metrics collection
+        if self.callback_manager:
+            self.callback_manager.trigger(
+                "on_custom_event",
+                "reward_calculation",
+                {
+                    "reward": total_reward,
+                    "reward_components": component_rewards,
+                    "action": str(decoded_action.get("type", "unknown")),
+                    "is_invalid": bool(decoded_action.get("invalid_reason")),
+                    "step_count": self.step_count,
+                    "episode_total_reward": self.episode_total_reward,
+                },
+            )
 
         self.step_count += 1
         return total_reward
@@ -329,17 +330,3 @@ class RewardSystem:
             "component_totals": self.component_totals.copy(),
             "current_step": self.step_count,
         }
-
-    def get_wandb_metrics(self) -> Dict[str, Any]:
-        """Get metrics formatted for W&B logging"""
-        metrics = {}
-
-        # Component totals
-        for comp_name, total_value in self.component_totals.items():
-            metrics[f"reward/{comp_name}/total"] = total_value
-
-        # Episode statistics
-        metrics["episode/total_reward"] = self.episode_total_reward
-        metrics["episode/steps"] = self.step_count
-
-        return metrics

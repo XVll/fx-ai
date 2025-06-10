@@ -6,13 +6,13 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from data.provider.data_provider import (
+from .provider.data_provider import (
     DataProvider,
     HistoricalDataProvider,
     LiveDataProvider,
 )
-from data.utils.helpers import ensure_timezone_aware
-from data.scanner.momentum_scanner import MomentumScanner
+from .utils.helpers import ensure_timezone_aware
+from .scanner.momentum_scanner import MomentumScanner
 
 
 class DataManager:

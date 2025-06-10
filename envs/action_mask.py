@@ -1,255 +1,267 @@
 """
-Action Masking System for Trading Environment
+Action Masking System for V2 Trading Environment
 
-This module implements dynamic action masking to prevent invalid actions
-and eliminate model exploitation via invalid action spam.
-
-Key Features:
-- BUY actions: Based on available cash and position limits
-- SELL actions: Based on current position size
-- HOLD actions: Always valid
-- Prevents over-leveraging and impossible trades
+Clean implementation of action masking with clear separation of concerns.
+Prevents invalid actions and simplifies agent training by eliminating 
+impossible actions from the action space.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 import numpy as np
+from numpy.typing import NDArray
+
+from core.types import ActionType, PositionSizeType, MaskArray, ProbabilityArray
+from config.simulation import SimulationConfig
 
 
 class ActionMask:
     """
-    Dynamic action masking for trading environment.
-
-    Determines valid actions based on current portfolio state and market conditions.
-    Prevents model exploitation by eliminating invalid actions as an escape mechanism.
+    Dynamic action masking for v2 trading environment.
+    
+    Design principles:
+    - Clean, stateless operations
+    - Clear validation logic
+    - Type-safe interfaces
+    - Efficient computation
     """
-
-    def __init__(self, config, logger: Optional[logging.Logger] = None):
+    
+    def __init__(self, config: SimulationConfig, logger: Optional[logging.Logger] = None):
+        """Initialize action mask with configuration."""
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
-
-        # Configuration parameters
-        self.max_position_ratio = (
-            config.simulation.max_position_value_ratio
-        )  # Max position as % of equity
-        self.min_order_value = 25.0  # Minimum $25 order (more flexible)
-        self.min_shares_to_sell = (
-            0.1  # Minimum 0.1 shares (allow fractional for percentages)
+        
+        # Extract key parameters
+        self.max_position_ratio = config.max_position_value_ratio  # Max position as % of equity
+        self.min_order_value = config.min_trade_value  # Minimum order value in $
+        self.min_shares_fraction = 0.01  # Minimum 1% of position for partial sells
+        
+        # Define action space structure (3 types × 4 sizes = 12 actions)
+        self.n_action_types = len(ActionType)
+        self.n_position_sizes = len(PositionSizeType)
+        self.n_actions = self.n_action_types * self.n_position_sizes
+        
+        self.logger.debug(
+            f"ActionMask initialized: max_position_ratio={self.max_position_ratio:.2f}, "
+            f"min_order_value=${self.min_order_value:.2f}"
         )
-
-        # Action space configuration (matches environment)
-        self.action_types = ["HOLD", "BUY", "SELL"]  # indices 0, 1, 2
-        self.position_sizes = [0.25, 0.50, 0.75, 1.0]  # indices 0, 1, 2, 3
-
-        self.logger.info(
-            f"Action masking initialized - max_position_ratio: {self.max_position_ratio}"
-        )
-
+    
     def get_action_mask(
-        self, portfolio_state: Dict[str, Any], market_state: Dict[str, Any]
-    ) -> np.ndarray:
+        self, 
+        portfolio_state: Dict[str, Any], 
+        market_state: Dict[str, Any]
+    ) -> MaskArray:
         """
-        Generate boolean mask for all 12 actions (3 types × 4 sizes).
-
+        Generate boolean mask for all possible actions.
+        
         Args:
-            portfolio_state: Current portfolio state (cash, position, etc.)
-            market_state: Current market state (price, etc.)
-
+            portfolio_state: Current portfolio state containing:
+                - cash: Available cash
+                - total_equity: Total portfolio value
+                - position_value: Current position value
+                - positions: Dict of current positions
+            market_state: Current market state containing:
+                - current_price: Current asset price
+                - best_bid_price: Current bid
+                - best_ask_price: Current ask
+                
         Returns:
             Boolean array of shape (12,) where True = valid action
         """
-        mask = np.zeros(12, dtype=bool)
-
-        # Extract portfolio info
+        # Initialize mask (all actions invalid by default)
+        mask = np.zeros(self.n_actions, dtype=bool)
+        
+        # Extract portfolio information
         cash = portfolio_state.get("cash", 0.0)
         total_equity = portfolio_state.get("total_equity", cash)
         current_position_value = abs(portfolio_state.get("position_value", 0.0))
-
-        # Get shares from positions (primary asset)
-        current_shares = 0
-        positions = portfolio_state.get("positions", {})
-        for asset_id, position_info in positions.items():
-            if position_info and position_info.get("quantity", 0) > 0:
-                current_shares = position_info.get("quantity", 0)
-                break  # Assume single asset trading
-
-        # Extract market info
+        
+        # Extract position information
+        current_shares = self._get_current_shares(portfolio_state)
+        
+        # Extract market prices
         current_price = market_state.get("current_price", 0.0)
         ask_price = market_state.get("best_ask_price", current_price)
         bid_price = market_state.get("best_bid_price", current_price)
-
-        # Use ask/bid or fallback to current price
-        buy_price = ask_price if ask_price and ask_price > 0 else current_price
-        sell_price = bid_price if bid_price and bid_price > 0 else current_price
-
+        
+        # Validate prices
+        buy_price = ask_price if ask_price > 0 else current_price
+        sell_price = bid_price if bid_price > 0 else current_price
+        
         if buy_price <= 0 or sell_price <= 0:
-            # Invalid prices - only allow HOLD
-            mask[0:4] = True  # HOLD actions always valid
+            # Invalid market data - only allow HOLD actions
+            mask[self._get_action_indices(ActionType.HOLD)] = True
             return mask
-
-        # Calculate maximum allowed position value
+        
+        # Calculate position limits
         max_position_value = total_equity * self.max_position_ratio
-
-        # HOLD actions (indices 0-3) - always valid
-        mask[0:4] = True
-
-        # BUY actions (indices 4-7) - check cash and position limits
-        for i, size_pct in enumerate(self.position_sizes):
-            buy_value = cash * size_pct
-            new_total_position = current_position_value + buy_value
-
-            # Check constraints
+        
+        # HOLD actions - always valid
+        hold_indices = self._get_action_indices(ActionType.HOLD)
+        mask[hold_indices] = True
+        
+        # BUY actions - check cash and position limits
+        buy_indices = self._get_action_indices(ActionType.BUY)
+        for i, size_type in enumerate(PositionSizeType):
+            size_fraction = self._get_size_fraction(size_type)
+            buy_value = cash * size_fraction
+            new_position_value = current_position_value + buy_value
+            
+            # Validate buy action
             can_buy = (
-                buy_value >= self.min_order_value  # Minimum order size
-                and new_total_position <= max_position_value  # Position limit
-                and cash >= buy_value  # Sufficient cash
+                buy_value >= self.min_order_value and  # Meets minimum order size
+                new_position_value <= max_position_value and  # Within position limits
+                cash >= buy_value  # Have sufficient cash
             )
-            mask[4 + i] = can_buy
-
-        # SELL actions (indices 8-11) - check if position exists
+            
+            mask[buy_indices[i]] = can_buy
+        
+        # SELL actions - check if we have position to sell
         if current_shares > 0 and sell_price > 0:
-            for i, size_pct in enumerate(self.position_sizes):
-                shares_to_sell = current_shares * size_pct
+            sell_indices = self._get_action_indices(ActionType.SELL)
+            for i, size_type in enumerate(PositionSizeType):
+                size_fraction = self._get_size_fraction(size_type)
+                shares_to_sell = current_shares * size_fraction
                 sell_value = shares_to_sell * sell_price
-
-                # Check constraints
+                
+                # Validate sell action
                 can_sell = (
-                    shares_to_sell >= self.min_shares_to_sell  # At least 1 share
-                    and sell_value >= self.min_order_value  # Minimum order value
+                    shares_to_sell >= current_shares * self.min_shares_fraction and  # At least min fraction
+                    sell_value >= self.min_order_value  # Meets minimum order value
                 )
-                mask[8 + i] = can_sell
-        else:
-            # No position or invalid price - can't sell
-            mask[8:12] = False
-
-        # Log mask for debugging (only if enabled)
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self._log_mask_debug(mask, portfolio_state, market_state)
-
+                
+                mask[sell_indices[i]] = can_sell
+        
         return mask
-
-    def _log_mask_debug(
-        self,
-        mask: np.ndarray,
-        portfolio_state: Dict[str, Any],
-        market_state: Dict[str, Any],
-    ):
-        """Log detailed mask information for debugging."""
-        cash = portfolio_state.get("cash", 0.0)
-        position_value = portfolio_state.get("position_value", 0.0)
-        price = market_state.get("current_price", 0.0)
-
-        # Get shares from positions
-        shares = 0
-        positions = portfolio_state.get("positions", {})
-        for asset_id, position_info in positions.items():
-            if position_info and position_info.get("quantity", 0) > 0:
-                shares = position_info.get("quantity", 0)
-                break
-
-        valid_actions = []
-        for i, is_valid in enumerate(mask):
-            if is_valid:
-                action_type_idx = i // 4
-                size_idx = i % 4
-                action_type = self.action_types[action_type_idx]
-                size_pct = self.position_sizes[size_idx]
-                valid_actions.append(f"{action_type}_{int(size_pct * 100)}%")
-
-        self.logger.debug(
-            f"Action mask - Cash: ${cash:.0f}, Shares: {shares}, "
-            f"Position: ${position_value:.0f}, Price: ${price:.2f}, "
-            f"Valid: {valid_actions}"
-        )
-
+    
     def mask_action_probabilities(
         self,
-        action_probs: np.ndarray,
+        action_probs: ProbabilityArray,
         portfolio_state: Dict[str, Any],
-        market_state: Dict[str, Any],
-    ) -> np.ndarray:
+        market_state: Dict[str, Any]
+    ) -> ProbabilityArray:
         """
-        Apply action mask to action probabilities by setting invalid actions to 0.
-
+        Apply action mask to raw action probabilities.
+        
         Args:
             action_probs: Raw action probabilities from policy network
             portfolio_state: Current portfolio state
             market_state: Current market state
-
+            
         Returns:
             Masked and renormalized action probabilities
         """
+        # Get valid action mask
         mask = self.get_action_mask(portfolio_state, market_state)
-
-        # Apply mask
+        
+        # Apply mask to probabilities
         masked_probs = action_probs * mask
-
-        # Renormalize to ensure probabilities sum to 1
+        
+        # Renormalize probabilities
         prob_sum = masked_probs.sum()
         if prob_sum > 0:
             masked_probs = masked_probs / prob_sum
         else:
-            # Fallback to uniform over valid actions
-            valid_count = mask.sum()
-            if valid_count > 0:
-                masked_probs = mask.astype(float) / valid_count
-            else:
-                # Emergency fallback - allow all HOLD actions
-                masked_probs = np.zeros_like(action_probs)
-                masked_probs[0:4] = 0.25  # Equal probability for all HOLD sizes
-
+            # Emergency fallback - uniform distribution over HOLD actions
+            hold_indices = self._get_action_indices(ActionType.HOLD)
+            masked_probs = np.zeros_like(action_probs)
+            masked_probs[hold_indices] = 1.0 / len(hold_indices)
+            self.logger.warning("No valid actions found, defaulting to HOLD")
+        
         return masked_probs
-
-    def is_action_valid(
-        self,
-        action_idx: int,
-        portfolio_state: Dict[str, Any],
-        market_state: Dict[str, Any],
-    ) -> bool:
+    
+    def decode_action(self, action_idx: int) -> Tuple[ActionType, PositionSizeType]:
         """
-        Check if a specific action index is valid.
-
+        Decode linear action index into action type and position size.
+        
         Args:
             action_idx: Linear action index (0-11)
-            portfolio_state: Current portfolio state
-            market_state: Current market state
-
+            
         Returns:
-            True if action is valid, False otherwise
+            Tuple of (ActionType, PositionSizeType)
         """
-        mask = self.get_action_mask(portfolio_state, market_state)
-        return bool(mask[action_idx]) if 0 <= action_idx < len(mask) else False
-
+        if not 0 <= action_idx < self.n_actions:
+            raise ValueError(f"Invalid action index: {action_idx}")
+        
+        action_type_idx = action_idx // self.n_position_sizes
+        size_idx = action_idx % self.n_position_sizes
+        
+        action_type = list(ActionType)[action_type_idx]
+        position_size = list(PositionSizeType)[size_idx]
+        
+        return action_type, position_size
+    
+    def encode_action(self, action_type: ActionType, position_size: PositionSizeType) -> int:
+        """
+        Encode action type and position size into linear index.
+        
+        Args:
+            action_type: Type of action
+            position_size: Size of position
+            
+        Returns:
+            Linear action index (0-11)
+        """
+        action_type_idx = list(ActionType).index(action_type)
+        size_idx = list(PositionSizeType).index(position_size)
+        
+        return action_type_idx * self.n_position_sizes + size_idx
+    
+    def get_action_description(self, action_idx: int) -> str:
+        """
+        Get human-readable description of action.
+        
+        Args:
+            action_idx: Linear action index
+            
+        Returns:
+            Action description string
+        """
+        try:
+            action_type, position_size = self.decode_action(action_idx)
+            size_pct = int(self._get_size_fraction(position_size) * 100)
+            return f"{action_type.name}_{size_pct}%"
+        except ValueError:
+            return f"INVALID_ACTION_{action_idx}"
+    
     def get_valid_actions(
-        self, portfolio_state: Dict[str, Any], market_state: Dict[str, Any]
-    ) -> list:
+        self, 
+        portfolio_state: Dict[str, Any], 
+        market_state: Dict[str, Any]
+    ) -> list[str]:
         """
-        Get list of valid action descriptions for debugging/logging.
-
+        Get list of valid action descriptions for debugging.
+        
         Returns:
             List of valid action strings like ["HOLD_25%", "BUY_50%", "SELL_100%"]
         """
         mask = self.get_action_mask(portfolio_state, market_state)
         valid_actions = []
-
-        for i, is_valid in enumerate(mask):
-            if is_valid:
-                action_type_idx = i // 4
-                size_idx = i % 4
-                action_type = self.action_types[action_type_idx]
-                size_pct = int(self.position_sizes[size_idx] * 100)
-                valid_actions.append(f"{action_type}_{size_pct}%")
-
+        
+        for idx in range(self.n_actions):
+            if mask[idx]:
+                valid_actions.append(self.get_action_description(idx))
+        
         return valid_actions
-
-    def get_action_description(self, action_idx: int) -> str:
-        """Get human-readable description of action index."""
-        if not (0 <= action_idx < 12):
-            return f"INVALID_ACTION_{action_idx}"
-
-        action_type_idx = action_idx // 4
-        size_idx = action_idx % 4
-        action_type = self.action_types[action_type_idx]
-        size_pct = int(self.position_sizes[size_idx] * 100)
-
-        return f"{action_type}_{size_pct}%"
+    
+    def _get_action_indices(self, action_type: ActionType) -> NDArray[np.int32]:
+        """Get array of action indices for a specific action type."""
+        action_type_idx = list(ActionType).index(action_type)
+        start_idx = action_type_idx * self.n_position_sizes
+        return np.arange(start_idx, start_idx + self.n_position_sizes, dtype=np.int32)
+    
+    def _get_size_fraction(self, position_size: PositionSizeType) -> float:
+        """Convert position size enum to fraction."""
+        # Map SIZE_25 -> 0.25, SIZE_50 -> 0.50, etc.
+        return (position_size.value + 1) * 0.25
+    
+    def _get_current_shares(self, portfolio_state: Dict[str, Any]) -> float:
+        """Extract current share count from portfolio state."""
+        positions = portfolio_state.get("positions", {})
+        
+        # Assume single asset trading - get first position
+        for asset_id, position_info in positions.items():
+            if position_info and position_info.get("quantity", 0) > 0:
+                return position_info.get("quantity", 0)
+        
+        return 0.0

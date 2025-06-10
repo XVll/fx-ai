@@ -16,10 +16,9 @@ import logging
 from zoneinfo import ZoneInfo
 
 from data.data_manager import DataManager
-from data.feature_cache_manager import FeatureCacheManager
+from data import FeatureCacheManager
 from feature.simple_feature_manager import SimpleFeatureManager
 from feature.contexts import MarketContext
-from config.config import ModelConfig, SimulationConfig
 
 # Market hours configuration
 MARKET_HOURS = {
@@ -69,8 +68,8 @@ class MarketSimulator:
         self,
         symbol: str,
         data_manager: DataManager,
-        model_config: ModelConfig,
-        simulation_config: SimulationConfig,
+        model_config: Any,  # Config.model
+        simulation_config: Any,  # Config.simulation
         feature_manager: Optional[SimpleFeatureManager] = None,
         feature_cache_manager: Optional[FeatureCacheManager] = None,
         logger: Optional[logging.Logger] = None,

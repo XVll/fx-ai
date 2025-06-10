@@ -1,4 +1,4 @@
-# rewards/__init__.py - Clean percentage-based reward system
+# v2/rewards/__init__.py - Clean percentage-based reward system
 
 from rewards.core import RewardComponent, RewardState, RewardType, RewardMetadata
 from rewards.components import (

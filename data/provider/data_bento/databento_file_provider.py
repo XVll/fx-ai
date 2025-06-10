@@ -7,9 +7,10 @@ import logging
 import json
 from functools import lru_cache
 
-from data.provider.data_provider import HistoricalDataProvider
-from data.utils.helpers import ensure_timezone_aware
-from data.utils.cleaning import clean_ohlc_data, clean_trades_data, clean_quotes_data
+from config import DataConfig
+from ..data_provider import HistoricalDataProvider
+from ...utils.helpers import ensure_timezone_aware
+from ...utils.cleaning import clean_ohlc_data, clean_trades_data, clean_quotes_data
 
 
 class DatabentoFileProvider(HistoricalDataProvider):
@@ -25,13 +26,7 @@ class DatabentoFileProvider(HistoricalDataProvider):
         "status": "status",
     }
 
-    def __init__(
-        self,
-        data_dir: str,
-        symbol_info_file: Optional[str] = None,
-        verbose: bool = False,
-        dbn_cache_size: int = 32,
-    ):
+    def __init__(self, config: DataConfig, symbol_info_file: Optional[list[str]] = None):
         """
         Initialize the Databento file provider.
 
@@ -41,8 +36,7 @@ class DatabentoFileProvider(HistoricalDataProvider):
             verbose: Enable verbose logging for debugging
             dbn_cache_size: Max DBN file contents to keep in LRU cache
         """
-        self.data_dir = data_dir
-        self.verbose = verbose
+        self.data_dir = config.data_dir
         self.logger = logging.getLogger(__name__)
 
         # Set log level based on verbosity
@@ -74,7 +68,7 @@ class DatabentoFileProvider(HistoricalDataProvider):
         self._scan_and_build_metadata_index()
 
         # Create LRU cache for file reading
-        @lru_cache(maxsize=dbn_cache_size)
+        @lru_cache()
         def _read_dbn_file_to_df_cached(file_path: str) -> pd.DataFrame:
             self.logger.debug(f"Reading DBN file: {file_path}")
             try:

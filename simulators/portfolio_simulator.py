@@ -22,8 +22,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from config.config import EnvironmentConfig, SimulationConfig, ModelConfig
-
 
 class OrderTypeEnum(Enum):
     """Order types for fills."""
@@ -163,9 +161,9 @@ class PortfolioSimulator:
     def __init__(
         self,
         logger: logging.Logger,
-        env_config: EnvironmentConfig,
-        simulation_config: SimulationConfig,
-        model_config: ModelConfig,
+        env_config: Any,  # Config.env
+        simulation_config: Any,  # Config.simulation
+        model_config: Any,  # Config.model
         tradable_assets: List[str],
         trade_callback: Optional[Callable[[TradeRecord], None]] = None,
     ):

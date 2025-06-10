@@ -44,10 +44,7 @@ poetry run poe optuna-finetune             # Phase 3: Fine-tuning optimization
 poetry run poe optuna-dashboard            # Launch Optuna dashboard
 
 # Advanced usage (full features)
-poetry run python sweep_engine/optimization.py --spec optuna-1-foundation
-
-# Simple usage (centralized config)
-poetry run python run_optuna.py --config optuna --spec optuna-1-foundation
+poetry run python optuna/optimization.py --spec optuna-1-foundation
 
 
 ```
@@ -84,7 +81,7 @@ poetry run pyright && poetry run ruff check
 
 ## Architecture Overview
 
-FxAIv2 is a reinforcement learning-based algorithmic trading system specializing in high-frequency momentum trading of low-float stocks. The system uses:
+FxAI is a reinforcement learning-based algorithmic trading system specializing in high-frequency momentum trading of low-float stocks. The system uses:
 
 ### Core Components
 
@@ -96,7 +93,7 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
    - Custom callbacks for training lifecycle management
    - Automatic learning rate annealing on continuation
 
-2. **Multi-Branch Transformer** (`ai/transformer.py`)
+2. **Multi-Branch Transformer** (`model/transformer.py`)
    - Processes features at different time scales:
      - High-frequency (1s) - 60-second window: price velocity, tape analysis, order flow
      - Medium-frequency (1m/5m) - Technical indicators, patterns
@@ -120,7 +117,11 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
    - **MarketSimulator** - Constructs uniform 1-second timelines (4 AM - 8 PM ET)
    - Supports tick-level data: trades, quotes (L1), order book (MBP-1), OHLCV
 
-5. **Feature Extraction** (`feature/feature_extractor.py`)
+5. **Feature Extraction** (`feature/`)
+   - Organized by frequency: high-frequency (hf/), medium-frequency (mf/), low-frequency (lf/)
+   - Specialized categories: pattern/, professional/, sequence_aware/, volume_analysis/
+   - Feature attribution system in `feature/attribution/`
+   - Simple feature manager coordinates feature extraction
    - Aggregates 1s bars into 1m/5m timeframes
    - Calculates technical indicators and market microstructure features
    - Tracks session-level statistics (VWAP, cumulative volume, etc.)
@@ -139,12 +140,15 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
    - Components: PnL, holding penalties, action efficiency, risk management
    - Individual component tracking for analysis
 
-8. **Metrics & Monitoring** (`metrics/`)
-   - Comprehensive metric collection system with factory pattern
+8. **Callback System** (`callbacks/`)
+   - Core callbacks: base, checkpoint, context, factory, manager, metrics, wandb
+   - Analysis callbacks: attribution analysis, performance monitoring
+   - Optimization callbacks: early stopping, optuna integration
+   - Comprehensive metric collection through callback system
    - Weights & Biases integration for experiment tracking
-   - Collectors: training, trading, model, execution, reward metrics
+   - Old callback system maintained for backward compatibility
 
-9. **Hyperparameter Optimization** (`optuna_optimization.py`)
+9. **Hyperparameter Optimization** (`optuna/`)
    - Advanced Optuna integration with multiple samplers (TPE, CMA-ES, etc.)
    - Configurable pruning strategies for efficient search
    - Parallel execution support for multi-GPU optimization
@@ -154,20 +158,20 @@ FxAIv2 is a reinforcement learning-based algorithmic trading system specializing
 
 ### Configuration System
 
-Uses Hydra for hierarchical configuration management:
-- `config/config.yaml` - Main configuration with defaults composition
-- `config/model/transformer.yaml` - Multi-branch transformer architecture
-- `config/training/continuous.yaml` - Continuous training with model versioning
-- `config/training/ppo.yaml` - PPO hyperparameters
-- `config/env/trading.yaml` - Trading environment and reward system settings
-- `config/data/databento.yaml` - Data source configurations
-- `config/simulation/default.yaml` - Market simulation parameters
-- `config/wandb/` - Experiment tracking settings
+Uses Pydantic for configuration management with hierarchical organization:
+- `config/config.py` - Main configuration with Pydantic models
+- `config/model/model_config.py` - Multi-branch transformer architecture
+- `config/training/training_config.py` - Continuous training with model versioning
+- `config/environment/environment_config.py` - Trading environment settings
+- `config/data/data_config.py` - Data source configurations
+- `config/simulation/simulation_config.py` - Market simulation parameters
+- `config/logging/logging_config.py` - Logging configuration
+- `config/callbacks/callback_config.py` - Callback system configuration
+- `config/rewards/reward_config.py` - Reward system settings
 - `config/optuna/` - Hyperparameter optimization specifications:
-  - `quick_search.yaml` - Fast optimization focusing on key parameters
-  - `comprehensive_search.yaml` - Full parameter space exploration
-  - `reward_focused.yaml` - Reward system coefficient optimization
-  - `parallel_search.yaml` - Multi-GPU parallel optimization
+  - `optuna_config.py` - Main Optuna configuration
+  - `overrides/` - Phase-specific optimization configurations
+- `config/overrides/` - Override configurations for different scenarios
 
 ### Key Features
 
@@ -227,11 +231,11 @@ Databento Files → DataManager → MarketSimulator → FeatureExtractor → PPO
 - **Feature Monitoring**: Basic feature statistics and gradient tracking for model performance monitoring
 - Model checkpoints are saved in `cache/model/best/` with JSON metadata
 - Databento data files are stored in `dnb/mlgo/` directory structure
-- Logging configured through `utils/logger.py` using Rich handler
+- Logging configured through `core/logger.py` using Rich handler
 - Invalid action handling is configurable with tracking and limits
 - Use `TradingEnvironment` class from `envs.trading_environment` (not the old `TradingEnv`)
 - Test suite available with pytest - run `poetry run poe test` for full test coverage
-- Momentum day scanner available via `scripts/scan_momentum_days.py`
+- Momentum day scanner available via `data/scanner/momentum_scanner.py`
 
 ## Memory
 

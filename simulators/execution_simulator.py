@@ -20,7 +20,6 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from config.config import SimulationConfig
 from simulators.market_simulator import MarketSimulator
 from simulators.portfolio_simulator import (
     OrderTypeEnum,
@@ -116,7 +115,7 @@ class ExecutionSimulator:
     def __init__(
         self,
         logger: logging.Logger,
-        simulation_config: SimulationConfig,
+        simulation_config: Any,  # Config.simulation
         np_random: np.random.Generator,
         market_simulator: MarketSimulator,
     ):
