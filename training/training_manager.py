@@ -84,7 +84,7 @@ class TrainingManager(IShutdownHandler):
 
         # Initialize episode manager (it manages day/reset point loops internally)
         if not self.episode_manager.initialize():
-            return self._finalize_training("episode_manager_failed")
+            self._finalize_training("episode_manager_failed")
 
         # Initialize callbacks
         context = self._create_training_start_context()
@@ -222,59 +222,8 @@ class TrainingManager(IShutdownHandler):
         self.state.updates = metrics.global_updates
         self.state.global_steps = metrics.global_steps
 
-        # Update episode manager progress
-        if self.episode_manager:
-            self.episode_manager.update_progress(self.state.episodes, self.state.updates)
+        # Episode manager is notified through on_episodes_completed and on_update_completed
 
-    def _advance_episode_on_completion(self):
-        """Advance to next episode after completion."""
-        if self.episode_manager:
-            result = self.episode_manager.advance_episode()
-            if result:
-                self.logger.debug("✅ Advanced to next episode")
-            else:
-                self.logger.warning("❌ Failed to advance to next episode")
-            return result
-        return False
-
-    def _setup_next_episode(self):
-        """Setup environment for next episode using EpisodeManager configuration."""
-        if not self.episode_manager or not self.environment:
-            self.logger.error("Missing episode_manager or environment for episode setup")
-            return False
-
-        # Get current episode configuration from EpisodeManager
-        episode_config = self.episode_manager.get_current_episode_config()
-        if not episode_config:
-            self.logger.error("Failed to get episode configuration from EpisodeManager")
-            return False
-
-        try:
-            # Extract session info from episode config
-            day_info = episode_config['day_info']
-            symbol = day_info['symbol']
-            date = day_info['date']
-            reset_point_index = episode_config['reset_point_index']
-
-            self.logger.info(f"🎯 Setting up episode: {symbol} {date} at reset point {reset_point_index}")
-
-            # Setup trading session in environment
-            self.environment.setup_session(symbol, date)
-
-            # Reset environment to specific reset point
-            initial_state, info = self.environment.reset_at_point(reset_point_index)
-
-            self.logger.debug(f"✅ Episode setup complete: {symbol} {date} at reset point {reset_point_index}")
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Failed to setup episode: {e}")
-            return False
-
-    def _should_advance_episode(self, rollout_result) -> bool:
-        """Determine if we should advance to next episode."""
-        # For now, advance if any episodes completed in rollout
-        return rollout_result.global_episodes > 0
 
     def _create_training_start_context(self) -> TrainingStartContext:
         """Create training start context for callbacks."""
