@@ -657,14 +657,13 @@ class TradingEnvironment(gym.Env):
         
         return self.setup_episode(episode_config)
     
-    def reset_at_point(self, reset_point_index: int) -> Tuple[Dict[str, ObservationArray], Dict[str, Any]]:
+    def reset_at_point(self, reset_point_index: int, reset_point_info: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, ObservationArray], Dict[str, Any]]:
         """
-        Legacy compatibility method for TrainingManager.
-        
-        This method resets the environment to a specific reset point within the current episode.
+        Reset environment to a specific reset point within the current episode.
         
         Args:
             reset_point_index: Index of the reset point to start from
+            reset_point_info: Optional reset point metadata (timestamp, quality scores, etc)
             
         Returns:
             Tuple of (initial_observation, info)
@@ -675,23 +674,28 @@ class TradingEnvironment(gym.Env):
         if not self.market_simulator:
             raise RuntimeError("Market simulator not initialized")
         
-        # For now, map reset_point_index to time offset within episode
-        # This is a simplified implementation - real reset points would need
-        # to be defined by the EpisodeManager
-        
-        # Calculate time based on reset point (assume hourly intervals for simplicity)
-        episode_duration_hours = (self.episode_config.end_time - self.episode_config.start_time).total_seconds() / 3600
-        max_reset_points = max(1, int(episode_duration_hours))
-        
-        if reset_point_index >= max_reset_points:
-            reset_point_index = max_reset_points - 1
-        
-        # Calculate reset time
-        time_offset_hours = (reset_point_index / max_reset_points) * episode_duration_hours
-        reset_time = self.episode_config.start_time + timedelta(seconds=int(time_offset_hours * 3600))
-        
-        # Update episode config with new start time
-        self.episode_config.start_time = reset_time
+        # If reset point info provided, use it to set the start time
+        if reset_point_info and 'timestamp' in reset_point_info:
+            # Parse timestamp and set as new start time
+            import pandas as pd
+            reset_time = pd.to_datetime(reset_point_info['timestamp'])
+            self.episode_config.start_time = reset_time.to_pydatetime()
+            self.episode_config.reset_point_info = reset_point_info
+        else:
+            # Fallback to simple time-based mapping
+            # Calculate time based on reset point (assume hourly intervals)
+            episode_duration_hours = (self.episode_config.end_time - self.episode_config.start_time).total_seconds() / 3600
+            max_reset_points = max(1, int(episode_duration_hours))
+            
+            if reset_point_index >= max_reset_points:
+                reset_point_index = max_reset_points - 1
+            
+            # Calculate reset time
+            time_offset_hours = (reset_point_index / max_reset_points) * episode_duration_hours
+            reset_time = self.episode_config.start_time + timedelta(seconds=int(time_offset_hours * 3600))
+            
+            # Update episode config with new start time
+            self.episode_config.start_time = reset_time
         
         # Reset environment normally
         return self.reset()
