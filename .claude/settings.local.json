@@ -90,7 +90,12 @@
       "Bash(do echo \"Checking $file\")",
       "Bash(done)",
       "Bash(pgrep:*)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(git stash push:*)",
+      "Bash(git commit:*)",
+      "Bash(git stash:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   },

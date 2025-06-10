@@ -182,7 +182,12 @@ class TrainingManager(IShutdownHandler):
         try:
             # Extract session info from episode context
             symbol = episode_context.symbol
-            date = episode_context.date
+            # Convert date to datetime if it's a string
+            if isinstance(episode_context.date, str):
+                import datetime as dt
+                date = dt.datetime.strptime(episode_context.date, '%Y-%m-%d')
+            else:
+                date = episode_context.date
             reset_point = episode_context.reset_point
             
             self.logger.info(f"🎯 Setting up episode: {symbol} {date} at reset point {reset_point.timestamp}")
@@ -191,7 +196,14 @@ class TrainingManager(IShutdownHandler):
             self.environment.setup_session(symbol, date)
             
             # Reset environment to specific reset point
-            initial_state, info = self.environment.reset_at_point(reset_point.index)
+            reset_point_info = {
+                'timestamp': reset_point.timestamp,
+                'quality_score': reset_point.quality_score,
+                'roc_score': reset_point.roc_score,
+                'activity_score': reset_point.activity_score,
+                'price': reset_point.price
+            }
+            initial_state, info = self.environment.reset_at_point(reset_point.index, reset_point_info)
             
             self.logger.debug(f"✅ Episode setup complete: {symbol} {date}")
             return True
