@@ -2,12 +2,10 @@ import sys
 import logging
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
 import numpy as np
 import torch
 import hydra
-from hydra.core.config_store import ConfigStore
-from omegaconf import DictConfig
+from hydra.core.hydra_config import HydraConfig
 from data.data_manager import DataManager
 from data.scanner.momentum_scanner import MomentumScanner
 from data import DatabentoFileProvider
@@ -30,10 +28,10 @@ logger = logging.getLogger(__name__)
 class ApplicationBootstrap:
     """Bootstrap the FxAI application with proper dependency injection and graceful shutdown."""
 
-    def __init__(self, cfg: DictConfig):
+    def __init__(self, config: Config):
         # Hydra automatically manages output directory
-        self.output_path: Path = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
-        self.config: Config = hydra.utils.instantiate(cfg, _recursive_=False)
+        self.output_path: Path = Path(HydraConfig.get().runtime.output_dir)
+        self.config: Config = config
         self.logger = logging.getLogger(f"{__name__}.Application")
         self.shutdown_manager = get_global_shutdown_manager()
 
@@ -67,22 +65,20 @@ class ApplicationBootstrap:
             show_time=self.config.logging.show_time,
             show_path=self.config.logging.show_path,
             compact_errors=True
+            # Todo : add /logs output directory support (self.output_path / "logs")
         )
 
     def _create_training_manager(self) -> TrainingManager:
         """Create and configure a training manager with config."""
-        
+
         # Create a model manager
         model_manager = ModelManager()
 
         training_manager = TrainingManager(
             config=self.config.training.training_manager,
             model_manager=model_manager,
-            device=self.device,
-            output_path=self.output_path,
-            run_id=self.output_path.name  # Use Hydra's directory name as run_id
         )
-        
+
         # Set data manager reference for integrated data lifecycle
         training_manager.data_manager = self.data_manager
         training_manager.callback_manager = self.callback_manager
@@ -91,7 +87,7 @@ class ApplicationBootstrap:
 
     def _initialize_components(self) -> None:
         """Initialize application components"""
-        
+
         self.logger.info("🔧 Initializing application components")
 
         self.device = self._create_device()
@@ -100,7 +96,6 @@ class ApplicationBootstrap:
             config=self.config.callbacks,
             trainer=None,  # Will be set after creation
             environment=None,  # Will be set after creation
-            output_path=self.output_path,
             shutdown_manager=self.shutdown_manager
         )
 
@@ -181,7 +176,7 @@ class ApplicationBootstrap:
     def _create_model(self) -> MultiBranchTransformer:
         """Create a model instance."""
         model = MultiBranchTransformer(model_config=self.config.model, device=self.device).to(self.device)
-        
+
         return model
 
 
@@ -203,11 +198,10 @@ def execute_training(training_manager: TrainingManager, config: Config, app: 'Ap
     logger.info(f"✅ Training completed successfully")
 
 
-
 @hydra.main(version_base=None, config_path="config", config_name="config")
-def main(cfg: DictConfig) -> int:
+def main(cfg: Config) -> int:
     """
-    Main entry point for the FxAI trading system using Hydra.
+    The Main entry point for the FxAI trading system.
     
     Args:
         cfg: Hydra configuration object
@@ -248,7 +242,7 @@ def main(cfg: DictConfig) -> int:
 if __name__ == "__main__":
     # Register structured configs with Hydra
     register_configs()
-    
+
     # Hydra will handle the rest
     exit_code = main()
     sys.exit(exit_code)

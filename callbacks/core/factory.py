@@ -5,15 +5,16 @@ Provides a clean interface for creating and configuring callbacks
 based on strongly typed Pydantic configurations.
 """
 
-from typing import List, Optional, TYPE_CHECKING
-from pathlib import Path
+from typing import  Optional, Any, Dict
 import logging
+
+from hydra.core.hydra_config import HydraConfig
 
 from agent.ppo_agent import PPOTrainer
 from envs import TradingEnvironment
 from .base import BaseCallback
 from .manager import CallbackManager
-from ...config import Config, CallbackConfig
+from ...config import  CallbackConfig
 from ...core.shutdown import IShutdownManager
 
 
@@ -22,7 +23,6 @@ def create_callbacks_from_config(
     config: CallbackConfig,
     trainer: Optional[PPOTrainer] = None,
     environment: Optional[TradingEnvironment] = None,
-    output_path: Optional[Path] = None,
     shutdown_manager: Optional[IShutdownManager] = None
 ) -> CallbackManager:
     """
@@ -32,7 +32,6 @@ def create_callbacks_from_config(
         config: Typed CallbackConfig with all callback settings
         trainer: PPO trainer instance (for callbacks that need model access)
         environment: Trading environment (for callbacks that need env access)
-        output_path: Output directory path
         shutdown_manager: Shutdown manager for registering callbacks (optional)
         
     Returns:
@@ -40,6 +39,7 @@ def create_callbacks_from_config(
     """
     logger = logging.getLogger("callback_factory")
     callbacks = []
+    output_path = HydraConfig.get().runtime.output_dir
     
     # Create core callbacks
     if config.metrics.enabled:

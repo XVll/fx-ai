@@ -113,9 +113,6 @@ class TrainingStartContext(BaseModel):
     trainer: Any = Field(description="PPO trainer instance")
     environment: Any = Field(description="Trading environment")
     model: Any = Field(description="Neural network model")
-    device: torch.device = Field(description="PyTorch device")
-    output_path: Path = Field(description="Output directory path")
-    run_id: str = Field(description="Unique run identifier")
     timestamp: datetime = Field(default_factory=datetime.now, description="Training start time")
     
     class Config:
@@ -157,7 +154,6 @@ class TrainingEndContext(BaseModel):
     total_updates: int = Field(description="Total updates completed")
     duration: timedelta = Field(description="Training duration")
     reason: str = Field(description="Training termination reason")
-    model: ModelInfo = Field(description="Final model state")
     best_reward: float = Field(description="Best reward achieved")
     average_reward: float = Field(description="Average reward")
     timestamp: datetime = Field(default_factory=datetime.now, description="Training end time")

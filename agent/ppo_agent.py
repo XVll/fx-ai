@@ -436,22 +436,6 @@ class PPOTrainer:
         
         self.buffer.returns = returns
 
-    def save_model(self, path: str) -> None:
-        """Save model and optimizer state."""
-        try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            torch.save(
-                {
-                    "model_state_dict": self.model.state_dict(),
-                    "optimizer_state_dict": self.optimizer.state_dict(),
-                    # TrainingManager handles global counters
-                },
-                path,
-            )
-        except Exception as e:
-            self.logger.error(f"Error saving model to {path}: {e}")
-
-
     def evaluate(self, environment, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
         """
         Evaluate model performance over multiple episodes.
