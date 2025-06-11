@@ -1,5 +1,7 @@
 import logging
-from typing import Dict, Any, Optional
+import statistics
+import torch
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
@@ -11,7 +13,10 @@ from ..core.types import RolloutResult, UpdateResult
 from ..core.model_manager import ModelManager
 from ..core.shutdown import IShutdownHandler, get_global_shutdown_manager
 from ..config.training.training_config import TrainingManagerConfig
+from config.evaluation.evaluation_config import EvaluationConfig
+from core.evaluation import EvaluationResult, EvaluationEpisodeResult
 from ..envs import TradingEnvironment
+from ..envs.trading_environment import EpisodeConfig
 
 
 class TrainingMode(Enum):
@@ -137,6 +142,12 @@ class TrainingManager(IShutdownHandler):
                     # Update state (single source of truth)
                     self.state.global_updates += 1
 
+                    # Check if evaluation should be triggered
+                    if self._should_run_evaluation():
+                        eval_result = self._run_evaluation()
+                        if eval_result:
+                            self._trigger_callback("evaluation_complete", {"evaluation_result": eval_result})
+
                     # Notify episode manager about update
                     self.episode_manager.on_update_completed(update_info)
 
@@ -177,18 +188,29 @@ class TrainingManager(IShutdownHandler):
 
             self.logger.info(f"🎯 Setting up episode: {symbol} {date} at reset point {reset_point.timestamp}")
 
-            # Setup trading session in environment
-            self.environment.setup_session(symbol, date)
-
-            # Reset environment to specific reset point
-            reset_point_info = {
+            # Create episode config for V2 environment
+            episode_config = EpisodeConfig(
+                symbol=symbol,
+                date=date,
+                start_time=reset_point.timestamp,  # Use reset point as start time
+                end_time=date.replace(hour=20, minute=0, second=0),  # Default end at 8 PM
+                max_steps=None
+            )
+            
+            # Store reset point info for environment reset
+            episode_config.reset_point_info = {
                 'timestamp': reset_point.timestamp,
                 'quality_score': reset_point.quality_score,
                 'roc_score': reset_point.roc_score,
                 'activity_score': reset_point.activity_score,
-                'price': reset_point.price
+                'price': reset_point.price,
+                'index': reset_point.index
             }
-            _, _ = self.environment.reset_at_point(reset_point.index, reset_point_info)
+
+            # Setup episode in environment
+            if not self.environment.setup_episode(episode_config):
+                self.logger.error("Failed to setup episode in environment")
+                return False
 
             self.logger.debug(f"✅ Episode setup complete: {symbol} {date}")
             return True
@@ -318,3 +340,207 @@ class TrainingManager(IShutdownHandler):
             self.logger.info("🆕 Starting fresh training")
 
         return loaded_metadata
+
+    # ==================== EVALUATION METHODS ====================
+
+    def _should_run_evaluation(self) -> bool:
+        """Check if evaluation should be triggered."""
+        # For now, use a simple default evaluation config
+        # Later this will be configurable
+        eval_config = EvaluationConfig()
+        
+        if not eval_config.enabled:
+            return False
+            
+        # Run evaluation every N updates
+        return self.state.global_updates > 0 and self.state.global_updates % eval_config.frequency == 0
+
+    def _run_evaluation(self) -> Optional[EvaluationResult]:
+        """Run model evaluation and return results."""
+        try:
+            # Use default evaluation config for now
+            eval_config = EvaluationConfig()
+            
+            self.logger.info(f"🔍 Starting evaluation at update {self.state.global_updates}")
+            
+            # Save current training state
+            saved_state = self._save_training_state()
+            
+            try:
+                # Switch to evaluation mode
+                self._enter_evaluation_mode(eval_config)
+                
+                # Run evaluation episodes
+                episode_results = self._run_evaluation_episodes(eval_config)
+                
+                # Calculate aggregate metrics
+                eval_result = self._calculate_evaluation_metrics(eval_config, episode_results)
+                
+                self.logger.info(f"✅ Evaluation complete: mean_reward={eval_result.mean_reward:.4f}")
+                return eval_result
+                
+            finally:
+                # Always restore training state
+                self._restore_training_state(saved_state)
+                
+        except Exception as e:
+            self.logger.error(f"❌ Evaluation failed: {e}", exc_info=True)
+            return None
+
+    def _save_training_state(self) -> Dict[str, Any]:
+        """Save current training state for restoration."""
+        import random
+        import numpy as np
+        import torch
+        
+        return {
+            'episode_manager_state': self.episode_manager.get_current_state() if hasattr(self.episode_manager, 'get_current_state') else None,
+            'trainer_mode': getattr(self.trainer.model, 'training', True),
+            'random_state': random.getstate(),
+            'numpy_state': np.random.get_state(),
+            'torch_state': torch.get_rng_state(),
+        }
+
+    def _restore_training_state(self, saved_state: Dict[str, Any]) -> None:
+        """Restore training state after evaluation."""
+        import random
+        import numpy as np
+        import torch
+        
+        try:
+            # Restore RNG states
+            random.setstate(saved_state['random_state'])
+            np.random.set_state(saved_state['numpy_state'])
+            torch.set_rng_state(saved_state['torch_state'])
+            
+            # Restore model training mode
+            if saved_state['trainer_mode']:
+                self.trainer.model.train()
+            else:
+                self.trainer.model.eval()
+                
+            # Restore episode manager state if available
+            if saved_state['episode_manager_state'] and hasattr(self.episode_manager, 'restore_state'):
+                self.episode_manager.restore_state(saved_state['episode_manager_state'])
+                
+            self.logger.debug("🔄 Training state restored after evaluation")
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to restore some training state: {e}")
+
+    def _enter_evaluation_mode(self, eval_config: EvaluationConfig) -> None:
+        """Enter evaluation mode with deterministic settings."""
+        import random
+        import numpy as np
+        import torch
+        
+        # Set deterministic seeds
+        random.seed(eval_config.seed)
+        np.random.seed(eval_config.seed)
+        torch.manual_seed(eval_config.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(eval_config.seed)
+        
+        # Set model to evaluation mode
+        self.trainer.model.eval()
+        
+        self.logger.debug(f"🎯 Entered evaluation mode (seed={eval_config.seed})")
+
+    def _run_evaluation_episodes(self, eval_config: EvaluationConfig) -> List[EvaluationEpisodeResult]:
+        """Run evaluation episodes and collect rewards."""
+        episode_results = []
+        
+        # Get evaluation episodes from episode manager
+        eval_episodes = self._get_evaluation_episodes(eval_config)
+        
+        for i, episode_context in enumerate(eval_episodes):
+            try:
+                # Setup environment for this episode
+                if not self._setup_environment_with_context(episode_context):
+                    self.logger.warning(f"Failed to setup evaluation episode {i}")
+                    continue
+                
+                # Run single episode with deterministic actions
+                total_reward = self._run_single_evaluation_episode(eval_config)
+                
+                episode_results.append(EvaluationEpisodeResult(
+                    episode_num=i,
+                    reward=total_reward
+                ))
+                
+                self.logger.debug(f"Eval episode {i}: reward={total_reward:.4f}")
+                
+            except Exception as e:
+                self.logger.warning(f"Evaluation episode {i} failed: {e}")
+                continue
+        
+        return episode_results
+
+    def _get_evaluation_episodes(self, eval_config: EvaluationConfig) -> List:
+        """Get episodes to use for evaluation."""
+        # For now, ask episode manager for evaluation episodes
+        # This should be implemented in episode manager to provide consistent episodes
+        if hasattr(self.episode_manager, 'get_evaluation_episodes'):
+            return self.episode_manager.get_evaluation_episodes(eval_config)
+        else:
+            # Fallback: use current episode selection but limit count
+            episodes = []
+            for _ in range(eval_config.episodes):
+                try:
+                    episode = self.episode_manager.get_next_episode()
+                    episodes.append(episode)
+                except:
+                    break
+            return episodes
+
+    def _run_single_evaluation_episode(self, eval_config: EvaluationConfig) -> float:
+        """Run a single evaluation episode and return total reward."""
+        total_reward = 0.0
+        done = False
+        step_count = 0
+        max_steps = 1000  # Safety limit
+        
+        # Reset environment
+        obs, info = self.environment.reset()
+        
+        while not done and step_count < max_steps:
+            # Get deterministic action from model
+            # Convert observation to tensors first
+            state_tensors = self.trainer._convert_state_to_tensors(obs)
+            
+            with torch.no_grad():
+                action_tensor, action_info = self.trainer.model.get_action(
+                    state_tensors, 
+                    deterministic=eval_config.deterministic_actions
+                )
+            
+            # Convert action for environment
+            action = self.trainer._convert_action_for_env(action_tensor)
+            
+            # Step environment
+            obs, reward, terminated, truncated, info = self.environment.step(action)
+            total_reward += reward
+            done = terminated or truncated
+            step_count += 1
+        
+        return total_reward
+
+    def _calculate_evaluation_metrics(self, eval_config: EvaluationConfig, episode_results: List[EvaluationEpisodeResult]) -> EvaluationResult:
+        """Calculate aggregate metrics from episode results."""
+        if not episode_results:
+            self.logger.warning("No evaluation episodes completed")
+            rewards = [0.0]
+        else:
+            rewards = [ep.reward for ep in episode_results]
+        
+        return EvaluationResult(
+            timestamp=datetime.now(),
+            model_version=None,  # TODO: Get from model manager
+            config=eval_config,
+            episodes=episode_results,
+            mean_reward=statistics.mean(rewards),
+            std_reward=statistics.stdev(rewards) if len(rewards) > 1 else 0.0,
+            min_reward=min(rewards),
+            max_reward=max(rewards),
+            total_episodes=len(episode_results)
+        )

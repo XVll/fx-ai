@@ -236,6 +236,10 @@ Databento Files → DataManager → MarketSimulator → FeatureExtractor → PPO
 - Use `TradingEnvironment` class from `envs.trading_environment` (not the old `TradingEnv`)
 - Test suite available with pytest - run `poetry run poe test` for full test coverage
 - Momentum day scanner available via `data/scanner/momentum_scanner.py`
+- **Time Utilities**: Use helper methods from `core/utils/time_utils.py` for all time-related operations
+  - Handles timezone conversions (UTC ↔ ET), date parsing, market hours validation
+  - Provides consistent date/datetime formatting and market schedule utilities
+  - Includes trading day calculations and date range validation
 
 ## Memory
 
