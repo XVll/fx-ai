@@ -437,7 +437,7 @@ class TrainingManager(IShutdownHandler):
                     self.logger.warning(f"Failed to setup evaluation episode {i}")
                     continue
 
-                # Run single episode with deterministic actions
+                # Run a single episode with deterministic actions
                 total_reward = self.trainer.evaluate(
                     environment=self.environment,
                     initial_obs=initial_obs,
@@ -474,11 +474,6 @@ class TrainingManager(IShutdownHandler):
                 except:
                     break
             return episodes
-
-    def _run_single_evaluation_episode(self, eval_config: EvaluationConfig, initial_obs: Dict[str, Any]) -> float:
-        """Run a single evaluation episode and return total reward."""
-        # Delegate to PPOTrainer which handles the episode execution logic
-        return
 
     def _calculate_evaluation_metrics(self, eval_config: EvaluationConfig, episode_results: List[EvaluationEpisodeResult]) -> EvaluationResult:
         """Calculate aggregate metrics from episode results."""
