@@ -1,0 +1,31 @@
+# Default evaluation configuration
+# This provides baseline settings for model evaluation
+
+# @package _global_
+defaults:
+  - _self_
+
+# Basic evaluation settings
+enabled: true
+frequency: 50              # Updates between evaluations during training
+episodes: 20               # Episodes per evaluation during training
+seed: 42
+deterministic_actions: true
+
+# Episode selection strategy
+use_fixed_episodes: true
+episode_selection: "diverse"  # diverse, best, worst, random
+
+# Benchmark-specific settings (used when in benchmark mode)
+benchmark_episodes: 100
+save_episode_details: true
+benchmark_output_dir: "outputs/benchmarks"
+
+# Advanced settings
+max_steps_per_episode: 1000
+warm_up_episodes: 0
+measure_inference_time: false
+measure_memory_usage: false
+
+# Evaluation mode
+evaluation_mode: "standard"  # standard, benchmark, stress_test

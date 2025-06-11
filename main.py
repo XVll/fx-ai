@@ -21,6 +21,8 @@ from core.shutdown import (
 )
 from config.config import Config, register_configs
 from training.training_manager import TrainingManager, TrainingMode
+from core.evaluation.benchmark_runner import BenchmarkRunner
+from config.evaluation.evaluation_config import EvaluationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -183,10 +185,62 @@ class ApplicationBootstrap:
 # Hydra handles argument parsing automatically
 
 
+def execute_benchmark(config: Config, app: 'ApplicationBootstrap') -> None:
+    """Execute benchmark based on configuration."""
+    logger.info("🎯 Starting benchmark mode")
+
+    # Create benchmark runner
+    benchmark_runner = BenchmarkRunner(config.evaluation)
+
+    # Check if a specific model path is provided via --benchmark.model override
+    if config.evaluation.model is not None:
+        # Model path was specified
+        model_path = config.evaluation.model
+        logger.info(f"🎯 Benchmarking specific model: {model_path}")
+        result = benchmark_runner.benchmark_model(
+            model_path=str(model_path),
+            trainer=app.trainer,
+            environment=app.environment,
+            data_manager=app.data_manager,
+            output_dir=config.evaluation.benchmark_output_dir
+        )
+    else:
+        # No model specified, benchmark best model
+        logger.info("🎯 Benchmarking best available model")
+        model_manager = ModelManager()
+        result = benchmark_runner.benchmark_best_model(
+            model_manager=model_manager,
+            trainer=app.trainer,
+            environment=app.environment,
+            data_manager=app.data_manager,
+            output_dir=config.evaluation.benchmark_output_dir
+        )
+
+    if result:
+        logger.info("🏆 Benchmark Results:")
+        logger.info(f"   Mean Reward: {result.evaluation_result.mean_reward:.4f}")
+        logger.info(f"   Std Reward:  {result.evaluation_result.std_reward:.4f}")
+        logger.info(f"   Min Reward:  {result.evaluation_result.min_reward:.4f}")
+        logger.info(f"   Max Reward:  {result.evaluation_result.max_reward:.4f}")
+        logger.info(f"   Episodes:    {result.evaluation_result.total_episodes}")
+        logger.info(f"   Duration:    {result.duration_seconds:.1f}s")
+        logger.info(f"   Model Path:  {result.model_path}")
+    else:
+        logger.error("❌ Benchmark failed")
+        raise RuntimeError("Benchmark execution failed")
+
+    logger.info("✅ Benchmark completed successfully")
+
+
 def execute_training(training_manager: TrainingManager, config: Config, app: 'ApplicationBootstrap') -> None:
     """Execute training based on configuration."""
     mode_type = TrainingMode(config.training.training_manager.mode)
     logger.info(f"🎯 Starting {mode_type.value} based on configuration")
+
+    # Check if this is a benchmark mode
+    if mode_type == TrainingMode.BENCHMARK:
+        execute_benchmark(config, app)
+        return
 
     training_manager.start(
         trainer=app.trainer,
@@ -242,7 +296,6 @@ def main(cfg: Config) -> int:
 if __name__ == "__main__":
     # Register structured configs with Hydra
     register_configs()
-
     # Hydra will handle the rest
     exit_code = main()
     sys.exit(exit_code)

@@ -21,6 +21,7 @@ from .callbacks.callback_config import CallbackConfig
 from .captum.captum_config import CaptumConfig
 from .optuna.optuna_config import StudyConfig
 from .rewards.reward_config import RewardConfig
+from .evaluation.evaluation_config import EvaluationConfig
 
 
 @dataclass
@@ -46,6 +47,9 @@ class Config:
     
     # Reward system
     rewards: RewardConfig = field(default_factory=RewardConfig)
+    
+    # Evaluation system
+    evaluation: Optional[EvaluationConfig] = None    # Model evaluation config
 
     # Feature attribution analysis
     captum: Optional[CaptumConfig] = None            # Captum feature attribution config
@@ -90,3 +94,4 @@ def register_configs():
     cs.store(group="captum", name="default", node=CaptumConfig)
     cs.store(group="optuna", name="default", node=StudyConfig)
     cs.store(group="rewards", name="default", node=RewardConfig)
+    cs.store(group="evaluation", name="default", node=EvaluationConfig)

@@ -1,6 +1,10 @@
 # Benchmark configuration for model performance assessment
 # This config is used when running in benchmark mode
 
+defaults:
+  - config
+  - evaluation: default
+
 # Override training manager mode
 training:
   training_manager:
@@ -10,7 +14,7 @@ training:
     termination_max_updates: null
     termination_max_cycles: null
 
-# Evaluation settings optimized for benchmarking
+# Override evaluation settings for benchmarking
 evaluation:
   enabled: true
   episodes: 100                    # More episodes for comprehensive benchmarking

@@ -7,30 +7,23 @@ readme = "README.md"
 package-mode = false
 
 [tool.poe.tasks]
-# Momentum Training (RECOMMENDED - uses smart day selection and curriculum learning)
-momentum = "poetry run python main.py training=momentum"
-momentum-continue = "poetry run python main.py training=momentum training.training_manager.continue_training=true"
-build-index = "poetry run python scripts/build_index.py"
 
-# Legacy Training (standard single-day training)  
-quick = "poetry run python main.py training=quick"
-init = "poetry run python main.py"
-train = "poetry run python main.py training.training_manager.continue_training=true"
+train = "poetry run python main.py --config-name training-default"
+train-quick = "poetry run python main.py --config-name training-quick"
+benchmark = "poetry run python main.py --config-name benchmark --benchmark.model {model}"
 
-# Backtest
-backtest = "poetry run python main.py training=benchmark"
-backtest-date = "poetry run python main.py training=benchmark training.training_manager.date_range=['{{date}}','{{date}}']"
+
+# Hyperparameter Optimization with Optuna (Centralized Config)
+optuna-foundation = "poetry run python run_optuna.py --config optuna --optuna=foundation"
+optuna-reward = "poetry run python run_optuna.py --config optuna --optuna=reward"
+optuna-finetune = "poetry run python run_optuna.py --config optuna --optuna=finetune"
+optuna-dashboard = "optuna-dashboard sqlite:///sweep_studies.db"
 
 # Scan for momentum days in data
+build-index = "poetry run python scripts/build_index.py"
 scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.5"
 scan-high = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.7"
 scan-all = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.0"
-
-# Hyperparameter Optimization with Optuna (Centralized Config)
-optuna-foundation = "poetry run python run_optuna.py --config optuna --spec optuna-1-foundation"
-optuna-reward = "poetry run python run_optuna.py --config optuna --spec optuna-2-reward"
-optuna-finetune = "poetry run python run_optuna.py --config optuna --spec optuna-3-finetune"
-optuna-dashboard = "optuna-dashboard sqlite:///sweep_studies.db"
 
 # Testing & Linting
 test = "poetry run pytest -v"
