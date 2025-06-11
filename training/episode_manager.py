@@ -159,6 +159,9 @@ class EpisodeManager(IShutdownHandler):
         
         # Shutdown handling
         self._shutdown_requested = False
+        
+        # Evaluation episode caching
+        self._cached_evaluation_episodes = None
 
         # Extract configuration directly from typed config
         self.day_selection_mode = SelectionMode(config.day_selection_mode)
@@ -349,6 +352,99 @@ class EpisodeManager(IShutdownHandler):
     def get_completed_cycles(self) -> int:
         """Get the total number of completed cycles for training manager tracking."""
         return self.state.total_cycles_completed
+    
+    def get_evaluation_episodes(self, eval_config) -> List[EpisodeContext]:
+        """Get deterministic episodes for evaluation from the currently loaded day."""
+        import numpy as np
+        
+        # Return cached episodes if available
+        if self._cached_evaluation_episodes is not None:
+            self.logger.debug(f"Returning {len(self._cached_evaluation_episodes)} cached evaluation episodes")
+            return self._cached_evaluation_episodes
+        
+        if not self.state.current_day:
+            self.logger.warning("No current day loaded for evaluation")
+            return []
+        
+        # Get available reset points from current day
+        available_reset_points = self.state.current_day.get_available_reset_points(
+            quality_range=self.day_score_range,
+            roc_range=self.roc_range, 
+            activity_range=self.activity_range,
+            max_reuse=999  # Don't limit reuse for evaluation
+        )
+        
+        if not available_reset_points:
+            self.logger.warning("No available reset points for evaluation")
+            return []
+        
+        # Use fixed seed for deterministic selection
+        rng = np.random.RandomState(eval_config.seed)
+        
+        # Select episodes based on strategy
+        if eval_config.episode_selection == "diverse":
+            selected_points = self._select_diverse_reset_points(
+                available_reset_points, 
+                eval_config.episodes,
+                rng
+            )
+        elif eval_config.episode_selection == "best":
+            # Sort by quality score descending and take top N
+            sorted_points = sorted(available_reset_points, 
+                                 key=lambda rp: rp.quality_score, reverse=True)
+            selected_points = sorted_points[:eval_config.episodes]
+        elif eval_config.episode_selection == "worst":
+            # Sort by quality score ascending and take bottom N
+            sorted_points = sorted(available_reset_points, 
+                                 key=lambda rp: rp.quality_score)
+            selected_points = sorted_points[:eval_config.episodes]
+        else:  # "random"
+            # Random subset with fixed seed
+            num_episodes = min(eval_config.episodes, len(available_reset_points))
+            selected_indices = rng.choice(len(available_reset_points), 
+                                        size=num_episodes, replace=False)
+            selected_points = [available_reset_points[i] for i in selected_indices]
+        
+        # Create episode contexts
+        episodes = []
+        for reset_point in selected_points:
+            episodes.append(EpisodeContext(
+                symbol=self.state.current_day.symbol,
+                date=self.state.current_day.date,
+                reset_point=reset_point,
+                day_info=self.state.current_day
+            ))
+        
+        self.logger.info(f"Selected {len(episodes)} evaluation episodes from {len(available_reset_points)} available reset points")
+        
+        # Cache the episodes for future calls
+        self._cached_evaluation_episodes = episodes
+        self.logger.info(f"Cached {len(episodes)} evaluation episodes for consistent evaluation")
+        
+        return episodes
+    
+    def _select_diverse_reset_points(self, available_reset_points: List[ResetPointInfo], 
+                                   num_episodes: int, rng) -> List[ResetPointInfo]:
+        """Select diverse reset points spread across the trading session."""
+        if len(available_reset_points) <= num_episodes:
+            return available_reset_points
+        
+        # Sort by timestamp to get chronological order
+        sorted_points = sorted(available_reset_points, key=lambda rp: rp.timestamp)
+        
+        # Select evenly spaced reset points across the session
+        total_points = len(sorted_points)
+        step = total_points / num_episodes
+        
+        selected_points = []
+        for i in range(num_episodes):
+            index = int(i * step)
+            # Add small random jitter to avoid always picking exact same points
+            jitter = rng.randint(-2, 3) if total_points > num_episodes + 4 else 0
+            index = max(0, min(total_points - 1, index + jitter))
+            selected_points.append(sorted_points[index])
+        
+        return selected_points
 
     def register_shutdown(self) -> None:
         """Register this component with the global shutdown manager."""

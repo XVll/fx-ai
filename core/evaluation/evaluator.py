@@ -214,7 +214,7 @@ class Evaluator:
     def _get_evaluation_episodes(
         self, 
         data_manager: DataManager, 
-        episode_manager: Optional[Any]
+        episode_manager: Optional[EpisodeManager]
     ) -> List[Any]:
         """Get episodes to use for evaluation."""
         episodes = []
