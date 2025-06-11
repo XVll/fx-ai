@@ -325,7 +325,7 @@ class BenchmarkRunner:
         try:
             # Use stored model manager or create a basic one
             if self.model_manager:
-                model_state = self.model_manager.load_model(
+                model, training_state = self.model_manager.load_model(
                     model=trainer.model,
                     optimizer=trainer.optimizer,
                     model_path=model_path
@@ -337,7 +337,7 @@ class BenchmarkRunner:
                     config=ModelStorageConfig(),
                     base_dir=Path(model_path).parent.parent.parent  # Assume standard structure
                 )
-                model_state = temp_manager.load_model(
+                model, training_state = temp_manager.load_model(
                     model=trainer.model,
                     optimizer=trainer.optimizer,
                     model_path=model_path

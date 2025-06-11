@@ -280,24 +280,24 @@ class TrainingManager(IShutdownHandler):
             try:
                 best_model = self.model_manager.find_best_model()
                 if best_model:
-                    self.logger.info(f"📂 Loading best model: {best_model.metadata.file_path}")
+                    self.logger.info(f"📂 Loading best model: {best_model['path']}")
 
                     # Load model and training state
-                    model_state = self.model_manager.load_model(
+                    model, training_state = self.model_manager.load_model(
                         self.trainer.model,
                         self.trainer.optimizer,
-                        best_model.metadata.file_path
+                        best_model["path"]
                     )
                     
                     # Restore training state (TrainingManager is source of truth)
-                    self.state.global_steps = model_state.training_state.global_step
-                    self.state.global_episodes = model_state.training_state.global_episode
-                    self.state.global_updates = model_state.training_state.global_update
-                    self.state.global_cycles = model_state.training_state.global_cycle
+                    self.state.global_steps = training_state.get("global_step", 0)
+                    self.state.global_episodes = training_state.get("global_episode", 0)
+                    self.state.global_updates = training_state.get("global_update", 0)
+                    self.state.global_cycles = training_state.get("global_cycle", 0)
 
-                    loaded_metadata = model_state.metadata.to_dict()
+                    loaded_metadata = training_state.get("metadata", {})
 
-                    self.logger.info(f"✅ Model loaded: step={model_state.training_state.global_step}")
+                    self.logger.info(f"✅ Model loaded: step={training_state.get('global_step', 0)}")
                 else:
                     self.logger.info("🆕 No previous model found. Starting fresh.")
             except Exception as e:
