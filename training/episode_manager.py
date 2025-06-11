@@ -14,7 +14,7 @@ from pendulum import Date
 
 from core.utils import day_in_range
 from core.utils.time_utils import (to_date, format_date)
-from core.shutdown import IShutdownHandler, IShutdownManager
+from core.shutdown import IShutdownHandler, get_global_shutdown_manager
 
 from config.training.training_config import TrainingManagerConfig
 
@@ -350,8 +350,9 @@ class EpisodeManager(IShutdownHandler):
         """Get the total number of completed cycles for training manager tracking."""
         return self.state.total_cycles_completed
 
-    def register_shutdown(self, shutdown_manager: IShutdownManager) -> None:
-        """Register this component with the shutdown manager."""
+    def register_shutdown(self) -> None:
+        """Register this component with the global shutdown manager."""
+        shutdown_manager = get_global_shutdown_manager()
         shutdown_manager.register_component(
             component=self,
             name="EpisodeManager",

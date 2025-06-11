@@ -10,7 +10,7 @@ from ..callbacks import CallbackManager
 from ..callbacks.core.context import TrainingStartContext, TrainingEndContext, EpisodeEndContext
 from ..core.types import RolloutResult, UpdateResult
 from ..core.model_manager import ModelManager
-from ..core.shutdown import IShutdownHandler, IShutdownManager
+from ..core.shutdown import IShutdownHandler, get_global_shutdown_manager
 from ..config.training.training_config import TrainingManagerConfig
 from ..envs import TradingEnvironment
 
@@ -81,6 +81,9 @@ class TrainingManager(IShutdownHandler):
 
         # Create episode manager with its own loop
         self.episode_manager = EpisodeManager(self.config, self.data_manager)
+        
+        # Register episode manager for shutdown
+        self.episode_manager.register_shutdown()
 
         # Initialize episode manager (it manages day/reset point loops internally)
         try:
@@ -252,8 +255,9 @@ class TrainingManager(IShutdownHandler):
         # Minimal implementation - will be expanded later
         return None
 
-    def register_shutdown(self, shutdown_manager: IShutdownManager) -> None:
-        """Register this component with the shutdown manager."""
+    def register_shutdown(self) -> None:
+        """Register this component with the global shutdown manager."""
+        shutdown_manager = get_global_shutdown_manager()
         shutdown_manager.register_component(
             component=self,
             timeout=10,

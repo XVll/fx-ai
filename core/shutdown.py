@@ -56,19 +56,17 @@ class IShutdownHandler(ABC):
     
     Implementation Guide:
     - Components should implement this interface to participate in shutdown
-    - register_shutdown() must be called during component initialization to register with shutdown manager
+    - register_shutdown() must be called during component initialization to register with global shutdown manager
     - shutdown() performs both state saving and resource cleanup
     - timeout is specified during registration, not in component
     """
     
     @abstractmethod
-    def register_shutdown(self, shutdown_manager: 'IShutdownManager') -> None:
-        """Register this component with the shutdown manager.
+    def register_shutdown(self) -> None:
+        """Register this component with the global shutdown manager.
         
-        Args:
-            shutdown_manager: The shutdown manager to register with
-            
-        Note: This method must be called during component initialization
+        Uses get_global_shutdown_manager() to access the shutdown manager.
+        This method must be called during component initialization
         to ensure proper shutdown handling.
         """
         ...

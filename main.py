@@ -108,7 +108,7 @@ class ApplicationBootstrap:
         self.callback_manager.register_environment(environment=self.environment)
 
         # Register components for shutdown
-        self.training_manager.register_shutdown(self.shutdown_manager)
+        self.training_manager.register_shutdown()
 
         self.logger.info("✅ All components initialized successfully")
 

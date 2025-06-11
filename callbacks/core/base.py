@@ -9,7 +9,7 @@ from abc import ABC
 import logging
 
 from agent.ppo_agent import PPOTrainer
-from core.shutdown import IShutdownHandler, IShutdownManager
+from core.shutdown import IShutdownHandler, get_global_shutdown_manager
 from envs import TradingEnvironment
 from .context import (
     TrainingStartContext,
@@ -56,8 +56,9 @@ class BaseCallback(ABC,IShutdownHandler):
         self.trainer:PPOTrainer
         self.environment:TradingEnvironment
     
-    def register_shutdown(self, shutdown_manager: IShutdownManager) -> None:
-        """Register this callback with the shutdown manager."""
+    def register_shutdown(self) -> None:
+        """Register this callback with the global shutdown manager."""
+        shutdown_manager = get_global_shutdown_manager()
         shutdown_manager.register_component(
             component=self,
             timeout=self.get_shutdown_timeout(),

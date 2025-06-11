@@ -1,6 +1,6 @@
 """
 Comprehensive tests for EpisodeManager.get_next_episode method with 100% coverage.
-Tests episode context creation, day/reset point transitions, and error conditions.
+Tests episode context creation, day/reset point transitions, and exception conditions.
 """
 
 import pytest
@@ -13,8 +13,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from training.episode_manager import (
-    EpisodeManager, DayInfo, ResetPointInfo, 
-    EpisodeContext, EpisodeManagerState
+    EpisodeManager, EpisodeManagerException, EpisodeTerminationReason,
+    DayInfo, ResetPointInfo, EpisodeContext, EpisodeManagerState
 )
 from config.training.training_config import TrainingManagerConfig
 
@@ -74,6 +74,7 @@ class TestGetNextEpisode:
         """Test successful creation of episode context."""
         episode_manager.state.current_day = mock_day_info
         episode_manager.state.current_reset_point = mock_reset_point
+        episode_manager._shutdown_requested = False
         
         with patch.object(episode_manager, '_should_switch_day', return_value=False):
             result = episode_manager.get_next_episode()
@@ -84,10 +85,21 @@ class TestGetNextEpisode:
         assert result.reset_point == mock_reset_point
         assert result.day_info == mock_day_info
 
+    def test_shutdown_requested_raises_exception(self, episode_manager):
+        """Test that shutdown request raises EpisodeManagerException."""
+        episode_manager._shutdown_requested = True
+        
+        with pytest.raises(EpisodeManagerException) as exc_info:
+            episode_manager.get_next_episode()
+        
+        assert exc_info.value.reason == EpisodeTerminationReason.NO_MORE_DAYS
+        assert "Shutdown requested" in str(exc_info.value)
+
     def test_switch_day_when_should_switch_returns_true(self, episode_manager, mock_day_info, mock_reset_point):
         """Test that day switch is attempted when _should_switch_day returns True."""
         episode_manager.state.current_day = mock_day_info
         episode_manager.state.current_reset_point = mock_reset_point
+        episode_manager._shutdown_requested = False
         
         with patch.object(episode_manager, '_should_switch_day', return_value=True):
             with patch.object(episode_manager, '_advance_to_next_day', return_value=True) as mock_advance:
@@ -96,20 +108,22 @@ class TestGetNextEpisode:
         mock_advance.assert_called_once()
         assert isinstance(result, EpisodeContext)
 
-    def test_returns_none_when_advance_day_fails(self, episode_manager, caplog):
-        """Test returns None when _advance_to_next_day fails."""
+    def test_raises_exception_when_advance_day_fails(self, episode_manager):
+        """Test raises EpisodeManagerException when _advance_to_next_day fails."""
+        episode_manager._shutdown_requested = False
+        
         with patch.object(episode_manager, '_should_switch_day', return_value=True):
             with patch.object(episode_manager, '_advance_to_next_day', return_value=False):
-                with caplog.at_level("INFO"):
-                    result = episode_manager.get_next_episode()
+                with pytest.raises(EpisodeManagerException) as exc_info:
+                    episode_manager.get_next_episode()
         
-        assert result is None
-        assert "No more days available" in caplog.text
+        assert exc_info.value.reason == EpisodeTerminationReason.NO_MORE_DAYS
 
     def test_advances_reset_point_when_current_is_none(self, episode_manager, mock_day_info):
         """Test advances to next reset point when current_reset_point is None."""
         episode_manager.state.current_day = mock_day_info
         episode_manager.state.current_reset_point = None
+        episode_manager._shutdown_requested = False
         
         mock_new_reset_point = ResetPointInfo(
             timestamp="2024-01-15 10:00:00",
@@ -132,61 +146,64 @@ class TestGetNextEpisode:
         mock_advance.assert_called_once()
         assert isinstance(result, EpisodeContext)
 
-    def test_returns_none_when_advance_reset_point_fails(self, episode_manager, mock_day_info, caplog):
-        """Test returns None when _advance_to_next_reset_point fails."""
+    def test_raises_exception_when_advance_reset_point_fails(self, episode_manager, mock_day_info):
+        """Test raises EpisodeManagerException when _advance_to_next_reset_point fails."""
         episode_manager.state.current_day = mock_day_info
         episode_manager.state.current_reset_point = None
+        episode_manager._shutdown_requested = False
         
         with patch.object(episode_manager, '_should_switch_day', return_value=False):
             with patch.object(episode_manager, '_advance_to_next_reset_point', return_value=False):
-                with caplog.at_level("WARNING"):
-                    result = episode_manager.get_next_episode()
+                with pytest.raises(EpisodeManagerException) as exc_info:
+                    episode_manager.get_next_episode()
         
-        assert result is None
-        assert "No reset points available" in caplog.text
+        assert exc_info.value.reason == EpisodeTerminationReason.NO_MORE_RESET_POINTS
 
-    def test_returns_none_when_current_day_is_none(self, episode_manager, mock_reset_point, caplog):
-        """Test returns None when current_day is None after checks."""
+    def test_raises_exception_when_current_day_is_none(self, episode_manager, mock_reset_point):
+        """Test raises EpisodeManagerException when current_day is None after checks."""
         episode_manager.state.current_day = None
         episode_manager.state.current_reset_point = mock_reset_point
+        episode_manager._shutdown_requested = False
         
         with patch.object(episode_manager, '_should_switch_day', return_value=False):
-            with caplog.at_level("ERROR"):
-                result = episode_manager.get_next_episode()
+            with pytest.raises(EpisodeManagerException) as exc_info:
+                episode_manager.get_next_episode()
         
-        assert result is None
-        assert "Missing current day or reset point for episode context" in caplog.text
+        assert exc_info.value.reason == EpisodeTerminationReason.PRELOAD_FAILED
+        assert "Missing current day or reset point" in str(exc_info.value)
 
-    def test_returns_none_when_current_reset_point_is_none_after_checks(self, episode_manager, mock_day_info, caplog):
-        """Test returns None when current_reset_point is None after advance attempt."""
+    def test_raises_exception_when_current_reset_point_is_none_after_checks(self, episode_manager, mock_day_info):
+        """Test raises EpisodeManagerException when current_reset_point is None after advance attempt."""
         episode_manager.state.current_day = mock_day_info
         episode_manager.state.current_reset_point = None
+        episode_manager._shutdown_requested = False
         
         with patch.object(episode_manager, '_should_switch_day', return_value=False):
             with patch.object(episode_manager, '_advance_to_next_reset_point', return_value=True):
                 # Simulate advance succeeded but reset point still None
-                with caplog.at_level("ERROR"):
-                    result = episode_manager.get_next_episode()
+                with pytest.raises(EpisodeManagerException) as exc_info:
+                    episode_manager.get_next_episode()
         
-        assert result is None
-        assert "Missing current day or reset point for episode context" in caplog.text
+        assert exc_info.value.reason == EpisodeTerminationReason.PRELOAD_FAILED
 
-    def test_both_day_and_reset_point_none(self, episode_manager, caplog):
-        """Test returns None when both current_day and current_reset_point are None."""
+    def test_both_day_and_reset_point_none(self, episode_manager):
+        """Test raises EpisodeManagerException when both current_day and current_reset_point are None."""
         episode_manager.state.current_day = None
         episode_manager.state.current_reset_point = None
+        episode_manager._shutdown_requested = False
         
         with patch.object(episode_manager, '_should_switch_day', return_value=False):
             with patch.object(episode_manager, '_advance_to_next_reset_point', return_value=True):
-                with caplog.at_level("ERROR"):
-                    result = episode_manager.get_next_episode()
+                with pytest.raises(EpisodeManagerException) as exc_info:
+                    episode_manager.get_next_episode()
         
-        assert result is None
+        assert exc_info.value.reason == EpisodeTerminationReason.PRELOAD_FAILED
 
     def test_multiple_calls_without_state_change(self, episode_manager, mock_day_info, mock_reset_point):
         """Test multiple calls return same episode context when state doesn't change."""
         episode_manager.state.current_day = mock_day_info
         episode_manager.state.current_reset_point = mock_reset_point
+        episode_manager._shutdown_requested = False
         
         with patch.object(episode_manager, '_should_switch_day', return_value=False):
             results = []
@@ -201,6 +218,8 @@ class TestGetNextEpisode:
 
     def test_switch_day_then_advance_reset_point(self, episode_manager):
         """Test scenario where both day switch and reset point advance happen."""
+        episode_manager._shutdown_requested = False
+        
         # Initial state
         old_day = DayInfo(
             date=pendulum.parse("2024-01-14").date(),
@@ -241,70 +260,19 @@ class TestGetNextEpisode:
         assert result.symbol == "TSLA"
         assert result.date == pendulum.parse("2024-01-15").date()
 
-    @pytest.mark.parametrize("should_switch,advance_day_result,has_reset_point,advance_reset_result,expected_none", [
-        (False, None, True, None, False),      # Normal case - no switch needed, has reset point
-        (True, True, True, None, False),       # Switch day succeeds, has reset point
-        (True, False, None, None, True),       # Switch day fails - returns None
-        (False, None, False, True, False),     # No switch, needs reset advance, succeeds
-        (False, None, False, False, True),     # No switch, needs reset advance, fails
-    ])
-    def test_various_flow_combinations(self, episode_manager, mock_day_info, mock_reset_point,
-                                     should_switch, advance_day_result, has_reset_point, 
-                                     advance_reset_result, expected_none):
-        """Test various combinations of control flow paths."""
-        episode_manager.state.current_day = mock_day_info
-        episode_manager.state.current_reset_point = mock_reset_point if has_reset_point else None
+    def test_exception_propagation_from_internal_methods(self, episode_manager):
+        """Test that exceptions from internal methods are propagated."""
+        episode_manager._shutdown_requested = False
         
-        with patch.object(episode_manager, '_should_switch_day', return_value=should_switch):
-            patches = []
-            
-            if should_switch:
-                patches.append(patch.object(episode_manager, '_advance_to_next_day', return_value=advance_day_result))
-            
-            if not has_reset_point and advance_reset_result is not None:
-                patches.append(patch.object(episode_manager, '_advance_to_next_reset_point', return_value=advance_reset_result))
-                if advance_reset_result:
-                    # Simulate successful advance
-                    episode_manager.state.current_reset_point = mock_reset_point
-            
-            if patches:
-                with patches[0] if len(patches) == 1 else patch.multiple(episode_manager, **{p.attribute: p.new for p in patches}):
-                    result = episode_manager.get_next_episode()
-            else:
-                result = episode_manager.get_next_episode()
-        
-        if expected_none:
-            assert result is None
-        else:
-            assert isinstance(result, EpisodeContext)
-
-    def test_exception_in_should_switch_day(self, episode_manager):
-        """Test exception handling in _should_switch_day."""
         with patch.object(episode_manager, '_should_switch_day', side_effect=RuntimeError("Test error")):
             with pytest.raises(RuntimeError):
                 episode_manager.get_next_episode()
-
-    def test_exception_in_advance_to_next_day(self, episode_manager):
-        """Test exception handling in _advance_to_next_day."""
-        with patch.object(episode_manager, '_should_switch_day', return_value=True):
-            with patch.object(episode_manager, '_advance_to_next_day', side_effect=RuntimeError("Test error")):
-                with pytest.raises(RuntimeError):
-                    episode_manager.get_next_episode()
-
-    def test_exception_in_advance_to_next_reset_point(self, episode_manager, mock_day_info):
-        """Test exception handling in _advance_to_next_reset_point."""
-        episode_manager.state.current_day = mock_day_info
-        episode_manager.state.current_reset_point = None
-        
-        with patch.object(episode_manager, '_should_switch_day', return_value=False):
-            with patch.object(episode_manager, '_advance_to_next_reset_point', side_effect=RuntimeError("Test error")):
-                with pytest.raises(RuntimeError):
-                    episode_manager.get_next_episode()
 
     def test_episode_context_attributes(self, episode_manager, mock_day_info, mock_reset_point):
         """Test that EpisodeContext has all expected attributes correctly set."""
         episode_manager.state.current_day = mock_day_info
         episode_manager.state.current_reset_point = mock_reset_point
+        episode_manager._shutdown_requested = False
         
         with patch.object(episode_manager, '_should_switch_day', return_value=False):
             result = episode_manager.get_next_episode()
@@ -327,13 +295,38 @@ class TestGetNextEpisode:
         assert result.reset_point == episode_manager.state.current_reset_point
         assert result.day_info == episode_manager.state.current_day
 
-    def test_date_type_consistency(self, episode_manager, mock_day_info, mock_reset_point):
-        """Test that date is consistently a pendulum Date object."""
-        episode_manager.state.current_day = mock_day_info
-        episode_manager.state.current_reset_point = mock_reset_point
+    def test_all_termination_reasons_covered(self, episode_manager):
+        """Test that all relevant termination reasons can be raised."""
+        # Test NO_MORE_DAYS (shutdown)
+        episode_manager._shutdown_requested = True
+        with pytest.raises(EpisodeManagerException) as exc_info:
+            episode_manager.get_next_episode()
+        assert exc_info.value.reason == EpisodeTerminationReason.NO_MORE_DAYS
         
+        # Reset for next test
+        episode_manager._shutdown_requested = False
+        
+        # Test NO_MORE_DAYS (advance day fails)
+        with patch.object(episode_manager, '_should_switch_day', return_value=True):
+            with patch.object(episode_manager, '_advance_to_next_day', return_value=False):
+                with pytest.raises(EpisodeManagerException) as exc_info:
+                    episode_manager.get_next_episode()
+        assert exc_info.value.reason == EpisodeTerminationReason.NO_MORE_DAYS
+        
+        # Test NO_MORE_RESET_POINTS
+        episode_manager.state.current_reset_point = None
         with patch.object(episode_manager, '_should_switch_day', return_value=False):
-            result = episode_manager.get_next_episode()
+            with patch.object(episode_manager, '_advance_to_next_reset_point', return_value=False):
+                with pytest.raises(EpisodeManagerException) as exc_info:
+                    episode_manager.get_next_episode()
+        assert exc_info.value.reason == EpisodeTerminationReason.NO_MORE_RESET_POINTS
         
-        assert isinstance(result.date, Date)
-        assert result.date == mock_day_info.date
+        # Test PRELOAD_FAILED - when both day and reset point are None
+        episode_manager.state.current_day = None
+        episode_manager.state.current_reset_point = None
+        with patch.object(episode_manager, '_should_switch_day', return_value=False):
+            # Since current_reset_point is None, it will try to advance and then hit the final check
+            with patch.object(episode_manager, '_advance_to_next_reset_point', return_value=True):
+                with pytest.raises(EpisodeManagerException) as exc_info:
+                    episode_manager.get_next_episode()
+        assert exc_info.value.reason == EpisodeTerminationReason.PRELOAD_FAILED

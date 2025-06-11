@@ -15,7 +15,6 @@ from envs import TradingEnvironment
 from .base import BaseCallback
 from .manager import CallbackManager
 from ...config import  CallbackConfig
-from ...core.shutdown import IShutdownManager
 
 
 
@@ -23,7 +22,7 @@ def create_callbacks_from_config(
     config: CallbackConfig,
     trainer: Optional[PPOTrainer] = None,
     environment: Optional[TradingEnvironment] = None,
-    shutdown_manager: Optional[IShutdownManager] = None
+    shutdown_manager: Optional[Any] = None  # Deprecated parameter - now using global access
 ) -> CallbackManager:
     """
     Create callback manager with callbacks from strongly typed configuration.
@@ -81,11 +80,10 @@ def create_callbacks_from_config(
     
     logger.info(f"Created {len(callbacks)} callbacks from configuration")
     
-    # Register callbacks with shutdown manager if provided
-    if shutdown_manager is not None:
-        for callback in callbacks:
-            callback.register_shutdown(shutdown_manager)
-        logger.info(f"Registered {len(callbacks)} callbacks with shutdown manager")
+    # Register callbacks with global shutdown manager
+    for callback in callbacks:
+        callback.register_shutdown()
+    logger.info(f"Registered {len(callbacks)} callbacks with global shutdown manager")
     
     return CallbackManager(callbacks)
 
