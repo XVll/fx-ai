@@ -27,11 +27,11 @@ class TestReplayBufferProcessStateDict:
     def sample_state_dict(self):
         """Create a comprehensive sample state dictionary."""
         return {
-            "hf": np.random.randn(60, 10).astype(np.float32),
-            "mf": np.random.randn(10, 15).astype(np.float32),
-            "lf": np.random.randn(5, 8).astype(np.float32),
-            "portfolio": np.random.randn(1, 5).astype(np.float32),
-            "static": np.random.randn(3).astype(np.float32),
+            "hf": np.random.randn(60, 10).astype(np.float32)
+            "mf": np.random.randn(10, 15).astype(np.float32)
+            "lf": np.random.randn(5, 8).astype(np.float32)
+            "portfolio": np.random.randn(1, 5).astype(np.float32)
+            
         }
 
     def test_basic_state_processing(self, buffer, sample_state_dict):
@@ -52,11 +52,11 @@ class TestReplayBufferProcessStateDict:
     def test_numpy_array_conversion(self, buffer):
         """Test conversion of various numpy array types."""
         state_dict = {
-            "float32": np.random.randn(5, 3).astype(np.float32),
-            "float64": np.random.randn(4, 2).astype(np.float64),
-            "int32": np.random.randint(0, 10, (3, 4)).astype(np.int32),
-            "int64": np.random.randint(0, 10, (2, 5)).astype(np.int64),
-            "uint8": np.random.randint(0, 255, (6, 2)).astype(np.uint8),
+            "float32": np.random.randn(5, 3).astype(np.float32)
+            "float64": np.random.randn(4, 2).astype(np.float64)
+            "int32": np.random.randint(0, 10, (3, 4)).astype(np.int32)
+            "int64": np.random.randint(0, 10, (2, 5)).astype(np.int64)
+            "uint8": np.random.randint(0, 255, (6, 2)).astype(np.uint8)
         }
         
         processed_state = buffer._process_state_dict(state_dict)
@@ -76,10 +76,10 @@ class TestReplayBufferProcessStateDict:
         mixed_object = np.array([1.0, "string", None], dtype=object)
         
         state_dict = {
-            "object_numeric": object_array_1,
-            "object_2d": object_array_2,
-            "object_mixed": mixed_object,
-            "normal": np.array([1.0, 2.0], dtype=np.float32),
+            "object_numeric": object_array_1
+            "object_2d": object_array_2
+            "object_mixed": mixed_object
+            "normal": np.array([1.0, 2.0], dtype=np.float32)
         }
         
         processed_state = buffer._process_state_dict(state_dict)
@@ -108,9 +108,9 @@ class TestReplayBufferProcessStateDict:
         assert isinstance(processed_state["single"], torch.Tensor)
 
     @pytest.mark.parametrize("device_type", [
-        "cpu",
-        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")),
-        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")),
+        "cpu"
+        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))
+        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available"))
     ])
     def test_device_placement(self, device_type, sample_state_dict):
         """Test that processed tensors are placed on correct device."""
@@ -126,17 +126,17 @@ class TestReplayBufferProcessStateDict:
     def test_dtype_conversion_consistency(self, buffer):
         """Test that all arrays are converted to float32."""
         state_dict = {
-            "float16": np.random.randn(3, 2).astype(np.float16),
-            "float32": np.random.randn(3, 2).astype(np.float32),
-            "float64": np.random.randn(3, 2).astype(np.float64),
-            "int8": np.random.randint(-128, 127, (3, 2)).astype(np.int8),
-            "int16": np.random.randint(-1000, 1000, (3, 2)).astype(np.int16),
-            "int32": np.random.randint(-10000, 10000, (3, 2)).astype(np.int32),
-            "int64": np.random.randint(-100000, 100000, (3, 2)).astype(np.int64),
-            "uint8": np.random.randint(0, 255, (3, 2)).astype(np.uint8),
-            "uint16": np.random.randint(0, 65535, (3, 2)).astype(np.uint16),
-            "uint32": np.random.randint(0, 1000000, (3, 2)).astype(np.uint32),
-            "bool": np.random.choice([True, False], (3, 2)),
+            "float16": np.random.randn(3, 2).astype(np.float16)
+            "float32": np.random.randn(3, 2).astype(np.float32)
+            "float64": np.random.randn(3, 2).astype(np.float64)
+            "int8": np.random.randint(-128, 127, (3, 2)).astype(np.int8)
+            "int16": np.random.randint(-1000, 1000, (3, 2)).astype(np.int16)
+            "int32": np.random.randint(-10000, 10000, (3, 2)).astype(np.int32)
+            "int64": np.random.randint(-100000, 100000, (3, 2)).astype(np.int64)
+            "uint8": np.random.randint(0, 255, (3, 2)).astype(np.uint8)
+            "uint16": np.random.randint(0, 65535, (3, 2)).astype(np.uint16)
+            "uint32": np.random.randint(0, 1000000, (3, 2)).astype(np.uint32)
+            "bool": np.random.choice([True, False], (3, 2))
         }
         
         processed_state = buffer._process_state_dict(state_dict)
@@ -167,9 +167,9 @@ class TestReplayBufferProcessStateDict:
     def test_large_arrays(self, buffer):
         """Test processing of large arrays."""
         state_dict = {
-            "large_1d": np.random.randn(10000).astype(np.float32),
-            "large_2d": np.random.randn(1000, 100).astype(np.float32),
-            "large_3d": np.random.randn(100, 50, 20).astype(np.float32),
+            "large_1d": np.random.randn(10000).astype(np.float32)
+            "large_2d": np.random.randn(1000, 100).astype(np.float32)
+            "large_3d": np.random.randn(100, 50, 20).astype(np.float32)
         }
         
         processed_state = buffer._process_state_dict(state_dict)
@@ -183,8 +183,8 @@ class TestReplayBufferProcessStateDict:
     def test_zero_dimensional_arrays(self, buffer):
         """Test processing of zero-dimensional (scalar) arrays."""
         state_dict = {
-            "scalar": np.array(5.0),
-            "scalar_int": np.array(10),
+            "scalar": np.array(5.0)
+            "scalar_int": np.array(10)
         }
         
         processed_state = buffer._process_state_dict(state_dict)
@@ -197,9 +197,9 @@ class TestReplayBufferProcessStateDict:
     def test_empty_arrays(self, buffer):
         """Test processing of empty arrays."""
         state_dict = {
-            "empty_1d": np.array([], dtype=np.float32),
-            "empty_2d": np.array([]).reshape(0, 5).astype(np.float32),
-            "empty_3d": np.array([]).reshape(0, 3, 4).astype(np.float32),
+            "empty_1d": np.array([], dtype=np.float32)
+            "empty_2d": np.array([]).reshape(0, 5).astype(np.float32)
+            "empty_3d": np.array([]).reshape(0, 3, 4).astype(np.float32)
         }
         
         processed_state = buffer._process_state_dict(state_dict)
@@ -212,10 +212,10 @@ class TestReplayBufferProcessStateDict:
     def test_special_float_values(self, buffer):
         """Test processing arrays with special float values."""
         state_dict = {
-            "with_nan": np.array([1.0, float('nan'), 3.0], dtype=np.float32),
-            "with_inf": np.array([1.0, float('inf'), 3.0], dtype=np.float32),
-            "with_neg_inf": np.array([1.0, float('-inf'), 3.0], dtype=np.float32),
-            "mixed_special": np.array([float('nan'), float('inf'), float('-inf')], dtype=np.float32),
+            "with_nan": np.array([1.0, float('nan'), 3.0], dtype=np.float32)
+            "with_inf": np.array([1.0, float('inf'), 3.0], dtype=np.float32)
+            "with_neg_inf": np.array([1.0, float('-inf'), 3.0], dtype=np.float32)
+            "mixed_special": np.array([float('nan'), float('inf'), float('-inf')], dtype=np.float32)
         }
         
         processed_state = buffer._process_state_dict(state_dict)
@@ -228,9 +228,9 @@ class TestReplayBufferProcessStateDict:
     def test_very_small_and_large_values(self, buffer):
         """Test processing arrays with extreme values."""
         state_dict = {
-            "very_small": np.array([1e-30, 1e-40, 1e-100], dtype=np.float32),
+            "very_small": np.array([1e-30, 1e-40, 1e-100], dtype=np.float32)
             "very_large": np.array([1e30, 1e40], dtype=np.float64),  # Use float64 to test conversion
-            "mixed_extreme": np.array([-1e20, 1e-20, 0.0, 1e20], dtype=np.float32),
+            "mixed_extreme": np.array([-1e20, 1e-20, 0.0, 1e20], dtype=np.float32)
         }
         
         processed_state = buffer._process_state_dict(state_dict)
@@ -243,10 +243,10 @@ class TestReplayBufferProcessStateDict:
         """Test edge cases in object array processing."""
         # Create various problematic object arrays
         state_dict = {
-            "empty_object": np.array([], dtype=object),
-            "single_object": np.array([5.0], dtype=object),
-            "nested_list": np.array([[1, 2], [3, 4]], dtype=object),
-            "mixed_types": np.array([1, 2.5, True], dtype=object),
+            "empty_object": np.array([], dtype=object)
+            "single_object": np.array([5.0], dtype=object)
+            "nested_list": np.array([[1, 2], [3, 4]], dtype=object)
+            "mixed_types": np.array([1, 2.5, True], dtype=object)
         }
         
         processed_state = buffer._process_state_dict(state_dict)
@@ -261,7 +261,7 @@ class TestReplayBufferProcessStateDict:
         base_array = np.random.randn(10, 8).astype(np.float32)
         
         state_dict = {
-            "contiguous": base_array.copy(),
+            "contiguous": base_array.copy()
             "non_contiguous": base_array[::2, ::2],  # Non-contiguous view
             "transposed": base_array.T,  # Transposed (non-contiguous)
         }
@@ -277,8 +277,8 @@ class TestReplayBufferProcessStateDict:
     def test_object_array_warning_logging(self, mock_logger, buffer):
         """Test that object array processing logs warnings."""
         state_dict = {
-            "object_array": np.array([1.0, 2.0, 3.0], dtype=object),
-            "normal_array": np.array([1.0, 2.0, 3.0], dtype=np.float32),
+            "object_array": np.array([1.0, 2.0, 3.0], dtype=object)
+            "normal_array": np.array([1.0, 2.0, 3.0], dtype=np.float32)
         }
         
         buffer._process_state_dict(state_dict)
@@ -309,12 +309,12 @@ class TestReplayBufferProcessStateDict:
     def test_key_preservation(self, buffer):
         """Test that dictionary keys are preserved exactly."""
         special_keys = {
-            "normal_key": np.array([1.0]),
-            "key_with_spaces": np.array([2.0]),
-            "key-with-dashes": np.array([3.0]),
-            "key_with_numbers_123": np.array([4.0]),
+            "normal_key": np.array([1.0])
+            "key_with_spaces": np.array([2.0])
+            "key-with-dashes": np.array([3.0])
+            "key_with_numbers_123": np.array([4.0])
             "": np.array([5.0]),  # Empty string key
-            "unicode_key_αβγ": np.array([6.0]),
+            "unicode_key_αβγ": np.array([6.0])
         }
         
         processed_state = buffer._process_state_dict(special_keys)
@@ -349,8 +349,8 @@ class TestReplayBufferProcessStateDict:
         """Test processing of complex nested object arrays."""
         # Create complex object array
         complex_objects = np.array([
-            [1.0, 2.0],
-            [3.0, 4.0],
+            [1.0, 2.0]
+            [3.0, 4.0]
             [5.0, 6.0]
         ], dtype=object)
         
@@ -366,9 +366,9 @@ class TestReplayBufferProcessStateDict:
         """Test that processing is resilient to conversion errors."""
         # Create problematic arrays that might cause conversion issues
         problematic_dict = {
-            "strings": np.array(["a", "b", "c"], dtype=object),
-            "none_values": np.array([None, None, None], dtype=object),
-            "mixed_problematic": np.array([1, "string", None, [1, 2]], dtype=object),
+            "strings": np.array(["a", "b", "c"], dtype=object)
+            "none_values": np.array([None, None, None], dtype=object)
+            "mixed_problematic": np.array([1, "string", None, [1, 2]], dtype=object)
         }
         
         # Should not crash, even if some conversions fail

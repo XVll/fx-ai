@@ -27,19 +27,19 @@ class TestReplayBufferAdd:
     def sample_state(self):
         """Create sample state dictionary with various data types."""
         return {
-            "hf": np.random.randn(60, 10).astype(np.float32),
-            "mf": np.random.randn(10, 15).astype(np.float32),
-            "lf": np.random.randn(5, 8).astype(np.float32),
-            "portfolio": np.random.randn(1, 5).astype(np.float32),
-            "static": np.random.randn(3).astype(np.float32),
+            "hf": np.random.randn(60, 10).astype(np.float32)
+            "mf": np.random.randn(10, 15).astype(np.float32)
+            "lf": np.random.randn(5, 8).astype(np.float32)
+            "portfolio": np.random.randn(1, 5).astype(np.float32)
+            
         }
 
     @pytest.fixture
     def sample_action_info(self):
         """Create sample action info dictionary."""
         return {
-            "value": torch.tensor([0.5], dtype=torch.float32),
-            "log_prob": torch.tensor([-0.2], dtype=torch.float32),
+            "value": torch.tensor([0.5], dtype=torch.float32)
+            "log_prob": torch.tensor([-0.2], dtype=torch.float32)
         }
 
     def test_add_single_experience(self, buffer, sample_state, sample_action_info):
@@ -48,11 +48,11 @@ class TestReplayBufferAdd:
         next_state = sample_state.copy()
         
         buffer.add(
-            state_np=sample_state,
-            action=action,
-            reward=1.0,
-            next_state_np=next_state,
-            done=False,
+            state_np=sample_state
+            action=action
+            reward=1.0
+            next_state_np=next_state
+            done=False
             action_info=sample_action_info
         )
         
@@ -79,10 +79,10 @@ class TestReplayBufferAdd:
             action = torch.tensor([i % 2, (i + 1) % 2], dtype=torch.int32)
             
             buffer.add(
-                state_np=sample_state,
-                action=action,
-                reward=float(i),
-                next_state_np=sample_state,
+                state_np=sample_state
+                action=action
+                reward=float(i)
+                next_state_np=sample_state
                 done=i == capacity - 1,  # Last one is done
                 action_info=sample_action_info
             )
@@ -104,11 +104,11 @@ class TestReplayBufferAdd:
             action = torch.tensor([i, i + 1], dtype=torch.int32)
             
             buffer.add(
-                state_np=sample_state,
-                action=action,
-                reward=float(i),
-                next_state_np=sample_state,
-                done=False,
+                state_np=sample_state
+                action=action
+                reward=float(i)
+                next_state_np=sample_state
+                done=False
                 action_info=sample_action_info
             )
         
@@ -134,11 +134,11 @@ class TestReplayBufferAdd:
         action = torch.tensor([0, 1], dtype=torch.int32)
         
         buffer.add(
-            state_np=sample_state,
-            action=action,
-            reward=reward,
-            next_state_np=sample_state,
-            done=False,
+            state_np=sample_state
+            action=action
+            reward=reward
+            next_state_np=sample_state
+            done=False
             action_info=sample_action_info
         )
         
@@ -156,11 +156,11 @@ class TestReplayBufferAdd:
         action = torch.tensor([0, 1], dtype=torch.int32)
         
         buffer.add(
-            state_np=sample_state,
-            action=action,
-            reward=1.0,
-            next_state_np=sample_state,
-            done=done,
+            state_np=sample_state
+            action=action
+            reward=1.0
+            next_state_np=sample_state
+            done=done
             action_info=sample_action_info
         )
         
@@ -180,11 +180,11 @@ class TestReplayBufferAdd:
         action = torch.tensor(action_data, dtype=torch.int32)
         
         buffer.add(
-            state_np=sample_state,
-            action=action,
-            reward=1.0,
-            next_state_np=sample_state,
-            done=False,
+            state_np=sample_state
+            action=action
+            reward=1.0
+            next_state_np=sample_state
+            done=False
             action_info=sample_action_info
         )
         
@@ -198,20 +198,20 @@ class TestReplayBufferAdd:
         """Test that state dictionaries are properly converted to tensors."""
         # Create state with different array types
         state = {
-            "hf": np.random.randn(10, 5).astype(np.float32),
+            "hf": np.random.randn(10, 5).astype(np.float32)
             "mf": np.random.randn(5, 3).astype(np.float64),  # Different dtype
             "lf": np.array([[1, 2, 3]], dtype=np.int32),      # Integer type
-            "portfolio": np.random.randn(1, 2).astype(np.float32),
+            "portfolio": np.random.randn(1, 2).astype(np.float32)
         }
         
         action = torch.tensor([0, 1], dtype=torch.int32)
         
         buffer.add(
-            state_np=state,
-            action=action,
-            reward=1.0,
-            next_state_np=state,
-            done=False,
+            state_np=state
+            action=action
+            reward=1.0
+            next_state_np=state
+            done=False
             action_info=sample_action_info
         )
         
@@ -230,19 +230,19 @@ class TestReplayBufferAdd:
         # Create state with object array
         problematic_array = np.array([1.0, 2.0, 3.0], dtype=object)
         state = {
-            "normal": np.random.randn(5, 3).astype(np.float32),
-            "object_array": problematic_array,
+            "normal": np.random.randn(5, 3).astype(np.float32)
+            "object_array": problematic_array
         }
         
         action = torch.tensor([0, 1], dtype=torch.int32)
         
         # Should not crash and should handle object array
         buffer.add(
-            state_np=state,
-            action=action,
-            reward=1.0,
-            next_state_np=state,
-            done=False,
+            state_np=state
+            action=action
+            reward=1.0
+            next_state_np=state
+            done=False
             action_info=sample_action_info
         )
         
@@ -259,15 +259,15 @@ class TestReplayBufferAdd:
         # Test with different tensor types and devices
         action_info = {
             "value": torch.tensor([0.5], dtype=torch.float64),  # Different dtype
-            "log_prob": torch.tensor([-0.2], dtype=torch.float32),
+            "log_prob": torch.tensor([-0.2], dtype=torch.float32)
         }
         
         buffer.add(
-            state_np=sample_state,
-            action=action,
-            reward=1.0,
-            next_state_np=sample_state,
-            done=False,
+            state_np=sample_state
+            action=action
+            reward=1.0
+            next_state_np=sample_state
+            done=False
             action_info=action_info
         )
         
@@ -280,9 +280,9 @@ class TestReplayBufferAdd:
         assert exp["log_prob"].device == buffer.device
 
     @pytest.mark.parametrize("device_type", [
-        "cpu",
-        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")),
-        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")),
+        "cpu"
+        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))
+        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available"))
     ])
     def test_device_handling(self, device_type, sample_state, sample_action_info):
         """Test that tensors are moved to correct device."""
@@ -292,11 +292,11 @@ class TestReplayBufferAdd:
         action = torch.tensor([0, 1], dtype=torch.int32)
         
         buffer.add(
-            state_np=sample_state,
-            action=action,
-            reward=1.0,
-            next_state_np=sample_state,
-            done=False,
+            state_np=sample_state
+            action=action
+            reward=1.0
+            next_state_np=sample_state
+            done=False
             action_info=sample_action_info
         )
         
@@ -317,16 +317,16 @@ class TestReplayBufferAdd:
         # Create tensors that require gradients
         action = torch.tensor([0, 1], dtype=torch.float32, requires_grad=True)
         action_info = {
-            "value": torch.tensor([0.5], dtype=torch.float32, requires_grad=True),
-            "log_prob": torch.tensor([-0.2], dtype=torch.float32, requires_grad=True),
+            "value": torch.tensor([0.5], dtype=torch.float32, requires_grad=True)
+            "log_prob": torch.tensor([-0.2], dtype=torch.float32, requires_grad=True)
         }
         
         buffer.add(
-            state_np=sample_state,
-            action=action,
-            reward=1.0,
-            next_state_np=sample_state,
-            done=False,
+            state_np=sample_state
+            action=action
+            reward=1.0
+            next_state_np=sample_state
+            done=False
             action_info=action_info
         )
         
@@ -345,8 +345,8 @@ class TestReplayBufferAdd:
         state = {"test": np.array([[1.0]], dtype=np.float32)}
         action = torch.tensor([0, 1], dtype=torch.int32)
         action_info = {
-            "value": torch.tensor([0.0], dtype=torch.float32),
-            "log_prob": torch.tensor([0.0], dtype=torch.float32),
+            "value": torch.tensor([0.0], dtype=torch.float32)
+            "log_prob": torch.tensor([0.0], dtype=torch.float32)
         }
         
         # Track position changes
@@ -356,11 +356,11 @@ class TestReplayBufferAdd:
             positions.append(buffer.position)
             
             buffer.add(
-                state_np=state,
-                action=action,
-                reward=float(i),
-                next_state_np=state,
-                done=False,
+                state_np=state
+                action=action
+                reward=float(i)
+                next_state_np=state
+                done=False
                 action_info=action_info
             )
         
@@ -377,11 +377,11 @@ class TestReplayBufferAdd:
         action = torch.tensor([0, 1], dtype=torch.int32)
         
         buffer.add(
-            state_np=empty_state,
-            action=action,
-            reward=1.0,
-            next_state_np=empty_state,
-            done=False,
+            state_np=empty_state
+            action=action
+            reward=1.0
+            next_state_np=empty_state
+            done=False
             action_info=sample_action_info
         )
         
@@ -393,19 +393,19 @@ class TestReplayBufferAdd:
         """Test handling of large state arrays."""
         # Create large state arrays
         large_state = {
-            "large_array": np.random.randn(1000, 100).astype(np.float32),
-            "very_large": np.random.randn(500, 500).astype(np.float32),
+            "large_array": np.random.randn(1000, 100).astype(np.float32)
+            "very_large": np.random.randn(500, 500).astype(np.float32)
         }
         
         action = torch.tensor([0, 1], dtype=torch.int32)
         
         # Should handle large arrays without issues
         buffer.add(
-            state_np=large_state,
-            action=action,
-            reward=1.0,
-            next_state_np=large_state,
-            done=False,
+            state_np=large_state
+            action=action
+            reward=1.0
+            next_state_np=large_state
+            done=False
             action_info=sample_action_info
         )
         
@@ -425,11 +425,11 @@ class TestReplayBufferAdd:
         # This test documents the current behavior
         try:
             buffer.add(
-                state_np=sample_state,
-                action=action,
-                reward=1.0,
-                next_state_np=sample_state,
-                done=False,
+                state_np=sample_state
+                action=action
+                reward=1.0
+                next_state_np=sample_state
+                done=False
                 action_info=sample_action_info
             )
         except ZeroDivisionError:

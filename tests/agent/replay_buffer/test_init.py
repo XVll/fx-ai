@@ -40,12 +40,12 @@ class TestReplayBufferInit:
         assert buffer.position == 0
 
     @pytest.mark.parametrize("device_spec", [
-        "cpu",
-        torch.device("cpu"),
-        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")),
-        pytest.param(torch.device("cuda"), marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")),
-        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")),
-        pytest.param(torch.device("mps"), marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")),
+        "cpu"
+        torch.device("cpu")
+        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))
+        pytest.param(torch.device("cuda"), marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))
+        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available"))
+        pytest.param(torch.device("mps"), marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available"))
     ])
     def test_device_initialization(self, device_spec):
         """Test initialization with various device specifications."""
@@ -86,11 +86,11 @@ class TestReplayBufferInit:
             assert getattr(buffer, attr) is None
 
     @pytest.mark.parametrize("capacity,device_type", [
-        (1, "cpu"),
-        (100, "cpu"),
-        (2048, "cpu"),
-        pytest.param(1000, "cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")),
-        pytest.param(512, "mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")),
+        (1, "cpu")
+        (100, "cpu")
+        (2048, "cpu")
+        pytest.param(1000, "cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))
+        pytest.param(512, "mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available"))
     ])
     def test_attribute_types(self, capacity, device_type):
         """Test that all attributes have correct types after initialization."""
@@ -141,7 +141,7 @@ class TestReplayBufferInit:
         
         log_messages = [record.message for record in caplog.records]
         expected_parts = [
-            f"ReplayBuffer initialized with capacity {capacity}",
+            f"ReplayBuffer initialized with capacity {capacity}"
             f"device {device}"
         ]
         
@@ -155,10 +155,10 @@ class TestReplayBufferInit:
         assert found_log, f"Expected log message not found. Messages: {log_messages}"
 
     @pytest.mark.parametrize("capacity,device_str", [
-        (64, "cpu"),
-        (128, "cpu"),
-        (256, "cpu"),
-        pytest.param(512, "cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")),
+        (64, "cpu")
+        (128, "cpu")
+        (256, "cpu")
+        pytest.param(512, "cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))
     ])
     def test_device_string_conversion(self, capacity, device_str):
         """Test device string representation is correct."""

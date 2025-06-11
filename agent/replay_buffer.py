@@ -179,30 +179,33 @@ class ReplayBuffer:
         for key, tensors_list in all_states_components.items():
             # Determine the dimensions for proper concatenation
             first_tensor = tensors_list[0]
-            if key in ["hf", "mf", "lf", "portfolio"]:
-                # These should be [seq_len, feat_dim] tensors stacked into [batch_size, seq_len, feat_dim]
-                if first_tensor.ndim == 2:  # [seq_len, feat_dim]
-                    self.states[key] = torch.stack(tensors_list, dim=0)
-                    logger.debug(
-                        f"Stacked {key} tensors to shape: {self.states[key].shape}"
-                    )
-                elif first_tensor.ndim == 3:  # Already [1, seq_len, feat_dim]
-                    self.states[key] = torch.cat(tensors_list, dim=0)
-                    logger.debug(
-                        f"Concatenated {key} tensors to shape: {self.states[key].shape}"
-                    )
-                else:
-                    logger.warning(
-                        f"Unexpected shape for {key}: {first_tensor.shape}. Attempting default concatenation."
-                    )
-                    self.states[key] = torch.cat(tensors_list, dim=0)
-            else:
-                # Other components: default to concatenation
-                logger.debug(f"Default concatenation for {key} tensors")
+            # All state components should be stacked along batch dimension
+            # Expected shape transformation: [seq_len, feat_dim] -> [batch_size, seq_len, feat_dim]
+            if first_tensor.ndim == 2:  # [seq_len, feat_dim]
+                self.states[key] = torch.stack(tensors_list, dim=0)
+                logger.debug(
+                    f"Stacked {key} tensors to shape: {self.states[key].shape}"
+                )
+            elif first_tensor.ndim == 3:  # Already [1, seq_len, feat_dim]
                 self.states[key] = torch.cat(tensors_list, dim=0)
+                logger.debug(
+                    f"Concatenated {key} tensors to shape: {self.states[key].shape}"
+                )
+            elif first_tensor.ndim == 1:  # [feat_dim] for static-like features
+                self.states[key] = torch.stack(tensors_list, dim=0)
+                logger.debug(
+                    f"Stacked 1D {key} tensors to shape: {self.states[key].shape}"
+                )
+            else:
+                logger.warning(
+                    f"Unexpected shape for {key}: {first_tensor.shape}. Attempting default stacking."
+                )
+                self.states[key] = torch.stack(tensors_list, dim=0)
 
         # Process other components
-        self.actions = torch.cat(all_actions, dim=0)
+        # Actions should be stacked to preserve [batch_size, action_dim] shape
+        self.actions = torch.stack(all_actions, dim=0)
+        # Other components are scalars per experience, so concatenate them
         self.log_probs = torch.cat(all_log_probs, dim=0)
         self.values = torch.cat(all_values, dim=0)
         self.rewards = torch.cat(all_rewards, dim=0)

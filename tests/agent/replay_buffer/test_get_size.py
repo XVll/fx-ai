@@ -21,13 +21,13 @@ class TestReplayBufferGetSize:
     def sample_experience_data(self):
         """Create sample data for adding experiences."""
         return {
-            "state": {"test": np.array([[1.0]], dtype=np.float32)},
-            "action": torch.tensor([0, 1], dtype=torch.int32),
-            "reward": 1.0,
-            "done": False,
+            "state": {"test": np.array([[1.0]], dtype=np.float32)}
+            "action": torch.tensor([0, 1], dtype=torch.int32)
+            "reward": 1.0
+            "done": False
             "action_info": {
-                "value": torch.tensor([0.0], dtype=torch.float32),
-                "log_prob": torch.tensor([0.0], dtype=torch.float32),
+                "value": torch.tensor([0.0], dtype=torch.float32)
+                "log_prob": torch.tensor([0.0], dtype=torch.float32)
             }
         }
 
@@ -50,11 +50,11 @@ class TestReplayBufferGetSize:
         
         for i in range(num_adds):
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
             
@@ -74,11 +74,11 @@ class TestReplayBufferGetSize:
         
         for i in range(num_adds):
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
             
@@ -93,11 +93,11 @@ class TestReplayBufferGetSize:
         # Add some experiences
         for i in range(5):
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
         
@@ -117,11 +117,11 @@ class TestReplayBufferGetSize:
         for i in range(10):  # Go beyond capacity
             if i > 0:
                 buffer.add(
-                    state_np=sample_experience_data["state"],
-                    action=sample_experience_data["action"],
-                    reward=sample_experience_data["reward"],
-                    next_state_np=sample_experience_data["state"],
-                    done=sample_experience_data["done"],
+                    state_np=sample_experience_data["state"]
+                    action=sample_experience_data["action"]
+                    reward=sample_experience_data["reward"]
+                    next_state_np=sample_experience_data["state"]
+                    done=sample_experience_data["done"]
                     action_info=sample_experience_data["action_info"]
                 )
             
@@ -137,11 +137,11 @@ class TestReplayBufferGetSize:
         
         # Zero capacity buffer should handle gracefully now
         buffer.add(
-            state_np=sample_experience_data["state"],
-            action=sample_experience_data["action"],
-            reward=sample_experience_data["reward"],
-            next_state_np=sample_experience_data["state"],
-            done=sample_experience_data["done"],
+            state_np=sample_experience_data["state"]
+            action=sample_experience_data["action"]
+            reward=sample_experience_data["reward"]
+            next_state_np=sample_experience_data["state"]
+            done=sample_experience_data["done"]
             action_info=sample_experience_data["action_info"]
         )
         
@@ -157,11 +157,11 @@ class TestReplayBufferGetSize:
             # Add experiences
             for i in range(3):
                 buffer.add(
-                    state_np=sample_experience_data["state"],
-                    action=sample_experience_data["action"],
-                    reward=sample_experience_data["reward"],
-                    next_state_np=sample_experience_data["state"],
-                    done=sample_experience_data["done"],
+                    state_np=sample_experience_data["state"]
+                    action=sample_experience_data["action"]
+                    reward=sample_experience_data["reward"]
+                    next_state_np=sample_experience_data["state"]
+                    done=sample_experience_data["done"]
                     action_info=sample_experience_data["action_info"]
                 )
             
@@ -183,11 +183,11 @@ class TestReplayBufferGetSize:
             sizes.append(buffer.get_size())
             
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
         
@@ -213,11 +213,11 @@ class TestReplayBufferGetSize:
         # Add some experiences
         for i in range(3):
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
         

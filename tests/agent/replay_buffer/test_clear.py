@@ -26,24 +26,24 @@ class TestReplayBufferClear:
         # Add sample experiences
         for i in range(5):
             state = {
-                "hf": np.random.randn(60, 10).astype(np.float32),
-                "mf": np.random.randn(10, 15).astype(np.float32),
-                "lf": np.random.randn(5, 8).astype(np.float32),
-                "portfolio": np.random.randn(1, 5).astype(np.float32),
-                "static": np.random.randn(3).astype(np.float32),
+                "hf": np.random.randn(60, 10).astype(np.float32)
+                "mf": np.random.randn(10, 15).astype(np.float32)
+                "lf": np.random.randn(5, 8).astype(np.float32)
+                "portfolio": np.random.randn(1, 5).astype(np.float32)
+                
             }
             action = torch.tensor([i % 2, (i + 1) % 2], dtype=torch.int32)
             action_info = {
-                "value": torch.tensor([float(i)], dtype=torch.float32),
-                "log_prob": torch.tensor([float(-i * 0.1)], dtype=torch.float32),
+                "value": torch.tensor([float(i)], dtype=torch.float32)
+                "log_prob": torch.tensor([float(-i * 0.1)], dtype=torch.float32)
             }
             
             buffer.add(
-                state_np=state,
-                action=action,
-                reward=float(i + 1),
-                next_state_np=state,
-                done=i == 4,
+                state_np=state
+                action=action
+                reward=float(i + 1)
+                next_state_np=state
+                done=i == 4
                 action_info=action_info
             )
         
@@ -127,16 +127,16 @@ class TestReplayBufferClear:
                 state = {"test": np.array([[1.0]], dtype=np.float32)}
                 action = torch.tensor([0, 1], dtype=torch.int32)
                 action_info = {
-                    "value": torch.tensor([1.0], dtype=torch.float32),
-                    "log_prob": torch.tensor([0.0], dtype=torch.float32),
+                    "value": torch.tensor([1.0], dtype=torch.float32)
+                    "log_prob": torch.tensor([0.0], dtype=torch.float32)
                 }
                 
                 buffer.add(
-                    state_np=state,
-                    action=action,
-                    reward=1.0,
-                    next_state_np=state,
-                    done=False,
+                    state_np=state
+                    action=action
+                    reward=1.0
+                    next_state_np=state
+                    done=False
                     action_info=action_info
                 )
         
@@ -149,9 +149,9 @@ class TestReplayBufferClear:
         assert buffer.capacity == capacity  # Capacity preserved
 
     @pytest.mark.parametrize("device_type", [
-        "cpu",
-        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")),
-        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")),
+        "cpu"
+        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))
+        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available"))
     ])
     def test_clear_different_devices(self, device_type):
         """Test clearing buffers on different devices."""
@@ -163,16 +163,16 @@ class TestReplayBufferClear:
             state = {"test": np.random.randn(2, 2).astype(np.float32)}
             action = torch.tensor([i, i+1], dtype=torch.int32)
             action_info = {
-                "value": torch.tensor([float(i)], dtype=torch.float32),
-                "log_prob": torch.tensor([float(-i)], dtype=torch.float32),
+                "value": torch.tensor([float(i)], dtype=torch.float32)
+                "log_prob": torch.tensor([float(-i)], dtype=torch.float32)
             }
             
             buffer.add(
-                state_np=state,
-                action=action,
-                reward=float(i),
-                next_state_np=state,
-                done=False,
+                state_np=state
+                action=action
+                reward=float(i)
+                next_state_np=state
+                done=False
                 action_info=action_info
             )
         
@@ -197,16 +197,16 @@ class TestReplayBufferClear:
             state = {"test": np.array([[float(i)]], dtype=np.float32)}
             action = torch.tensor([i % 2, (i + 1) % 2], dtype=torch.int32)
             action_info = {
-                "value": torch.tensor([float(i)], dtype=torch.float32),
-                "log_prob": torch.tensor([float(-i * 0.1)], dtype=torch.float32),
+                "value": torch.tensor([float(i)], dtype=torch.float32)
+                "log_prob": torch.tensor([float(-i * 0.1)], dtype=torch.float32)
             }
             
             buffer.add(
-                state_np=state,
-                action=action,
-                reward=float(i),
-                next_state_np=state,
-                done=False,
+                state_np=state
+                action=action
+                reward=float(i)
+                next_state_np=state
+                done=False
                 action_info=action_info
             )
         
@@ -247,16 +247,16 @@ class TestReplayBufferClear:
             state = {"test": np.array([[float(i)]], dtype=np.float32)}
             action = torch.tensor([i, i+1], dtype=torch.int32)
             action_info = {
-                "value": torch.tensor([float(i)], dtype=torch.float32),
-                "log_prob": torch.tensor([float(-i)], dtype=torch.float32),
+                "value": torch.tensor([float(i)], dtype=torch.float32)
+                "log_prob": torch.tensor([float(-i)], dtype=torch.float32)
             }
             
             buffer.add(
-                state_np=state,
-                action=action,
-                reward=float(i),
-                next_state_np=state,
-                done=False,
+                state_np=state
+                action=action
+                reward=float(i)
+                next_state_np=state
+                done=False
                 action_info=action_info
             )
         
@@ -271,16 +271,16 @@ class TestReplayBufferClear:
             state = {"test": np.array([[float(i + 10)]], dtype=np.float32)}
             action = torch.tensor([i + 5, i + 6], dtype=torch.int32)
             action_info = {
-                "value": torch.tensor([float(i + 10)], dtype=torch.float32),
-                "log_prob": torch.tensor([float(-(i + 10))], dtype=torch.float32),
+                "value": torch.tensor([float(i + 10)], dtype=torch.float32)
+                "log_prob": torch.tensor([float(-(i + 10))], dtype=torch.float32)
             }
             
             buffer.add(
-                state_np=state,
-                action=action,
-                reward=float(i + 10),
-                next_state_np=state,
-                done=False,
+                state_np=state
+                action=action
+                reward=float(i + 10)
+                next_state_np=state
+                done=False
                 action_info=action_info
             )
         
@@ -312,21 +312,21 @@ class TestReplayBufferClear:
         # Add many large experiences
         for i in range(50):
             state = {
-                "large_array": np.random.randn(100, 50).astype(np.float32),
-                "another_large": np.random.randn(200, 25).astype(np.float32),
+                "large_array": np.random.randn(100, 50).astype(np.float32)
+                "another_large": np.random.randn(200, 25).astype(np.float32)
             }
             action = torch.tensor([i % 2, (i + 1) % 2], dtype=torch.int32)
             action_info = {
-                "value": torch.tensor([float(i)], dtype=torch.float32),
-                "log_prob": torch.tensor([float(-i * 0.01)], dtype=torch.float32),
+                "value": torch.tensor([float(i)], dtype=torch.float32)
+                "log_prob": torch.tensor([float(-i * 0.01)], dtype=torch.float32)
             }
             
             buffer.add(
-                state_np=state,
-                action=action,
-                reward=float(i),
-                next_state_np=state,
-                done=i % 10 == 9,
+                state_np=state
+                action=action
+                reward=float(i)
+                next_state_np=state
+                done=i % 10 == 9
                 action_info=action_info
             )
         
@@ -354,16 +354,16 @@ class TestReplayBufferClear:
             state = {"test": np.array([[1.0]], dtype=np.float32)}
             action = torch.tensor([0, 1], dtype=torch.int32)
             action_info = {
-                "value": torch.tensor([1.0], dtype=torch.float32),
-                "log_prob": torch.tensor([0.0], dtype=torch.float32),
+                "value": torch.tensor([1.0], dtype=torch.float32)
+                "log_prob": torch.tensor([0.0], dtype=torch.float32)
             }
             
             buffer.add(
-                state_np=state,
-                action=action,
-                reward=1.0,
-                next_state_np=state,
-                done=False,
+                state_np=state
+                action=action
+                reward=1.0
+                next_state_np=state
+                done=False
                 action_info=action_info
             )
         
@@ -383,16 +383,16 @@ class TestReplayBufferClear:
         state = {"test": np.array([[1.0]], dtype=np.float32)}
         action = torch.tensor([0, 1], dtype=torch.int32)
         action_info = {
-            "value": torch.tensor([1.0], dtype=torch.float32),
-            "log_prob": torch.tensor([0.0], dtype=torch.float32),
+            "value": torch.tensor([1.0], dtype=torch.float32)
+            "log_prob": torch.tensor([0.0], dtype=torch.float32)
         }
         
         buffer.add(
-            state_np=state,
-            action=action,
-            reward=1.0,
-            next_state_np=state,
-            done=False,
+            state_np=state
+            action=action
+            reward=1.0
+            next_state_np=state
+            done=False
             action_info=action_info
         )
         
@@ -443,16 +443,16 @@ class TestReplayBufferClear:
         state = {"test": np.array([[1.0]], dtype=np.float32)}
         action = torch.tensor([0, 1], dtype=torch.int32)
         action_info = {
-            "value": torch.tensor([1.0], dtype=torch.float32),
-            "log_prob": torch.tensor([0.0], dtype=torch.float32),
+            "value": torch.tensor([1.0], dtype=torch.float32)
+            "log_prob": torch.tensor([0.0], dtype=torch.float32)
         }
         
         buffer.add(
-            state_np=state,
-            action=action,
-            reward=1.0,
-            next_state_np=state,
-            done=False,
+            state_np=state
+            action=action
+            reward=1.0
+            next_state_np=state
+            done=False
             action_info=action_info
         )
         
@@ -475,16 +475,16 @@ class TestReplayBufferClear:
             state = {"test": np.array([[float(i)]], dtype=np.float32)}
             action = torch.tensor([i % 2, (i + 1) % 2], dtype=torch.int32)
             action_info = {
-                "value": torch.tensor([float(i)], dtype=torch.float32),
-                "log_prob": torch.tensor([float(-i * 0.1)], dtype=torch.float32),
+                "value": torch.tensor([float(i)], dtype=torch.float32)
+                "log_prob": torch.tensor([float(-i * 0.1)], dtype=torch.float32)
             }
             
             buffer.add(
-                state_np=state,
-                action=action,
-                reward=float(i),
-                next_state_np=state,
-                done=False,
+                state_np=state
+                action=action
+                reward=float(i)
+                next_state_np=state
+                done=False
                 action_info=action_info
             )
         

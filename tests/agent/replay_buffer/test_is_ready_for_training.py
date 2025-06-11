@@ -21,13 +21,13 @@ class TestReplayBufferIsReadyForTraining:
     def sample_experience_data(self):
         """Create sample data for adding experiences."""
         return {
-            "state": {"test": np.array([[1.0]], dtype=np.float32)},
-            "action": torch.tensor([0, 1], dtype=torch.int32),
-            "reward": 1.0,
-            "done": False,
+            "state": {"test": np.array([[1.0]], dtype=np.float32)}
+            "action": torch.tensor([0, 1], dtype=torch.int32)
+            "reward": 1.0
+            "done": False
             "action_info": {
-                "value": torch.tensor([0.0], dtype=torch.float32),
-                "log_prob": torch.tensor([0.0], dtype=torch.float32),
+                "value": torch.tensor([0.0], dtype=torch.float32)
+                "log_prob": torch.tensor([0.0], dtype=torch.float32)
             }
         }
 
@@ -51,11 +51,11 @@ class TestReplayBufferIsReadyForTraining:
         # Add experiences
         for i in range(num_adds):
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
         
@@ -70,11 +70,11 @@ class TestReplayBufferIsReadyForTraining:
         # Add more experiences than capacity
         for i in range(7):
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
         
@@ -89,11 +89,11 @@ class TestReplayBufferIsReadyForTraining:
         # Add experiences to make it ready
         for i in range(3):
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
         
@@ -114,11 +114,11 @@ class TestReplayBufferIsReadyForTraining:
         
         # Try to add experience (won't actually be stored due to zero capacity)
         buffer.add(
-            state_np=sample_experience_data["state"],
-            action=sample_experience_data["action"],
-            reward=sample_experience_data["reward"],
-            next_state_np=sample_experience_data["state"],
-            done=sample_experience_data["done"],
+            state_np=sample_experience_data["state"]
+            action=sample_experience_data["action"]
+            reward=sample_experience_data["reward"]
+            next_state_np=sample_experience_data["state"]
+            done=sample_experience_data["done"]
             action_info=sample_experience_data["action_info"]
         )
         
@@ -134,11 +134,11 @@ class TestReplayBufferIsReadyForTraining:
         
         # Add one experience
         buffer.add(
-            state_np=sample_experience_data["state"],
-            action=sample_experience_data["action"],
-            reward=sample_experience_data["reward"],
-            next_state_np=sample_experience_data["state"],
-            done=sample_experience_data["done"],
+            state_np=sample_experience_data["state"]
+            action=sample_experience_data["action"]
+            reward=sample_experience_data["reward"]
+            next_state_np=sample_experience_data["state"]
+            done=sample_experience_data["done"]
             action_info=sample_experience_data["action_info"]
         )
         
@@ -147,11 +147,11 @@ class TestReplayBufferIsReadyForTraining:
         
         # Add another experience (overwrites first)
         buffer.add(
-            state_np=sample_experience_data["state"],
-            action=sample_experience_data["action"],
-            reward=sample_experience_data["reward"],
-            next_state_np=sample_experience_data["state"],
-            done=sample_experience_data["done"],
+            state_np=sample_experience_data["state"]
+            action=sample_experience_data["action"]
+            reward=sample_experience_data["reward"]
+            next_state_np=sample_experience_data["state"]
+            done=sample_experience_data["done"]
             action_info=sample_experience_data["action_info"]
         )
         
@@ -171,11 +171,11 @@ class TestReplayBufferIsReadyForTraining:
             
             # Add experience
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
             
@@ -198,11 +198,11 @@ class TestReplayBufferIsReadyForTraining:
         # Add some experiences
         for i in range(3):
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
         
@@ -236,11 +236,11 @@ class TestReplayBufferIsReadyForTraining:
                     assert buffer.is_ready_for_training() == False
                 
                 buffer.add(
-                    state_np=sample_experience_data["state"],
-                    action=sample_experience_data["action"],
-                    reward=sample_experience_data["reward"],
-                    next_state_np=sample_experience_data["state"],
-                    done=sample_experience_data["done"],
+                    state_np=sample_experience_data["state"]
+                    action=sample_experience_data["action"]
+                    reward=sample_experience_data["reward"]
+                    next_state_np=sample_experience_data["state"]
+                    done=sample_experience_data["done"]
                     action_info=sample_experience_data["action_info"]
                 )
                 
@@ -263,11 +263,11 @@ class TestReplayBufferIsReadyForTraining:
         
         # Add first experience
         buffer.add(
-            state_np=sample_experience_data["state"],
-            action=sample_experience_data["action"],
-            reward=sample_experience_data["reward"],
-            next_state_np=sample_experience_data["state"],
-            done=sample_experience_data["done"],
+            state_np=sample_experience_data["state"]
+            action=sample_experience_data["action"]
+            reward=sample_experience_data["reward"]
+            next_state_np=sample_experience_data["state"]
+            done=sample_experience_data["done"]
             action_info=sample_experience_data["action_info"]
         )
         
@@ -277,20 +277,20 @@ class TestReplayBufferIsReadyForTraining:
         # Should remain ready as we add more
         for i in range(1, min(capacity * 2, 20)):  # Test some beyond capacity
             buffer.add(
-                state_np=sample_experience_data["state"],
-                action=sample_experience_data["action"],
-                reward=sample_experience_data["reward"],
-                next_state_np=sample_experience_data["state"],
-                done=sample_experience_data["done"],
+                state_np=sample_experience_data["state"]
+                action=sample_experience_data["action"]
+                reward=sample_experience_data["reward"]
+                next_state_np=sample_experience_data["state"]
+                done=sample_experience_data["done"]
                 action_info=sample_experience_data["action_info"]
             )
             
             assert buffer.is_ready_for_training() == True
 
     @pytest.mark.parametrize("device_type", [
-        "cpu",
-        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")),
-        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available")),
+        "cpu"
+        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))
+        pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available"))
     ])
     def test_readiness_with_different_devices(self, device_type, sample_experience_data):
         """Test readiness behavior is consistent across devices."""
@@ -302,11 +302,11 @@ class TestReplayBufferIsReadyForTraining:
         
         # Add experience
         buffer.add(
-            state_np=sample_experience_data["state"],
-            action=sample_experience_data["action"],
-            reward=sample_experience_data["reward"],
-            next_state_np=sample_experience_data["state"],
-            done=sample_experience_data["done"],
+            state_np=sample_experience_data["state"]
+            action=sample_experience_data["action"]
+            reward=sample_experience_data["reward"]
+            next_state_np=sample_experience_data["state"]
+            done=sample_experience_data["done"]
             action_info=sample_experience_data["action_info"]
         )
         
