@@ -68,15 +68,17 @@ class BenchmarkRunner:
     - Generate benchmark reports
     """
     
-    def __init__(self, config: EvaluationConfig):
+    def __init__(self, config: EvaluationConfig, model_manager: Optional[ModelManager] = None):
         """
         Initialize benchmark runner.
         
         Args:
             config: Evaluation configuration for benchmarking
+            model_manager: Optional model manager for model loading
         """
         self.config = config
         self.evaluator = Evaluator(config)
+        self.model_manager = model_manager
         self.logger = logging.getLogger(f"{__name__}.BenchmarkRunner")
         
         self.logger.info(f"🎯 BenchmarkRunner initialized")
@@ -118,8 +120,11 @@ class BenchmarkRunner:
             else:
                 # Benchmark best model
                 if not model_manager:
-                    from core.model_manager import ModelManager
-                    model_manager = ModelManager()
+                    model_manager = self.model_manager
+                    
+                if not model_manager:
+                    self.logger.error("No model manager available for finding best model")
+                    return None
                 
                 self.logger.info("🎯 Benchmarking best available model")
                 result = self.benchmark_best_model(
@@ -318,14 +323,25 @@ class BenchmarkRunner:
     def _load_model(self, model_path: str, trainer: PPOTrainer) -> bool:
         """Load model from path into trainer."""
         try:
-            # This would use ModelManager's load_model method
-            # For now, simplified loading
-            model_manager = ModelManager()
-            model, model_state = model_manager.load_model(
-                model=trainer.model,
-                optimizer=trainer.optimizer,
-                model_path=model_path
-            )
+            # Use stored model manager or create a basic one
+            if self.model_manager:
+                model_state = self.model_manager.load_model(
+                    model=trainer.model,
+                    optimizer=trainer.optimizer,
+                    model_path=model_path
+                )
+            else:
+                # Fallback - create temporary model manager with default config
+                from config.model.model_storage_config import ModelStorageConfig
+                temp_manager = ModelManager(
+                    config=ModelStorageConfig(),
+                    base_dir=Path(model_path).parent.parent.parent  # Assume standard structure
+                )
+                model_state = temp_manager.load_model(
+                    model=trainer.model,
+                    optimizer=trainer.optimizer,
+                    model_path=model_path
+                )
             
             self.logger.debug(f"Model loaded from {model_path}")
             return True

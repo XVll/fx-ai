@@ -72,8 +72,12 @@ class ApplicationBootstrap:
     def _create_training_manager(self) -> TrainingManager:
         """Create and configure a training manager with config."""
 
-        # Create a model manager
-        model_manager = ModelManager()
+        # Create a model manager with storage configuration
+        # Use Hydra output directory as base directory for models
+        model_manager = ModelManager(
+            config=self.config.model_storage,
+            base_dir=self.output_path
+        )
 
         training_manager = TrainingManager(
             config=self.config.training.training_manager,
@@ -189,11 +193,15 @@ def execute_benchmark(config: Config, app: 'ApplicationBootstrap') -> None:
     logger.info("🎯 Starting benchmark mode")
 
     # Create and run benchmark
-    benchmark_runner = BenchmarkRunner(config.evaluation)
+    benchmark_runner = BenchmarkRunner(
+        config.evaluation, 
+        model_manager=app.training_manager.model_manager
+    )
     result = benchmark_runner.run_benchmark(
         trainer=app.trainer,
         environment=app.environment,
-        data_manager=app.data_manager
+        data_manager=app.data_manager,
+        model_manager=app.training_manager.model_manager
     )
 
     if not result:

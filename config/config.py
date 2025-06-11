@@ -11,6 +11,7 @@ from hydra.core.config_store import ConfigStore
 
 # Import all the individual config schemas
 from .model.model_config import ModelConfig
+from .model.model_storage_config import ModelStorageConfig
 from .training.training_config import TrainingConfig, TrainingManagerConfig
 from .environment.environment_config import EnvironmentConfig
 from .data.data_config import DataConfig
@@ -33,6 +34,7 @@ class Config:
     
     # Core components
     model: ModelConfig = field(default_factory=ModelConfig)
+    model_storage: ModelStorageConfig = field(default_factory=ModelStorageConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     env: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     data: DataConfig = field(default_factory=DataConfig)
@@ -61,6 +63,7 @@ class Config:
     defaults: List[Any] = field(default_factory=lambda: [
         "_self_",
         "model: transformer",
+        "model_storage: default",
         "training: default", 
         "env: trading",
         "data: databento",
@@ -84,6 +87,7 @@ def register_configs():
     
     # Register component configs for composition
     cs.store(group="model", name="transformer", node=ModelConfig)
+    cs.store(group="model_storage", name="default", node=ModelStorageConfig)
     cs.store(group="training", name="default", node=TrainingConfig)
     cs.store(group="env", name="trading", node=EnvironmentConfig)
     cs.store(group="data", name="databento", node=DataConfig)

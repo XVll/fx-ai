@@ -278,26 +278,26 @@ class TrainingManager(IShutdownHandler):
 
         if self.config.continue_with_best_model:
             try:
-                best_model_info = self.model_manager.find_best_model()
-                if best_model_info:
-                    self.logger.info(f"📂 Loading best model: {best_model_info['path']}")
+                best_model = self.model_manager.find_best_model()
+                if best_model:
+                    self.logger.info(f"📂 Loading best model: {best_model.metadata.file_path}")
 
                     # Load model and training state
-                    model, model_state = self.model_manager.load_model(
+                    model_state = self.model_manager.load_model(
                         self.trainer.model,
                         self.trainer.optimizer,
-                        best_model_info["path"]
+                        best_model.metadata.file_path
                     )
-                    # Todo : We should use typed model state and metadata, both here and model_manager
+                    
                     # Restore training state (TrainingManager is source of truth)
-                    self.state.global_steps = model_state.get("global_step", 0)
-                    self.state.global_episodes = model_state.get("global_episode", 0)
-                    self.state.global_updates = model_state.get("global_update", 0)
-                    self.state.global_cycles = model_state.get("global_cycle", 0)
+                    self.state.global_steps = model_state.training_state.global_step
+                    self.state.global_episodes = model_state.training_state.global_episode
+                    self.state.global_updates = model_state.training_state.global_update
+                    self.state.global_cycles = model_state.training_state.global_cycle
 
-                    loaded_metadata = model_state.get("metadata", {})
+                    loaded_metadata = model_state.metadata.to_dict()
 
-                    self.logger.info(f"✅ Model loaded: step={model_state.get('global_step', 0)}")
+                    self.logger.info(f"✅ Model loaded: step={model_state.training_state.global_step}")
                 else:
                     self.logger.info("🆕 No previous model found. Starting fresh.")
             except Exception as e:
