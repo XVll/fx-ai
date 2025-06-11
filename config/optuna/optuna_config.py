@@ -1,201 +1,161 @@
-"""Sweep (Optuna) configuration schemas and types."""
+"""Optuna (Hyperparameter Optimization) structured configuration for Hydra."""
 
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Union, Literal
-from pydantic import BaseModel, Field, validator
 from enum import Enum
 
 
 class SamplerType(str, Enum):
-    """Available sweep samplers."""
-
-    TPE = "TPESampler"
-    GRID = "GridSampler"
-    RANDOM = "RandomSampler"
-    CMA_ES = "CmaEsSampler"
-    NSGA2 = "NSGAIISampler"
-    QMC = "QMCSampler"
+    """Available optuna samplers."""
+    TPE = "TPESampler"                    # Tree-structured Parzen Estimator
+    GRID = "GridSampler"                  # Grid search sampler
+    RANDOM = "RandomSampler"              # Random sampling
+    CMA_ES = "CmaEsSampler"               # Covariance Matrix Adaptation Evolution Strategy
+    NSGA2 = "NSGAIISampler"               # Non-dominated Sorting Genetic Algorithm II
+    QMC = "QMCSampler"                    # Quasi-Monte Carlo sampler
 
 
 class PrunerType(str, Enum):
-    """Available sweep pruners."""
-
-    MEDIAN = "MedianPruner"
-    PERCENTILE = "PercentilePruner"
-    SUCCESSIVE_HALVING = "SuccessiveHalvingPruner"
-    HYPERBAND = "HyperbandPruner"
-    THRESHOLD = "ThresholdPruner"
-    PATIENT = "PatientPruner"
+    """Available optuna pruners."""
+    MEDIAN = "MedianPruner"               # Prune if below median of completed trials
+    PERCENTILE = "PercentilePruner"       # Prune if below specified percentile
+    SUCCESSIVE_HALVING = "SuccessiveHalvingPruner"  # Successive halving algorithm
+    HYPERBAND = "HyperbandPruner"         # Hyperband algorithm
+    THRESHOLD = "ThresholdPruner"         # Prune if below/above threshold
+    PATIENT = "PatientPruner"             # Wait for patience steps before pruning
 
 
 class DistributionType(str, Enum):
     """Types of parameter distributions."""
+    FLOAT = "float"                       # Continuous float parameter
+    INT = "int"                           # Discrete integer parameter
+    CATEGORICAL = "categorical"           # Categorical choice parameter
+    FLOAT_LOG = "float_log"               # Log-scale float parameter
+    INT_LOG = "int_log"                   # Log-scale integer parameter
 
-    FLOAT = "float"
-    INT = "int"
-    CATEGORICAL = "categorical"
-    FLOAT_LOG = "float_log"
-    INT_LOG = "int_log"
 
-
-class ParameterConfig(BaseModel):
+@dataclass
+class ParameterConfig:
     """Configuration for a single hyperparameter."""
-
-    name: str = Field(..., description="Parameter name (dot notation for nested)")
-    type: DistributionType = Field(..., description="Distribution type")
-    low: Optional[Union[float, int]] = Field(None, description="Lower bound")
-    high: Optional[Union[float, int]] = Field(None, description="Upper bound")
-    choices: Optional[List[Any]] = Field(None, description="Categorical choices")
-    step: Optional[Union[float, int]] = Field(
-        None, description="Step size for discrete params"
-    )
-
-    @validator("low", "high")
-    def validate_bounds(cls, v, values):
-        """Validate bounds are provided for numeric types."""
-        if "type" in values and values["type"] in [
-            DistributionType.FLOAT,
-            DistributionType.INT,
-            DistributionType.FLOAT_LOG,
-            DistributionType.INT_LOG,
-        ]:
-            if v is None:
-                raise ValueError(f"Bounds required for {values['type']} distribution")
-        return v
-
-    @validator("choices")
-    def validate_choices(cls, v, values):
-        """Validate choices are provided for categorical type."""
-        if "type" in values and values["type"] == DistributionType.CATEGORICAL:
-            if not v:
-                raise ValueError("Choices required for categorical distribution")
-        return v
+    name: str                                          # Parameter name (dot notation for nested)
+    type: DistributionType                             # Distribution type
+    low: Optional[Union[float, int]] = None            # Lower bound for numeric types
+    high: Optional[Union[float, int]] = None           # Upper bound for numeric types
+    choices: Optional[List[Any]] = None                # Choices for categorical type
+    step: Optional[Union[float, int]] = None           # Step size for discrete params
 
 
-class SamplerConfig(BaseModel):
+@dataclass
+class SamplerConfig:
     """Configuration for Optuna sampler."""
-
-    type: SamplerType = Field(SamplerType.TPE, description="Sampler type")
-    n_startup_trials: int = Field(10, description="Number of random startup trials")
-    n_ei_candidates: int = Field(24, description="Number of EI candidates (TPE)")
-    seed: Optional[int] = Field(None, description="Random seed")
-    multivariate: bool = Field(True, description="Consider parameter correlations")
-    warn_independent_sampling: bool = Field(
-        False, description="Warn about independent sampling"
-    )
-
-    # Additional sampler-specific settings
-    consider_prior: bool = Field(True, description="Consider prior (TPE)")
-    prior_weight: float = Field(1.0, description="Prior weight (TPE)")
-    consider_magic_clip: bool = Field(True, description="Use magic clip (TPE)")
-    consider_endpoints: bool = Field(False, description="Consider endpoints (TPE)")
+    type: SamplerType = SamplerType.TPE                # Sampler algorithm type
+    n_startup_trials: int = 10                         # Number of random startup trials
+    n_ei_candidates: int = 24                          # Number of EI candidates (TPE)
+    seed: Optional[int] = None                         # Random seed for reproducibility
+    multivariate: bool = True                          # Consider parameter correlations
+    warn_independent_sampling: bool = False            # Warn about independent sampling
+    
+    # TPE-specific settings
+    consider_prior: bool = True                        # Consider prior distributions
+    prior_weight: float = 1.0                          # Weight of prior distribution
+    consider_magic_clip: bool = True                   # Use magic clip technique
+    consider_endpoints: bool = False                   # Consider parameter endpoints
 
 
-class PrunerConfig(BaseModel):
+@dataclass
+class PrunerConfig:
     """Configuration for Optuna pruner."""
-
-    type: Optional[PrunerType] = Field(PrunerType.MEDIAN, description="Pruner type")
-    n_startup_trials: int = Field(5, description="Startup trials before pruning")
-    n_warmup_steps: int = Field(10, description="Warmup steps before pruning")
-    interval_steps: int = Field(1, description="Pruning check interval")
-
+    type: Optional[PrunerType] = PrunerType.MEDIAN     # Pruner algorithm type
+    n_startup_trials: int = 5                          # Startup trials before pruning
+    n_warmup_steps: int = 10                           # Warmup steps before pruning
+    interval_steps: int = 1                            # Pruning check interval
+    
     # Median/Percentile pruner settings
-    percentile: float = Field(25.0, description="Percentile for PercentilePruner")
-    n_min_trials: int = Field(5, description="Minimum trials for statistics")
-
+    percentile: float = 25.0                           # Percentile threshold for pruning
+    n_min_trials: int = 5                              # Minimum trials for statistics
+    
     # Successive halving settings
-    min_resource: int = Field(1, description="Minimum resource (SuccessiveHalving)")
-    reduction_factor: int = Field(4, description="Reduction factor (SuccessiveHalving)")
-
+    min_resource: int = 1                              # Minimum resource allocation
+    reduction_factor: int = 4                          # Resource reduction factor
+    
     # Hyperband settings
-    max_resource: int = Field(100, description="Maximum resource (Hyperband)")
-
+    max_resource: int = 100                            # Maximum resource allocation
+    
     # Threshold settings
-    lower: Optional[float] = Field(None, description="Lower threshold")
-    upper: Optional[float] = Field(None, description="Upper threshold")
-
+    lower: Optional[float] = None                      # Lower threshold for pruning
+    upper: Optional[float] = None                      # Upper threshold for pruning
+    
     # Patient pruner settings
-    patience: int = Field(10, description="Patience steps (Patient)")
-    min_delta: float = Field(0.0, description="Minimum delta (Patient)")
+    patience: int = 10                                 # Patience steps before pruning
+    min_delta: float = 0.0                             # Minimum improvement delta
 
 
-class StudyConfig(BaseModel):
+@dataclass
+class StudyConfig:
     """Configuration for an Optuna study."""
-
-    study_name: str = Field(..., description="Name of the study")
-    direction: Literal["minimize", "maximize"] = Field(
-        "maximize", description="Optimization direction"
-    )
-    metric_name: str = Field("mean_reward", description="Metric to optimize")
-
+    study_name: str                                    # Unique name for the study
+    direction: Literal["minimize", "maximize"] = "maximize"  # Optimization direction
+    metric_name: str = "mean_reward"                   # Metric to optimize
+    
     # Storage settings
-    storage: str = Field("sqlite:///sweep_studies.db", description="Storage URL")
-    load_if_exists: bool = Field(True, description="Load existing study")
-
+    storage: str = "sqlite:///sweep_studies.db"        # Database storage URL
+    load_if_exists: bool = True                        # Load existing study if found
+    
     # Sampler and pruner
-    sampler: SamplerConfig = Field(default_factory=SamplerConfig)
-    pruner: Optional[PrunerConfig] = Field(default_factory=PrunerConfig)
-
+    sampler: SamplerConfig = field(default_factory=SamplerConfig)  # Sampling strategy
+    pruner: Optional[PrunerConfig] = field(default_factory=PrunerConfig)  # Pruning strategy
+    
     # Parameters to optimize
-    parameters: List[ParameterConfig] = Field(..., description="Parameters to optimize")
-
+    parameters: List[ParameterConfig] = field(default_factory=list)  # Hyperparameters to tune
+    
     # Trial settings
-    n_trials: int = Field(100, description="Number of trials to run")
-    timeout: Optional[int] = Field(None, description="Timeout in seconds")
-    n_jobs: int = Field(1, description="Number of parallel jobs")
-    catch_exceptions: bool = Field(True, description="Catch and log exceptions")
-
-    # NEW: Base config reference system
-    base_config: Optional[str] = Field(
-        None, description="Base config name to inherit from"
-    )
-    trial_overrides: Dict[str, Any] = Field(
-        default_factory=dict, description="Trial-specific config overrides"
-    )
-
-    # LEGACY: Full training config (for backward compatibility)
-    training_config: Dict[str, Any] = Field(
-        default_factory=dict, description="Complete training configuration (legacy)"
-    )
-
+    n_trials: int = 100                                # Number of trials to run
+    timeout: Optional[int] = None                      # Timeout in seconds
+    n_jobs: int = 1                                    # Number of parallel jobs
+    catch_exceptions: bool = True                      # Catch and log exceptions
+    
+    # Base config reference system
+    base_config: Optional[str] = None                  # Base config name to inherit from
+    trial_overrides: Dict[str, Any] = field(default_factory=dict)  # Trial-specific overrides
+    
+    # Legacy full training config (for backward compatibility)
+    training_config: Dict[str, Any] = field(default_factory=dict)  # Complete training config
+    
     # Trial settings
-    episodes_per_trial: int = Field(1000, description="Episodes per trial")
-    eval_frequency: int = Field(100, description="Evaluation frequency")
-    eval_episodes: int = Field(10, description="Episodes for evaluation")
-
+    episodes_per_trial: int = 1000                     # Episodes per trial
+    eval_frequency: int = 100                          # Evaluation frequency
+    eval_episodes: int = 10                            # Episodes for evaluation
+    
     # Early stopping
-    early_stop_patience: int = Field(5, description="Trials without improvement")
-    early_stop_min_delta: float = Field(0.01, description="Minimum improvement")
-
+    early_stop_patience: int = 5                       # Trials without improvement
+    early_stop_min_delta: float = 0.01                 # Minimum improvement delta
+    
     # Checkpointing
-    save_checkpoints: bool = Field(True, description="Save trial checkpoints")
-    checkpoint_dir: str = Field(
-        "sweep_checkpoints", description="Checkpoint directory"
-    )
-    keep_best_n: int = Field(5, description="Keep best N models")
+    save_checkpoints: bool = True                      # Save trial checkpoints
+    checkpoint_dir: str = "sweep_checkpoints"          # Checkpoint directory
+    keep_best_n: int = 5                               # Keep best N models
 
 
-class OptunaStudySpec(BaseModel):
+@dataclass
+class OptunaStudySpec:
     """Complete specification for an Optuna optimization study."""
-
     # Basic metadata
-    name: str = Field(..., description="Study specification name")
-    description: str = Field("", description="Study description")
-    version: str = Field("1.0", description="Specification version")
-
+    name: str                                          # Study specification name
+    description: str = ""                              # Study description
+    version: str = "1.0"                               # Specification version
+    
     # Multiple study configurations
-    studies: List[StudyConfig] = Field(..., description="Study configurations")
-
+    studies: List[StudyConfig] = field(default_factory=list)  # Study configurations
+    
     # Global settings
-    dashboard_port: int = Field(8052, description="Sweep dashboard port")
-    log_level: str = Field("INFO", description="Logging level")
-    results_dir: str = Field("sweep_results", description="Results directory")
-
+    dashboard_port: int = 8052                         # Optuna dashboard port
+    log_level: str = "INFO"                            # Logging level
+    results_dir: str = "sweep_results"                 # Results directory
+    
     # Notification settings
-    notify_on_complete: bool = Field(
-        False, description="Send notification on completion"
-    )
-    save_study_plots: bool = Field(True, description="Save optimization plots")
-
+    notify_on_complete: bool = False                   # Send notification on completion
+    save_study_plots: bool = True                      # Save optimization plots
+    
     # Resource limits
-    max_concurrent_trials: int = Field(4, description="Max concurrent trials")
-    gpu_per_trial: float = Field(1.0, description="GPU allocation per trial")
+    max_concurrent_trials: int = 4                     # Max concurrent trials
+    gpu_per_trial: float = 1.0                         # GPU allocation per trial

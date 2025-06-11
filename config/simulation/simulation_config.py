@@ -3,68 +3,59 @@ Simulation configuration for market simulation and trading parameters.
 """
 
 from typing import Optional, Literal
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
 
 
-class SimulationConfig(BaseModel):
+@dataclass
+class SimulationConfig:
     """Market simulation and trading parameters"""
 
     # Capital settings
-    initial_capital: float = Field(25000.0, gt=0.0, description="Starting capital")
-    max_position_value_ratio: float = Field(
-        1.0, ge=0.0, le=1.0, description="Max position as fraction of equity"
-    )
-    leverage: float = Field(1.0, gt=0.0, description="Trading leverage")
+    initial_capital: float = 25000.0              # Starting capital
+    max_position_value_ratio: float = 1.0         # Max position as fraction of equity
+    leverage: float = 1.0                         # Trading leverage
 
     # Trading costs
-    commission_rate: float = Field(0.001, ge=0.0, description="Commission rate")
-    slippage_rate: float = Field(0.0005, ge=0.0, description="Slippage rate")
-    min_transaction_amount: float = Field(100.0, ge=0.0, description="Min trade size")
+    commission_rate: float = 0.001                # Commission rate
+    slippage_rate: float = 0.0005                 # Slippage rate
+    min_transaction_amount: float = 100.0         # Min trade size
 
     # Risk limits
-    max_drawdown: float = Field(0.3, ge=0.0, le=1.0, description="Max allowed drawdown")
-    stop_loss_pct: float = Field(
-        0.15, ge=0.0, le=1.0, description="Stop loss percentage"
-    )
-    daily_loss_limit: float = Field(
-        0.25, ge=0.0, le=1.0, description="Daily loss limit"
-    )
+    max_drawdown: float = 0.3                     # Max allowed drawdown
+    stop_loss_pct: float = 0.15                   # Stop loss percentage
+    daily_loss_limit: float = 0.25                # Daily loss limit
 
     # Execution settings
-    execution_delay_ms: int = Field(100, description="Order execution delay")
-    partial_fill_probability: float = Field(0.0, description="Partial fill probability")
-    allow_shorting: bool = Field(False, description="Allow short selling")
+    execution_delay_ms: int = 100                 # Order execution delay
+    partial_fill_probability: float = 0.0         # Partial fill probability
+    allow_shorting: bool = False                  # Allow short selling
 
     # Latency simulation
-    mean_latency_ms: float = Field(100.0, description="Mean execution latency")
-    latency_std_dev_ms: float = Field(20.0, description="Latency std dev")
+    mean_latency_ms: float = 100.0                # Mean execution latency
+    latency_std_dev_ms: float = 20.0              # Latency std dev
 
     # Slippage parameters
-    base_slippage_bps: float = Field(10.0, description="Base slippage (bps)")
-    size_impact_slippage_bps_per_unit: float = Field(
-        0.2, description="Size impact slippage"
-    )
-    max_total_slippage_bps: float = Field(100.0, description="Max total slippage")
+    base_slippage_bps: float = 10.0               # Base slippage (bps)
+    size_impact_slippage_bps_per_unit: float = 0.2  # Size impact slippage
+    max_total_slippage_bps: float = 100.0         # Max total slippage
 
     # Cost parameters
-    commission_per_share: float = Field(0.005, description="Commission per share")
-    fee_per_share: float = Field(0.001, description="Fee per share")
-    min_commission_per_order: float = Field(1.0, description="Min commission")
-    max_commission_pct_of_value: float = Field(0.5, description="Max commission %")
+    commission_per_share: float = 0.005           # Commission per share
+    fee_per_share: float = 0.001                  # Fee per share
+    min_commission_per_order: float = 1.0         # Min commission
+    max_commission_pct_of_value: float = 0.5      # Max commission %
 
     # Market impact
-    market_impact_model: Literal["linear", "square_root", "none"] = Field("linear")
-    market_impact_coefficient: float = Field(0.0001, description="Market impact coeff")
+    market_impact_model: Literal["linear", "square_root", "none"] = "linear"  # Market impact model
+    market_impact_coefficient: float = 0.0001     # Market impact coeff
 
     # Spread modeling
-    spread_model: Literal["fixed", "dynamic", "historical"] = Field("historical")
-    fixed_spread_bps: float = Field(10.0, description="Fixed spread (bps)")
+    spread_model: Literal["fixed", "dynamic", "historical"] = "historical"  # Spread model
+    fixed_spread_bps: float = 10.0                # Fixed spread (bps)
 
     # Episode randomization
-    random_start_prob: float = Field(0.95, description="Random start probability")
-    warmup_steps: int = Field(60, description="Warmup steps")
+    random_start_prob: float = 0.95               # Random start probability
+    warmup_steps: int = 60                        # Warmup steps
 
     # Portfolio settings
-    max_position_holding_seconds: Optional[int] = Field(
-        None, description="Max holding time"
-    )
+    max_position_holding_seconds: Optional[int] = None  # Max holding time

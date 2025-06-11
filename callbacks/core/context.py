@@ -1,163 +1,168 @@
 """
 Typed context models for callback events.
 
-Replaces dictionary-based context with strongly typed Pydantic models
+Replaces dictionary-based context with strongly typed dataclasses
 for better validation, IDE support, and documentation.
 """
 
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime, timedelta
 from pathlib import Path
-from pydantic import BaseModel, Field
+from dataclasses import dataclass, field
 import torch
 
 
-class EpisodeInfo(BaseModel):
+@dataclass
+class EpisodeInfo:
     """Episode information."""
-    num: int = Field(description="Episode number")
-    reward: float = Field(description="Episode reward")
-    length: int = Field(description="Episode length in steps")
-    terminated: bool = Field(description="Whether episode terminated naturally")
-    truncated: bool = Field(description="Whether episode was truncated")
-    start_time: Optional[datetime] = Field(default=None, description="Episode start time")
-    end_time: Optional[datetime] = Field(default=None, description="Episode end time")
-    symbol: Optional[str] = Field(default=None, description="Trading symbol")
-    reset_point_idx: Optional[int] = Field(default=None, description="Reset point index used")
+    num: int                                            # Episode number
+    reward: float                                       # Episode reward
+    length: int                                         # Episode length in steps
+    terminated: bool                                    # Whether episode terminated naturally
+    truncated: bool                                     # Whether episode was truncated
+    start_time: Optional[datetime] = None               # Episode start time
+    end_time: Optional[datetime] = None                 # Episode end time
+    symbol: Optional[str] = None                        # Trading symbol
+    reset_point_idx: Optional[int] = None               # Reset point index used
 
 
-class TradingMetrics(BaseModel):
+@dataclass
+class TradingMetrics:
     """Trading performance metrics."""
-    portfolio_value: float = Field(description="Current portfolio value")
-    total_profit: float = Field(description="Total profit/loss")
-    trades_count: int = Field(description="Number of trades in episode")
-    win_rate: float = Field(description="Win rate (0.0 to 1.0)")
-    avg_trade_profit: float = Field(description="Average profit per trade")
-    max_drawdown: float = Field(description="Maximum drawdown")
-    sharpe_ratio: Optional[float] = Field(default=None, description="Sharpe ratio")
-    total_fees: float = Field(default=0.0, description="Total trading fees")
-    total_slippage: float = Field(default=0.0, description="Total slippage costs")
+    portfolio_value: float                              # Current portfolio value
+    total_profit: float                                 # Total profit/loss
+    trades_count: int                                   # Number of trades in episode
+    win_rate: float                                     # Win rate (0.0 to 1.0)
+    avg_trade_profit: float                             # Average profit per trade
+    max_drawdown: float                                 # Maximum drawdown
+    sharpe_ratio: Optional[float] = None                # Sharpe ratio
+    total_fees: float = 0.0                             # Total trading fees
+    total_slippage: float = 0.0                         # Total slippage costs
 
 
-class PortfolioState(BaseModel):
+@dataclass
+class PortfolioState:
     """Portfolio state information."""
-    cash: float = Field(description="Available cash")
-    position_value: float = Field(description="Value of current positions")
-    total_value: float = Field(description="Total portfolio value")
-    position_count: int = Field(description="Number of open positions")
-    buying_power: float = Field(description="Available buying power")
-    unrealized_pnl: float = Field(description="Unrealized profit/loss")
-    realized_pnl: float = Field(description="Realized profit/loss")
+    cash: float                                         # Available cash
+    position_value: float                               # Value of current positions
+    total_value: float                                  # Total portfolio value
+    position_count: int                                 # Number of open positions
+    buying_power: float                                 # Available buying power
+    unrealized_pnl: float                               # Unrealized profit/loss
+    realized_pnl: float                                 # Realized profit/loss
 
 
-class Trade(BaseModel):
+@dataclass
+class Trade:
     """Individual trade information."""
-    timestamp: datetime = Field(description="Trade timestamp")
-    symbol: str = Field(description="Trading symbol")
-    side: str = Field(description="Trade side (buy/sell)")
-    quantity: int = Field(description="Trade quantity")
-    price: float = Field(description="Trade price")
-    fees: float = Field(description="Trading fees")
-    slippage: float = Field(description="Slippage cost")
-    pnl: Optional[float] = Field(default=None, description="Trade P&L (for closes)")
+    timestamp: datetime                                 # Trade timestamp
+    symbol: str                                         # Trading symbol
+    side: str                                           # Trade side (buy/sell)
+    quantity: int                                       # Trade quantity
+    price: float                                        # Trade price
+    fees: float                                         # Trading fees
+    slippage: float                                     # Slippage cost
+    pnl: Optional[float] = None                         # Trade P&L (for closes)
 
 
-class ModelInfo(BaseModel):
+@dataclass
+class ModelInfo:
     """Model state information."""
-    version: Optional[int] = Field(default=None, description="Model version")
-    training_step: int = Field(description="Current training step")
-    learning_rate: float = Field(description="Current learning rate")
-    clip_epsilon: float = Field(description="Current PPO clip epsilon")
-    total_parameters: Optional[int] = Field(default=None, description="Total model parameters")
-    device: str = Field(description="Model device")
+    version: Optional[int] = None                       # Model version
+    training_step: int = 0                              # Current training step
+    learning_rate: float = 0.0                          # Current learning rate
+    clip_epsilon: float = 0.0                           # Current PPO clip epsilon
+    total_parameters: Optional[int] = None              # Total model parameters
+    device: str = "cpu"                                 # Model device
 
 
-class UpdateInfo(BaseModel):
+@dataclass
+class UpdateInfo:
     """Training update information."""
-    num: int = Field(description="Update number")
-    learning_rate: float = Field(description="Learning rate used")
-    clip_epsilon: float = Field(description="PPO clip epsilon used")
-    batch_size: int = Field(description="Batch size used")
-    n_epochs: int = Field(description="Number of epochs")
+    num: int                                            # Update number
+    learning_rate: float                                # Learning rate used
+    clip_epsilon: float                                 # PPO clip epsilon used
+    batch_size: int                                     # Batch size used
+    n_epochs: int                                       # Number of epochs
 
 
-class TrainingLosses(BaseModel):
+@dataclass
+class TrainingLosses:
     """Training loss information."""
-    policy_loss: float = Field(description="Policy loss")
-    value_loss: float = Field(description="Value function loss")
-    entropy_loss: float = Field(description="Entropy loss")
-    total_loss: float = Field(description="Total loss")
+    policy_loss: float                                  # Policy loss
+    value_loss: float                                   # Value function loss
+    entropy_loss: float                                 # Entropy loss
+    total_loss: float                                   # Total loss
 
 
-class TrainingMetrics(BaseModel):
+@dataclass
+class TrainingMetrics:
     """Training metrics."""
-    kl_divergence: float = Field(description="KL divergence")
-    clip_fraction: float = Field(description="Fraction of clipped actions")
-    gradient_norm: float = Field(description="Gradient norm")
-    explained_variance: float = Field(description="Explained variance")
-    advantage_mean: float = Field(description="Mean advantage")
-    advantage_std: float = Field(description="Advantage standard deviation")
+    kl_divergence: float                                # KL divergence
+    clip_fraction: float                                # Fraction of clipped actions
+    gradient_norm: float                                # Gradient norm
+    explained_variance: float                           # Explained variance
+    advantage_mean: float                               # Mean advantage
+    advantage_std: float                                # Advantage standard deviation
 
 
-class PerformanceMetrics(BaseModel):
+@dataclass
+class PerformanceMetrics:
     """Performance timing metrics."""
-    episode_time: Optional[float] = Field(default=None, description="Episode duration in seconds")
-    update_time: Optional[float] = Field(default=None, description="Update duration in seconds")
-    data_loading_time: Optional[float] = Field(default=None, description="Data loading time")
-    inference_time: Optional[float] = Field(default=None, description="Model inference time")
-    fps: Optional[float] = Field(default=None, description="Frames per second")
+    episode_time: Optional[float] = None                # Episode duration in seconds
+    update_time: Optional[float] = None                 # Update duration in seconds
+    data_loading_time: Optional[float] = None           # Data loading time
+    inference_time: Optional[float] = None              # Model inference time
+    fps: Optional[float] = None                         # Frames per second
 
 
-class TrainingStartContext(BaseModel):
+@dataclass
+class TrainingStartContext:
     """Context for training start event."""
-    timestamp: datetime = Field(default_factory=datetime.now, description="Training start time")
-
-    class Config:
-        arbitrary_types_allowed = True
+    timestamp: datetime = field(default_factory=datetime.now)  # Training start time
 
 
-class EpisodeEndContext(BaseModel):
+@dataclass
+class EpisodeEndContext:
     """Context for episode end event."""
-    episode: EpisodeInfo = Field(description="Episode information")
-    metrics: TradingMetrics = Field(description="Trading metrics")
-    portfolio: PortfolioState = Field(description="Portfolio state")
-    trades: List[Trade] = Field(description="Trades executed in episode")
-    model: ModelInfo = Field(description="Model information")
-    environment: Any = Field(description="Environment instance")
-    trainer: Any = Field(description="Trainer instance")
-    performance: Optional[PerformanceMetrics] = Field(default=None, description="Performance metrics")
-    
-    class Config:
-        arbitrary_types_allowed = True
+    episode: EpisodeInfo                                # Episode information
+    metrics: TradingMetrics                             # Trading metrics
+    portfolio: PortfolioState                           # Portfolio state
+    trades: List[Trade]                                 # Trades executed in episode
+    model: ModelInfo                                    # Model information
+    environment: Any                                    # Environment instance
+    trainer: Any                                        # Trainer instance
+    performance: Optional[PerformanceMetrics] = None    # Performance metrics
 
 
-class UpdateEndContext(BaseModel):
+@dataclass
+class UpdateEndContext:
     """Context for update end event."""
-    update: UpdateInfo = Field(description="Update information")
-    losses: TrainingLosses = Field(description="Training losses")
-    metrics: TrainingMetrics = Field(description="Training metrics")
-    model: ModelInfo = Field(description="Model information")
-    trainer: Any = Field(description="Trainer instance")
-    performance: Optional[PerformanceMetrics] = Field(default=None, description="Performance metrics")
-    
-    class Config:
-        arbitrary_types_allowed = True
+    update: UpdateInfo                                  # Update information
+    losses: TrainingLosses                              # Training losses
+    metrics: TrainingMetrics                            # Training metrics
+    model: ModelInfo                                    # Model information
+    trainer: Any                                        # Trainer instance
+    performance: Optional[PerformanceMetrics] = None    # Performance metrics
 
 
-class TrainingEndContext(BaseModel):
+@dataclass
+class TrainingEndContext:
     """Context for training end event."""
-    global_episodes: int = Field(description="Total episodes completed")
-    global_updates: int = Field(description="Total updates completed")
-    global_steps: int = Field(description="Total steps completed")
-    global_cycles: int = Field(description="Total cycles completed")
-    reason: str = Field(description="Training termination reason")
+    global_episodes: int                                # Total episodes completed
+    global_updates: int                                 # Total updates completed
+    global_steps: int                                   # Total steps completed
+    global_cycles: int                                  # Total cycles completed
+    reason: str                                         # Training termination reason
 
 
-class CustomEventContext(BaseModel):
+@dataclass
+class CustomEventContext:
     """Context for custom events."""
-    event_name: str = Field(description="Name of custom event")
-    data: Dict[str, Any] = Field(description="Event-specific data")
-    timestamp: datetime = Field(default_factory=datetime.now, description="Event timestamp")
-    source: Optional[str] = Field(default=None, description="Event source component")
+    event_name: str                                     # Name of custom event
+    data: Dict[str, Any]                                # Event-specific data
+    timestamp: datetime = field(default_factory=datetime.now)  # Event timestamp
+    source: Optional[str] = None                        # Event source component
 
 
 # Union type for all context types

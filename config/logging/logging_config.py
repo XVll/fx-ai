@@ -3,15 +3,16 @@ Logging configuration for system-wide logging settings.
 """
 
 from typing import Literal, Dict, List, Optional
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
 
 
-class LoggingConfig(BaseModel):
+@dataclass
+class LoggingConfig:
     """Logging configuration"""
 
-    level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field("INFO")
-    console_enabled: bool = Field(True, description="Console logging")
-    console_format: str = Field("simple", description="Console format")
-    file_enabled: bool = Field(True, description="File logging")
-    log_dir: str = Field("logs", description="Log directory")
-    log_interval: int = Field(10, description="Metric log interval")
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"  # Logging level
+    console_enabled: bool = True                      # Console logging
+    console_format: str = "simple"                    # Console format
+    file_enabled: bool = True                         # File logging
+    log_dir: str = "logs"                             # Log directory
+    log_interval: int = 10                            # Metric log interval

@@ -6,7 +6,7 @@ Consolidated from DataLifecycleManager for v2 architecture.
 
 import random
 import logging
-from typing import Dict, Any, Optional, List, Set
+from typing import  Any, Optional, List, Set
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -14,8 +14,7 @@ from pendulum import Date
 
 from core.utils import day_in_range
 from core.utils.time_utils import (
-    to_date, format_date, now_utc, parse_market_timestamp,
-    DATE_FORMAT
+    to_date, format_date, now_utc,
 )
 
 from config.training.training_config import TrainingManagerConfig
@@ -49,7 +48,6 @@ class ResetPointInfo:
     activity_score: float
     price: float = 0.0
     used_count: int = 0
-    last_used: Optional[str] = None  # Store as formatted string for consistency
     index: int = 0  # Index within the day for environment reset
 
     def meets_criteria(self, quality_range: List[float], roc_range: List[float],
@@ -68,7 +66,6 @@ class DayInfo:
     day_score: float
     reset_points: List[ResetPointInfo] = field(default_factory=list)
     used_count: int = 0
-    last_used: Optional[str] = None  # Store as formatted string for consistency
 
     def get_available_reset_points(self, quality_range: List[float],
                                    roc_range: List[float], activity_range: List[float],
@@ -84,13 +81,10 @@ class EpisodeManagerState:
     """Consolidated state for episode manager"""
     # Cycle tracking
     cycle_count: int = 0
-    episode_count: int = 0
-    update_count: int = 0
     total_cycles_completed: int = 0
 
     # Current selections
     current_day: Optional[DayInfo] = None
-    current_reset_points: List[ResetPointInfo] = field(default_factory=list)
     current_reset_point: Optional[ResetPointInfo] = None
 
     # Tracking sets
@@ -117,7 +111,6 @@ class EpisodeManagerState:
         self.cycle_count += 1
         self.total_cycles_completed += 1
         self.episodes_in_current_cycle = 0
-        self.current_reset_points = []
 
     def reset_for_new_day(self):
         """Reset counters for new day"""
@@ -194,7 +187,7 @@ class EpisodeManager:
         self.logger.info(f"   📅 Date range: {format_date(start_date)} to {format_date(end_date)}")
 
         try:
-            # Get momentum days from data manager
+            # Get momentum days from a data manager
             momentum_days_dicts = self.data_manager.get_all_momentum_days(
                 symbols=self.symbols,
                 start_date=start_date,
@@ -338,12 +331,12 @@ class EpisodeManager:
 
         self.logger.debug(f"Episodes completed: +{count}, day total: {self.state.current_day_episodes}")
 
-        # Advance to next reset point after episode completion
+        # Advance to the next reset point after episode completion
         if not self._advance_to_next_reset_point():
             self.logger.debug("Completed all reset points in current cycle")
 
     def on_update_completed(self, update_info: Any):
-        """Handle notification of completed policy update."""
+        """Handle notification of a completed policy update."""
         self.state.current_day_updates += 1
 
         self.logger.debug(f"Update completed, day total: {self.state.current_day_updates}")
@@ -448,16 +441,15 @@ class EpisodeManager:
             selected = random.choice(filtered_days)
         elif self.day_selection_mode == SelectionMode.QUALITY:
             # Sort by quality score (highest first)
-            filtered_days.sort(key=lambda day: day.day_score, reverse=True)
+            filtered_days.sort(key=lambda d: day.day_score, reverse=True)
             selected = filtered_days[0]
         else:  # SEQUENTIAL
             # Sort by date (earliest first)
-            filtered_days.sort(key=lambda day: day.date)
+            filtered_days.sort(key=lambda d: day.date)
             selected = filtered_days[0]
 
         # Mark as used
         selected.used_count += 1
-        selected.last_used = format_date(now_utc().date())  # Store as date string
 
         return selected
 
@@ -469,10 +461,10 @@ class EpisodeManager:
 
         # Get all suitable reset points
         available = []
-        for rp in day.reset_points:
+        for reset_point in day.reset_points:
             try:
-                if rp.meets_criteria(self.day_score_range, self.roc_range, self.activity_range):
-                    available.append(rp)
+                if reset_point.meets_criteria(self.day_score_range, self.roc_range, self.activity_range):
+                    available.append(reset_point)
             except Exception as e:
                 self.logger.warning(f"Error checking reset point criteria: {e}")
                 continue
@@ -546,9 +538,7 @@ class EpisodeManager:
         else:
             self.state.episodes_in_current_cycle += 1
 
-        # Store current reset point
         self.state.current_reset_point = reset_point
-        self.state.current_reset_points = [reset_point]  # Keep as list for compatibility
 
         # Track usage
         self.state.used_reset_points.add(reset_point.timestamp)

@@ -178,7 +178,7 @@ class TestIShutdownHandler:
                 pass
             # Missing register_shutdown method
 
-        with pytest.raises(TypeError, match="abstract method register_shutdown"):
+        with pytest.raises(TypeError, match="register_shutdown"):
             IncompleteHandlerNoRegister()
 
     def test_register_shutdown_interface_contract(self):

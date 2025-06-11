@@ -3,14 +3,15 @@ Data configuration for data sources and lifecycle management.
 """
 
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
 
 
-class DataConfig(BaseModel):
+@dataclass
+class DataConfig:
     """Data source and processing configuration"""
-    shutdown_timeout: Optional[int] = Field(30, description="Timeout for data source shutdown in seconds")
-    provider: Literal["databento"] = Field("databento", description="Data provider")
-    data_dir: str = Field("dnb", description="Data directory")
-    index_dir: str = Field("cache/indices", description="Index directory")
-    auto_build_index: bool = Field(True, description="Auto-build index")
-    include_weekends: bool = Field(False, description="Include weekends in data")
+    shutdown_timeout: Optional[int] = 30         # Timeout for data source shutdown in seconds
+    provider: Literal["databento"] = "databento"  # Data provider
+    data_dir: str = "dnb"                         # Data directory
+    index_dir: str = "cache/indices"              # Index directory
+    auto_build_index: bool = True                 # Auto-build index
+    include_weekends: bool = False                # Include weekends in data
