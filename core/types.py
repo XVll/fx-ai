@@ -111,26 +111,6 @@ class TerminationReasonEnum(Enum):
     ERROR = "error"
 
 
-@dataclass
-class RolloutResult:
-    """Result from collecting rollout data."""
-    steps_collected: int
-    episodes_completed: int
-    buffer_ready: bool
-    episode_rewards: List[float]
-    episode_lengths: List[int]
-    episode_metrics: List[Any] = field(default_factory=list)  # For additional metrics if needed
-    interrupted: bool = False
-
-
-@dataclass  
-class UpdateResult:
-    """Result from policy update."""
-    policy_loss: float
-    value_loss: float
-    entropy_loss: float
-    update_counter: int
-    interrupted: bool = False
 
 
 class ActionTypeEnum(Enum):

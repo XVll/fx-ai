@@ -138,11 +138,17 @@ class EpisodeEndContext:
 @dataclass
 class UpdateEndContext:
     """Context for update end event."""
-    update: UpdateInfo                                  # Update information
-    losses: TrainingLosses                              # Training losses
-    metrics: TrainingMetrics                            # Training metrics
-    model: ModelInfo                                    # Model information
-    trainer: Any                                        # Trainer instance
+    update_num: int                                     # Update number
+    policy_loss: float                                  # Policy loss
+    value_loss: float                                   # Value loss
+    entropy_loss: float                                 # Entropy loss
+    total_loss: float                                   # Total loss
+    kl_divergence: float = 0.0                          # KL divergence
+    clip_fraction: float = 0.0                          # Clip fraction
+    gradient_norm: float = 0.0                          # Gradient norm
+    explained_variance: float = 0.0                     # Explained variance
+    advantage_mean: float = 0.0                         # Mean advantage
+    trainer: Any = None                                 # Trainer instance
     performance: Optional[PerformanceMetrics] = None    # Performance metrics
 
 

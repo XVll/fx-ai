@@ -7,6 +7,8 @@ for all callback events with strongly typed contexts and error isolation.
 
 from typing import List, Optional, Union
 import logging
+
+from training.training_manager import ComponentState
 from .base import BaseCallback
 from .context import (
     TrainingStartContext,
@@ -75,7 +77,7 @@ class CallbackManager:
         else:
             self.logger.warning(f"Callback {callback.name} not found")
 
-    def trigger(self, event_name: str, context: CallbackContext) -> None:
+    def trigger(self, event_name: str, context: ComponentState) -> None:
         """
         Trigger event on all enabled callbacks.
         
