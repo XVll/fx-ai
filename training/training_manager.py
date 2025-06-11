@@ -7,16 +7,15 @@ from enum import Enum
 from datetime import datetime
 from data.data_manager import DataManager
 from .episode_manager import EpisodeManager, EpisodeManagerException
-from ..agent.ppo_agent import PPOTrainer
-from ..callbacks import CallbackManager
-from ..core.types import RolloutResult, UpdateResult
-from ..core.model_manager import ModelManager
-from ..core.shutdown import IShutdownHandler, get_global_shutdown_manager
-from ..config.training.training_config import TrainingManagerConfig
+from agent.ppo_agent import PPOTrainer
+from callbacks import CallbackManager
+from core.types import RolloutResult, UpdateResult
+from core.model_manager import ModelManager
+from core.shutdown import IShutdownHandler, get_global_shutdown_manager
+from config.training.training_config import TrainingManagerConfig
 from config.evaluation.evaluation_config import EvaluationConfig
 from core.evaluation import EvaluationResult, EvaluationEpisodeResult
-from ..envs import TradingEnvironment
-from ..envs.trading_environment import EpisodeConfig
+from envs import TradingEnvironment
 
 
 class TrainingMode(Enum):
@@ -117,7 +116,8 @@ class TrainingManager(IShutdownHandler):
                 self._trigger_callback("episode_start", {"episode_context": episode_context})
 
                 # 2. Setup environment with episode context
-                if not self._setup_environment_with_context(episode_context):
+                setup_success, initial_obs = self._setup_episode(episode_context)
+                if not setup_success:
                     self.logger.error("Failed to setup environment")
                     self.termination_reason = "environment_setup_failed"
                     break
@@ -126,7 +126,8 @@ class TrainingManager(IShutdownHandler):
                 self._trigger_callback("rollout_start")
                 rollout_result: RolloutResult = self.trainer.collect_rollout(
                     self.environment,
-                    num_steps=self.config.rollout_steps
+                    num_steps=self.config.rollout_steps,
+                    initial_obs=initial_obs
                 )
                 self._trigger_callback("rollout_end", {"rollout_result": rollout_result})
 
@@ -173,53 +174,29 @@ class TrainingManager(IShutdownHandler):
 
         self._finalize_training(self.termination_reason)
 
-    def _setup_environment_with_context(self, episode_context) -> bool:
-        """Setup environment with episode context from episode manager."""
+    def _setup_episode(self, episode_context) -> tuple[bool, Optional[Dict]]:
+        """Setup episode using environment's consolidated setup logic."""
         try:
             # Extract session info from episode context
             symbol = episode_context.symbol
-            # Convert date to datetime if it's a string
-            if isinstance(episode_context.date, str):
-                import datetime as dt
-                date = dt.datetime.strptime(episode_context.date, '%Y-%m-%d')
-            else:
-                date = episode_context.date
+            date = episode_context.date
             reset_point = episode_context.reset_point
 
             self.logger.info(f"🎯 Setting up episode: {symbol} {date} at reset point {reset_point.timestamp}")
 
-            # Create episode config for V2 environment
-            episode_config = EpisodeConfig(
+            # Let environment handle both initialization and reset
+            obs, info = self.environment.reset(
                 symbol=symbol,
                 date=date,
-                start_time=reset_point.timestamp,  # Use reset point as start time
-                end_time=date.replace(hour=20, minute=0, second=0),  # Default end at 8 PM
-                max_steps=None
+                reset_point=reset_point
             )
-            
-            # Store reset point info for environment reset
-            episode_config.reset_point_info = {
-                'timestamp': reset_point.timestamp,
-                'quality_score': reset_point.quality_score,
-                'roc_score': reset_point.roc_score,
-                'activity_score': reset_point.activity_score,
-                'price': reset_point.price,
-                'index': reset_point.index
-            }
 
-            # Setup episode in environment
-            if not self.environment.setup_episode(episode_config):
-                self.logger.error("Failed to setup episode in environment")
-                return False
-
-            self.logger.debug(f"✅ Episode setup complete: {symbol} {date}")
-            return True
+            self.logger.debug(f"✅ Episode setup complete at {reset_point.timestamp}")
+            return True, obs
 
         except Exception as e:
             self.logger.error(f"Failed to setup episode: {e}")
-            return False
-
-
+            return False, None
 
     def _should_terminate_training(self) -> bool:
         """Check if training should terminate based on global limits."""
@@ -262,14 +239,13 @@ class TrainingManager(IShutdownHandler):
         """Simple callback trigger - just pass the component state."""
         if self.callback_manager:
             try:
-                state:ComponentState = self._get_component_state(event_data)
+                state: ComponentState = self._get_component_state(event_data)
                 # For now, use a generic trigger method (will be replaced with a proper event system)
                 if hasattr(self.callback_manager, 'trigger'):
                     self.callback_manager.trigger(event_name, state)
                 self.logger.debug(f"Triggered callback: {event_name}")
             except Exception as e:
                 self.logger.warning(f"Failed to trigger callback {event_name}: {e}")
-
 
     def register_shutdown(self) -> None:
         """Register this component with the global shutdown manager."""
@@ -348,10 +324,10 @@ class TrainingManager(IShutdownHandler):
         # For now, use a simple default evaluation config
         # Later this will be configurable
         eval_config = EvaluationConfig()
-        
+
         if not eval_config.enabled:
             return False
-            
+
         # Run evaluation every N updates
         return self.state.global_updates > 0 and self.state.global_updates % eval_config.frequency == 0
 
@@ -360,29 +336,29 @@ class TrainingManager(IShutdownHandler):
         try:
             # Use default evaluation config for now
             eval_config = EvaluationConfig()
-            
+
             self.logger.info(f"🔍 Starting evaluation at update {self.state.global_updates}")
-            
+
             # Save current training state
             saved_state = self._save_training_state()
-            
+
             try:
                 # Switch to evaluation mode
                 self._enter_evaluation_mode(eval_config)
-                
+
                 # Run evaluation episodes
                 episode_results = self._run_evaluation_episodes(eval_config)
-                
+
                 # Calculate aggregate metrics
                 eval_result = self._calculate_evaluation_metrics(eval_config, episode_results)
-                
+
                 self.logger.info(f"✅ Evaluation complete: mean_reward={eval_result.mean_reward:.4f}")
                 return eval_result
-                
+
             finally:
                 # Always restore training state
                 self._restore_training_state(saved_state)
-                
+
         except Exception as e:
             self.logger.error(f"❌ Evaluation failed: {e}", exc_info=True)
             return None
@@ -392,7 +368,7 @@ class TrainingManager(IShutdownHandler):
         import random
         import numpy as np
         import torch
-        
+
         return {
             'episode_manager_state': self.episode_manager.get_current_state() if hasattr(self.episode_manager, 'get_current_state') else None,
             'trainer_mode': getattr(self.trainer.model, 'training', True),
@@ -406,25 +382,25 @@ class TrainingManager(IShutdownHandler):
         import random
         import numpy as np
         import torch
-        
+
         try:
             # Restore RNG states
             random.setstate(saved_state['random_state'])
             np.random.set_state(saved_state['numpy_state'])
             torch.set_rng_state(saved_state['torch_state'])
-            
+
             # Restore model training mode
             if saved_state['trainer_mode']:
                 self.trainer.model.train()
             else:
                 self.trainer.model.eval()
-                
+
             # Restore episode manager state if available
             if saved_state['episode_manager_state'] and hasattr(self.episode_manager, 'restore_state'):
                 self.episode_manager.restore_state(saved_state['episode_manager_state'])
-                
+
             self.logger.debug("🔄 Training state restored after evaluation")
-            
+
         except Exception as e:
             self.logger.warning(f"⚠️ Failed to restore some training state: {e}")
 
@@ -433,47 +409,53 @@ class TrainingManager(IShutdownHandler):
         import random
         import numpy as np
         import torch
-        
+
         # Set deterministic seeds
         random.seed(eval_config.seed)
         np.random.seed(eval_config.seed)
         torch.manual_seed(eval_config.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(eval_config.seed)
-        
+
         # Set model to evaluation mode
         self.trainer.model.eval()
-        
+
         self.logger.debug(f"🎯 Entered evaluation mode (seed={eval_config.seed})")
 
     def _run_evaluation_episodes(self, eval_config: EvaluationConfig) -> List[EvaluationEpisodeResult]:
         """Run evaluation episodes and collect rewards."""
         episode_results = []
-        
+
         # Get evaluation episodes from episode manager
         eval_episodes = self._get_evaluation_episodes(eval_config)
-        
+
         for i, episode_context in enumerate(eval_episodes):
             try:
                 # Setup environment for this episode
-                if not self._setup_environment_with_context(episode_context):
+                setup_success, initial_obs = self._setup_episode(episode_context)
+                if not setup_success:
                     self.logger.warning(f"Failed to setup evaluation episode {i}")
                     continue
-                
+
                 # Run single episode with deterministic actions
-                total_reward = self._run_single_evaluation_episode(eval_config)
-                
+                total_reward = self.trainer.evaluate(
+                    environment=self.environment,
+                    initial_obs=initial_obs,
+                    deterministic=eval_config.deterministic_actions,
+                    max_steps=1000  # Safety limit
+                )
+
                 episode_results.append(EvaluationEpisodeResult(
                     episode_num=i,
                     reward=total_reward
                 ))
-                
+
                 self.logger.debug(f"Eval episode {i}: reward={total_reward:.4f}")
-                
+
             except Exception as e:
                 self.logger.warning(f"Evaluation episode {i} failed: {e}")
                 continue
-        
+
         return episode_results
 
     def _get_evaluation_episodes(self, eval_config: EvaluationConfig) -> List:
@@ -493,37 +475,10 @@ class TrainingManager(IShutdownHandler):
                     break
             return episodes
 
-    def _run_single_evaluation_episode(self, eval_config: EvaluationConfig) -> float:
+    def _run_single_evaluation_episode(self, eval_config: EvaluationConfig, initial_obs: Dict[str, Any]) -> float:
         """Run a single evaluation episode and return total reward."""
-        total_reward = 0.0
-        done = False
-        step_count = 0
-        max_steps = 1000  # Safety limit
-        
-        # Reset environment
-        obs, info = self.environment.reset()
-        
-        while not done and step_count < max_steps:
-            # Get deterministic action from model
-            # Convert observation to tensors first
-            state_tensors = self.trainer._convert_state_to_tensors(obs)
-            
-            with torch.no_grad():
-                action_tensor, action_info = self.trainer.model.get_action(
-                    state_tensors, 
-                    deterministic=eval_config.deterministic_actions
-                )
-            
-            # Convert action for environment
-            action = self.trainer._convert_action_for_env(action_tensor)
-            
-            # Step environment
-            obs, reward, terminated, truncated, info = self.environment.step(action)
-            total_reward += reward
-            done = terminated or truncated
-            step_count += 1
-        
-        return total_reward
+        # Delegate to PPOTrainer which handles the episode execution logic
+        return
 
     def _calculate_evaluation_metrics(self, eval_config: EvaluationConfig, episode_results: List[EvaluationEpisodeResult]) -> EvaluationResult:
         """Calculate aggregate metrics from episode results."""
@@ -532,7 +487,7 @@ class TrainingManager(IShutdownHandler):
             rewards = [0.0]
         else:
             rewards = [ep.reward for ep in episode_results]
-        
+
         return EvaluationResult(
             timestamp=datetime.now(),
             model_version=None,  # TODO: Get from model manager

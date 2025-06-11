@@ -8,6 +8,7 @@ import torch.nn.functional as nnf
 
 from agent.replay_buffer import ReplayBuffer
 from config import TrainingConfig
+from envs import TradingEnvironment
 from model.transformer import MultiBranchTransformer
 from core.types import RolloutResult, UpdateResult
 
@@ -52,13 +53,14 @@ class PPOTrainer:
 
         self.logger.info(f"🤖 V2 PPOTrainer initialized. Device: {self.device}")
 
-    def collect_rollout(self, environment, num_steps: Optional[int] = None) -> RolloutResult:
+    def collect_rollout(self, environment, num_steps: Optional[int] = None, initial_obs: Optional[Dict[str, np.ndarray]] = None) -> RolloutResult:
         """
         Collect rollout data from environment.
         
         Args:
             environment: Environment to collect data from  
             num_steps: Number of steps to collect (defaults to config.rollout_steps)
+            initial_obs: Initial observation from environment reset
             
         Returns:
             RolloutResult with rollout statistics and buffer readiness
@@ -67,9 +69,9 @@ class PPOTrainer:
             num_steps = self.rollout_steps
         self.buffer.clear()
         
-        # Get initial state from environment (TrainingManager should have set this up)
-        current_state = environment.get_current_state()
-        if current_state is None:
+        # Use provided initial observation or fail
+        if initial_obs is None:
+            self.logger.error("No initial observation provided for rollout")
             return RolloutResult(
                 steps_collected=0,
                 episodes_completed=0,
@@ -77,6 +79,7 @@ class PPOTrainer:
                 interrupted=True
             )
         
+        current_state = initial_obs
         collected_steps = 0
         episodes_completed = 0
         
@@ -119,12 +122,8 @@ class PPOTrainer:
             # Handle episode completion
             if done:
                 episodes_completed += 1
-                
-                # Get next episode state from environment 
-                # (TrainingManager handles episode advancement)
-                current_state = environment.get_current_state()
-                if current_state is None:
-                    break
+                # Stop rollout when episode ends - TrainingManager will handle next episode
+                break
         
         # Prepare buffer for training
         self.buffer.prepare_data_for_training()
@@ -354,132 +353,53 @@ class PPOTrainer:
         
         self.buffer.returns = returns
 
-    def evaluate(self, environment, n_episodes: int = 10, deterministic: bool = True) -> Dict[str, Any]:
+    def evaluate(self, environment: TradingEnvironment, initial_obs: Dict[str, np.ndarray], deterministic: bool = True, max_steps: int = 1000) -> float:
         """
-        Evaluate model performance over multiple episodes.
+        Run a single evaluation episode and return total reward.
         
         Args:
-            environment: TradingEnvironment instance (v2 compatible)
-            n_episodes: Number of episodes to evaluate
+            environment: TradingEnvironment instance (already set up)
+            initial_obs: Initial observation from environment setup
             deterministic: Whether to use deterministic actions
+            max_steps: Maximum steps per episode (safety limit)
             
         Returns:
-            Dictionary with evaluation metrics
+            Total reward for the episode
         """
-        self.logger.info(f"🔍 Starting evaluation: {n_episodes} episodes (deterministic={deterministic})")
-        
         # Set model to evaluation mode
         was_training = self.model.training
         self.model.eval()
         
-        episode_rewards = []
-        episode_lengths = []
-        episode_details = []
+        total_reward = 0.0
+        done = False
+        step_count = 0
         
         try:
-            for episode_idx in range(n_episodes):
-                self.logger.debug(f"Evaluation episode {episode_idx + 1}/{n_episodes}")
+            # Use provided initial observation
+            obs = initial_obs
+            
+            while not done and step_count < max_steps:
+                # Get action from model
+                state_tensors = self._convert_state_to_tensors(obs)
                 
-                # Get initial state from environment (should already be setup by caller)
-                current_state = environment.get_current_state()
-                if current_state is None:
-                    self.logger.warning(f"No initial state available for evaluation episode {episode_idx + 1}")
-                    break
+                with torch.no_grad():
+                    action_tensor, action_info = self.model.get_action(
+                        state_tensors, 
+                        deterministic=deterministic
+                    )
                 
-                episode_reward = 0.0
-                episode_length = 0
-                done = False
-                info = {}  # Initialize info to handle edge cases
+                # Convert action for environment
+                action = self._convert_action_for_env(action_tensor)
                 
-                while not done:
-                    # Convert state to tensors for a model
-                    state_tensors = self._convert_state_to_tensors(current_state)
-                    
-                    # Get action from a model (deterministic or stochastic)
-                    with torch.no_grad():
-                        action_tensor, action_info = self.model.get_action(
-                            state_tensors, deterministic=deterministic
-                        )
-                    
-                    # Convert action for environment
-                    env_action = self._convert_action_for_env(action_tensor)
-                    
-                    # Take an environment step
-                    try:
-                        next_state, reward, terminated, truncated, info = environment.step(env_action)
-                        done = terminated or truncated
-                        
-                    except Exception as e:
-                        self.logger.error(f"Error during evaluation step: {e}")
-                        # Graceful degradation - end episode on error
-                        next_state = current_state  # Keep the current state
-                        done = True
-                        reward = 0.0
-                        info = {}
-                    
-                    # Update episode tracking
-                    current_state = next_state
-                    episode_reward += reward
-                    episode_length += 1
-                    
-                    # Safety check for runaway episodes
-                    if episode_length > 10000:  # Configurable limit
-                        self.logger.warning(f"Episode {episode_idx + 1} exceeded length limit, terminating")
-                        done = True
-                
-                # Store episode results
-                episode_rewards.append(episode_reward)
-                episode_lengths.append(episode_length)
-                episode_details.append({
-                    "episode": episode_idx + 1,
-                    "reward": episode_reward,
-                    "length": episode_length,
-                    "final_info": info
-                })
-                
-                self.logger.debug(
-                    f"Episode {episode_idx + 1} complete: reward={episode_reward:.3f}, length={episode_length}"
-                )
+                # Step environment
+                obs, reward, terminated, truncated, info = environment.step(action)
+                total_reward += reward
+                done = terminated or truncated
+                step_count += 1
         
         finally:
             # Restore model training mode
             if was_training:
                 self.model.train()
         
-        # Calculate evaluation metrics
-        if episode_rewards:
-            eval_results = {
-                "n_episodes": len(episode_rewards),
-                "mean_reward": float(np.mean(episode_rewards)),
-                "std_reward": float(np.std(episode_rewards)),
-                "min_reward": float(np.min(episode_rewards)),
-                "max_reward": float(np.max(episode_rewards)),
-                "mean_length": float(np.mean(episode_lengths)),
-                "std_length": float(np.std(episode_lengths)),
-                "episode_rewards": episode_rewards,
-                "episode_lengths": episode_lengths,
-                "episode_details": episode_details
-            }
-        else:
-            # No episodes completed
-            eval_results = {
-                "n_episodes": 0,
-                "mean_reward": 0.0,
-                "std_reward": 0.0,
-                "min_reward": 0.0,
-                "max_reward": 0.0,
-                "mean_length": 0.0,
-                "std_length": 0.0,
-                "episode_rewards": [],
-                "episode_lengths": [],
-                "episode_details": []
-            }
-        
-        # Log comprehensive evaluation summary
-        self.logger.info("🔍 EVALUATION COMPLETE:")
-        self.logger.info(f"   📊 Episodes: {eval_results['n_episodes']}")
-        self.logger.info(f"   💰 Mean Reward: {eval_results['mean_reward']:.3f} ± {eval_results['std_reward']:.3f}")
-        self.logger.info(f"   📈 Range: [{eval_results['min_reward']:.3f}, {eval_results['max_reward']:.3f}]")
-        self.logger.info(f"   📏 Mean Length: {eval_results['mean_length']:.1f} ± {eval_results['std_length']:.1f}")
-        
-        return eval_results
+        return total_reward
