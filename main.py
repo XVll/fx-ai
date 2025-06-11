@@ -14,7 +14,6 @@ from agent.ppo_agent import PPOTrainer
 from model.transformer import MultiBranchTransformer
 from callbacks import create_callbacks_from_config, CallbackManager
 from core.logger import setup_rich_logging
-from core.model_manager import ModelManager
 from core.shutdown import (
     ShutdownReason,
     graceful_shutdown_context, get_global_shutdown_manager
@@ -189,50 +188,29 @@ def execute_benchmark(config: Config, app: 'ApplicationBootstrap') -> None:
     """Execute benchmark based on configuration."""
     logger.info("🎯 Starting benchmark mode")
 
-    # Create benchmark runner
+    # Create and run benchmark
     benchmark_runner = BenchmarkRunner(config.evaluation)
+    result = benchmark_runner.run_benchmark(
+        trainer=app.trainer,
+        environment=app.environment,
+        data_manager=app.data_manager
+    )
 
-    # Check if a specific model path is provided via --benchmark.model override
-    if config.evaluation.model is not None:
-        # Model path was specified
-        model_path = config.evaluation.model
-        logger.info(f"🎯 Benchmarking specific model: {model_path}")
-        result = benchmark_runner.benchmark_model(
-            model_path=str(model_path),
-            trainer=app.trainer,
-            environment=app.environment,
-            data_manager=app.data_manager,
-            output_dir=config.evaluation.benchmark_output_dir
-        )
-    else:
-        # No model specified, benchmark best model
-        logger.info("🎯 Benchmarking best available model")
-        model_manager = ModelManager()
-        result = benchmark_runner.benchmark_best_model(
-            model_manager=model_manager,
-            trainer=app.trainer,
-            environment=app.environment,
-            data_manager=app.data_manager,
-            output_dir=config.evaluation.benchmark_output_dir
-        )
-
-    if result:
-        logger.info("🏆 Benchmark Results:")
-        logger.info(f"   Mean Reward: {result.evaluation_result.mean_reward:.4f}")
-        logger.info(f"   Std Reward:  {result.evaluation_result.std_reward:.4f}")
-        logger.info(f"   Min Reward:  {result.evaluation_result.min_reward:.4f}")
-        logger.info(f"   Max Reward:  {result.evaluation_result.max_reward:.4f}")
-        logger.info(f"   Episodes:    {result.evaluation_result.total_episodes}")
-        logger.info(f"   Duration:    {result.duration_seconds:.1f}s")
-        logger.info(f"   Model Path:  {result.model_path}")
-    else:
-        logger.error("❌ Benchmark failed")
+    if not result:
         raise RuntimeError("Benchmark execution failed")
 
-    logger.info("✅ Benchmark completed successfully")
+
+def execute_training(training_manager: TrainingManager, app: ApplicationBootstrap) -> None:
+    logger.info("🔄 Starting training loop")
+    training_manager.start(
+        trainer=app.trainer,
+        environment=app.environment,
+        data_manager=app.data_manager,
+        callback_manager=app.callback_manager,
+    )
 
 
-def execute_training(training_manager: TrainingManager, config: Config, app: 'ApplicationBootstrap') -> None:
+def execute(training_manager: TrainingManager, config: Config, app: 'ApplicationBootstrap') -> None:
     """Execute training based on configuration."""
     mode_type = TrainingMode(config.training.training_manager.mode)
     logger.info(f"🎯 Starting {mode_type.value} based on configuration")
@@ -241,13 +219,9 @@ def execute_training(training_manager: TrainingManager, config: Config, app: 'Ap
     if mode_type == TrainingMode.BENCHMARK:
         execute_benchmark(config, app)
         return
-
-    training_manager.start(
-        trainer=app.trainer,
-        environment=app.environment,
-        data_manager=app.data_manager,
-        callback_manager=app.callback_manager,
-    )
+    elif mode_type == TrainingMode.TRAINING:
+        execute_training(training_manager, app)
+        return
 
     logger.info(f"✅ Training completed successfully")
 
@@ -274,7 +248,7 @@ def main(cfg: Config) -> int:
             logger.info("🚀 Starting training with graceful shutdown support")
 
             # Execute training with bootstrap components
-            execute_training(
+            execute(
                 app.training_manager,
                 app.config,
                 app

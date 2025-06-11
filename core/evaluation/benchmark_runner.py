@@ -81,6 +81,79 @@ class BenchmarkRunner:
         
         self.logger.info(f"🎯 BenchmarkRunner initialized")
     
+    def run_benchmark(
+        self,
+        trainer: PPOTrainer,
+        environment: TradingEnvironment,
+        data_manager: DataManager,
+        model_manager: Optional[ModelManager] = None
+    ) -> Optional[BenchmarkResult]:
+        """
+        Run benchmark based on configuration - handles both specific model and best model.
+        
+        Args:
+            trainer: PPO trainer for model loading
+            environment: Trading environment
+            data_manager: Data manager
+            model_manager: Optional model manager for finding best model
+            
+        Returns:
+            BenchmarkResult or None if failed
+        """
+        try:
+            result = None
+            
+            # Check if specific model path is provided in config
+            if self.config.model is not None:
+                # Benchmark specific model
+                model_path = self.config.model
+                self.logger.info(f"🎯 Benchmarking specific model: {model_path}")
+                result = self.benchmark_model(
+                    model_path=str(model_path),
+                    trainer=trainer,
+                    environment=environment,
+                    data_manager=data_manager,
+                    output_dir=self.config.benchmark_output_dir
+                )
+            else:
+                # Benchmark best model
+                if not model_manager:
+                    from core.model_manager import ModelManager
+                    model_manager = ModelManager()
+                
+                self.logger.info("🎯 Benchmarking best available model")
+                result = self.benchmark_best_model(
+                    model_manager=model_manager,
+                    trainer=trainer,
+                    environment=environment,
+                    data_manager=data_manager,
+                    output_dir=self.config.benchmark_output_dir
+                )
+            
+            # Display results
+            if result:
+                self._display_benchmark_results(result)
+                self.logger.info("✅ Benchmark completed successfully")
+            else:
+                self.logger.error("❌ Benchmark failed")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ Benchmark execution failed: {e}", exc_info=True)
+            return None
+    
+    def _display_benchmark_results(self, result: BenchmarkResult) -> None:
+        """Display benchmark results in a formatted way."""
+        self.logger.info("🏆 Benchmark Results:")
+        self.logger.info(f"   Mean Reward: {result.evaluation_result.mean_reward:.4f}")
+        self.logger.info(f"   Std Reward:  {result.evaluation_result.std_reward:.4f}")
+        self.logger.info(f"   Min Reward:  {result.evaluation_result.min_reward:.4f}")
+        self.logger.info(f"   Max Reward:  {result.evaluation_result.max_reward:.4f}")
+        self.logger.info(f"   Episodes:    {result.evaluation_result.total_episodes}")
+        self.logger.info(f"   Duration:    {result.duration_seconds:.1f}s")
+        self.logger.info(f"   Model Path:  {result.model_path}")
+    
     def benchmark_model(
         self,
         model_path: str,

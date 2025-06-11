@@ -18,6 +18,7 @@ from core.evaluation import EvaluationResult, EvaluationEpisodeResult
 from agent.ppo_agent import PPOTrainer
 from envs import TradingEnvironment
 from data.data_manager import DataManager
+from training.episode_manager import EpisodeManager
 
 
 class EvaluationState:
@@ -57,7 +58,7 @@ class Evaluator:
         trainer: PPOTrainer,
         environment: TradingEnvironment,
         data_manager: DataManager,
-        episode_manager: Optional[Any] = None
+        episode_manager: Optional[EpisodeManager] = None
     ) -> Optional[EvaluationResult]:
         """
         Run complete model evaluation and return aggregated results.
