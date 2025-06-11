@@ -110,6 +110,11 @@ class ReplayBuffer:
         State and next_state are expected as Dict[str, np.ndarray] from the environment.
         Action, value, and log_prob are expected as PyTorch tensors from the model/agent.
         """
+        # Handle zero capacity buffer gracefully
+        if self.capacity == 0:
+            logger.warning("Cannot add experience to zero capacity buffer.")
+            return
+
         if len(self.buffer) < self.capacity:
             self.buffer.append({})  # Add a new slot if capacity not reached
 
@@ -136,7 +141,16 @@ class ReplayBuffer:
         preserving the original tensor dimensions for each component.
         """
         if not self.buffer:
-            logger.warning("Buffer is empty, cannot prepare data for training.")
+            logger.warning("Buffer is empty, preparing empty tensors for training.")
+            # Initialize empty tensors with proper shapes
+            self.states = {}
+            self.actions = torch.tensor([], dtype=torch.int32, device=self.device).reshape(0, 2)
+            self.log_probs = torch.tensor([], dtype=torch.float32, device=self.device)
+            self.values = torch.tensor([], dtype=torch.float32, device=self.device)
+            self.rewards = torch.tensor([], dtype=torch.float32, device=self.device)
+            self.dones = torch.tensor([], dtype=torch.bool, device=self.device)
+            self.advantages = None
+            self.returns = None
             return
 
         # Initialize structures for each component
@@ -212,6 +226,7 @@ class ReplayBuffer:
 
     def get_training_data(self) -> Optional[Dict[str, Any]]:
         """Returns all necessary data for a PPO update epoch if prepared."""
+        # Check if basic data is prepared
         if (
             self.states is None
             or self.actions is None
@@ -219,13 +234,16 @@ class ReplayBuffer:
             or self.rewards is None
             or self.dones is None
             or self.values is None
-            or self.advantages is None
-            or self.returns is None
-        ):  # Check if advantages and returns are computed
+        ):
+            raise ValueError(
+                "Training data not prepared. Call prepare_data_for_training() first."
+            )
+        
+        # Check if advantages and returns are computed
+        if self.advantages is None or self.returns is None:
             logger.error(
-                "Training data not fully prepared (states, actions, log_probs, "
-                "rewards, dones, values, advantages, or returns are None). "
-                "Call prepare_data_for_training() and then compute_advantages() first."
+                "Advantages and returns not computed. "
+                "Call compute_advantages() after prepare_data_for_training()."
             )
             return None
 
