@@ -27,7 +27,7 @@ class EvaluationConfig:
     benchmark_episodes: int = 100    # More episodes for comprehensive benchmarking
     save_episode_details: bool = True  # Save individual episode results
     benchmark_output_dir: Optional[str] = None  # Directory for benchmark results
-    model = Optional[str] = None  # Model version to evaluate, if None use latest
+    model: Optional[str] = None  # Model version to evaluate, if None use latest
     
     # Advanced evaluation settings
     max_steps_per_episode: int = 1000  # Safety limit for episode length
