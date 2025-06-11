@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
 from data.data_manager import DataManager
-from .episode_manager import EpisodeManager, EpisodeTerminationReason
+from .episode_manager import EpisodeManager, EpisodeManagerException, EpisodeTerminationReason
 from ..agent.ppo_agent import PPOTrainer
 from ..callbacks import CallbackManager
 from ..callbacks.core.context import TrainingStartContext, TrainingEndContext, EpisodeEndContext
@@ -83,8 +83,12 @@ class TrainingManager(IShutdownHandler):
         self.episode_manager = EpisodeManager(self.config, self.data_manager)
 
         # Initialize episode manager (it manages day/reset point loops internally)
-        if not self.episode_manager.initialize():
-            self._finalize_training("episode_manager_failed")
+        try:
+            self.episode_manager.initialize()
+        except EpisodeManagerException as e:
+            self.logger.error(f"Episode manager initialization failed: {e.reason.value}")
+            self._finalize_training(f"episode_manager_failed_{e.reason.value}")
+            return
 
         # Initialize callbacks
         context = self._create_training_start_context()
@@ -93,13 +97,8 @@ class TrainingManager(IShutdownHandler):
         # MAIN TRAINING LOOP - Single, clean loop
         try:
             while not self._should_terminate_training():
-                # 1. Request next episode from episode manager
+                # 1. Request the next episode from the episode manager
                 episode_context = self.episode_manager.get_next_episode()
-
-                if episode_context is None:
-                    self.logger.info("No more episodes available")
-                    self.termination_reason = "no_more_data"
-                    break
 
                 # 2. Setup environment with episode context
                 if not self._setup_environment_with_context(episode_context):
@@ -113,19 +112,16 @@ class TrainingManager(IShutdownHandler):
                     num_steps=self.config.rollout_steps
                 )
 
-                # 4. Update state (TrainingManager is source of truth)
+                # 4. Update state (TrainingManager is a source of truth)
                 self.state.global_steps += rollout_result.steps_collected
                 self.state.global_episodes += rollout_result.episodes_completed
-                if rollout_result.episodes_completed > 0:
-                    self.state.last_episode_time = datetime.now()
 
-                # 5. Update policy if buffer ready
+                # 5. Update policy if the buffer is ready
                 if rollout_result.buffer_ready:
                     update_info: UpdateResult = self.trainer.update_policy()  # Pure execution
 
                     # Update state (single source of truth)
                     self.state.global_updates += 1
-                    self.state.last_update_time = datetime.now()
 
                     # Notify episode manager about update
                     self.episode_manager.on_update_completed(update_info)
@@ -140,6 +136,12 @@ class TrainingManager(IShutdownHandler):
                     # Trigger episode callbacks (for intelligent management)
                     self._trigger_episode_callbacks(rollout_result)
 
+                # 7. Update global cycle count from episode manager
+                self.state.global_cycles = self.episode_manager.get_completed_cycles()
+
+        except EpisodeManagerException as e:
+            self.logger.info(f"Episode manager terminated: {e.reason.value}")
+            self.termination_reason = f"episode_manager_{e.reason.value}"
         except Exception as e:
             self.logger.error(f"🚨 Training error: {e}", exc_info=True)
             self.termination_reason = "error"

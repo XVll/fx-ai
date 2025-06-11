@@ -6,18 +6,25 @@ Consolidated from DataLifecycleManager for v2 architecture.
 
 import random
 import logging
-from typing import  Any, Optional, List, Set
+from typing import Any, List, Set, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
 from pendulum import Date
 
 from core.utils import day_in_range
-from core.utils.time_utils import (
-    to_date, format_date, now_utc,
-)
+from core.utils.time_utils import (to_date, format_date)
+from core.shutdown import IShutdownHandler, IShutdownManager
 
 from config.training.training_config import TrainingManagerConfig
+
+
+class EpisodeManagerException(Exception):
+    """Episode manager termination with specific reason"""
+    def __init__(self, reason: 'EpisodeTerminationReason', message: str = None):
+        self.reason = reason
+        self.message = message or f"Episode manager terminated: {reason.value}"
+        super().__init__(self.message)
 
 
 class EpisodeTerminationReason(Enum):
@@ -129,7 +136,7 @@ class EpisodeContext:
     day_info: DayInfo
 
 
-class EpisodeManager:
+class EpisodeManager(IShutdownHandler):
     """
     Episode Manager - Authority for Training Episode Management
     
@@ -149,6 +156,9 @@ class EpisodeManager:
 
         # Single consolidated state
         self.state = EpisodeManagerState()
+        
+        # Shutdown handling
+        self._shutdown_requested = False
 
         # Extract configuration directly from typed config
         self.day_selection_mode = SelectionMode(config.day_selection_mode)
@@ -257,12 +267,12 @@ class EpisodeManager:
         self.logger.info(f"✅ Loaded {len(available_days)} valid days with reset points")
         return available_days
 
-    def initialize(self) -> bool:
+    def initialize(self) -> None:
         """Initialize episode manager - select first day and reset points"""
         try:
             if not self._advance_to_next_day():
                 self.logger.error("Failed to select initial day")
-                return False
+                raise EpisodeManagerException(EpisodeTerminationReason.PRELOAD_FAILED, "Failed to select initial day")
 
             # Log final summary
             if self.state.current_day:
@@ -273,44 +283,34 @@ class EpisodeManager:
 
                 self.logger.info(f"📅 Selected: {symbol} {format_date(day_date)} (quality: {quality:.3f})")
                 self.logger.info(f"🔄 Reset points: {reset_count} available")
-            return True
         except Exception as e:
             self.logger.error(f"Failed to initialize episode manager: {e}")
-            return False
+            raise EpisodeManagerException(EpisodeTerminationReason.PRELOAD_FAILED, f"Initialization failed: {e}")
 
-    def should_terminate(self) -> Optional[EpisodeTerminationReason]:
-        """Check if episode manager should terminate"""
-        if self.state.should_terminate:
-            return self.state.termination_reason
 
-        # Check if should switch to next day
-        if self._should_switch_day():
-            if not self._advance_to_next_day():
-                self.logger.info("🔄 No more days available, continuing with current day reset points")
-                # Reset to beginning of reset points for current day
-                self.state.current_reset_point_index = 0
-
-        return None
-
-    def get_next_episode(self) -> Optional[EpisodeContext]:
+    def get_next_episode(self) -> EpisodeContext:
         """Get next episode context, handling day/reset point transitions internally."""
+        # Check for shutdown request
+        if self._shutdown_requested:
+            self.logger.info("🛑 Shutdown requested, no more episodes")
+            raise EpisodeManagerException(EpisodeTerminationReason.NO_MORE_DAYS, "Shutdown requested")
 
         # Check if we need to switch days
         if self._should_switch_day():
             if not self._advance_to_next_day():
                 self.logger.info("No more days available")
-                return None
+                raise EpisodeManagerException(EpisodeTerminationReason.NO_MORE_DAYS)
 
         # Get next reset point (handles cycling internally)
         if not self.state.current_reset_point:
             if not self._advance_to_next_reset_point():
                 self.logger.warning("No reset points available")
-                return None
+                raise EpisodeManagerException(EpisodeTerminationReason.NO_MORE_RESET_POINTS)
 
         # Create episode context - we know these are not None due to checks above
         if not self.state.current_day or not self.state.current_reset_point:
             self.logger.error("Missing current day or reset point for episode context")
-            return None
+            raise EpisodeManagerException(EpisodeTerminationReason.PRELOAD_FAILED, "Missing current day or reset point")
 
         return EpisodeContext(
             symbol=self.state.current_day.symbol,
@@ -346,17 +346,30 @@ class EpisodeManager:
             self.logger.warning("Negative update count detected, resetting")
             self.state.current_day_updates = 0
 
-    def force_termination(self, reason: EpisodeTerminationReason):
-        """Force termination of episode manager"""
-        self.state.should_terminate = True
-        self.state.termination_reason = reason
-        self.logger.info(f"🛑 Force terminating episode manager: {reason.value}")
+    def get_completed_cycles(self) -> int:
+        """Get the total number of completed cycles for training manager tracking."""
+        return self.state.total_cycles_completed
+
+    def register_shutdown(self, shutdown_manager: IShutdownManager) -> None:
+        """Register this component with the shutdown manager."""
+        shutdown_manager.register_component(
+            component=self,
+            name="EpisodeManager",
+            timeout=30.0
+        )
+        self.logger.info("📝 Registered with shutdown manager")
+    
+    def shutdown(self) -> None:
+        """Perform graceful shutdown - stop generating new episodes."""
+        self.logger.info("🛑 EpisodeManager shutdown initiated")
+        self._shutdown_requested = True
+        self.logger.info("✅ EpisodeManager shutdown completed")
 
     # Private methods for internal logic
 
     def _should_switch_day(self) -> bool:
         """Check if should switch to next day based on configuration"""
-        # Check daily limits
+        # Check daily limits - raise exceptions if limits reached and no more days available
         if self.daily_max_episodes and self.state.current_day_episodes >= self.daily_max_episodes:
             self.logger.info(f"🔄 Daily episode limit reached: {self.state.current_day_episodes}/{self.daily_max_episodes}")
             return True
