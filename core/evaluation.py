@@ -1,5 +1,5 @@
 """
-Evaluation result data structures.
+Evaluation result data structures and exports.
 """
 
 from dataclasses import dataclass
@@ -31,3 +31,10 @@ class EvaluationResult:
     min_reward: float
     max_reward: float
     total_episodes: int
+
+
+# Export the data structures for backward compatibility
+__all__ = [
+    "EvaluationEpisodeResult",
+    "EvaluationResult"
+]

@@ -1,0 +1,57 @@
+# Benchmark configuration for model performance assessment
+# This config is used when running in benchmark mode
+
+# Override training manager mode
+training:
+  training_manager:
+    mode: "benchmark"
+    # No training termination limits for benchmark mode
+    termination_max_episodes: null
+    termination_max_updates: null
+    termination_max_cycles: null
+
+# Evaluation settings optimized for benchmarking
+evaluation:
+  enabled: true
+  episodes: 100                    # More episodes for comprehensive benchmarking
+  seed: 42
+  deterministic_actions: true
+  use_fixed_episodes: true
+  episode_selection: "diverse"
+  
+  # Benchmark-specific settings
+  benchmark_episodes: 100
+  save_episode_details: true
+  benchmark_output_dir: "outputs/benchmarks"
+  
+  # Advanced settings
+  max_steps_per_episode: 1000
+  warm_up_episodes: 5             # Cache warming episodes
+  measure_inference_time: true
+  measure_memory_usage: true
+  evaluation_mode: "benchmark"
+
+# Disable training-specific callbacks for benchmark mode
+callbacks:
+  # Keep only essential callbacks for benchmarking
+  metrics_callback:
+    enabled: true
+    
+  wandb_callback:
+    enabled: false                # Disable W&B logging for benchmark
+    
+  checkpoint_callback:
+    enabled: false                # No checkpointing needed
+    
+  early_stopping_callback:
+    enabled: false                # No early stopping
+    
+  evaluation_callback:
+    enabled: true
+    frequency: 1                  # Evaluate immediately
+
+# Logging configuration for benchmark mode  
+logging:
+  level: "INFO"
+  file_logging: true
+  console_logging: true

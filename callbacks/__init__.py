@@ -22,6 +22,9 @@ from .analysis.performance_callback import PerformanceCallback
 from .optimization.optuna_callback import OptunaCallback
 from .optimization.early_stopping_callback import EarlyStoppingCallback
 
+# Evaluation callbacks
+from .evaluation.evaluation_callback import EvaluationCallback
+
 __all__ = [
     # Core system
     "BaseCallback",
@@ -40,4 +43,7 @@ __all__ = [
     # Optimization callbacks
     "OptunaCallback",
     "EarlyStoppingCallback",
+    
+    # Evaluation callbacks
+    "EvaluationCallback",
 ]
