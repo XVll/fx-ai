@@ -13,9 +13,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 import sys
-
-from config import DataConfig
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from data.utils.helpers import ensure_timezone_aware
@@ -28,21 +25,43 @@ class MomentumScanner:
 
     def __init__(
         self,
-        config: ScannerConfig,
+        data_dir: Optional[str] = None,
+        output_dir: Optional[str] = None,
         scanner_config: Optional[ScannerConfig] = None,
+        logger: Optional[logging.Logger] = None,
     ):
         """Initialize the momentum scanner.
 
         Args:
-            config: Scanner configuration with data_dir and output_dir
-            scanner_config: Additional scanner configuration (deprecated)
+            data_dir: Data directory path (optional, uses PathManager if not provided)
+            output_dir: Output directory path (optional, uses PathManager if not provided)
+            scanner_config: Scanner configuration
+            logger: Logger instance (optional)
         """
-        # Use PathManager for directories
+        # Use PathManager for directories if not explicitly provided
         path_manager = get_path_manager()
-        self.data_dir = path_manager.databento_dir
-        self.output_dir = path_manager.scanner_cache_dir
+        
+        if data_dir is not None:
+            self.data_dir = Path(data_dir)
+        else:
+            # Try databento_dir first, then fall back to legacy dnb location
+            databento_path = path_manager.databento_dir
+            legacy_dnb_path = path_manager.base_dir / "dnb"
+            
+            if databento_path.exists():
+                self.data_dir = databento_path
+            elif legacy_dnb_path.exists():
+                self.data_dir = legacy_dnb_path
+            else:
+                # Default to databento_dir and create if needed
+                self.data_dir = databento_path
+                
+        if output_dir is not None:
+            self.output_dir = Path(output_dir)
+        else:
+            self.output_dir = path_manager.scanner_cache_dir
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
 
         # Configuration with defaults
         self.config = scanner_config or ScannerConfig()
@@ -392,7 +411,6 @@ class MomentumScanner:
         """Calculate rolling window scores: ROC [-1.0, 1.0], Activity [0.0, 1.0]."""
 
         # Configuration
-        window_size_periods = int(60 / 5)  # 60 minutes / 5-min periods (not used)
         roc_periods = int(
             self.config.roc_lookback_minutes / 5
         )  # Convert to 5-min periods
@@ -511,7 +529,7 @@ class MomentumScanner:
             return (
                 pd.Timestamp("04:00").time() <= et_time <= pd.Timestamp("20:00").time()
             )
-        except:
+        except Exception:
             # Fallback for timezone issues
             return True
 
@@ -689,7 +707,7 @@ class MomentumScanner:
                     metadata = json.load(f)
                     symbols = metadata.get("query", {}).get("symbols", [])
                     return symbol.upper() in [str(s).upper() for s in symbols]
-            except:
+            except Exception:
                 pass
 
         # Fallback to filename check
@@ -870,9 +888,7 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     # Initialize scanner with default paths
-    data_dir = "dnb"
-    output_dir = "cache/indices/momentum_index"
-    scanner = MomentumScanner(data_dir=data_dir, output_dir=output_dir)
+    scanner = MomentumScanner()
 
     try:
         # Scan symbols
