@@ -234,11 +234,19 @@ class TradingEnvironment(gym.Env):
             # Get initial observation
             observation = self._get_observation()
 
+            # Convert timestamp string to datetime for isoformat if needed
+            if isinstance(reset_timestamp, str):
+                from core.utils.time_utils import to_datetime
+                reset_timestamp_dt = to_datetime(reset_timestamp)
+                reset_timestamp_iso = reset_timestamp_dt.isoformat() if reset_timestamp_dt else reset_timestamp
+            else:
+                reset_timestamp_iso = reset_timestamp.isoformat()
+
             # Build comprehensive info
             info = {
                 'symbol': str(self.symbol),
                 'date': self.current_date.strftime('%Y-%m-%d'),
-                'reset_timestamp': reset_timestamp.isoformat(),
+                'reset_timestamp': reset_timestamp_iso,
                 'reset_point': {
                     'timestamp': reset_point.timestamp,
                     'quality_score': reset_point.quality_score,

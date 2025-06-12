@@ -19,6 +19,7 @@ class SimulationConfig:
     commission_rate: float = 0.001                # Commission rate
     slippage_rate: float = 0.0005                 # Slippage rate
     min_transaction_amount: float = 100.0         # Min trade size
+    min_trade_value: float = 100.0                # Minimum trade value
 
     # Risk limits
     max_drawdown: float = 0.3                     # Max allowed drawdown
