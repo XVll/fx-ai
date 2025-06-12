@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, List, Dict, Any
 
-from callbacks import BaseCallback
+from .base import BaseCallback
 
 
 class CallbackManager:
