@@ -97,6 +97,9 @@ class CallbackManager:
     def trigger_update_end(self, context: Dict[str, Any] = None) -> None:
         self.trigger_event("update_end", context or {})
 
+    def trigger_evaluation_complete(self, context: Dict[str, Any] = None) -> None:
+        self.trigger_event("evaluation_complete", context or {})
+
     def trigger_custom_event(self, event_name: str, context: Dict[str, Any] = None) -> None:
         ctx = context or {}
         ctx['event_name'] = event_name

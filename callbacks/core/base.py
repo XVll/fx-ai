@@ -2,7 +2,7 @@
 Simplified but powerful callback system.
 
 Provides essential callback functionality without overwhelming complexity:
-- Multiple event hooks (15 key events)
+- Multiple event hooks (16 key events)
 - Simple state management
 - Error isolation
 - Easy to understand and extend
@@ -21,7 +21,7 @@ class BaseCallback(IShutdownHandler, ABC):
     """
     Simple but powerful callback base class.
     
-    Provides 15 key events covering all important training aspects:
+    Provides 16 key events covering all important training aspects:
     - Training lifecycle: start, end
     - Episodes: start, end
     - Steps: start, end, action_selected
@@ -53,7 +53,7 @@ class BaseCallback(IShutdownHandler, ABC):
         
         self.logger.debug(f"Initialized {self.name}")
     
-    # Core event hooks (15 essential events)
+    # Core event hooks (16 essential events)
     
     def on_training_start(self, context: Dict[str, Any]) -> None:
         """Called once when training starts."""
@@ -109,6 +109,10 @@ class BaseCallback(IShutdownHandler, ABC):
     
     def on_day_switched(self, context: Dict[str, Any]) -> None:
         """Called when switching to new trading day."""
+        pass
+    
+    def on_evaluation_complete(self, context: Dict[str, Any]) -> None:
+        """Called when model evaluation completes."""
         pass
     
     def on_custom_event(self, event_name: str, context: Dict[str, Any]) -> None:
