@@ -15,6 +15,9 @@ import warnings
 # Import feature registry for consistent feature names
 from feature.feature_registry import FeatureRegistry
 
+# Import the typed attribution config
+from config.attribution.attribution_config import AttributionConfig
+
 # Captum imports
 from captum.attr import (
     IntegratedGradients,
@@ -31,63 +34,6 @@ from captum.attr import (
 from captum.attr._utils.visualization import visualize_image_attr_multiple
 
 
-# Legacy AttributionConfig for backward compatibility with existing code
-# This will be removed once all code is updated to use Hydra configs directly
-@dataclass
-class AttributionConfig:
-    """Legacy configuration for Captum attribution methods."""
-    
-    # Attribution methods to use
-    methods: List[str] = None  # ["integrated_gradients", "deep_lift", "gradient_shap"]
-    
-    # Method-specific parameters
-    n_steps: int = 50  # Steps for integrated gradients
-    n_samples: int = 25  # Samples for gradient SHAP
-    
-    # Analysis settings
-    analyze_branches: bool = True  # Analyze each transformer branch separately
-    analyze_fusion: bool = True  # Analyze attention fusion layer
-    analyze_actions: bool = True  # Analyze action head attributions
-    
-    # Baseline configuration
-    baseline_type: str = "zero"  # "zero", "mean", "random"
-    
-    # Visualization settings
-    save_visualizations: bool = True
-    visualization_dir: str = "outputs/captum"
-    heatmap_threshold: float = 0.01  # Min attribution value to show
-    
-    # Control which visualizations to create
-    create_branch_heatmap: bool = True
-    create_timeseries_plot: bool = True
-    create_aggregated_plot: bool = True
-    
-    # Which branches to create timeseries plots for
-    timeseries_branches: List[str] = None  # Default: ["hf", "mf", "lf"]
-    
-    # Performance settings
-    batch_analysis: bool = False  # Analyze multiple samples at once
-    max_batch_size: int = 32
-    
-    # Feature importance aggregation
-    aggregate_features: bool = True  # Aggregate attributions by feature groups
-    feature_groups: Dict[str, List[str]] = None  # Feature grouping definitions
-    
-    def __post_init__(self):
-        if self.methods is None:
-            self.methods = ["integrated_gradients", "deep_lift"]
-        if self.timeseries_branches is None:
-            self.timeseries_branches = ["hf", "mf", "lf", "portfolio", "fusion"]  # All branches by default
-        
-        if self.feature_groups is None:
-            # Default feature groups based on your system
-            self.feature_groups = {
-                "price_action": ["price", "returns", "volatility"],
-                "volume": ["volume", "vwap", "relative_volume"],
-                "microstructure": ["spread", "imbalance", "order_flow"],
-                "technical": ["ema", "rsi", "patterns"],
-                "portfolio": ["position", "pnl", "risk"],
-            }
 
 
 class MultiBranchTransformerWrapper(nn.Module):
@@ -210,11 +156,10 @@ class CaptumAttributionAnalyzer:
                 self.logger.warning(f"Failed to get feature names from manager: {e}")
         
         # Use feature registry as the source of truth
-        if getattr(self.config, 'use_feature_manager_names', True):
-            hf_features = FeatureRegistry.get_feature_names("hf")
-            mf_features = FeatureRegistry.get_feature_names("mf")
-            lf_features = FeatureRegistry.get_feature_names("lf")
-            portfolio_features = FeatureRegistry.get_feature_names("portfolio")
+        hf_features = FeatureRegistry.get_feature_names("hf")
+        mf_features = FeatureRegistry.get_feature_names("mf")
+        lf_features = FeatureRegistry.get_feature_names("lf")
+        portfolio_features = FeatureRegistry.get_feature_names("portfolio")
         
         # Get model config for dimensions if available
         if hasattr(self.model, "model_config"):
@@ -761,7 +706,7 @@ class CaptumAttributionAnalyzer:
                 
             # Branch comparison heatmap
             # Skip for layer conductance methods as they only analyze single layers
-            if getattr(self.config, 'create_branch_heatmap', True) and "layer_conductance" not in method_name:
+            if self.config.create_branch_heatmap and "layer_conductance" not in method_name:
                 fig = self._create_branch_heatmap(display_name, attributions)
                 if fig:
                     path = self.viz_dir / f"{method_name}_branches_{timestamp}.png"
@@ -775,7 +720,7 @@ class CaptumAttributionAnalyzer:
                     self.logger.warning(f"Failed to create branch heatmap for {method_name}")
             
             # Time series attribution plots
-            if getattr(self.config, 'create_timeseries_plot', True):
+            if self.config.create_timeseries_plot:
                 # Create timeseries for configured branches
                 for branch in self.config.timeseries_branches:
                     if attributions.get(branch) is not None:
@@ -789,7 +734,7 @@ class CaptumAttributionAnalyzer:
                             self.logger.info(f"Created {branch.upper()} timeseries plot: {path.name}")
         
         # Create aggregated importance plot
-        if getattr(self.config, 'create_aggregated_plot', True) and results.get("aggregated"):
+        if self.config.create_aggregated_plot and results.get("aggregated"):
             fig = self._create_aggregated_importance_plot(results["aggregated"])
             if fig:
                 path = self.viz_dir / f"aggregated_importance_{timestamp}.png"

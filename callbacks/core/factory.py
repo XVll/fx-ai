@@ -4,9 +4,12 @@ Callback factory for creating configured callbacks.
 Supports all callback implementations except old_callback_system.
 """
 
-from typing import Any, List, Optional
+from typing import Any, List, Optional, TYPE_CHECKING
 
 from config import CallbackConfig
+
+if TYPE_CHECKING:
+    from config.attribution.attribution_config import AttributionConfig
 from core.evaluation import Evaluator
 from core.model_manager import ModelManager
 from . import CallbackManager
@@ -33,7 +36,7 @@ def create_callbacks_from_config(
     config: CallbackConfig,
     model_manager: Optional[ModelManager] = None,
     evaluator: Optional[Evaluator] = None,
-    captum_config: Optional[Any] = None,
+    attribution_config: Optional["AttributionConfig"] = None,
 ) -> CallbackManager:
     """
     Create callback manager from configuration.
@@ -42,7 +45,7 @@ def create_callbacks_from_config(
         config: Callback configuration
         model_manager: ModelManager instance for continuous training
         evaluator: Evaluator instance for evaluation callback
-        captum_config: Captum configuration for attribution analysis
+        attribution_config: Attribution configuration for feature analysis
         
     Returns:
         CallbackManager with configured callbacks
@@ -109,20 +112,21 @@ def create_callbacks_from_config(
     
     # Captum attribution callback
     if (config.captum_attribution.enabled and 
-        captum_config is not None and 
+        attribution_config is not None and 
+        attribution_config.enabled and
         CAPTUM_CALLBACK_AVAILABLE and 
         CaptumAttributionCallback is not None):
         callbacks.append(CaptumAttributionCallback(
-            config=captum_config,
+            config=attribution_config,
             enabled=config.captum_attribution.enabled
         ))
     elif config.captum_attribution.enabled and not CAPTUM_CALLBACK_AVAILABLE:
         import logging
         logger = logging.getLogger(__name__)
         logger.warning("Captum attribution callback requested but not available (Captum not installed)")
-    elif config.captum_attribution.enabled and captum_config is None:
+    elif config.captum_attribution.enabled and attribution_config is None:
         import logging
         logger = logging.getLogger(__name__)
-        logger.warning("Captum attribution callback enabled but no captum config provided")
+        logger.warning("Captum attribution callback enabled but no attribution config provided")
     
     return CallbackManager(callbacks)

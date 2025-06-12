@@ -19,6 +19,7 @@ from .simulation.simulation_config import SimulationConfig
 from .scanner.scanner_config import ScannerConfig
 from .logging.logging_config import LoggingConfig
 from .callbacks.callback_config import CallbackConfig
+from .attribution.attribution_config import AttributionConfig
 from .captum.captum_config import CaptumConfig
 from .optuna.optuna_config import StudyConfig
 from .rewards.reward_config import RewardConfig
@@ -54,7 +55,8 @@ class Config:
     evaluation: Optional[EvaluationConfig] = None    # Model evaluation config
 
     # Feature attribution analysis
-    captum: Optional[CaptumConfig] = None            # Captum feature attribution config
+    attribution: Optional[AttributionConfig] = None  # Feature attribution analysis config
+    captum: Optional[CaptumConfig] = None            # Legacy Captum config (deprecated)
 
     # Hyperparameter optimization
     optuna: Optional[StudyConfig] = None             # Optuna hyperparameter optimization config
@@ -95,6 +97,7 @@ def register_configs():
     cs.store(group="scanner", name="momentum", node=ScannerConfig)
     cs.store(group="logging", name="default", node=LoggingConfig)
     cs.store(group="callbacks", name="default", node=CallbackConfig)
+    cs.store(group="attribution", name="default", node=AttributionConfig)
     cs.store(group="captum", name="default", node=CaptumConfig)
     cs.store(group="optuna", name="default", node=StudyConfig)
     cs.store(group="rewards", name="default", node=RewardConfig)

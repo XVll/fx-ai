@@ -14,7 +14,7 @@ from datetime import datetime
 import json
 
 from callbacks.core.base import BaseCallback
-from config.captum.captum_config import CaptumConfig
+from config.attribution.attribution_config import AttributionConfig
 
 # Import feature registry for feature names
 from feature.feature_registry import FeatureRegistry
@@ -45,12 +45,12 @@ class CaptumAttributionCallback(BaseCallback):
     using state-of-the-art attribution methods.
     """
     
-    def __init__(self, config: CaptumConfig, enabled: bool = True):
+    def __init__(self, config: AttributionConfig, enabled: bool = True):
         """
         Initialize Captum attribution callback.
         
         Args:
-            config: Captum configuration with all settings
+            config: Attribution configuration with all settings
             enabled: Whether callback is active
         """
         super().__init__(name="CaptumAttribution", enabled=enabled and config.enabled, config=config)
@@ -61,7 +61,7 @@ class CaptumAttributionCallback(BaseCallback):
             self.enabled = False
             return
         
-        self.config: CaptumConfig = config
+        self.config: AttributionConfig = config
         self.analyzer: Optional[CaptumAttributionAnalyzer] = None
         
         # Analysis tracking
@@ -75,7 +75,7 @@ class CaptumAttributionCallback(BaseCallback):
         self.cached_action = None
         
         # Create output directory
-        self.output_dir = Path(self.config.callback.output_dir)
+        self.output_dir = Path(self.config.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         self.logger.info(f"Initialized Captum attribution callback (enabled={enabled})")
@@ -102,14 +102,11 @@ class CaptumAttributionCallback(BaseCallback):
         # Get feature names from registry
         feature_names = self._get_feature_names_from_registry()
         
-        # Create attribution analyzer with new config format
+        # Create attribution analyzer with Hydra config directly
         try:
-            # Convert Hydra config to old format for compatibility
-            old_config = self._convert_hydra_config_to_old_format()
-            
             self.analyzer = CaptumAttributionAnalyzer(
                 model=model,
-                config=old_config,
+                config=self.config,
                 feature_names=feature_names,
                 logger=self.logger,
             )
@@ -128,8 +125,8 @@ class CaptumAttributionCallback(BaseCallback):
             
         episode_num = context.get("episode_num", 0)
         
-        if (self.config.callback.analyze_every_n_episodes is not None and 
-            episode_num % self.config.callback.analyze_every_n_episodes == 0):
+        if (self.config.analyze_every_n_episodes is not None and 
+            episode_num % self.config.analyze_every_n_episodes == 0):
             self.logger.info(f"Triggering Captum analysis for episode {episode_num}")
             self._perform_analysis(context, "episode", episode_num)
     
@@ -140,8 +137,8 @@ class CaptumAttributionCallback(BaseCallback):
             
         update_num = context.get("update_num", 0)
         
-        if (self.config.callback.analyze_every_n_updates is not None and
-            update_num % self.config.callback.analyze_every_n_updates == 0):
+        if (self.config.analyze_every_n_updates is not None and
+            update_num % self.config.analyze_every_n_updates == 0):
             self.logger.info(f"Triggering Captum analysis for update {update_num}")
             self._perform_analysis(context, "update", update_num)
     
@@ -195,7 +192,7 @@ class CaptumAttributionCallback(BaseCallback):
                 self.update_analyses.append(results)
             
             # Log to WandB if enabled
-            if self.config.callback.save_to_wandb and wandb is not None:
+            if self.config.save_to_wandb and wandb is not None:
                 self._log_to_wandb(results, trigger, count)
             
             # Save periodic reports
@@ -407,29 +404,6 @@ class CaptumAttributionCallback(BaseCallback):
             "portfolio": FeatureRegistry.get_feature_names("portfolio"),
         }
     
-    def _convert_hydra_config_to_old_format(self):
-        """Convert Hydra config to old AttributionConfig format for compatibility."""
-        # Import the old config format
-        from core.attribution.captum_attribution import AttributionConfig
-        
-        return AttributionConfig(
-            methods=self.config.methods,
-            n_steps=self.config.n_steps,
-            n_samples=self.config.n_samples,
-            analyze_branches=self.config.analyze_branches,
-            analyze_fusion=self.config.analyze_fusion,
-            analyze_actions=self.config.analyze_actions,
-            baseline_type=self.config.baseline_type,
-            save_visualizations=self.config.save_visualizations,
-            visualization_dir=self.config.visualization_dir,
-            heatmap_threshold=self.config.heatmap_threshold,
-            create_branch_heatmap=self.config.create_branch_heatmap,
-            create_timeseries_plot=self.config.create_timeseries_plot,
-            create_aggregated_plot=self.config.create_aggregated_plot,
-            timeseries_branches=self.config.timeseries_branches,
-            batch_analysis=self.config.batch_analysis,
-            max_batch_size=self.config.max_batch_size,
-        )
     
     def _log_to_wandb(self, results: Dict, trigger: str, count: int) -> None:
         """Log attribution results to WandB."""
