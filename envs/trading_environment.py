@@ -135,11 +135,12 @@ class TradingEnvironment(gym.Env):
             self.execution_simulator = ExecutionSimulator(
                 simulation_config=self.config.simulation,
                 market_simulator=self.market_simulator,
-                logger=self.logger
+                logger=self.logger,
+                np_random=self.np_random
             )
 
             self.portfolio_simulator = PortfolioSimulator(
-                env_config=self.config.environment,
+                env_config=self.config.env,
                 simulation_config=self.config.simulation,
                 model_config=self.config.model,
                 tradable_assets=[symbol],

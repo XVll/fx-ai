@@ -148,7 +148,7 @@ class ApplicationBootstrap:
         else:
             raise ValueError(f"Unsupported data provider: {self.config.data.provider}")
 
-        momentum_scanner = MomentumScanner(config=self.config.scanner)
+        momentum_scanner = MomentumScanner(scanner_config=self.config.scanner)
         data_manager = DataManager(provider=data_provider, momentum_scanner=momentum_scanner, config=self.config.data)
 
         self.logger.info("✅ Data manager created")

@@ -11,6 +11,7 @@ from config import DataConfig
 from ..data_provider import HistoricalDataProvider
 from ...utils.helpers import ensure_timezone_aware
 from ...utils.cleaning import clean_ohlc_data, clean_trades_data, clean_quotes_data
+from core.path_manager import get_path_manager
 
 
 class DatabentoFileProvider(HistoricalDataProvider):
@@ -34,7 +35,10 @@ class DatabentoFileProvider(HistoricalDataProvider):
             config: Data configuration
             symbols: Optional list of symbols to filter for
         """
-        self.data_dir = config.data_dir
+        # Use PathManager for data directory
+        path_manager = get_path_manager()
+        self.data_dir = path_manager.databento_dir
+        
         self.symbols = symbols
         self.verbose = getattr(config, 'verbose', False)
         self.logger = logging.getLogger(__name__)
