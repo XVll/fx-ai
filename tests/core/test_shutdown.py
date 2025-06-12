@@ -151,14 +151,23 @@ class TestIShutdownHandler:
                 self.register_called = False
                 self.registered_manager = None
 
-            def register_shutdown(self, shutdown_manager) -> None:
+            def register_shutdown(self) -> None:
                 self.register_called = True
-                self.registered_manager = shutdown_manager
+                # Mock implementation for testing
+                from unittest.mock import Mock
+                self.registered_manager = Mock()
 
             def shutdown(self) -> None:
                 self.shutdown_called = True
 
-        handler = ConcreteHandler()
+        # Mock the auto-registration to control test behavior
+        with patch('core.shutdown.logger'):
+            handler = ConcreteHandler()
+        
+        # Reset the register_called flag since auto-registration triggered it
+        handler.register_called = False
+        handler.registered_manager = None
+        
         assert not handler.shutdown_called
         assert not handler.register_called
         
@@ -167,10 +176,9 @@ class TestIShutdownHandler:
         assert handler.shutdown_called
         
         # Test register_shutdown functionality
-        mock_manager = Mock()
-        handler.register_shutdown(mock_manager)
+        handler.register_shutdown()
         assert handler.register_called
-        assert handler.registered_manager == mock_manager
+        assert handler.registered_manager is not None
 
     def test_register_shutdown_is_required(self):
         """Test that register_shutdown method is required for implementation."""
@@ -188,25 +196,28 @@ class TestIShutdownHandler:
             def __init__(self):
                 self.registration_calls = []
 
-            def register_shutdown(self, shutdown_manager) -> None:
-                self.registration_calls.append(shutdown_manager)
+            def register_shutdown(self) -> None:
+                from unittest.mock import Mock
+                mock_manager = Mock()
+                self.registration_calls.append(mock_manager)
 
             def shutdown(self) -> None:
                 pass
 
-        handler = TestHandler()
-        manager1 = Mock()
-        manager2 = Mock()
+        # Mock the auto-registration to control test behavior
+        with patch('core.shutdown.logger'):
+            handler = TestHandler()
+        
+        # Reset the registration calls since auto-registration triggered one
+        handler.registration_calls = []
 
         # Test single registration
-        handler.register_shutdown(manager1)
+        handler.register_shutdown()
         assert len(handler.registration_calls) == 1
-        assert handler.registration_calls[0] == manager1
 
         # Test multiple registrations (if allowed by implementation)
-        handler.register_shutdown(manager2)
+        handler.register_shutdown()
         assert len(handler.registration_calls) == 2
-        assert handler.registration_calls[1] == manager2
 
 
 class TestMockShutdownHandler:
@@ -214,7 +225,13 @@ class TestMockShutdownHandler:
 
     def test_mock_handler_initialization(self):
         """Test MockShutdownHandler proper initialization."""
-        handler = MockShutdownHandler("TestHandler", delay=1.0, should_fail=True)
+        # Mock auto-registration to control test behavior
+        with patch('core.shutdown.get_global_shutdown_manager'), patch('core.shutdown.logger'):
+            handler = MockShutdownHandler("TestHandler", delay=1.0, should_fail=True)
+        
+        # Reset registration state since auto-registration occurred
+        handler.register_called = False
+        handler.registered_manager = None
         
         assert handler.name == "TestHandler"
         assert handler.delay == 1.0
@@ -225,15 +242,23 @@ class TestMockShutdownHandler:
 
     def test_mock_handler_register_shutdown(self):
         """Test MockShutdownHandler register_shutdown functionality."""
-        handler = MockShutdownHandler("RegisterTest")
-        mock_manager = Mock()
+        # Mock auto-registration to control test behavior
+        with patch('core.shutdown.get_global_shutdown_manager'), patch('core.shutdown.logger'):
+            handler = MockShutdownHandler("RegisterTest")
+        
+        # Reset registration state since auto-registration occurred
+        handler.register_called = False
+        handler.registered_manager = None
         
         # Initially not registered
         assert not handler.register_called
         assert handler.registered_manager is None
         
         # Register with manager
-        handler.register_shutdown(mock_manager)
+        with patch('core.shutdown.get_global_shutdown_manager') as mock_get_manager:
+            mock_manager = Mock()
+            mock_get_manager.return_value = mock_manager
+            handler.register_shutdown()
         
         # Verify registration tracked
         assert handler.register_called
@@ -241,24 +266,39 @@ class TestMockShutdownHandler:
 
     def test_mock_handler_register_shutdown_multiple_calls(self):
         """Test MockShutdownHandler handles multiple register_shutdown calls."""
-        handler = MockShutdownHandler("MultiRegisterTest")
-        manager1 = Mock()
-        manager2 = Mock()
+        # Mock auto-registration to control test behavior  
+        with patch('core.shutdown.get_global_shutdown_manager'), patch('core.shutdown.logger'):
+            handler = MockShutdownHandler("MultiRegisterTest")
         
-        # First registration
-        handler.register_shutdown(manager1)
-        assert handler.register_called
-        assert handler.registered_manager == manager1
+        # Reset registration state since auto-registration occurred
+        handler.register_called = False
+        handler.registered_manager = None
         
-        # Second registration (overwrites)
-        handler.register_shutdown(manager2)
-        assert handler.register_called
-        assert handler.registered_manager == manager2  # Latest manager
+        with patch('core.shutdown.get_global_shutdown_manager') as mock_get_manager:
+            manager1 = Mock()
+            manager2 = Mock()
+            
+            # First registration
+            mock_get_manager.return_value = manager1
+            handler.register_shutdown()
+            assert handler.register_called
+            assert handler.registered_manager == manager1
+            
+            # Second registration (overwrites)
+            mock_get_manager.return_value = manager2
+            handler.register_shutdown()
+            assert handler.register_called
+            assert handler.registered_manager == manager2  # Latest manager
 
     def test_mock_handler_shutdown_and_register_independence(self):
         """Test that shutdown and register_shutdown work independently."""
-        handler = MockShutdownHandler("IndependenceTest")
-        mock_manager = Mock()
+        # Mock auto-registration to control test behavior
+        with patch('core.shutdown.get_global_shutdown_manager'), patch('core.shutdown.logger'):
+            handler = MockShutdownHandler("IndependenceTest")
+        
+        # Reset registration state since auto-registration occurred
+        handler.register_called = False
+        handler.registered_manager = None
         
         # Shutdown first
         handler.shutdown()
@@ -266,9 +306,12 @@ class TestMockShutdownHandler:
         assert not handler.register_called
         
         # Then register
-        handler.register_shutdown(mock_manager)
-        assert handler.register_called
-        assert handler.registered_manager == mock_manager
+        with patch('core.shutdown.get_global_shutdown_manager') as mock_get_manager:
+            mock_manager = Mock()
+            mock_get_manager.return_value = mock_manager
+            handler.register_shutdown()
+            assert handler.register_called
+            assert handler.registered_manager == mock_manager
         
         # Both should be tracked independently
         assert handler.shutdown_called
@@ -592,10 +635,13 @@ class MockShutdownHandler(IShutdownHandler):
         self.register_called = False
         self.registered_manager = None
 
-    def register_shutdown(self, shutdown_manager) -> None:
+    def register_shutdown(self) -> None:
         """Register this component with the shutdown manager."""
         self.register_called = True
-        self.registered_manager = shutdown_manager
+        # Use global shutdown manager for registration
+        from core.shutdown import get_global_shutdown_manager
+        self.registered_manager = get_global_shutdown_manager()
+        self.registered_manager.register_component(component=self, name=self.name)
 
     def shutdown(self) -> None:
         self.shutdown_called = True
