@@ -10,9 +10,8 @@ from dataclasses import dataclass
 class ScannerConfig:
     """Consolidated scanner configuration"""
 
-    data_dir: str = "dnb"                         # Data directory for scanning
-    output_dir: str = "cache/scanner"             # Output directory for scanner results
-    cache_dir: str = "cache/scanner"              # Cache directory for scanner data
+    # NOTE: Paths now managed by PathManager - these fields deprecated
+    # Use PathManager.databento_dir and PathManager.scanner_cache_dir instead
     # -------------------------------------------------------------------------------------#
 
     # Momentum scanning

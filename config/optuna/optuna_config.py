@@ -98,6 +98,7 @@ class StudyConfig:
     metric_name: str = "mean_reward"                   # Metric to optimize
     
     # Storage settings
+    # NOTE: Storage path now managed by PathManager - use PathManager.experiment_artifacts_dir instead
     storage: str = "sqlite:///sweep_studies.db"        # Database storage URL
     load_if_exists: bool = True                        # Load existing study if found
     
@@ -132,7 +133,7 @@ class StudyConfig:
     
     # Checkpointing
     save_checkpoints: bool = True                      # Save trial checkpoints
-    checkpoint_dir: str = "sweep_checkpoints"          # Checkpoint directory
+    # NOTE: Paths now managed by PathManager - use PathManager.experiment_artifacts_dir instead
     keep_best_n: int = 5                               # Keep best N models
 
 
@@ -150,7 +151,7 @@ class OptunaStudySpec:
     # Global settings
     dashboard_port: int = 8052                         # Optuna dashboard port
     log_level: str = "INFO"                            # Logging level
-    results_dir: str = "sweep_results"                 # Results directory
+    # NOTE: Paths now managed by PathManager - use PathManager.experiment_artifacts_dir instead
     
     # Notification settings
     notify_on_complete: bool = False                   # Send notification on completion

@@ -10,10 +10,8 @@ from pathlib import Path
 class ModelStorageConfig:
     """Simple configuration for model storage."""
     
-    # Directory paths (relative to base directory)
-    checkpoint_dir: str = "checkpoints"
-    best_models_dir: str = "best_models"
-    temp_dir: str = "temp"
+    # NOTE: Paths now managed by PathManager - these fields deprecated
+    # Use PathManager.checkpoints_dir, PathManager.best_models_dir, PathManager.temp_models_dir instead
     
     # Model naming
     model_prefix: str = "model"
@@ -29,11 +27,12 @@ class ModelStorageConfig:
     version_format: str = "v{version:04d}"
     timestamp_format: str = "%Y%m%d_%H%M%S"
     
-    def get_checkpoint_path(self, base_dir: Path) -> Path:
-        return base_dir / self.checkpoint_dir / self.checkpoint_name
-    
-    def get_best_models_path(self, base_dir: Path) -> Path:
-        return base_dir / self.best_models_dir
-    
-    def get_temp_path(self, base_dir: Path) -> Path:
-        return base_dir / self.temp_dir
+    # NOTE: Path methods deprecated - use PathManager instead
+    # def get_checkpoint_path(self, base_dir: Path) -> Path:
+    #     return base_dir / self.checkpoint_dir / self.checkpoint_name
+    # 
+    # def get_best_models_path(self, base_dir: Path) -> Path:
+    #     return base_dir / self.best_models_dir
+    # 
+    # def get_temp_path(self, base_dir: Path) -> Path:
+    #     return base_dir / self.temp_dir

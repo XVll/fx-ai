@@ -24,7 +24,7 @@ attribution:
   
   # Visualization settings
   save_visualizations: true                   # Save attribution visualizations
-  visualization_dir: "outputs/captum"        # Visualization directory
+  # visualization_dir: "outputs/captum"        # NOTE: Paths now managed by PathManager
   heatmap_threshold: 0.01                     # Minimum attribution value to show
   
   # Control which visualizations to create
@@ -50,4 +50,4 @@ attribution:
   analyze_every_n_episodes: 10               # Episodes between analyses (null to disable)
   analyze_every_n_updates: 5                 # Updates between analyses (null to disable)
   save_to_wandb: true                         # Log results to WandB
-  output_dir: "outputs/captum"                # Output directory for reports
+  # output_dir: "outputs/captum"                # NOTE: Paths now managed by PathManager

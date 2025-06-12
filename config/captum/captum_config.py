@@ -14,7 +14,7 @@ class CaptumCallbackConfig:
     analyze_every_n_updates: Optional[int] = 5       # Run analysis every N PPO updates (null to disable)
     save_to_wandb: bool = True                        # Log results to Weights & Biases
     save_to_dashboard: bool = False                   # Send results to dashboard (deprecated)
-    output_dir: str = "outputs/captum"                # Directory for analysis reports
+    # NOTE: Paths now managed by PathManager - use PathManager.experiment_analysis_dir instead
 
 
 @dataclass
@@ -41,7 +41,7 @@ class CaptumConfig:
     
     # Visualization settings
     save_visualizations: bool = True                  # Save attribution visualizations
-    visualization_dir: str = "outputs/captum"        # Visualization directory
+    # NOTE: Paths now managed by PathManager - use PathManager.experiment_analysis_dir instead
     heatmap_threshold: float = 0.01                   # Minimum attribution value to show
     
     # Control which visualizations to create

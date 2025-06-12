@@ -21,6 +21,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import json
 from feature.simple_feature_manager import SimpleFeatureManager
+from core.path_manager import get_path_manager
 
 
 @dataclass
@@ -41,12 +42,18 @@ class FeatureCacheManager:
     """Manages persistent feature caching with automatic invalidation and loading"""
 
     def __init__(
-        self, cache_dir: str = "cache/features", logger: Optional[logging.Logger] = None
+        self, cache_dir: Optional[str] = None, logger: Optional[logging.Logger] = None
     ):
-        self.cache_dir = Path(cache_dir)
+        # Use PathManager for cache directory
+        if cache_dir is not None:
+            self.cache_dir = Path(cache_dir)
+        else:
+            path_manager = get_path_manager()
+            self.cache_dir = path_manager.features_cache_dir
+        
         self.logger = logger or logging.getLogger(__name__)
 
-        # Ensure cache directory exists
+        # Ensure cache directory exists (PathManager handles this, but double-check)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Current session state

@@ -32,7 +32,7 @@ class AttributionConfig:
     
     # Visualization settings
     save_visualizations: bool = True                  # Save attribution visualizations
-    visualization_dir: str = "outputs/captum"        # Visualization directory
+    # NOTE: Paths now managed by PathManager - use PathManager.experiment_analysis_dir instead
     heatmap_threshold: float = 0.01                   # Minimum attribution value to show
     
     # Control which visualizations to create
@@ -60,4 +60,4 @@ class AttributionConfig:
     analyze_every_n_episodes: Optional[int] = 10     # Episodes between analyses (None to disable)
     analyze_every_n_updates: Optional[int] = 5       # Updates between analyses (None to disable)
     save_to_wandb: bool = True                        # Log results to WandB
-    output_dir: str = "outputs/captum"                # Output directory for reports
+    # NOTE: Paths now managed by PathManager - use PathManager.experiment_analysis_dir instead

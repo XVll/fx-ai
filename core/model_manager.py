@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List, Union, Tuple
 
 from config.model.model_storage_config import ModelStorageConfig
+from core.path_manager import get_path_manager
 
 logger = logging.getLogger(__name__)
 
@@ -40,28 +41,40 @@ class ModelManager:
         
         Args:
             config: Model storage configuration (defaults to ModelStorageConfig())
-            base_dir: Base directory for model storage (defaults to current directory)
+            base_dir: Base directory for model storage (deprecated - use PathManager)
         """
         self.config = config or ModelStorageConfig()
-        self.base_dir = Path(base_dir) if base_dir else Path.cwd()
+        
+        # Use PathManager for directories instead of base_dir
+        if base_dir is not None:
+            logger.warning("base_dir parameter is deprecated. Use PathManager for path configuration.")
+            self.base_dir = Path(base_dir)
+        else:
+            path_manager = get_path_manager()
+            self.base_dir = path_manager.models_dir
         
         # Create directories
         self._setup_directories()
         
     def _setup_directories(self) -> None:
-        """Create necessary directories."""
+        """Create necessary directories using PathManager."""
+        path_manager = get_path_manager()
+        
+        # Use PathManager properties instead of config paths
         directories = [
-            self.base_dir / self.config.checkpoint_dir,
-            self.base_dir / self.config.best_models_dir,
-            self.base_dir / self.config.temp_dir,
+            path_manager.checkpoints_dir,
+            path_manager.best_models_dir, 
+            path_manager.temp_models_dir,
         ]
         
+        # Directories are created by PathManager, but ensure they exist
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
                     
     def get_model_version(self) -> int:
         """Get the next model version number."""
-        pattern = str(self.base_dir / self.config.best_models_dir / f"{self.config.model_prefix}_v*.pt")
+        path_manager = get_path_manager()
+        pattern = str(path_manager.best_models_dir / f"{self.config.model_prefix}_v*.pt")
         existing_models = glob.glob(pattern)
         
         versions = []
@@ -83,7 +96,8 @@ class ModelManager:
         Returns:
             Dictionary with model info, or None if no models found
         """
-        pattern = str(self.base_dir / self.config.best_models_dir / f"{self.config.model_prefix}_v*.pt")
+        path_manager = get_path_manager()
+        pattern = str(path_manager.best_models_dir / f"{self.config.model_prefix}_v*.pt")
         model_files = glob.glob(pattern)
         
         if not model_files:
@@ -174,7 +188,8 @@ class ModelManager:
         
         version_str = self.config.version_format.format(version=version)
         filename = f"{self.config.model_prefix}_{version_str}_reward{reward_str}_{timestamp}.pt"
-        target_path = self.base_dir / self.config.best_models_dir / filename
+        path_manager = get_path_manager()
+        target_path = path_manager.best_models_dir / filename
 
         try:
             # Copy model file
@@ -206,8 +221,9 @@ class ModelManager:
             
     def _cleanup_old_models(self) -> None:
         """Remove old models if exceeding max limit."""
+        path_manager = get_path_manager()
         model_files = glob.glob(
-            str(self.base_dir / self.config.best_models_dir / f"{self.config.model_prefix}_v*.pt")
+            str(path_manager.best_models_dir / f"{self.config.model_prefix}_v*.pt")
         )
 
         # Sort by modification time (newest first)

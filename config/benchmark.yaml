@@ -26,7 +26,7 @@ evaluation:
   # Benchmark-specific settings
   benchmark_episodes: 100
   save_episode_details: true
-  benchmark_output_dir: "outputs/benchmarks"
+  # benchmark_output_dir: "outputs/benchmarks"  # NOTE: Paths now managed by PathManager
   
   # Advanced settings
   max_steps_per_episode: 1000

@@ -24,6 +24,7 @@ from .captum.captum_config import CaptumConfig
 from .optuna.optuna_config import StudyConfig
 from .rewards.reward_config import RewardConfig
 from .evaluation.evaluation_config import EvaluationConfig
+from .path_config import PathConfig
 
 
 @dataclass
@@ -32,6 +33,9 @@ class Config:
     
     Hydra automatically handles output directory management.
     """
+    
+    # Path management (centralized)
+    paths: PathConfig = field(default_factory=PathConfig)
     
     # Core components
     model: ModelConfig = field(default_factory=ModelConfig)

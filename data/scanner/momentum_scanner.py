@@ -20,6 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from data.utils.helpers import ensure_timezone_aware
 from config.config import ScannerConfig
+from core.path_manager import get_path_manager
 
 
 class MomentumScanner:
@@ -36,9 +37,10 @@ class MomentumScanner:
             config: Scanner configuration with data_dir and output_dir
             scanner_config: Additional scanner configuration (deprecated)
         """
-        self.data_dir = Path(config.data_dir)
-        self.output_dir = Path(config.output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Use PathManager for directories
+        path_manager = get_path_manager()
+        self.data_dir = path_manager.databento_dir
+        self.output_dir = path_manager.scanner_cache_dir
 
         self.logger = logging.getLogger(__name__)
 

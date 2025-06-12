@@ -9,6 +9,7 @@ from hydra.core.hydra_config import HydraConfig
 
 from core.evaluation import Evaluator
 from core.model_manager import ModelManager
+from core.path_manager import initialize_paths, get_path_manager
 from data.data_manager import DataManager
 from data.scanner.momentum_scanner import MomentumScanner
 from data import DatabentoFileProvider
@@ -33,11 +34,19 @@ class ApplicationBootstrap:
     """Bootstrap the FxAI application with proper dependency injection and graceful shutdown."""
 
     def __init__(self, config: Config):
-        # Hydra automatically manages output directory
+        # Initialize PathManager with Hydra integration
         self.output_path: Path = Path(HydraConfig.get().runtime.output_dir)
+        self.path_manager = initialize_paths(
+            use_hydra_output=True,
+            experiment_dir=self.output_path
+        )
+        
         self.config: Config = config
         self.logger = logging.getLogger(f"{__name__}.Application")
         self.shutdown_manager = get_global_shutdown_manager()
+        
+        # Log path configuration
+        self.logger.info(f"PathManager initialized: {self.path_manager}")
 
         # Component instances
         self.training_manager: Optional[TrainingManager] = None
