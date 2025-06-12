@@ -175,6 +175,7 @@ class ApplicationBootstrap:
             config=self.config.training,
             model=self._create_model(),
             device=self.device,
+            callback_manager=self.callback_manager,
         )
 
         self.logger.info("✅ Trainer created")

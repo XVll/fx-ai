@@ -17,6 +17,7 @@ from core.utils.time_utils import (to_date, format_date)
 from core.shutdown import IShutdownHandler, get_global_shutdown_manager
 
 from config.training.training_config import TrainingManagerConfig
+from callbacks.core import CallbackManager
 
 
 class EpisodeManagerException(Exception):
@@ -148,10 +149,11 @@ class EpisodeManager(IShutdownHandler):
     - Episode-specific termination conditions
     """
 
-    def __init__(self, config: TrainingManagerConfig, data_manager=None):
+    def __init__(self, config: TrainingManagerConfig, data_manager=None, callback_manager: Optional[CallbackManager] = None):
         """Initialize episode manager with configuration and data manager"""
         self.config = config
         self.data_manager = data_manager
+        self.callback_manager = callback_manager
         self.logger = logging.getLogger(__name__)
 
         # Single consolidated state
@@ -491,10 +493,22 @@ class EpisodeManager(IShutdownHandler):
 
         # Reset day-level counters
         self.state.reset_for_new_day()
+        
+        # Store previous day for callback
+        previous_day = self.state.current_day
         self.state.current_day = next_day
 
         # Track usage - convert Date to string for set storage
         self.state.used_days.add(format_date(next_day.date))
+        
+        # Trigger day switched callback
+        if self.callback_manager and previous_day:
+            self.callback_manager.trigger_event("day_switched", {
+                'previous_day': previous_day,
+                'new_day': next_day,
+                'used_days_count': len(self.state.used_days),
+                'cycle_count': self.state.cycle_count
+            })
 
         # Initialize reset points for this day
         if not self._initialize_reset_points_for_day(next_day):
