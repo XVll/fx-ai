@@ -9,7 +9,6 @@ from dataclasses import dataclass
 @dataclass
 class DataConfig:
     """Data source and processing configuration"""
-    shutdown_timeout: Optional[int] = 30         # Timeout for data source shutdown in seconds
     provider: str = "databento"  # Options: databento  # Data provider
     data_dir: str = "dnb"                         # Data directory
     index_dir: str = "cache/indices"              # Index directory

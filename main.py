@@ -15,6 +15,7 @@ from data import DatabentoFileProvider
 from envs.trading_environment import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from model.transformer import MultiBranchTransformer
+from training.training_manager import TrainingManager
 from callbacks import create_callbacks_from_config, CallbackManager
 from core.logger import setup_rich_logging
 from core.shutdown import (
@@ -176,6 +177,20 @@ class ApplicationBootstrap:
         model = MultiBranchTransformer(model_config=self.config.model, device=self.device).to(self.device)
 
         return model
+
+    def _create_training_manager(self, model_manager: ModelManager) -> TrainingManager:
+        """Create a training manager from configuration."""
+        self.logger.info("🎯 Creating training manager")
+        self.logger.info(f"🎯 Training manager config date_range: {self.config.training.training_manager.date_range}")
+        self.logger.info(f"🎯 Training manager config symbols: {self.config.training.training_manager.symbols}")
+        
+        training_manager = TrainingManager(
+            config=self.config.training.training_manager,
+            model_manager=model_manager
+        )
+        
+        self.logger.info("✅ Training manager created")
+        return training_manager
 
 
 # Hydra handles argument parsing automatically

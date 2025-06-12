@@ -35,11 +35,6 @@ logging:
   level: "INFO"
   console_enabled: true
 
-# Data configuration  
-data:
-  provider: "databento"
-  data_dir: "dnb"
-
 # Evaluation configuration
 evaluation:
   enabled: true
