@@ -35,19 +35,6 @@ class TrainingState:
     start_timestamp: datetime = datetime.now()
 
 
-@dataclass
-class ComponentState:
-    """Simple state container for a callback system - no calculations, just component references"""
-    trainer: Optional[PPOTrainer] = None
-    environment: Optional[TradingEnvironment] = None
-    episode_manager: Optional[EpisodeManager] = None
-    training_state: Optional[TrainingState] = None
-    model_manager: Optional[ModelManager] = None
-    data_manager: Optional[DataManager] = None
-    event_data: Optional[Dict[str, Any]] = None  # For event-specific data
-    timestamp: datetime = datetime.now()
-
-
 class TrainingManager:
     """
     Responsibilities:
@@ -92,7 +79,7 @@ class TrainingManager:
         # Handle model loading if continuing training
         self.state.initial_model_metadata = self._load_model()
 
-        self.episode_manager = EpisodeManager(self.config, self.data_manager)
+        self.episode_manager = EpisodeManager(self.config, self.data_manager, self.callback_manager)
 
         # Initialize episode manager (it manages day/reset point loops internally)
         try:
@@ -103,13 +90,16 @@ class TrainingManager:
             return
 
         # Initialize callbacks
-        self._trigger_callback("training_start")
+        self.callback_manager.trigger_training_start({'training_state': self.state})
 
         try:
             while not self._should_terminate_training():
                 # 1. Request the next episode from the episode manager
                 episode_context = self.episode_manager.get_next_episode()
-                self._trigger_callback("episode_start", {"episode_context": episode_context})
+                self.callback_manager.trigger_episode_start({
+                    'episode_context': episode_context,
+                    'training_state': self.state
+                })
 
                 # 2. Setup environment with episode context
                 setup_success, initial_obs = self._setup_episode(episode_context)
@@ -119,13 +109,16 @@ class TrainingManager:
                     break
 
                 # 3. Collect rollout (trainer executes, no state tracking)
-                self._trigger_callback("rollout_start")
+                self.callback_manager.trigger_event("rollout_start", {'training_state': self.state})
                 rollout_result: RolloutResult = self.trainer.collect_rollout(
                     self.environment,
                     num_steps=self.config.rollout_steps,
                     initial_obs=initial_obs
                 )
-                self._trigger_callback("rollout_end", {"rollout_result": rollout_result})
+                self.callback_manager.trigger_event("rollout_end", {
+                    'rollout_result': rollout_result,
+                    'training_state': self.state
+                })
 
                 # 4. Update state (TrainingManager is a source of truth)
                 self.state.global_steps += rollout_result.steps_collected
@@ -133,7 +126,10 @@ class TrainingManager:
 
                 # 5. Update policy if the buffer is ready
                 if rollout_result.buffer_ready:
-                    self._trigger_callback("update_start", {"rollout_result": rollout_result})
+                    self.callback_manager.trigger_event("update_start", {
+                        'rollout_result': rollout_result,
+                        'training_state': self.state
+                    })
                     update_info: UpdateResult = self.trainer.update_policy()  # Pure execution
 
                     # Update state (single source of truth)
@@ -143,14 +139,20 @@ class TrainingManager:
                     self.episode_manager.on_update_completed(update_info)
 
                     # Trigger update callbacks (for intelligent management)
-                    self._trigger_callback("update_end", {"update_info": update_info})
+                    self.callback_manager.trigger_update_end({
+                        'update_info': update_info,
+                        'training_state': self.state
+                    })
 
                 # 6. Notify episode manager about episode completions
                 if rollout_result.episodes_completed > 0:
                     self.episode_manager.on_episodes_completed(count=rollout_result.episodes_completed)
 
                     # Trigger episode callbacks (for intelligent management)
-                    self._trigger_callback("episode_end", {"rollout_result": rollout_result})
+                    self.callback_manager.trigger_episode_end({
+                        'rollout_result': rollout_result,
+                        'training_state': self.state
+                    })
 
                 # 7. Update global cycle count from episode manager
                 self.state.global_cycles = self.episode_manager.get_completed_cycles()
@@ -206,38 +208,16 @@ class TrainingManager:
 
         return False
 
-    def _get_component_state(self, event_data: Optional[Dict[str, Any]] = None) -> ComponentState:
-        """Get the current component state for callbacks - no calculations, just references."""
-        return ComponentState(
-            trainer=self.trainer,
-            environment=self.environment,
-            episode_manager=self.episode_manager,
-            training_state=self.state,
-            model_manager=self.model_manager,
-            data_manager=self.data_manager,
-            event_data=event_data or {},
-            timestamp=datetime.now()
-        )
-
-    def _trigger_callback(self, event_name: str, event_data: Optional[Dict[str, Any]] = None) -> None:
-        """Simple callback trigger - just pass the component state."""
-        if self.callback_manager:
-            try:
-                state: ComponentState = self._get_component_state(event_data)
-                # For now, use a generic trigger method (will be replaced with a proper event system)
-                if hasattr(self.callback_manager, 'trigger'):
-                    self.callback_manager.trigger(event_name, state)
-                self.logger.debug(f"Triggered callback: {event_name}")
-            except Exception as e:
-                self.logger.warning(f"Failed to trigger callback {event_name}: {e}")
-
     def _finalize_training(self, termination_reason: Optional[str]):
         """Finalize training with proper cleanup and callbacks."""
         reason_str = termination_reason or "UNKNOWN"
         self.logger.info(f"🏁 Training finalized. Reason: {reason_str}")
 
-        # Minimal callback triggering for now
-        self._trigger_callback("training_end", {"reason": reason_str})
+        # Trigger training end callback
+        self.callback_manager.trigger_training_end({
+            'reason': reason_str,
+            'training_state': self.state
+        })
 
         # Log final stats from an authoritative source
         self.logger.info(
