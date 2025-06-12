@@ -15,6 +15,7 @@ from callbacks.core.base import BaseCallback
 if TYPE_CHECKING:
     from core.evaluation.evaluator import Evaluator
     from core.evaluation import EvaluationResult
+    from config.callbacks.callback_config import EvaluationCallbackConfig
 
 
 class EvaluationCallback(BaseCallback):
@@ -61,7 +62,7 @@ class EvaluationCallback(BaseCallback):
         self.evaluation_history: List["EvaluationResult"] = []
         
         self.logger.info(
-            f"🔍 EvaluationCallback initialized (update_freq={update_frequency})"
+            f"🔍 EvaluationCallback initialized (update_freq={self.update_frequency})"
         )
     
     def on_training_start(self, context: Dict[str, Any]) -> None:

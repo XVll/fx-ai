@@ -31,18 +31,18 @@ class ContinuousTrainingCallback(BaseCallback):
     
     def __init__(
         self,
-        model_manager: ModelManager,
         config: ContinuousCallbackConfig,
     ):
         """
         Initialize continuous training callback.
         
         Args:
-            model_manager: ModelManager instance for model storage
+            config: Configuration for continuous training callback
         """
         super().__init__(name="ContinuousTrainingCallback", enabled=config.enabled, config=config)
         
-        self.model_manager = model_manager
+        # Create ModelManager with config from callback config
+        self.model_manager = ModelManager(config.model_storage)
         self.metric_name = config.metric_name
         self.metric_mode = config.metric_mode
         self.checkpoint_frequency = config.checkpoint_frequency

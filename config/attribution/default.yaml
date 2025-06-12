@@ -1,6 +1,9 @@
 # @package attribution
 # Default attribution configuration for Captum feature analysis
 
+# Enable/disable attribution analysis
+enabled: true
+
 # Attribution methods to use
 methods:
   - "integrated_gradients"

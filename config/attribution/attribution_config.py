@@ -12,6 +12,9 @@ from typing import List, Dict, Optional
 class AttributionConfig:
     """Configuration for Captum feature attribution analysis."""
     
+    # Enable/disable attribution analysis
+    enabled: bool = True
+    
     # Attribution methods to use
     methods: List[str] = field(default_factory=lambda: ["integrated_gradients", "deep_lift"])
     

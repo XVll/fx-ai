@@ -74,8 +74,10 @@ class CaptumAttributionCallback(BaseCallback):
         self.cached_state = None
         self.cached_action = None
         
-        # Create output directory
-        self.output_dir = Path(self.config.output_dir)
+        # Create output directory using PathManager
+        from core.path_manager import get_path_manager
+        path_manager = get_path_manager()
+        self.output_dir = path_manager.experiment_analysis_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         self.logger.info(f"Initialized Captum attribution callback (enabled={enabled})")
