@@ -71,7 +71,6 @@ class CaptumAttributionCallbackConfig:
     analyze_every_n_episodes: Optional[int] = 10    # Episodes between analyses
     analyze_every_n_updates: Optional[int] = 5      # Updates between analyses  
     save_to_wandb: bool = True              # Log results to WandB
-    # NOTE: Paths now managed by PathManager - use PathManager.experiment_analysis_dir instead
 
 
 @dataclass

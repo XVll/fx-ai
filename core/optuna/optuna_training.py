@@ -78,6 +78,7 @@ def run_optuna_trial(
             config=config.callbacks,
             model_manager=model_manager,
             evaluator=evaluator,
+            attribution_config=config.attribution,
             optuna_trial=trial,  # Pass the trial for OptunaCallback
         )
         

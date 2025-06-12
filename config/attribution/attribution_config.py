@@ -12,9 +12,6 @@ from typing import List, Dict, Optional
 class AttributionConfig:
     """Configuration for Captum feature attribution analysis."""
     
-    # Enable/disable attribution analysis
-    enabled: bool = True
-    
     # Attribution methods to use
     methods: List[str] = field(default_factory=lambda: ["integrated_gradients", "deep_lift"])
     
@@ -60,4 +57,3 @@ class AttributionConfig:
     analyze_every_n_episodes: Optional[int] = 10     # Episodes between analyses (None to disable)
     analyze_every_n_updates: Optional[int] = 5       # Updates between analyses (None to disable)
     save_to_wandb: bool = True                        # Log results to WandB
-    # NOTE: Paths now managed by PathManager - use PathManager.experiment_analysis_dir instead

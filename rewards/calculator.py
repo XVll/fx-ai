@@ -49,7 +49,7 @@ class RewardSystem:
         logger: Optional[logging.Logger] = None,
     ):
         self.config = config.env.reward
-        self.callback_manager = callback_manager or CallbackManager(config=None)
+        self.callback_manager = callback_manager or CallbackManager()
         self.logger = logger or logging.getLogger(__name__)
 
         # Initialize components based on new config

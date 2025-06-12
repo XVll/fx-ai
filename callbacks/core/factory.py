@@ -40,7 +40,7 @@ def create_callbacks_from_config(
     config: CallbackConfig,
     model_manager: Optional[ModelManager] = None,
     evaluator: Optional["Evaluator"] = None,
-    attribution_config: Optional["AttributionConfig"] = None,
+    attribution_config: Optional[AttributionConfig] = None,
     optuna_trial: Optional[Any] = None,
 ) -> CallbackManager:
     """
@@ -117,24 +117,11 @@ def create_callbacks_from_config(
         ))
     
     # Captum attribution callback
-    if (config.captum_attribution.enabled and 
-        attribution_config is not None and 
-        attribution_config.enabled and
-        CAPTUM_CALLBACK_AVAILABLE and 
-        CaptumAttributionCallback is not None):
+    if config.captum_attribution.enabled:
         callbacks.append(CaptumAttributionCallback(
             config=attribution_config,
             enabled=config.captum_attribution.enabled
         ))
-    elif config.captum_attribution.enabled and not CAPTUM_CALLBACK_AVAILABLE:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning("Captum attribution callback requested but not available (Captum not installed)")
-    elif config.captum_attribution.enabled and attribution_config is None:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning("Captum attribution callback enabled but no attribution config provided")
-    
     # Optuna callback
     if config.optuna.enabled and optuna_trial is not None:
         callbacks.append(OptunaCallback(
@@ -143,9 +130,5 @@ def create_callbacks_from_config(
             report_interval=config.optuna.report_interval,
             use_best_value=config.optuna.use_best_value,
         ))
-    elif config.optuna.enabled and optuna_trial is None:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning("Optuna callback enabled but no trial provided")
-    
+
     return CallbackManager(callbacks)
