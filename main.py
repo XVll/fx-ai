@@ -105,9 +105,7 @@ class ApplicationBootstrap:
 
         self.callback_manager = create_callbacks_from_config(
             config=self.config.callbacks,
-            model_manager= model_manager,
-            attribution_config= self.config.attribution,
-            evaluator= Evaluator(self.config.evaluation)
+            attribution_config=self.config.attribution
         )
 
         self.data_manager = self._create_data_manager()

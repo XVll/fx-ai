@@ -7,6 +7,8 @@ dataclasses for better validation and IDE support.
 
 from dataclasses import dataclass, field
 from typing import List, Optional
+from config.model.model_storage_config import ModelStorageConfig
+from config.evaluation.evaluation_config import EvaluationConfig
 
 @dataclass
 class ContinuousCallbackConfig:
@@ -16,6 +18,7 @@ class ContinuousCallbackConfig:
     checkpoint_frequency: int = 100
     checkpoint_time_interval: float = 300.0  # 5 minutes
     save_initial_model: bool = True
+    model_storage: ModelStorageConfig = field(default_factory=ModelStorageConfig)
 
 
 @dataclass
@@ -25,6 +28,7 @@ class EvaluationCallbackConfig:
     update_frequency: Optional[int] = None  # Updates between evaluations
     episode_frequency: Optional[int] = 100  # Episodes between evaluations
     time_frequency_minutes: Optional[float] = None  # Minutes between evaluations
+    evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
 
 
 @dataclass

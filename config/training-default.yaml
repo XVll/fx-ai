@@ -13,6 +13,7 @@ defaults:
   - logging: default
   - callbacks: default
   - rewards: default
+  - attribution: default
   - _self_
 
 # Override specific training settings

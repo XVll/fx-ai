@@ -1,52 +1,48 @@
-# @package _global_
+# @package attribution
 # Default attribution configuration for Captum feature analysis
 
-attribution:
-  # Enable/disable attribution analysis
-  enabled: true
-  
-  # Attribution methods to use
-  methods:
-    - "integrated_gradients"
-    - "deep_lift"
-  
-  # Method-specific parameters
-  n_steps: 50                                 # Steps for integrated gradients
-  n_samples: 25                               # Samples for gradient SHAP
-  
-  # Analysis settings
-  analyze_branches: true                      # Analyze each transformer branch separately
-  analyze_fusion: true                        # Analyze attention fusion layer
-  analyze_actions: true                       # Analyze action head attributions
-  
-  # Baseline configuration
-  baseline_type: "zero"                       # Baseline type: zero, mean, random
-  
-  # Visualization settings
-  save_visualizations: true                   # Save attribution visualizations
-  # visualization_dir: "outputs/captum"        # NOTE: Paths now managed by PathManager
-  heatmap_threshold: 0.01                     # Minimum attribution value to show
-  
-  # Control which visualizations to create
-  create_branch_heatmap: true                 # Create branch comparison heatmap
-  create_timeseries_plot: true                # Create time series attribution plots
-  create_aggregated_plot: true                # Create aggregated importance plot
-  timeseries_branches:                        # Branches for timeseries plots
-    - "hf"
-    - "mf"
-    - "lf"
-    - "portfolio"
-    - "fusion"
-  
-  # Performance settings
-  batch_analysis: false                       # Analyze multiple samples at once
-  max_batch_size: 32                          # Maximum batch size for analysis
-  
-  # Feature importance aggregation
-  aggregate_features: true                    # Aggregate attributions by feature groups
-  
-  # Callback settings (scheduling and integration)
-  callback_enabled: true                      # Enable callback integration
-  analyze_every_n_episodes: 10               # Episodes between analyses (null to disable)
-  analyze_every_n_updates: 5                 # Updates between analyses (null to disable)
-  save_to_wandb: true                         # Log results to WandB
+# Attribution methods to use
+methods:
+  - "integrated_gradients"
+  - "deep_lift"
+
+# Method-specific parameters
+n_steps: 50                                 # Steps for integrated gradients
+n_samples: 25                               # Samples for gradient SHAP
+
+# Analysis settings
+analyze_branches: true                      # Analyze each transformer branch separately
+analyze_fusion: true                        # Analyze attention fusion layer
+analyze_actions: true                       # Analyze action head attributions
+
+# Baseline configuration
+baseline_type: "zero"                       # Baseline type: zero, mean, random
+
+# Visualization settings
+save_visualizations: true                   # Save attribution visualizations
+# visualization_dir: "outputs/captum"        # NOTE: Paths now managed by PathManager
+heatmap_threshold: 0.01                     # Minimum attribution value to show
+
+# Control which visualizations to create
+create_branch_heatmap: true                 # Create branch comparison heatmap
+create_timeseries_plot: true                # Create time series attribution plots
+create_aggregated_plot: true                # Create aggregated importance plot
+timeseries_branches:                        # Branches for timeseries plots
+  - "hf"
+  - "mf"
+  - "lf"
+  - "portfolio"
+  - "fusion"
+
+# Performance settings
+batch_analysis: false                       # Analyze multiple samples at once
+max_batch_size: 32                          # Maximum batch size for analysis
+
+# Feature importance aggregation
+aggregate_features: true                    # Aggregate attributions by feature groups
+
+# Callback settings (scheduling and integration)
+callback_enabled: true                      # Enable callback integration
+analyze_every_n_episodes: 10               # Episodes between analyses (null to disable)
+analyze_every_n_updates: 5                 # Updates between analyses (null to disable)
+save_to_wandb: true                         # Log results to WandB

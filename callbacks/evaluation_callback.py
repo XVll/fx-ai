@@ -35,30 +35,24 @@ class EvaluationCallback(BaseCallback):
     
     def __init__(
         self, 
-        evaluator: "Evaluator",
-        update_frequency: int = 50,
-        episode_frequency: Optional[int] = None,
-        time_frequency_minutes: Optional[float] = None,
-        enabled: bool = True,
-        config: Optional[Dict[str, Any]] = None
+        config: "EvaluationCallbackConfig"
     ):
         """
         Initialize evaluation callback.
         
         Args:
-            evaluator: Evaluator instance for model assessment
-            update_frequency: Number of updates between evaluations
-            episode_frequency: Number of episodes between evaluations (optional)
-            time_frequency_minutes: Minutes between evaluations (optional)
-            enabled: Whether callback is active
-            config: Additional configuration
+            config: Configuration for evaluation callback
         """
-        super().__init__(name="EvaluationCallback", enabled=enabled, config=config)
+        super().__init__(name="EvaluationCallback", enabled=config.enabled, config=config)
         
-        self.evaluator = evaluator
-        self.update_frequency = update_frequency
-        self.episode_frequency = episode_frequency
-        self.time_frequency_minutes = time_frequency_minutes
+        # Import here to avoid circular import
+        from core.evaluation.evaluator import Evaluator
+        
+        # Create Evaluator with config from callback config
+        self.evaluator = Evaluator(config.evaluation)
+        self.update_frequency = config.update_frequency
+        self.episode_frequency = config.episode_frequency
+        self.time_frequency_minutes = config.time_frequency_minutes
         
         # Simple state tracking
         self.last_evaluation_update = 0

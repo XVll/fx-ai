@@ -4,15 +4,10 @@ Callback factory for creating configured callbacks.
 Supports all callback implementations except old_callback_system.
 """
 
-from typing import Any, List, Optional, TYPE_CHECKING
+from typing import Any, List, Optional
 
 from config import CallbackConfig
-
-if TYPE_CHECKING:
-    from config.attribution.attribution_config import AttributionConfig
-    from core.evaluation import Evaluator
-    
-from core.model_manager import ModelManager
+from config.attribution.attribution_config import AttributionConfig
 from . import CallbackManager
 from ..continuous_training_callback import ContinuousTrainingCallback
 from ..evaluation_callback import EvaluationCallback
@@ -38,8 +33,6 @@ from ..optuna_callback import OptunaCallback
 
 def create_callbacks_from_config(
     config: CallbackConfig,
-    model_manager: Optional[ModelManager] = None,
-    evaluator: Optional["Evaluator"] = None,
     attribution_config: Optional[AttributionConfig] = None,
     optuna_trial: Optional[Any] = None,
 ) -> CallbackManager:
@@ -48,8 +41,6 @@ def create_callbacks_from_config(
     
     Args:
         config: Callback configuration
-        model_manager: ModelManager instance for continuous training
-        evaluator: Evaluator instance for evaluation callback
         attribution_config: Attribution configuration for feature analysis
         optuna_trial: Optuna trial object for hyperparameter optimization
         
@@ -60,23 +51,14 @@ def create_callbacks_from_config(
     
     # Continuous training callback
     if config.continuous.enabled:
-        if model_manager is None:
-            raise ValueError("ModelManager required for continuous training callback")
         callbacks.append(ContinuousTrainingCallback(
-            model_manager=model_manager,
             config=config.continuous
         ))
     
     # Evaluation callback
     if config.evaluation.enabled:
-        if evaluator is None:
-            raise ValueError("Evaluator required for evaluation callback")
         callbacks.append(EvaluationCallback(
-            evaluator=evaluator,
-            update_frequency=config.evaluation.update_frequency,
-            episode_frequency=config.evaluation.episode_frequency,
-            time_frequency_minutes=config.evaluation.time_frequency_minutes,
-            enabled=config.evaluation.enabled,
+            config=config.evaluation
         ))
     
     # PPO metrics callback
