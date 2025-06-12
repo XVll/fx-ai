@@ -112,9 +112,7 @@ class ApplicationBootstrap:
         self.callback_manager.register_trainer(trainer=self.trainer)
         self.callback_manager.register_environment(environment=self.environment)
 
-        # Register components for shutdown
-        # Todo : Instead of registering manually just iterate over all components and run register_shutdown.
-        self.training_manager.register_shutdown()
+        # Components automatically register for shutdown via IShutdownHandler metaclass
 
         self.logger.info("✅ All components initialized successfully")
 

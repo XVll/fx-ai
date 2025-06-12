@@ -16,8 +16,8 @@ import signal
 import threading
 import time
 import logging
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Callable, List, Set
+from abc import ABC, ABCMeta, abstractmethod
+from typing import Dict, Optional, Callable, List, Set
 from enum import Enum
 from dataclasses import dataclass, field
 from contextlib import contextmanager
@@ -51,14 +51,36 @@ class ComponentShutdownInfo:
     dependencies: Set[str] = field(default_factory=set)  # Components this depends on
 
 
-class IShutdownHandler(ABC):
+class AutoShutdownMeta(ABCMeta):
+    """Metaclass that automatically registers shutdown handlers after initialization."""
+    
+    def __call__(cls, *args, **kwargs):
+        instance = super().__call__(*args, **kwargs)
+        
+        # Auto-register if instance implements IShutdownHandler
+        if isinstance(instance, IShutdownHandler):
+            try:
+                instance.register_shutdown()
+                logger.debug(f"🔄 Auto-registered shutdown handler: {instance.__class__.__name__}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to auto-register shutdown handler {instance.__class__.__name__}: {e}")
+        
+        return instance
+
+
+class IShutdownHandler(ABC, metaclass=AutoShutdownMeta):
     """Interface for components that need graceful shutdown handling.
     
     Implementation Guide:
     - Components should implement this interface to participate in shutdown
-    - register_shutdown() must be called during component initialization to register with global shutdown manager
+    - register_shutdown() is automatically called after __init__ completes
     - shutdown() performs both state saving and resource cleanup
     - timeout is specified during registration, not in component
+    
+    Auto-Registration:
+    - Uses metaclass to automatically call register_shutdown() after __init__
+    - Eliminates manual registration calls and prevents forgotten registrations
+    - Handles registration errors gracefully with logging
     """
     
     @abstractmethod
@@ -66,8 +88,7 @@ class IShutdownHandler(ABC):
         """Register this component with the global shutdown manager.
         
         Uses get_global_shutdown_manager() to access the shutdown manager.
-        This method must be called during component initialization
-        to ensure proper shutdown handling.
+        This method is automatically called after component initialization.
         """
         ...
     
