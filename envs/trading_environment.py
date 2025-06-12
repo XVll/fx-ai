@@ -59,14 +59,13 @@ class TradingEnvironment(gym.Env):
             self,
             config: Config,
             data_manager: DataManager,
-            logger: Optional[logging.Logger] = None
     ):
         """Initialize the environment with minimal dependencies."""
         super().__init__()
 
         self.config = config
         self.data_manager = data_manager
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
 
         # Simulators (initialized when the environment is set up)
         self.market_simulator: Optional[MarketSimulator] = None

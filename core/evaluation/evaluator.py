@@ -14,7 +14,7 @@ import numpy as np
 import torch
 
 from config.evaluation.evaluation_config import EvaluationConfig
-from core.evaluation import EvaluationResult, EvaluationEpisodeResult
+from .types import EvaluationResult, EvaluationEpisodeResult
 from agent.ppo_agent import PPOTrainer
 from envs import TradingEnvironment
 from data.data_manager import DataManager

@@ -11,6 +11,9 @@ class LoggingConfig:
     """Logging configuration"""
 
     level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"  # Logging level
+    show_time = True
+    show_path = True
+    compact_errors = True
     console_enabled: bool = True                      # Console logging
     console_format: str = "simple"                    # Console format
     file_enabled: bool = True                         # File logging

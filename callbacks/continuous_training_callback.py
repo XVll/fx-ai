@@ -52,7 +52,7 @@ class ContinuousTrainingCallback(BaseCallback):
         # Best model tracking
         self.best_metric_value = float('-inf') if config.metric_mode == 'max' else float('inf')
         self.best_model_path: Optional[str] = None
-        self.best_evaluation_result: Optional[EvaluationResult] = None
+        self.best_evaluation_result: Optional[Any] = None
         
         # Checkpoint tracking
         self.last_checkpoint_update = 0
@@ -158,7 +158,7 @@ class ContinuousTrainingCallback(BaseCallback):
         # Save session summary to file
         self._save_session_summary(context, session_duration)
     
-    def _extract_metric_value(self, evaluation_result: EvaluationResult) -> Optional[float]:
+    def _extract_metric_value(self, evaluation_result: Any) -> Optional[float]:
         """Extract the target metric value from evaluation result."""
         try:
             # Try to get from evaluation metrics first
@@ -218,7 +218,7 @@ class ContinuousTrainingCallback(BaseCallback):
     def _save_best_model(
         self, 
         context: Dict[str, Any], 
-        evaluation_result: EvaluationResult, 
+        evaluation_result: Any, 
         metric_value: float
     ) -> None:
         """Save a new best model."""
@@ -360,7 +360,7 @@ class ContinuousTrainingCallback(BaseCallback):
         self, 
         context: Dict[str, Any], 
         model_type: str,
-        evaluation_result: Optional[EvaluationResult] = None
+        evaluation_result: Optional[Any] = None
     ) -> Dict[str, Any]:
         """Create comprehensive metadata for saved models."""
         metadata = {

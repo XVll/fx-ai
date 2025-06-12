@@ -13,7 +13,7 @@ import json
 
 from config.evaluation.evaluation_config import EvaluationConfig
 from core.evaluation.evaluator import Evaluator
-from core.evaluation import EvaluationResult
+from .types import EvaluationResult
 from core.model_manager import ModelManager
 from agent.ppo_agent import PPOTrainer
 from envs import TradingEnvironment

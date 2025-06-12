@@ -6,6 +6,9 @@ import numpy as np
 import torch
 import hydra
 from hydra.core.hydra_config import HydraConfig
+
+from core.evaluation import Evaluator
+from core.model_manager import ModelManager
 from data.data_manager import DataManager
 from data.scanner.momentum_scanner import MomentumScanner
 from data import DatabentoFileProvider
@@ -21,7 +24,6 @@ from core.shutdown import (
 from config.config import Config, register_configs
 from training.training_manager import TrainingManager, TrainingMode
 from core.evaluation.benchmark_runner import BenchmarkRunner
-from config.evaluation.evaluation_config import EvaluationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -65,19 +67,12 @@ class ApplicationBootstrap:
             level=log_level,
             show_time=self.config.logging.show_time,
             show_path=self.config.logging.show_path,
-            compact_errors=True
+            compact_errors=self.config.logging.compact_errors,
             # Todo : add /logs output directory support (self.output_path / "logs")
         )
 
-    def _create_training_manager(self) -> TrainingManager:
+    def _create_training_manager(self, model_manager:ModelManager) -> TrainingManager:
         """Create and configure a training manager with config."""
-
-        # Create a model manager with storage configuration
-        # Use Hydra output directory as base directory for models
-        model_manager = ModelManager(
-            config=self.config.model_storage,
-            base_dir=self.output_path
-        )
 
         training_manager = TrainingManager(
             config=self.config.training.training_manager,
@@ -96,18 +91,18 @@ class ApplicationBootstrap:
         self.logger.info("🔧 Initializing application components")
 
         self.device = self._create_device()
+        model_manager = ModelManager(self.config.model_storage)
 
         self.callback_manager = create_callbacks_from_config(
             config=self.config.callbacks,
-            trainer=None,  # Will be set after creation
-            environment=None,  # Will be set after creation
-            shutdown_manager=self.shutdown_manager
+            model_manager= model_manager,
+            evaluator= Evaluator(self.config.evaluation)
         )
 
         self.data_manager = self._create_data_manager()
         self.environment = self._create_environment()
         self.trainer = self._create_trainer()
-        self.training_manager = self._create_training_manager()
+        self.training_manager = self._create_training_manager(model_manager)
 
         self.callback_manager.register_trainer(trainer=self.trainer)
         self.callback_manager.register_environment(environment=self.environment)
@@ -157,7 +152,6 @@ class ApplicationBootstrap:
         environment = TradingEnvironment(
             config=self.config,
             data_manager=self.data_manager,
-            callback_manager=self.callback_manager,
         )
 
         self.logger.info("✅ Trading environment created")
