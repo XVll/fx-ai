@@ -31,9 +31,11 @@ from captum.attr import (
 from captum.attr._utils.visualization import visualize_image_attr_multiple
 
 
+# Legacy AttributionConfig for backward compatibility with existing code
+# This will be removed once all code is updated to use Hydra configs directly
 @dataclass
 class AttributionConfig:
-    """Configuration for Captum attribution methods."""
+    """Legacy configuration for Captum attribution methods."""
     
     # Attribution methods to use
     methods: List[str] = None  # ["integrated_gradients", "deep_lift", "gradient_shap"]

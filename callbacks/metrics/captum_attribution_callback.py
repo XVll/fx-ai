@@ -1,173 +1,170 @@
+"""
+Captum Feature Attribution Callback for the new callback system.
+
+Integrates Captum attribution analysis into the training loop with proper
+lifecycle management and context-based component access.
+"""
+
 import torch
 import numpy as np
 import logging
-import json
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from datetime import datetime
+import json
 
-from callbacks.old_callback_system.callbacks import V1BaseCallback
-from core.attribution import (
-    CaptumAttributionAnalyzer,
-    AttributionConfig,
-)
+from callbacks.core.base import BaseCallback
+from config.captum.captum_config import CaptumConfig
+
+# Import feature registry for feature names
+from feature.feature_registry import FeatureRegistry
+
+# Import Captum components with graceful fallback
+try:
+    from core.attribution import (
+        CaptumAttributionAnalyzer,
+        MultiBranchTransformerWrapper,
+        CAPTUM_AVAILABLE,
+    )
+except ImportError:
+    CAPTUM_AVAILABLE = False
+    CaptumAttributionAnalyzer = None
+    MultiBranchTransformerWrapper = None
+
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 
-class CaptumCallbackV1(V1BaseCallback):
-    """Callback for feature attribution analysis using Captum during training.
+class CaptumAttributionCallback(BaseCallback):
+    """
+    Feature attribution analysis callback using Captum.
     
-    This callback integrates Captum attribution analysis into the training loop,
-    providing insights into feature importance for both training and evaluation.
+    Provides insights into feature importance for both training and evaluation
+    using state-of-the-art attribution methods.
     """
     
-    def __init__(
-        self,
-        config: AttributionConfig,
-        analyze_every_n_episodes: int = 10,
-        analyze_every_n_updates: int = 5,
-        save_to_wandb: bool = True,
-        save_to_dashboard: bool = False,
-        feature_names: Optional[Dict[str, List[str]]] = None,
-        output_dir: str = "outputs/captum",
-        enabled: bool = True,
-    ):
-        super().__init__(enabled=enabled)
-        self.config = config
-        self.analyze_every_n_episodes = analyze_every_n_episodes
-        self.analyze_every_n_updates = analyze_every_n_updates
-        self.save_to_wandb = save_to_wandb
-        self.save_to_dashboard = save_to_dashboard
-        self.feature_names = feature_names
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, config: CaptumConfig, enabled: bool = True):
+        """
+        Initialize Captum attribution callback.
         
-        self.logger = logging.getLogger(__name__)
-        self.analyzer = None
-        self.wandb_run = None
+        Args:
+            config: Captum configuration with all settings
+            enabled: Whether callback is active
+        """
+        super().__init__(name="CaptumAttribution", enabled=enabled and config.enabled, config=config)
         
-        # Track analysis history
+        # Check if Captum is available
+        if not CAPTUM_AVAILABLE:
+            self.logger.warning("Captum not available, disabling attribution analysis")
+            self.enabled = False
+            return
+        
+        self.config: CaptumConfig = config
+        self.analyzer: Optional[CaptumAttributionAnalyzer] = None
+        
+        # Analysis tracking
         self.analysis_count = 0
         self.episode_analyses = []
         self.update_analyses = []
-        
-        # Performance tracking
         self.analysis_times = []
         
         # State caching to avoid env.reset() issues
         self.cached_state = None
         self.cached_action = None
         
-    def on_training_start(self, config: Dict[str, Any]):
-        """Initialize Captum analyzer with the model."""
+        # Create output directory
+        self.output_dir = Path(self.config.callback.output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.logger.info(f"Initialized Captum attribution callback (enabled={enabled})")
+    
+    def on_training_start(self, context: Dict[str, Any]) -> None:
+        """Initialize Captum analyzer with model from context."""
+        if not self.enabled:
+            return
+            
         self.logger.info("🔍 Initializing Captum attribution analyzer")
         
-        # Store trainer reference if available
-        self.trainer = config.get("trainer")
-        
-        # Get model from config
-        model = config.get("model")
+        # Get model from context
+        model = context.get("model")
         if model is None:
-            self.logger.error("No model found in training config, disabling Captum callback")
+            self.logger.error("No model found in training context, disabling Captum")
             self.enabled = False
             return
         
-        # Create analyzer
-        self.analyzer = CaptumAttributionAnalyzer(
-            model=model,
-            config=self.config,
-            feature_names=self.feature_names,
-            logger=self.logger,
-        )
+        # Store component references from context
+        self.trainer = context.get("trainer")
+        self.environment = context.get("environment")
+        self.data_manager = context.get("data_manager")
         
-        # Get WandB run if available
-        if self.save_to_wandb:
-            try:
-                import wandb
-                if wandb.run is not None:
-                    self.wandb_run = wandb.run
-                    self.logger.info("📁 WandB integration enabled for Captum")
-            except ImportError:
-                self.logger.warning("WandB not available, skipping WandB logging")
-                self.save_to_wandb = False
+        # Get feature names from registry
+        feature_names = self._get_feature_names_from_registry()
+        
+        # Create attribution analyzer with new config format
+        try:
+            # Convert Hydra config to old format for compatibility
+            old_config = self._convert_hydra_config_to_old_format()
+            
+            self.analyzer = CaptumAttributionAnalyzer(
+                model=model,
+                config=old_config,
+                feature_names=feature_names,
+                logger=self.logger,
+            )
+            
+            self.logger.info("✅ Captum attribution analyzer initialized successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Captum analyzer: {e}")
+            self.enabled = False
+            return
     
-    def on_episode_end(self, episode_num: int, episode_data: Dict[str, Any]):
+    def on_episode_end(self, context: Dict[str, Any]) -> None:
         """Analyze attributions at episode end if scheduled."""
-        if self.analyze_every_n_episodes is None:
-            self.logger.debug(f"Episode {episode_num} completed - episode analysis disabled")
+        if not self.enabled or not self.analyzer:
             return
             
-        self.logger.info(f"Episode {episode_num} completed, checking for Captum analysis (every {self.analyze_every_n_episodes})")
-        if episode_num % self.analyze_every_n_episodes == 0:
+        episode_num = context.get("episode_num", 0)
+        
+        if (self.config.callback.analyze_every_n_episodes is not None and 
+            episode_num % self.config.callback.analyze_every_n_episodes == 0):
             self.logger.info(f"Triggering Captum analysis for episode {episode_num}")
-            self._perform_analysis_from_episode_data(episode_num, episode_data)
-        else:
-            self.logger.info(f"Skipping Captum analysis for episode {episode_num}")
+            self._perform_analysis(context, "episode", episode_num)
     
-    def on_update_end(self, update_num: int, update_metrics: Dict[str, Any]) -> None:
-        """Analyze attributions after PPO update if scheduled."""
-        if self.analyze_every_n_updates is None:
-            self.logger.debug(f"Update {update_num} completed - update analysis disabled")
+    def on_update_end(self, context: Dict[str, Any]) -> None:
+        """Analyze attributions after PPO update if scheduled.""" 
+        if not self.enabled or not self.analyzer:
             return
             
-        self.logger.info(f"Update {update_num} completed, checking for Captum analysis (every {self.analyze_every_n_updates})")
-        if update_num % self.analyze_every_n_updates == 0:
+        update_num = context.get("update_num", 0)
+        
+        if (self.config.callback.analyze_every_n_updates is not None and
+            update_num % self.config.callback.analyze_every_n_updates == 0):
             self.logger.info(f"Triggering Captum analysis for update {update_num}")
-            self._perform_analysis_from_update_data(update_num, update_metrics)
-        else:
-            self.logger.info(f"Skipping Captum analysis for update {update_num}")
+            self._perform_analysis(context, "update", update_num)
     
-    def _perform_analysis_from_episode_data(self, episode_num: int, episode_data: Dict[str, Any]):
-        """Perform attribution analysis from episode data (new callback system)."""
-        try:
-            # Try to get trainer from episode data or use stored reference
-            trainer = episode_data.get('trainer') or getattr(self, 'trainer', None)
-            if trainer is None:
-                self.logger.warning("No trainer available for Captum analysis")
-                return
-            
-            self._perform_analysis(trainer, "episode", episode_num)
-            
-        except Exception as e:
-            self.logger.error(f"Error in episode-based Captum analysis: {str(e)}")
-            import traceback
-            traceback.print_exc()
-    
-    def _perform_analysis_from_update_data(self, update_num: int, update_metrics: Dict[str, Any]):
-        """Perform attribution analysis from update data (new callback system)."""
-        try:
-            # Try to get trainer from update data or use stored reference
-            trainer = update_metrics.get('trainer') or getattr(self, 'trainer', None)
-            if trainer is None:
-                self.logger.warning("No trainer available for Captum analysis")
-                return
-            
-            self._perform_analysis(trainer, "update", update_num)
-            
-        except Exception as e:
-            self.logger.error(f"Error in update-based Captum analysis: {str(e)}")
-            import traceback
-            traceback.print_exc()
-
-    def _perform_analysis(self, trainer, trigger: str, count: int):
+    def _perform_analysis(self, context: Dict[str, Any], trigger: str, count: int) -> None:
         """Perform attribution analysis on current model state."""
         try:
             start_time = datetime.now()
             
-            # Get a sample from the environment
-            result = self._get_sample_state(trainer)
+            # Get sample state from context
+            result = self._get_sample_state(context)
             if result is None:
                 return
-            
+                
             state_dict, target_action = result
             if state_dict is None:
                 return
                 
-            # Log what we're analyzing
+            # Log analysis details
             state_shapes = {k: v.shape for k, v in state_dict.items()}
             if target_action is not None:
                 self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count}, target_action: {target_action}, state_shapes: {state_shapes})")
             else:
-                self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count}, no target action - will use model predictions, state_shapes: {state_shapes})")
+                self.logger.info(f"🔍 Running Captum analysis (trigger: {trigger} {count}, no target action, state_shapes: {state_shapes})")
             
             # Run attribution analysis with error handling
             try:
@@ -197,14 +194,13 @@ class CaptumCallbackV1(V1BaseCallback):
             else:
                 self.update_analyses.append(results)
             
-            # Log to WandB
-            if self.save_to_wandb and self.wandb_run:
+            # Log to WandB if enabled
+            if self.config.callback.save_to_wandb and wandb is not None:
                 self._log_to_wandb(results, trigger, count)
-            
             
             # Save periodic reports
             if self.analysis_count % 20 == 0:
-                self._save_analysis_report(trainer)
+                self._save_analysis_report(context)
             
             self.logger.info(
                 f"✅ Captum analysis complete in {analysis_time:.2f}s "
@@ -215,26 +211,26 @@ class CaptumCallbackV1(V1BaseCallback):
             self.logger.error(f"Error in Captum analysis: {str(e)}")
             import traceback
             self.logger.debug(f"Full traceback:\n{traceback.format_exc()}")
-            # Don't re-raise, just log and continue
     
-    def _get_sample_state(self, trainer) -> Optional[Tuple[Dict[str, torch.Tensor], Optional[int]]]:
-        """Get a sample state and action from buffer for Captum analysis.
-        
-        Returns:
-            Tuple of (state_dict, target_action) or (None, None) if unavailable
-        """
+    def _get_sample_state(self, context: Dict[str, Any]) -> Optional[Tuple[Dict[str, torch.Tensor], Optional[int]]]:
+        """Get sample state and action from buffer for analysis."""
         try:
+            # Get trainer from context
+            trainer = context.get("trainer") or self.trainer
+            if trainer is None:
+                self.logger.warning("No trainer available for Captum analysis")
+                return None, None
+            
             # Strategy 1: Use prepared data from buffer (most reliable)
             if hasattr(trainer, "buffer") and hasattr(trainer.buffer, "states") and trainer.buffer.states is not None:
                 batch_size = trainer.buffer.states["hf"].shape[0]
                 if batch_size > 0:
-                    # Get a sample from the middle of the batch (more representative than edges)
+                    # Get sample from middle of batch
                     idx = min(batch_size // 2, batch_size - 1)
                     
                     state_dict = {}
                     for key in ["hf", "mf", "lf", "portfolio"]:
                         if key in trainer.buffer.states:
-                            # Get single sample with proper batch dimension
                             tensor = trainer.buffer.states[key][idx:idx+1].to(trainer.device)
                             state_dict[key] = tensor
                     
@@ -243,16 +239,14 @@ class CaptumCallbackV1(V1BaseCallback):
                         self.logger.warning(f"Incomplete state dict: {list(state_dict.keys())}")
                         return None, None
                     
-                    # Get the corresponding action
+                    # Get corresponding action
                     target_action = None
                     if hasattr(trainer.buffer, "actions") and trainer.buffer.actions is not None:
                         if idx < trainer.buffer.actions.shape[0]:
                             action_tensor = trainer.buffer.actions[idx]
                             target_action = self._convert_action_to_linear_index(action_tensor)
                             if target_action is not None:
-                                self.logger.debug(f"Extracted action from prepared buffer: action_tensor={action_tensor}, linear_idx={target_action}")
-                            else:
-                                self.logger.warning(f"Failed to convert action tensor: {action_tensor} (shape: {action_tensor.shape if hasattr(action_tensor, 'shape') else 'N/A'})")
+                                self.logger.debug(f"Extracted action: tensor={action_tensor}, linear_idx={target_action}")
                     
                     # Cache for future use
                     self.cached_state = state_dict
@@ -263,9 +257,9 @@ class CaptumCallbackV1(V1BaseCallback):
             elif hasattr(trainer, "buffer") and hasattr(trainer.buffer, "buffer") and len(trainer.buffer.buffer) > 0:
                 self.logger.debug(f"Using raw buffer with {len(trainer.buffer.buffer)} experiences")
                 
-                # Try multiple recent experiences to find a valid one
+                # Try multiple recent experiences
                 for i in range(min(5, len(trainer.buffer.buffer))):
-                    experience_idx = -(i + 1)  # -1, -2, -3, -4, -5
+                    experience_idx = -(i + 1)
                     experience = trainer.buffer.buffer[experience_idx]
                     
                     state_dict = self._extract_state_from_experience(experience, trainer.device)
@@ -273,17 +267,14 @@ class CaptumCallbackV1(V1BaseCallback):
                     
                     if state_dict and len(state_dict) >= 4:
                         self.logger.debug(f"Successfully extracted state from experience {experience_idx}")
-                        # Cache for future use
                         self.cached_state = state_dict
                         self.cached_action = target_action
                         return state_dict, target_action
-                    else:
-                        self.logger.debug(f"Experience {experience_idx} has incomplete state: {list(state_dict.keys()) if state_dict else 'None'}")
             
             # Strategy 3: Use cached state
             elif self.cached_state is not None:
                 self.logger.debug("Using cached state for Captum analysis")
-                return self.cached_state, getattr(self, 'cached_action', None)
+                return self.cached_state, self.cached_action
             
             # No data available
             self.logger.warning("No valid state data available for Captum analysis")
@@ -291,16 +282,13 @@ class CaptumCallbackV1(V1BaseCallback):
                 
         except Exception as e:
             self.logger.error(f"Error getting sample state: {str(e)}")
-            import traceback
-            self.logger.debug(traceback.format_exc())
             return None, None
     
     def _extract_state_from_experience(self, experience: Dict, device: torch.device) -> Dict[str, torch.Tensor]:
-        """Extract and format state from a buffer experience."""
+        """Extract and format state from buffer experience."""
         state_dict = {}
         
         if "state" not in experience:
-            self.logger.debug("No 'state' key in experience")
             return state_dict
             
         state_data = experience["state"]
@@ -316,123 +304,33 @@ class CaptumCallbackV1(V1BaseCallback):
                         tensor = torch.as_tensor(state_data[key], dtype=torch.float32).to(device)
                     
                     # Ensure proper dimensions [batch, seq_len, feat_dim]
-                    if tensor.dim() == 1:  # [feat_dim] -> [1, 1, feat_dim]
+                    if tensor.dim() == 1:
                         tensor = tensor.unsqueeze(0).unsqueeze(0)
-                    elif tensor.dim() == 2:  # [seq_len, feat_dim] -> [1, seq_len, feat_dim]
+                    elif tensor.dim() == 2:
                         tensor = tensor.unsqueeze(0)
                     elif tensor.dim() > 3:
-                        self.logger.warning(f"Unexpected tensor dimension for {key}: {tensor.shape}")
                         continue
                     
-                    # Basic sanity check
                     if tensor.numel() == 0:
-                        self.logger.warning(f"Empty tensor for {key}")
                         continue
                         
                     state_dict[key] = tensor
                     
                 except Exception as e:
                     self.logger.warning(f"Error processing {key} in experience state: {e}")
-            else:
-                self.logger.debug(f"Missing {key} in state data")
-                
+                    
         return state_dict
     
     def _extract_action_from_experience(self, experience: Dict) -> Optional[int]:
-        """Extract action from a buffer experience and convert to linear index."""
+        """Extract action from buffer experience and convert to linear index."""
         if "action" not in experience:
-            self.logger.debug("No 'action' key in experience")
             return None
             
         action = experience["action"]
-        linear_action = self._convert_action_to_linear_index(action)
-        
-        if linear_action is not None:
-            self.logger.debug(f"Converted action {action} -> linear index {linear_action}")
-        else:
-            self.logger.warning(f"Failed to convert action from experience: {action} (type: {type(action)})")
-            
-        return linear_action
-    
-    @staticmethod
-    def test_action_conversion():
-        """Test the action conversion logic with various input formats."""
-        import torch
-        import numpy as np
-        from core.attribution import AttributionConfig
-        
-        callback = CaptumCallbackV1(
-            config=AttributionConfig(),
-            enabled=False
-        )
-        
-        # Test cases: (input, expected_output)
-        test_cases = [
-            # Tensor formats
-            (torch.tensor([0, 0]), 0),  # HOLD, 25%
-            (torch.tensor([1, 1]), 5),  # BUY, 50%
-            (torch.tensor([2, 3]), 11), # SELL, 100%
-            (torch.tensor([[1, 2]]), 6), # BUY, 75% (batched)
-            (torch.tensor([7]), 7),      # Linear index
-            
-            # NumPy formats
-            (np.array([0, 1]), 1),       # HOLD, 50%
-            (np.array([2, 2]), 10),      # SELL, 75%
-            (np.array([[1, 0]]), 4),     # BUY, 25% (batched)
-            (np.array([9]), 9),          # Linear index
-            
-            # List/tuple formats
-            ([0, 2], 2),                 # HOLD, 75%
-            ((1, 3), 7),                 # BUY, 100%
-            
-            # Scalar formats
-            (5, 5),                      # Linear index
-            (11, 11),                    # Max linear index
-        ]
-        
-        print("Testing action conversion logic:")
-        for i, (input_action, expected) in enumerate(test_cases):
-            result = callback._convert_action_to_linear_index(input_action)
-            status = "✓" if result == expected else "✗"
-            print(f"  {status} Test {i+1}: {input_action} -> {result} (expected {expected})")
-            
-        # Test invalid cases
-        invalid_cases = [
-            torch.tensor([3, 0]),  # Invalid action type
-            torch.tensor([1, 4]),  # Invalid position size
-            torch.tensor([12]),    # Invalid linear index
-            "invalid",             # Invalid type
-        ]
-        
-        print("\nTesting invalid inputs:")
-        for i, invalid_input in enumerate(invalid_cases):
-            result = callback._convert_action_to_linear_index(invalid_input)
-            status = "✓" if result is None else "✗"
-            print(f"  {status} Invalid {i+1}: {invalid_input} -> {result} (expected None)")
-        
-        print("\nAction space mapping (for reference):")
-        for action_type in range(3):
-            for position_size in range(4):
-                linear_idx = action_type * 4 + position_size
-                action_names = ["HOLD", "BUY", "SELL"]
-                size_names = ["25%", "50%", "75%", "100%"]
-                print(f"  [{action_type}, {position_size}] -> {linear_idx} ({action_names[action_type]}, {size_names[position_size]})")
+        return self._convert_action_to_linear_index(action)
     
     def _convert_action_to_linear_index(self, action: Any) -> Optional[int]:
-        """Convert various action formats to linear index (0-11).
-        
-        The trading environment uses MultiDiscrete([3, 4]) action space:
-        - 3 action types: HOLD=0, BUY=1, SELL=2
-        - 4 position sizes: 25%=0, 50%=1, 75%=2, 100%=3
-        - Linear index = action_type * 4 + position_size
-        
-        Handles all formats found in the buffer:
-        - Tensor with shape [2] -> [action_type, position_size]
-        - Tensor with shape [1, 2] -> batched format
-        - NumPy array with same shapes
-        - List/tuple with 2 elements
-        - Single integer (already linear)
-        """
+        """Convert various action formats to linear index (0-11)."""
         try:
             # Convert to numpy for consistent handling
             if isinstance(action, torch.Tensor):
@@ -444,13 +342,11 @@ class CaptumCallbackV1(V1BaseCallback):
             elif isinstance(action, (int, float)):
                 # Already linear index
                 linear_idx = int(action)
-                if 0 <= linear_idx <= 11:  # Valid range check
+                if 0 <= linear_idx <= 11:
                     return linear_idx
                 else:
-                    self.logger.warning(f"Linear action index {linear_idx} out of range [0, 11]")
                     return None
             else:
-                self.logger.warning(f"Unsupported action type: {type(action)}")
                 return None
             
             # Handle different array shapes
@@ -460,70 +356,87 @@ class CaptumCallbackV1(V1BaseCallback):
                 if 0 <= linear_idx <= 11:
                     return linear_idx
                 else:
-                    self.logger.warning(f"Linear action index {linear_idx} out of range [0, 11]")
                     return None
                     
             elif action_np.size == 2:
-                # Two elements - could be flat [action_type, position_size] or [batch=1, linear_idx]
+                # Two elements - [action_type, position_size]
                 if action_np.ndim == 1:
-                    # [action_type, position_size]
                     action_type, position_size = int(action_np[0]), int(action_np[1])
                 else:
-                    # Could be [[action_type, position_size]] or [batch, linear_idx]
                     action_flat = action_np.flatten()
                     if len(action_flat) == 2:
                         action_type, position_size = int(action_flat[0]), int(action_flat[1])
                     else:
-                        self.logger.warning(f"Unexpected action shape: {action_np.shape}")
                         return None
                 
                 # Validate ranges
-                if not (0 <= action_type <= 2):
-                    self.logger.warning(f"Action type {action_type} out of range [0, 2]")
-                    return None
-                if not (0 <= position_size <= 3):
-                    self.logger.warning(f"Position size {position_size} out of range [0, 3]")
+                if not (0 <= action_type <= 2) or not (0 <= position_size <= 3):
                     return None
                 
                 # Convert to linear index
-                linear_idx = action_type * 4 + position_size
-                return linear_idx
+                return action_type * 4 + position_size
                 
-            elif action_np.shape[-1] == 2:  # Batched format [..., 2]
-                # Take the first sample if batched
+            elif action_np.shape[-1] == 2:  # Batched format
+                # Take first sample if batched
                 if action_np.ndim == 2:
                     action_type, position_size = int(action_np[0, 0]), int(action_np[0, 1])
                 else:
-                    # Flatten and take first two
                     action_flat = action_np.flatten()
                     action_type, position_size = int(action_flat[0]), int(action_flat[1])
                 
                 # Validate ranges
-                if not (0 <= action_type <= 2):
-                    self.logger.warning(f"Action type {action_type} out of range [0, 2]")
-                    return None
-                if not (0 <= position_size <= 3):
-                    self.logger.warning(f"Position size {position_size} out of range [0, 3]")
+                if not (0 <= action_type <= 2) or not (0 <= position_size <= 3):
                     return None
                 
                 # Convert to linear index
-                linear_idx = action_type * 4 + position_size
-                return linear_idx
+                return action_type * 4 + position_size
                 
             else:
-                self.logger.warning(f"Unexpected action shape: {action_np.shape}, size: {action_np.size}")
                 return None
                 
         except Exception as e:
             self.logger.error(f"Error converting action to linear index: {e}")
-            self.logger.debug(f"Action details: type={type(action)}, value={action}")
             return None
     
-    def _log_to_wandb(self, results: Dict, trigger: str, count: int):
+    def _get_feature_names_from_registry(self) -> Dict[str, List[str]]:
+        """Get feature names from FeatureRegistry."""
+        return {
+            "hf": FeatureRegistry.get_feature_names("hf"),
+            "mf": FeatureRegistry.get_feature_names("mf"), 
+            "lf": FeatureRegistry.get_feature_names("lf"),
+            "portfolio": FeatureRegistry.get_feature_names("portfolio"),
+        }
+    
+    def _convert_hydra_config_to_old_format(self):
+        """Convert Hydra config to old AttributionConfig format for compatibility."""
+        # Import the old config format
+        from core.attribution.captum_attribution import AttributionConfig
+        
+        return AttributionConfig(
+            methods=self.config.methods,
+            n_steps=self.config.n_steps,
+            n_samples=self.config.n_samples,
+            analyze_branches=self.config.analyze_branches,
+            analyze_fusion=self.config.analyze_fusion,
+            analyze_actions=self.config.analyze_actions,
+            baseline_type=self.config.baseline_type,
+            save_visualizations=self.config.save_visualizations,
+            visualization_dir=self.config.visualization_dir,
+            heatmap_threshold=self.config.heatmap_threshold,
+            create_branch_heatmap=self.config.create_branch_heatmap,
+            create_timeseries_plot=self.config.create_timeseries_plot,
+            create_aggregated_plot=self.config.create_aggregated_plot,
+            timeseries_branches=self.config.timeseries_branches,
+            batch_analysis=self.config.batch_analysis,
+            max_batch_size=self.config.max_batch_size,
+        )
+    
+    def _log_to_wandb(self, results: Dict, trigger: str, count: int) -> None:
         """Log attribution results to WandB."""
-        try:
-            import wandb
+        if wandb is None or wandb.run is None:
+            return
             
+        try:
             # Log scalar metrics
             log_dict = {
                 f"captum/{trigger}_count": count,
@@ -541,27 +454,24 @@ class CaptumCallbackV1(V1BaseCallback):
                 for method_name, branches in results["top_attributions"].items():
                     for branch, features in branches.items():
                         if features:
-                            # Create table data
                             table_data = []
                             for feat in features:
                                 table_data.append([
                                     feat["name"],
-                                    feat["index"],
+                                    feat["index"], 
                                     feat["importance"],
                                 ])
                             
-                            # Log as WandB table
                             table = wandb.Table(
                                 columns=["Feature", "Index", "Importance"],
                                 data=table_data,
                             )
                             log_dict[f"captum/{method_name}/{branch}_top_features"] = table
             
-            # Log visualizations with better naming
+            # Log visualizations
             if "visualizations" in results:
                 for viz_path in results["visualizations"]:
                     try:
-                        # Parse visualization type from filename
                         filename = Path(viz_path).stem
                         if "branches" in filename:
                             viz_type = "branch_heatmap"
@@ -577,35 +487,27 @@ class CaptumCallbackV1(V1BaseCallback):
                         else:
                             viz_type = "unknown"
                         
-                        # Extract method name if present
                         method_part = filename.split('_')[0]
                         if method_part in ['saliency', 'deep', 'integrated', 'gradient']:
                             log_key = f"captum/{method_part}/{viz_type}"
                         else:
                             log_key = f"captum/{viz_type}"
                             
-                        # Upload image to WandB
                         log_dict[log_key] = wandb.Image(viz_path)
-                        self.logger.debug(f"Uploaded {viz_type} to W&B: {log_key}")
+                        
                     except Exception as e:
                         self.logger.error(f"Error uploading visualization {viz_path}: {str(e)}")
-                
-                if results.get('visualizations'):
-                    self.logger.info(f"Uploaded {len(results['visualizations'])} visualizations to W&B")
-                else:
-                    self.logger.debug("No visualizations to upload to W&B")
             
-            # Log predictions if available
+            # Log predictions
             if "predictions" in results:
                 if "action_probs" in results["predictions"]:
                     probs = results["predictions"]["action_probs"]
                     if isinstance(probs, np.ndarray):
-                        for i, p in enumerate(probs.flatten()[:10]):  # First 10 actions
+                        for i, p in enumerate(probs.flatten()[:10]):
                             log_dict[f"captum/action_prob_{i}"] = p
                 
                 if "value" in results["predictions"]:
                     value = results["predictions"]["value"]
-                    # Handle numpy arrays properly
                     if isinstance(value, np.ndarray):
                         value = value.item() if value.size == 1 else float(value.flatten()[0])
                     log_dict["captum/value_estimate"] = float(value)
@@ -622,24 +524,31 @@ class CaptumCallbackV1(V1BaseCallback):
         except Exception as e:
             self.logger.error(f"Error logging to WandB: {str(e)}")
     
-    def _save_analysis_report(self, trainer):
+    def _save_analysis_report(self, context: Dict[str, Any]) -> None:
         """Save periodic analysis report."""
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             report_path = self.output_dir / f"captum_report_{timestamp}.json"
+            
+            trainer = context.get("trainer") or self.trainer
             
             # Create comprehensive report
             report = {
                 "metadata": {
                     "timestamp": timestamp,
                     "analysis_count": self.analysis_count,
-                    "training_episodes": trainer.global_episode_counter,
-                    "training_updates": trainer.global_update_counter,
+                    "training_episodes": getattr(trainer, "global_episode_counter", 0),
+                    "training_updates": getattr(trainer, "global_update_counter", 0),
                 },
-                "config": self.config.__dict__,
-                "summary_statistics": self.analyzer.get_summary_statistics(),
+                "config": {
+                    "methods": self.config.methods,
+                    "n_steps": self.config.n_steps,
+                    "baseline_type": self.config.baseline_type,
+                    "analyze_branches": self.config.analyze_branches,
+                },
+                "summary_statistics": self.analyzer.get_summary_statistics() if self.analyzer else {},
                 "performance": {
-                    "avg_analysis_time": np.mean(self.analysis_times),
+                    "avg_analysis_time": np.mean(self.analysis_times) if self.analysis_times else 0,
                     "total_analyses": self.analysis_count,
                 },
             }
@@ -663,9 +572,10 @@ class CaptumCallbackV1(V1BaseCallback):
             
             self.logger.info(f"💾 Saved Captum analysis report to {report_path}")
             
-            # Also save the full analyzer report
-            full_report_path = self.output_dir / f"captum_full_report_{timestamp}.json"
-            self.analyzer.save_analysis_report(str(full_report_path))
+            # Also save full analyzer report
+            if self.analyzer:
+                full_report_path = self.output_dir / f"captum_full_report_{timestamp}.json"
+                self.analyzer.save_analysis_report(str(full_report_path))
             
         except Exception as e:
             self.logger.error(f"Error saving analysis report: {str(e)}")
@@ -695,13 +605,15 @@ class CaptumCallbackV1(V1BaseCallback):
         
         return formatted
     
-    def on_training_end(self, final_stats: Dict[str, Any]) -> None:
-        """Save final analysis report at training end."""
+    def on_training_end(self, context: Dict[str, Any]) -> None:
+        """Save final analysis report and summary statistics."""
+        if not self.enabled:
+            return
+            
         self.logger.info("📊 Saving final Captum analysis report")
         
-        # Use stored trainer reference
-        if hasattr(self, 'trainer') and self.trainer is not None:
-            self._save_analysis_report(self.trainer)
+        # Save final report
+        self._save_analysis_report(context)
         
         # Log summary
         self.logger.info(

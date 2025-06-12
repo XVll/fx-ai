@@ -64,6 +64,16 @@ class SessionMetricsCallbackConfig:
     track_system_resources: bool = True     # Whether to track system resources
 
 
+@dataclass 
+class CaptumAttributionCallbackConfig:
+    """Configuration for CaptumAttributionCallback."""
+    enabled: bool = True                    # Whether callback is active
+    analyze_every_n_episodes: Optional[int] = 10    # Episodes between analyses
+    analyze_every_n_updates: Optional[int] = 5      # Updates between analyses  
+    save_to_wandb: bool = True              # Log results to WandB
+    output_dir: str = "outputs/captum"      # Output directory for reports
+
+
 
 
 @dataclass
@@ -75,3 +85,4 @@ class CallbackConfig:
     portfolio_metrics: PortfolioMetricsCallbackConfig = field(default_factory=PortfolioMetricsCallbackConfig)
     model_metrics: ModelMetricsCallbackConfig = field(default_factory=ModelMetricsCallbackConfig)
     session_metrics: SessionMetricsCallbackConfig = field(default_factory=SessionMetricsCallbackConfig)
+    captum_attribution: CaptumAttributionCallbackConfig = field(default_factory=CaptumAttributionCallbackConfig)

@@ -20,11 +20,20 @@ from ..metrics import (
     SessionMetricsCallback,
 )
 
+# Import Captum callback with graceful fallback
+try:
+    from ..metrics.captum_attribution_callback import CaptumAttributionCallback
+    CAPTUM_CALLBACK_AVAILABLE = True
+except ImportError:
+    CAPTUM_CALLBACK_AVAILABLE = False
+    CaptumAttributionCallback = None
+
 
 def create_callbacks_from_config(
     config: CallbackConfig,
     model_manager: Optional[ModelManager] = None,
     evaluator: Optional[Evaluator] = None,
+    captum_config: Optional[Any] = None,
 ) -> CallbackManager:
     """
     Create callback manager from configuration.
@@ -33,6 +42,7 @@ def create_callbacks_from_config(
         config: Callback configuration
         model_manager: ModelManager instance for continuous training
         evaluator: Evaluator instance for evaluation callback
+        captum_config: Captum configuration for attribution analysis
         
     Returns:
         CallbackManager with configured callbacks
@@ -96,5 +106,23 @@ def create_callbacks_from_config(
             track_system_resources=config.session_metrics.track_system_resources,
             enabled=config.session_metrics.enabled
         ))
+    
+    # Captum attribution callback
+    if (config.captum_attribution.enabled and 
+        captum_config is not None and 
+        CAPTUM_CALLBACK_AVAILABLE and 
+        CaptumAttributionCallback is not None):
+        callbacks.append(CaptumAttributionCallback(
+            config=captum_config,
+            enabled=config.captum_attribution.enabled
+        ))
+    elif config.captum_attribution.enabled and not CAPTUM_CALLBACK_AVAILABLE:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("Captum attribution callback requested but not available (Captum not installed)")
+    elif config.captum_attribution.enabled and captum_config is None:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("Captum attribution callback enabled but no captum config provided")
     
     return CallbackManager(callbacks)
