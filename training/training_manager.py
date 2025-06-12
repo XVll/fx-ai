@@ -4,13 +4,13 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
+
+from callbacks.core import CallbackManager
 from data.data_manager import DataManager
 from .episode_manager import EpisodeManager, EpisodeManagerException
 from agent.ppo_agent import PPOTrainer
-from callbacks import CallbackManager
 from core.types import RolloutResult, UpdateResult
 from core.model_manager import ModelManager
-from core.shutdown import IShutdownHandler, get_global_shutdown_manager
 from config.training.training_config import TrainingManagerConfig
 from envs import TradingEnvironment
 
@@ -48,7 +48,7 @@ class ComponentState:
     timestamp: datetime = datetime.now()
 
 
-class TrainingManager(IShutdownHandler):
+class TrainingManager:
     """
     Responsibilities:
     - Training termination decisions (single source of truth)
@@ -93,7 +93,6 @@ class TrainingManager(IShutdownHandler):
         self.state.initial_model_metadata = self._load_model()
 
         self.episode_manager = EpisodeManager(self.config, self.data_manager)
-        self.episode_manager.register_shutdown()
 
         # Initialize episode manager (it manages day/reset point loops internally)
         try:
@@ -193,12 +192,6 @@ class TrainingManager(IShutdownHandler):
         """Check if training should terminate based on global limits."""
         # Note: Callbacks will handle intelligent termination
 
-        # Check for the shutdown request first
-        shutdown_manager = get_global_shutdown_manager()
-        if shutdown_manager.is_shutdown_requested():
-            self.termination_reason = "shutdown_requested"
-            return True
-
         if self.config.termination_max_episodes and self.state.global_episodes >= self.config.termination_max_episodes:
             self.termination_reason = f"max_episodes_reached_{self.config.termination_max_episodes}"
             return True
@@ -237,26 +230,6 @@ class TrainingManager(IShutdownHandler):
                 self.logger.debug(f"Triggered callback: {event_name}")
             except Exception as e:
                 self.logger.warning(f"Failed to trigger callback {event_name}: {e}")
-
-    def register_shutdown(self) -> None:
-        """Register this component with the global shutdown manager."""
-        shutdown_manager = get_global_shutdown_manager()
-        shutdown_manager.register_component(
-            component=self,
-            timeout=10,
-            name="TrainingManager"
-        )
-        self.logger.info("📝 TrainingManager registered with shutdown manager")
-
-    def shutdown(self) -> None:
-        """Perform graceful shutdown - stop training and cleanup resources."""
-        self.episode_manager = None
-        self.trainer = None
-        self.environment = None
-        self.callback_manager = None
-        self.data_manager = None
-
-        self.logger.info("✅ TrainingManager shutdown completed")
 
     def _finalize_training(self, termination_reason: Optional[str]):
         """Finalize training with proper cleanup and callbacks."""
