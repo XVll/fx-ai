@@ -15,17 +15,16 @@ class MetricsCallbackConfig:
     enabled: bool = True                    # Whether callback is active
     log_freq: int = 10                      # Episode frequency for logging metrics
     console_output: bool = True             # Whether to output to console
-    shutdown_timeout: float = 5.0           # Shutdown timeout in seconds
 
 
 @dataclass
-class CheckpointCallbackConfig:
-    """Configuration for CheckpointCallback."""
+class ContinuousCallbackConfig:
     enabled: bool = True                    # Whether callback is active
-    save_freq: int = 100                    # Episode frequency for saving checkpoints
-    keep_best: int = 5                      # Number of best models to keep
-    save_optimizer: bool = True             # Whether to save optimizer state
-    shutdown_timeout: float = 30.0          # Shutdown timeout in seconds
+    metric_name: str = "mean_reward",
+    metric_mode: str = "max",
+    checkpoint_frequency: int = 100,
+    checkpoint_time_interval: float = 300.0,  # 5 minutes
+    save_initial_model: bool = True,
 
 
 @dataclass
@@ -41,7 +40,6 @@ class WandBCallbackConfig:
     log_gradients: bool = False             # Whether to log gradient norms
     log_parameters: bool = True             # Whether to log model parameters
     log_artifacts: bool = True              # Whether to log model artifacts
-    shutdown_timeout: float = 60.0          # Shutdown timeout in seconds
 
 
 @dataclass
@@ -52,7 +50,6 @@ class AttributionCallbackConfig:
     methods: List[str] = field(default_factory=lambda: ["integrated_gradients"])  # Attribution methods
     sample_size: int = 100                  # Number of samples for attribution analysis
     save_visualizations: bool = True        # Whether to save attribution plots
-    shutdown_timeout: float = 15.0          # Shutdown timeout in seconds
 
 
 @dataclass
@@ -63,7 +60,6 @@ class PerformanceCallbackConfig:
     metrics: List[str] = field(default_factory=lambda: ["sharpe_ratio", "max_drawdown", "win_rate"])  # Performance metrics
     rolling_window: int = 100               # Rolling window for metric calculations
     save_reports: bool = True               # Whether to save performance reports
-    shutdown_timeout: float = 10.0          # Shutdown timeout in seconds
 
 
 @dataclass
@@ -74,7 +70,6 @@ class OptunaCallbackConfig:
     storage_url: Optional[str] = None       # Storage URL for study persistence
     pruning_enabled: bool = True            # Whether to enable trial pruning
     report_freq: int = 10                   # Episode frequency for reporting to Optuna
-    shutdown_timeout: float = 5.0           # Shutdown timeout in seconds
 
 
 @dataclass
@@ -85,19 +80,12 @@ class EarlyStoppingCallbackConfig:
     min_delta: float = 0.001                # Minimum improvement to consider as progress
     metric: str = "episode_reward"          # Metric to monitor for early stopping
     mode: str = "max"                       # Whether to maximize or minimize metric
-    shutdown_timeout: float = 5.0           # Shutdown timeout in seconds
 
 
 @dataclass
 class CallbackConfig:
-    """Main callback configuration containing all callback configs."""
-    
-    # System settings
-    shutdown_timeout: float = 10.0          # Shutdown timeout in seconds
-    
-    # Individual callback configs
     metrics: MetricsCallbackConfig = field(default_factory=MetricsCallbackConfig)
-    checkpoint: CheckpointCallbackConfig = field(default_factory=CheckpointCallbackConfig)
+    continuous: ContinuousCallbackConfig = field(default_factory=ContinuousCallbackConfig)
     wandb: WandBCallbackConfig = field(default_factory=WandBCallbackConfig)
     attribution: AttributionCallbackConfig = field(default_factory=AttributionCallbackConfig)
     performance: PerformanceCallbackConfig = field(default_factory=PerformanceCallbackConfig)

@@ -3,12 +3,14 @@ Simple callback factory for compatibility.
 """
 
 from typing import Dict, Any, List
+
+from config import CallbackConfig
+from . import CallbackManager
 from .base import BaseCallback
-from .. import CallbackManager
-from .examples import MetricsCallback, CheckpointCallback, PerformanceCallback
+from ..continuous_training_callback import ContinuousTrainingCallback
 
 
-def create_callbacks_from_config(config: Dict[str, Any], **kwargs) -> CallbackManager:
+def create_callbacks_from_config(config: CallbackConfig) -> CallbackManager:
     """
     Create callback manager from simple config.
     
@@ -22,19 +24,9 @@ def create_callbacks_from_config(config: Dict[str, Any], **kwargs) -> CallbackMa
     callbacks = []
     
     # Add basic callbacks based on config
-    if config.get('metrics', {}).get('enabled', True):
-        metrics_config = config.get('metrics', {})
-        callbacks.append(MetricsCallback(
-            log_frequency=metrics_config.get('log_freq', 100)
-        ))
+    if config.continuous.enabled:
+        metrics_config = config.continuous
+        callbacks.append(ContinuousTrainingCallback(,config.continuous))
     
-    if config.get('checkpoint', {}).get('enabled', True):
-        checkpoint_config = config.get('checkpoint', {})
-        callbacks.append(CheckpointCallback(
-            save_frequency=checkpoint_config.get('save_freq', 200)
-        ))
-    
-    if config.get('performance', {}).get('enabled', False):
-        callbacks.append(PerformanceCallback())
-    
+
     return CallbackManager(callbacks)

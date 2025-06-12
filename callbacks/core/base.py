@@ -32,7 +32,7 @@ class BaseCallback(IShutdownHandler, ABC):
     - Custom: custom_event
     """
     
-    def __init__(self, name: Optional[str] = None, enabled: bool = True, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, name: Optional[str] = None, enabled: bool = True, config: Any = None):
         self.name = name or self.__class__.__name__
         self.enabled = enabled
         self.config = config or {}

@@ -13,8 +13,8 @@ from pathlib import Path
 from datetime import datetime
 
 from callbacks.core.base import BaseCallback
+from config.callbacks.callback_config import ContinuousCallbackConfig
 from core.model_manager import ModelManager
-from core.evaluation import EvaluationResult
 
 
 class ContinuousTrainingCallback(BaseCallback):
@@ -32,38 +32,25 @@ class ContinuousTrainingCallback(BaseCallback):
     def __init__(
         self,
         model_manager: ModelManager,
-        metric_name: str = "mean_reward",
-        metric_mode: str = "max",
-        checkpoint_frequency: int = 100,
-        checkpoint_time_interval: float = 300.0,  # 5 minutes
-        save_initial_model: bool = True,
-        enabled: bool = True,
-        config: Optional[Dict[str, Any]] = None
+        config: ContinuousCallbackConfig,
     ):
         """
         Initialize continuous training callback.
         
         Args:
             model_manager: ModelManager instance for model storage
-            metric_name: Name of metric to track for best model
-            metric_mode: 'max' or 'min' for best model comparison
-            checkpoint_frequency: Number of updates between periodic checkpoints
-            checkpoint_time_interval: Time in seconds between periodic checkpoints
-            save_initial_model: Whether to save the first model as initial version
-            enabled: Whether callback is active
-            config: Additional configuration
         """
-        super().__init__(name="ContinuousTrainingCallback", enabled=enabled, config=config)
+        super().__init__(name="ContinuousTrainingCallback", enabled=config.enabled, config=config)
         
         self.model_manager = model_manager
-        self.metric_name = metric_name
-        self.metric_mode = metric_mode
-        self.checkpoint_frequency = checkpoint_frequency
-        self.checkpoint_time_interval = checkpoint_time_interval
-        self.save_initial_model = save_initial_model
+        self.metric_name = config.metric_name
+        self.metric_mode = config.metric_mode
+        self.checkpoint_frequency = config.checkpoint_frequency
+        self.checkpoint_time_interval = config.checkpoint_time_interval
+        self.save_initial_model = config.save_initial_model
         
         # Best model tracking
-        self.best_metric_value = float('-inf') if metric_mode == 'max' else float('inf')
+        self.best_metric_value = float('-inf') if config.metric_mode == 'max' else float('inf')
         self.best_model_path: Optional[str] = None
         self.best_evaluation_result: Optional[EvaluationResult] = None
         
@@ -81,7 +68,7 @@ class ContinuousTrainingCallback(BaseCallback):
         
         self.logger.info(
             f"🏭 ContinuousTrainingCallback initialized "
-            f"(metric={metric_name}, mode={metric_mode}, freq={checkpoint_frequency})"
+            f"(metric={config.metric_name}, mode={config.metric_mode}, freq={config.checkpoint_frequency})"
         )
     
     def _load_previous_best(self) -> None:
