@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime
 
 from callbacks.old_callback_system.callbacks import V1BaseCallback
-from feature.attribution.captum_attribution import (
+from core.attribution import (
     CaptumAttributionAnalyzer,
     AttributionConfig,
 )
@@ -359,7 +359,7 @@ class CaptumCallbackV1(V1BaseCallback):
         """Test the action conversion logic with various input formats."""
         import torch
         import numpy as np
-        from feature.attribution.captum_attribution import AttributionConfig
+        from core.attribution import AttributionConfig
         
         callback = CaptumCallbackV1(
             config=AttributionConfig(),

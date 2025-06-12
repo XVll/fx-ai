@@ -27,6 +27,7 @@ from core.shutdown import (
     ShutdownReason,
     ShutdownPhase,
     ComponentShutdownInfo,
+    AutoShutdownMeta,
     IShutdownHandler,
     IShutdownManager,
     ShutdownManager,
@@ -322,6 +323,261 @@ class TestIShutdownManager:
         # Should not raise
         manager = CompleteManager()
         assert manager is not None
+
+
+class TestAutoShutdownMeta:
+    """Test AutoShutdownMeta metaclass for auto-registration functionality."""
+
+    def test_auto_registration_successful(self):
+        """Test that auto-registration works when component implements IShutdownHandler."""
+        # Create a test shutdown manager
+        test_manager = ShutdownManager()
+        
+        # Mock get_global_shutdown_manager to return our test manager
+        with patch('core.shutdown.get_global_shutdown_manager', return_value=test_manager):
+            registration_calls = []
+            
+            class TestAutoRegisterHandler(IShutdownHandler):
+                def __init__(self):
+                    self.auto_registered = False
+                
+                def register_shutdown(self) -> None:
+                    self.auto_registered = True
+                    registration_calls.append(self)
+                    # Simulate actual registration with shutdown manager
+                    test_manager.register_component(component=self, name="TestAutoRegisterHandler")
+                
+                def shutdown(self) -> None:
+                    pass
+            
+            # Create instance - should trigger auto-registration
+            handler = TestAutoRegisterHandler()
+            
+            # Verify auto-registration occurred
+            assert handler.auto_registered
+            assert len(registration_calls) == 1
+            assert registration_calls[0] is handler
+            assert "TestAutoRegisterHandler" in test_manager.components
+
+    def test_auto_registration_with_exception_handling(self):
+        """Test that auto-registration handles exceptions gracefully."""
+        registration_exceptions = []
+        
+        class FailingAutoRegisterHandler(IShutdownHandler):
+            def __init__(self):
+                self.shutdown_called = False
+            
+            def register_shutdown(self) -> None:
+                # Simulate registration failure
+                raise RuntimeError("Registration failed")
+            
+            def shutdown(self) -> None:
+                self.shutdown_called = True
+        
+        # Capture logger warnings
+        with patch('core.shutdown.logger') as mock_logger:
+            # Create instance - should handle registration failure gracefully
+            handler = FailingAutoRegisterHandler()
+            
+            # Verify the handler was still created despite registration failure
+            assert handler is not None
+            assert not handler.shutdown_called
+            
+            # Verify warning was logged
+            mock_logger.warning.assert_called_once()
+            warning_call = mock_logger.warning.call_args[0][0]
+            assert "Failed to auto-register shutdown handler" in warning_call
+            assert "FailingAutoRegisterHandler" in warning_call
+
+    def test_auto_registration_skipped_for_non_handlers(self):
+        """Test that auto-registration is skipped for classes not implementing IShutdownHandler."""
+        registration_calls = []
+        
+        # Create a class that uses the metaclass but doesn't implement IShutdownHandler
+        class NonHandlerClass(metaclass=AutoShutdownMeta):
+            def __init__(self):
+                self.created = True
+        
+        # Mock logger to capture debug messages
+        with patch('core.shutdown.logger') as mock_logger:
+            # Create instance - should not trigger auto-registration
+            instance = NonHandlerClass()
+            
+            # Verify instance was created normally
+            assert instance.created
+            
+            # Verify no auto-registration occurred
+            assert len(registration_calls) == 0
+            # No debug message should be logged for non-handlers
+            mock_logger.debug.assert_not_called()
+
+    def test_auto_registration_debug_logging(self):
+        """Test that successful auto-registration logs debug message."""
+        test_manager = ShutdownManager()
+        
+        with patch('core.shutdown.get_global_shutdown_manager', return_value=test_manager):
+            with patch('core.shutdown.logger') as mock_logger:
+                class DebugTestHandler(IShutdownHandler):
+                    def register_shutdown(self) -> None:
+                        test_manager.register_component(component=self, name="DebugTestHandler")
+                    
+                    def shutdown(self) -> None:
+                        pass
+                
+                # Create instance
+                handler = DebugTestHandler()
+                
+                # Verify debug log was called
+                mock_logger.debug.assert_called_once()
+                debug_call = mock_logger.debug.call_args[0][0]
+                assert "Auto-registered shutdown handler" in debug_call
+                assert "DebugTestHandler" in debug_call
+
+    def test_auto_registration_with_inheritance(self):
+        """Test that auto-registration works with inherited classes."""
+        test_manager = ShutdownManager()
+        registration_calls = []
+        
+        with patch('core.shutdown.get_global_shutdown_manager', return_value=test_manager):
+            class BaseHandler(IShutdownHandler):
+                def register_shutdown(self) -> None:
+                    registration_calls.append(self)
+                    test_manager.register_component(component=self, name=self.__class__.__name__)
+                
+                def shutdown(self) -> None:
+                    pass
+            
+            class DerivedHandler(BaseHandler):
+                def __init__(self):
+                    super().__init__()
+                    self.derived_init = True
+            
+            # Create derived instance - should trigger auto-registration
+            derived = DerivedHandler()
+            
+            # Verify auto-registration occurred for derived class
+            assert derived.derived_init
+            assert len(registration_calls) == 1
+            assert registration_calls[0] is derived
+            assert "DerivedHandler" in test_manager.components
+
+    def test_auto_registration_multiple_instances(self):
+        """Test that auto-registration works for multiple instances of the same class."""
+        test_manager = ShutdownManager()
+        registration_calls = []
+        
+        with patch('core.shutdown.get_global_shutdown_manager', return_value=test_manager):
+            class MultiInstanceHandler(IShutdownHandler):
+                def __init__(self, name):
+                    self.name = name
+                
+                def register_shutdown(self) -> None:
+                    registration_calls.append(self)
+                    test_manager.register_component(component=self, name=f"MultiInstanceHandler_{self.name}")
+                
+                def shutdown(self) -> None:
+                    pass
+            
+            # Create multiple instances
+            handler1 = MultiInstanceHandler("first")
+            handler2 = MultiInstanceHandler("second")
+            
+            # Verify both were auto-registered
+            assert len(registration_calls) == 2
+            assert registration_calls[0] is handler1
+            assert registration_calls[1] is handler2
+            assert "MultiInstanceHandler_first" in test_manager.components
+            assert "MultiInstanceHandler_second" in test_manager.components
+
+    def test_auto_registration_with_init_parameters(self):
+        """Test that auto-registration works with classes that take initialization parameters."""
+        test_manager = ShutdownManager()
+        
+        with patch('core.shutdown.get_global_shutdown_manager', return_value=test_manager):
+            class ParameterizedHandler(IShutdownHandler):
+                def __init__(self, param1, param2=None, **kwargs):
+                    self.param1 = param1
+                    self.param2 = param2
+                    self.kwargs = kwargs
+                    self.registered = False
+                
+                def register_shutdown(self) -> None:
+                    self.registered = True
+                    test_manager.register_component(component=self, name="ParameterizedHandler")
+                
+                def shutdown(self) -> None:
+                    pass
+            
+            # Create instance with parameters
+            handler = ParameterizedHandler("value1", param2="value2", extra="extra_value")
+            
+            # Verify instance was created correctly and auto-registered
+            assert handler.param1 == "value1"
+            assert handler.param2 == "value2"
+            assert handler.kwargs == {"extra": "extra_value"}
+            assert handler.registered
+            assert "ParameterizedHandler" in test_manager.components
+
+    def test_metaclass_preserves_normal_class_behavior(self):
+        """Test that the metaclass doesn't interfere with normal class behavior."""
+        class RegularClass(metaclass=AutoShutdownMeta):
+            def __init__(self, value):
+                self.value = value
+                self.methods_called = []
+            
+            def method1(self):
+                self.methods_called.append("method1")
+                return "method1_result"
+            
+            def method2(self, arg):
+                self.methods_called.append(f"method2_{arg}")
+                return f"method2_result_{arg}"
+        
+        # Create instance and test normal behavior
+        instance = RegularClass("test_value")
+        
+        # Verify normal initialization
+        assert instance.value == "test_value"
+        assert instance.methods_called == []
+        
+        # Verify normal method calls
+        result1 = instance.method1()
+        assert result1 == "method1_result"
+        assert "method1" in instance.methods_called
+        
+        result2 = instance.method2("arg_value")
+        assert result2 == "method2_result_arg_value"
+        assert "method2_arg_value" in instance.methods_called
+
+    def test_auto_registration_only_after_init_completion(self):
+        """Test that auto-registration only occurs after __init__ completes successfully."""
+        test_manager = ShutdownManager()
+        registration_calls = []
+        
+        with patch('core.shutdown.get_global_shutdown_manager', return_value=test_manager):
+            class InitFailureHandler(IShutdownHandler):
+                def __init__(self, should_fail=False):
+                    if should_fail:
+                        raise ValueError("Init failed")
+                    self.init_completed = True
+                
+                def register_shutdown(self) -> None:
+                    registration_calls.append(self)
+                
+                def shutdown(self) -> None:
+                    pass
+            
+            # Test successful init - should auto-register
+            successful_handler = InitFailureHandler(should_fail=False)
+            assert successful_handler.init_completed
+            assert len(registration_calls) == 1
+            
+            # Test failed init - should not auto-register
+            with pytest.raises(ValueError, match="Init failed"):
+                InitFailureHandler(should_fail=True)
+            
+            # Registration calls should remain 1 (only successful instance)
+            assert len(registration_calls) == 1
 
 
 class MockShutdownHandler(IShutdownHandler):

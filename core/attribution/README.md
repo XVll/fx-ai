@@ -24,7 +24,7 @@ This module provides comprehensive gradient-based feature attribution analysis u
 The attribution analyzer is automatically integrated into the training pipeline:
 
 ```python
-from feature.attribution import CaptumFeatureAnalyzer, AttributionConfig, AttributionMethod
+from core.attribution import CaptumFeatureAnalyzer, AttributionConfig, AttributionMethod
 
 # Configuration
 config = AttributionConfig(
