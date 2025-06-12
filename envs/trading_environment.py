@@ -268,6 +268,13 @@ class TradingEnvironment(gym.Env):
         """
         # Get current market state
         market_state = self.market_simulator.get_current_market_data()
+
+        # ------------------------------------------------------------------------- #
+        # Todo : We will handle rest of the systems later, Execution, Portfolio.
+        obs = self._get_observation()
+        return obs, 0.0, True, False, {'termination_reason': 'no_market_data'}
+        # ------------------------------------------------------------------------- #
+
         if not market_state:
             # End of data
             obs = self._get_observation()
