@@ -11,6 +11,7 @@ from config import TrainingConfig
 from envs import TradingEnvironment
 from model.transformer import MultiBranchTransformer
 from core.types import RolloutResult, UpdateResult
+from callbacks.core import CallbackManager
 
 
 
@@ -28,11 +29,13 @@ class PPOTrainer:
         config: TrainingConfig,
         model: MultiBranchTransformer,
         device: Optional[torch.device] = None,
+        callback_manager: Optional[CallbackManager] = None,
     ):
         self.logger = logging.getLogger(f"{__name__}.PPOTrainer")
         self.model = model
         self.config = config
         self.device = device or torch.device("cpu")
+        self.callback_manager = callback_manager
 
         # PPO hyperparameters
         self.lr = config.learning_rate
@@ -93,13 +96,42 @@ class PPOTrainer:
                     state_tensors, deterministic=False
                 )
             
+            # Trigger action selected callback
+            if self.callback_manager:
+                self.callback_manager.trigger_event("action_selected", {
+                    "action": action_tensor,
+                    "action_info": action_info,
+                    "state": current_state,
+                    "step": collected_steps
+                })
+            
             # Convert action for environment
             env_action = self._convert_action_for_env(action_tensor)
+            
+            # Trigger step start callback
+            if self.callback_manager:
+                self.callback_manager.trigger_event("step_start", {
+                    "action": env_action,
+                    "state": current_state,
+                    "step": collected_steps
+                })
             
             # Step environment
             try:
                 next_state, reward, terminated, truncated, info = environment.step(env_action)
                 done = terminated or truncated
+                
+                # Trigger step end callback
+                if self.callback_manager:
+                    self.callback_manager.trigger_step_end({
+                        "action": env_action,
+                        "state": current_state,
+                        "next_state": next_state,
+                        "reward": reward,
+                        "done": done,
+                        "info": info,
+                        "step": collected_steps
+                    })
                 
             except Exception as e:
                 self.logger.error(f"Error during environment step: {e}")

@@ -115,6 +115,7 @@ class ApplicationBootstrap:
 
         self.callback_manager.register_trainer(trainer=self.trainer)
         self.callback_manager.register_environment(environment=self.environment)
+        self.callback_manager.register_data_manager(data_manager=self.data_manager)
 
         # Components automatically register for shutdown via IShutdownHandler metaclass
 
