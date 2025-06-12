@@ -181,8 +181,6 @@ class ApplicationBootstrap:
     def _create_training_manager(self, model_manager: ModelManager) -> TrainingManager:
         """Create a training manager from configuration."""
         self.logger.info("🎯 Creating training manager")
-        self.logger.info(f"🎯 Training manager config date_range: {self.config.training.training_manager.date_range}")
-        self.logger.info(f"🎯 Training manager config symbols: {self.config.training.training_manager.symbols}")
         
         training_manager = TrainingManager(
             config=self.config.training.training_manager,

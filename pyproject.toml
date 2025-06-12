@@ -8,7 +8,7 @@ package-mode = false
 
 [tool.poe.tasks]
 
-train = "poetry run python main.py --config-name training-default.yaml"
+train = "poetry run python main.py --config-name training-default"
 train-quick = "poetry run python main.py --config-name training-quick"
 benchmark = "poetry run python main.py --config-name benchmark --benchmark.model {model}"
 

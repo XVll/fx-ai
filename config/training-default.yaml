@@ -3,7 +3,6 @@
 
 # Use structured config defaults
 defaults:
-  - _self_
   - model: transformer
   - model_storage: default
   - training: default
@@ -14,6 +13,7 @@ defaults:
   - logging: default
   - callbacks: default
   - rewards: default
+  - _self_
 
 # Override specific training settings
 training:
