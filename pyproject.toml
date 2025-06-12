@@ -20,10 +20,7 @@ optuna-finetune = "poetry run python core/optuna/optuna_runner.py --spec config/
 optuna-dashboard = "optuna-dashboard sqlite:///optuna_studies.db"
 
 # Scan for momentum days in data
-build-index = "poetry run python scripts/build_index.py"
-scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.5"
-scan-high = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.7"
-scan-all = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.0"
+scan = "poetry run python data/scanner/momentum_scanner.py"
 
 # Testing & Linting
 test = "poetry run pytest -v"

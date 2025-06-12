@@ -44,17 +44,8 @@ class MomentumScanner:
         if data_dir is not None:
             self.data_dir = Path(data_dir)
         else:
-            # Try databento_dir first, then fall back to legacy dnb location
-            databento_path = path_manager.databento_dir
-            legacy_dnb_path = path_manager.base_dir / "dnb"
-            
-            if databento_path.exists():
-                self.data_dir = databento_path
-            elif legacy_dnb_path.exists():
-                self.data_dir = legacy_dnb_path
-            else:
-                # Default to databento_dir and create if needed
-                self.data_dir = databento_path
+            # Use path manager databento directory
+            self.data_dir = path_manager.databento_dir
                 
         if output_dir is not None:
             self.output_dir = Path(output_dir)
@@ -868,8 +859,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--min-quality",
         type=float,
-        default=0.5,
-        help="Minimum quality score (default: 0.5)",
+        default=0.0,
+        help="Minimum quality score (default: 0.0)",
     )
     parser.add_argument(
         "--symbols",
@@ -891,26 +882,37 @@ if __name__ == "__main__":
     scanner = MomentumScanner()
 
     try:
-        # Scan symbols
-        logger.info(f"Scanning momentum days for symbols: {args.symbols}")
-        day_df, reset_df = scanner.scan_all_symbols(symbols=args.symbols)
+        # Scan symbols (auto-discover if none provided)
+        symbols_to_scan = args.symbols if args.symbols else None
+        logger.info(f"Scanning momentum days for symbols: {symbols_to_scan or 'auto-discover'}")
+        day_df, reset_df = scanner.scan_all_symbols(symbols=symbols_to_scan)
 
         # Show results
         logger.info(f"Loading momentum days with min quality {args.min_quality}...")
 
-        for symbol in args.symbols:
-            days = scanner.query_momentum_days(symbol, min_activity=args.min_quality)
-            reset_points = scanner.query_reset_points(
-                symbol, min_activity=args.min_quality
-            )
+        # Load index once and filter for display
+        day_index_loaded, reset_index_loaded = scanner.load_index()
+        scanned_symbols = args.symbols if args.symbols else scanner._discover_symbols()
+        
+        for symbol in scanned_symbols:
+            # Filter loaded data instead of reloading
+            symbol_days = day_index_loaded[
+                (day_index_loaded["symbol"] == symbol.upper()) & 
+                (day_index_loaded["activity_score"] >= args.min_quality)
+            ] if not day_index_loaded.empty else day_index_loaded
+            
+            symbol_resets = reset_index_loaded[
+                (reset_index_loaded["symbol"] == symbol.upper()) & 
+                (reset_index_loaded["combined_score"] >= args.min_quality)
+            ] if not reset_index_loaded.empty else reset_index_loaded
 
             logger.info(f"\n{symbol} Results:")
-            logger.info(f"  Momentum days: {len(days)}")
-            logger.info(f"  Reset points: {len(reset_points)}")
+            logger.info(f"  Momentum days: {len(symbol_days)}")
+            logger.info(f"  Reset points: {len(symbol_resets)}")
 
-            if len(days) > 0:
+            if len(symbol_days) > 0:
                 logger.info(
-                    f"  Quality range: {days['activity_score'].min():.3f} - {days['activity_score'].max():.3f}"
+                    f"  Quality range: {symbol_days['activity_score'].min():.3f} - {symbol_days['activity_score'].max():.3f}"
                 )
 
     except Exception as e:
