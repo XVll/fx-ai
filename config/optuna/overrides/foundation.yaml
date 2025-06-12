@@ -23,8 +23,8 @@ studies:
     base_config: config  # Main config file name
     
     # Evaluation settings for optuna trials
-    evaluation_interval: 10000  # Run evaluation every N updates
-    evaluation_episodes: 10     # Episodes per evaluation
+    evaluation_interval: 50     # Run evaluation every N updates (matches default)
+    evaluation_episodes: 20     # Episodes per evaluation (matches default)
     report_interval: 1          # Report to optuna every evaluation
     use_best_value: false       # Report current value, not best
     
@@ -105,9 +105,37 @@ studies:
       experiment_name: optuna_foundation
       
       training:
-        n_epochs: 2              # Fewer epochs for speed
-        continue_training: false # Always start fresh
-        save_checkpoints: false  # Don't save during optimization
+        # PPO training settings for optuna trials
+        n_epochs: 4                      # Standard PPO epochs per update
+        batch_size: 64                   # Will be overridden by parameter optimization
+        learning_rate: 0.0003            # Will be overridden by parameter optimization
+        
+        # Training manager settings
+        training_manager:
+          mode: "training"
+          
+          # Termination settings for consistent trial length
+          termination_max_updates: 200      # Stop after 200 policy updates (4 evaluations)
+          termination_max_episodes: null    # No episode limit
+          termination_max_cycles: null      # No cycle limit
+          intelligent_termination: false    # Disable for consistent trial length
+          
+          # Data settings - use diverse data for foundation testing
+          symbols: ["MLGO"]
+          date_range: [null, null]           # Use all available dates
+          day_score_range: [0.5, 1.0]       # Medium to high quality days
+          reset_roc_range: [0.05, 1.0]      # All reset points
+          reset_activity_range: [0.0, 1.0]  # All activity levels
+          
+          day_selection_mode: "quality"      # Use high quality days
+          reset_point_selection_mode: "sequential"
+          
+          # Rollout settings
+          rollout_steps: 1024                # Will be overridden by parameter optimization
+          
+          # Disable model saving during optimization
+          checkpoint_frequency: null
+          keep_best_n_models: 1
         
       # Disable heavy callbacks during optimization
       callbacks:

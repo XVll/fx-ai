@@ -23,8 +23,8 @@ studies:
     base_config: config
     
     # Evaluation settings for optuna trials
-    evaluation_interval: 10000  # Run evaluation every N updates
-    evaluation_episodes: 10     # Episodes per evaluation
+    evaluation_interval: 50     # Run evaluation every N updates (matches default)
+    evaluation_episodes: 20     # Episodes per evaluation (matches default)
     report_interval: 1          # Report to optuna every evaluation
     use_best_value: false       # Report current value, not best
     
@@ -113,23 +113,48 @@ studies:
       experiment_name: optuna_reward
       
       training:
-        n_epochs: 2
-        continue_training: false
-        save_checkpoints: false
+        # PPO training settings with fixed foundation parameters
+        n_epochs: 4                      # Standard PPO epochs
         
-        # NOTE: Foundation parameters should be set manually
-        # based on best results from Phase 1
-        # learning_rate: 0.0003    # Example from Phase 1
-        # batch_size: 64           # Example from Phase 1
-        # entropy_coef: 0.01       # Example from Phase 1
-        # gamma: 0.99              # Example from Phase 1
+        # TODO: Set these to best values from Phase 1 foundation optimization
+        learning_rate: 0.0003            # FIXME: Use best from foundation phase
+        batch_size: 64                   # FIXME: Use best from foundation phase  
+        entropy_coef: 0.01               # FIXME: Use best from foundation phase
+        gamma: 0.99                      # FIXME: Use best from foundation phase
+        
+        # Training manager settings
+        training_manager:
+          mode: "training"
+          
+          # Termination settings - longer for reward tuning
+          termination_max_updates: 150      # Stop after 150 policy updates (3 evaluations)
+          termination_max_episodes: null    # No episode limit
+          termination_max_cycles: null      # No cycle limit
+          intelligent_termination: false    # Disable for consistent trial length
+          
+          # Use same data settings as foundation
+          symbols: ["MLGO"]
+          date_range: [null, null]
+          day_score_range: [0.5, 1.0]       # Medium to high quality days
+          reset_roc_range: [0.05, 1.0]
+          reset_activity_range: [0.0, 1.0]
+          
+          day_selection_mode: "quality"
+          reset_point_selection_mode: "sequential"
+          
+          # Fixed rollout steps from foundation
+          rollout_steps: 2048              # FIXME: Use best from foundation phase
+          
+          # Disable model saving during optimization
+          checkpoint_frequency: null
+          keep_best_n_models: 1
       
       model:
-        # NOTE: Architecture parameters should be set manually
-        # based on best results from Phase 1
-        # d_model: 128             # Example from Phase 1
-        # n_layers: 6              # Example from Phase 1
-        # dropout: 0.1             # Example from Phase 1
+        # TODO: Set these to best values from Phase 1 foundation optimization
+        # FIXME: Use best architecture from foundation phase
+        d_model: 128                     # FIXME: Use best from foundation phase
+        n_layers: 6                      # FIXME: Use best from foundation phase
+        dropout: 0.1                     # FIXME: Use best from foundation phase
       
       # Disable heavy callbacks during optimization
       callbacks:

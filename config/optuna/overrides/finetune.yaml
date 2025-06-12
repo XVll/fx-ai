@@ -23,10 +23,10 @@ studies:
     base_config: config
     
     # Evaluation settings for optuna trials
-    evaluation_interval: 20000  # Run evaluation every N updates
-    evaluation_episodes: 20     # More episodes for final tuning
+    evaluation_interval: 50     # Run evaluation every N updates (matches default)
+    evaluation_episodes: 20     # Episodes per evaluation (matches default)
     report_interval: 1          # Report to optuna every evaluation
-    use_best_value: true        # Report best value for stability
+    use_best_value: true        # Report best value for stability in final phase
     
     sampler:
       type: TPESampler
@@ -101,12 +101,69 @@ studies:
       experiment_name: optuna_finetune
       
       training:
-        n_epochs: 3              # More epochs for final tuning
-        continue_training: false
-        save_checkpoints: false
+        # PPO training settings with fixed foundation & reward parameters
+        n_epochs: 4                      # Standard PPO epochs
         
-        # NOTE: Foundation & reward parameters should be set manually
-        # based on best results from Phase 1 and Phase 2
+        # TODO: Set these to best values from Phase 1 & 2
+        learning_rate: 0.0003            # FIXME: Use best from foundation phase
+        batch_size: 64                   # FIXME: Use best from foundation phase
+        entropy_coef: 0.01               # FIXME: Use best from foundation phase
+        gamma: 0.99                      # FIXME: Use best from foundation phase
+        
+        # Fine-tuning parameters (will be optimized)
+        value_coef: 0.5                  # Will be overridden by parameter optimization
+        max_grad_norm: 0.5               # Will be overridden by parameter optimization
+        clip_epsilon: 0.2                # Will be overridden by parameter optimization
+        gae_lambda: 0.95                 # Will be overridden by parameter optimization
+        
+        # Training manager settings
+        training_manager:
+          mode: "training"
+          
+          # Termination settings - longer for fine-tuning
+          termination_max_updates: 300      # Stop after 300 policy updates (6 evaluations)
+          termination_max_episodes: null    # No episode limit
+          termination_max_cycles: null      # No cycle limit
+          intelligent_termination: false    # Disable for consistent trial length
+          
+          # Use higher quality data for fine-tuning
+          symbols: ["MLGO"]
+          date_range: [null, null]
+          day_score_range: [0.7, 1.0]       # High quality days only
+          reset_roc_range: [0.1, 1.0]       # Better reset points
+          reset_activity_range: [0.2, 1.0]  # More active periods
+          
+          day_selection_mode: "quality"
+          reset_point_selection_mode: "quality"  # Use best reset points
+          
+          # Fixed rollout steps from foundation
+          rollout_steps: 2048              # FIXME: Use best from foundation phase
+          
+          # Disable model saving during optimization
+          checkpoint_frequency: null
+          keep_best_n_models: 1
+      
+      model:
+        # TODO: Set these to best values from foundation phase
+        d_model: 128                     # FIXME: Use best from foundation phase
+        n_layers: 6                      # FIXME: Use best from foundation phase
+        dropout: 0.1                     # FIXME: Use best from foundation phase
+        
+        # Fine-tuning parameters (will be optimized)
+        n_heads: 8                       # Will be overridden by parameter optimization
+        max_position_embeddings: 1024    # Will be overridden by parameter optimization
+      
+      env:
+        # TODO: Set reward parameters to best values from Phase 2
+        reward:
+          # FIXME: Use best reward coefficients from reward phase
+          pnl_coefficient: 150.0         # FIXME: Use best from reward phase
+          holding_penalty_coefficient: 2.0  # FIXME: Use best from reward phase
+          # ... other reward parameters
+          
+        # Environment fine-tuning (will be optimized)
+        initial_cash: 75000              # Will be overridden by parameter optimization
+        max_position_size: 0.3           # Will be overridden by parameter optimization
       
       # Disable heavy callbacks during optimization
       callbacks:
