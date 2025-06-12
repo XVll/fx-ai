@@ -31,7 +31,7 @@ class TrainingManagerConfig:
     daily_max_cycles: Optional[int] = 3              # Max cycles through reset points before day switch
 
     # Data selection
-    symbols: List[str] = field(default_factory=lambda: ["MLGO"])                    # Trading symbols to use
+    symbols: List[str] = field(default_factory=lambda: [])                    # Trading symbols to use
     date_range: List[Optional[str]] = field(default_factory=lambda: [None, None])  # Date range [start, end] or [None, None] for all
 
     day_score_range: List[float] = field(default_factory=lambda: [0.7, 1.0])       # Day quality score filter range [min, max]

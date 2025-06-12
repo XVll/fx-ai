@@ -28,7 +28,7 @@ training:
     eval_frequency: 50
     eval_episodes: 10
     symbols: ["MLGO"]
-    date_range: ["2025-02-21", "2025-02-24"]
+    date_range: ["2025-05-21", "2025-05-21"]
 
 # Logging configuration
 logging:
