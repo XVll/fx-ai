@@ -3,7 +3,7 @@ Training configuration for PPO and training management - Hydra version.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Literal
+from typing import Optional, List
 
 
 @dataclass
@@ -11,7 +11,7 @@ class TrainingManagerConfig:
     """Training Manager - Central authority for training lifecycle"""
 
     # Core mode selection
-    mode: Literal["training", "optuna", "benchmark"] = "training"  # Training mode
+    mode: str = "training"  # Training mode: training, optuna, benchmark
 
     # Training Termination (always enforced)
     termination_max_episodes: Optional[int] = None  # Max total episodes before training ends
@@ -38,8 +38,8 @@ class TrainingManagerConfig:
     reset_roc_range: List[float] = field(default_factory=lambda: [0.05, 1.0])      # Reset point ROC score filter range
     reset_activity_range: List[float] = field(default_factory=lambda: [0.0, 1.0])  # Reset point activity score filter range
 
-    day_selection_mode: Literal["sequential", "quality", "random"] = "sequential"          # Day ordering: sequential/quality/random
-    reset_point_selection_mode: Literal["sequential", "quality", "random"] = "sequential"  # Reset point ordering: sequential/quality/random
+    day_selection_mode: str = "sequential"          # Day ordering: sequential/quality/random
+    reset_point_selection_mode: str = "sequential"  # Reset point ordering: sequential/quality/random
 
     # Data management
     preload_enabled: bool = True                     # Enable data preloading for performance
@@ -71,7 +71,7 @@ class TrainingConfig:
     # Core settings
     seed: int = 42                                   # Random seed for reproducibility
     shutdown_timeout: int = 10                       # Shutdown timeout in seconds
-    device: Literal["cuda", "mps", "cpu"] = "mps"   # Training device: cuda/mps/cpu
+    device: str = "mps"   # Training device: cuda/mps/cpu
 
     # PPO hyperparameters
     learning_rate: float = 1.5e-4                   # Learning rate (typical: 1e-5 to 1e-3)

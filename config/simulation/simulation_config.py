@@ -2,7 +2,7 @@
 Simulation configuration for market simulation and trading parameters.
 """
 
-from typing import Optional, Literal
+from typing import Optional
 from dataclasses import dataclass
 
 
@@ -46,11 +46,11 @@ class SimulationConfig:
     max_commission_pct_of_value: float = 0.5      # Max commission %
 
     # Market impact
-    market_impact_model: Literal["linear", "square_root", "none"] = "linear"  # Market impact model
+    market_impact_model: str = "linear"  # Options: linear, square_root, none  # Market impact model
     market_impact_coefficient: float = 0.0001     # Market impact coeff
 
     # Spread modeling
-    spread_model: Literal["fixed", "dynamic", "historical"] = "historical"  # Spread model
+    spread_model: str = "historical"  # Options: fixed, dynamic, historical
     fixed_spread_bps: float = 10.0                # Fixed spread (bps)
 
     # Episode randomization

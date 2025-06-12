@@ -10,6 +10,8 @@ from dataclasses import dataclass
 class ScannerConfig:
     """Consolidated scanner configuration"""
 
+    data_dir: str = "dnb"                         # Data directory for scanning
+    output_dir: str = "cache/scanner"             # Output directory for scanner results
     cache_dir: str = "cache/scanner"              # Cache directory for scanner data
     # -------------------------------------------------------------------------------------#
 

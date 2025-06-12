@@ -2,7 +2,7 @@
 Logging configuration for system-wide logging settings.
 """
 
-from typing import Literal, Dict, List, Optional
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 
 
@@ -10,10 +10,10 @@ from dataclasses import dataclass
 class LoggingConfig:
     """Logging configuration"""
 
-    level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"  # Logging level
-    show_time = True
-    show_path = True
-    compact_errors = True
+    level: str = "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+    show_time: bool = True
+    show_path: bool = True
+    compact_errors: bool = True
     console_enabled: bool = True                      # Console logging
     console_format: str = "simple"                    # Console format
     file_enabled: bool = True                         # File logging

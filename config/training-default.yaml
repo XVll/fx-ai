@@ -1,101 +1,50 @@
-# Training Override - Regular Production Training
-# Optimized for full production training with intelligent features
+# Training Default Configuration
+# @package _global_
 
-env:
+# Use structured config defaults
+defaults:
+  - _self_
+  - model: transformer
+  - model_storage: default
+  - training: default
+  - env: trading
+  - data: databento
+  - simulation: default
+  - scanner: momentum
+  - logging: default
+  - callbacks: default
+  - rewards: default
+
+# Override specific training settings
+training:
+  device: "mps"
+  learning_rate: 1.5e-4
+  batch_size: 64
+  
   training_manager:
-    mode: "production"
-    
-    # Smart termination based on performance (for entire training)
-    termination:
-      training_max_episodes: null        # No hard episode limit
-      training_max_updates: null         # No hard update limit  
-      training_max_cycles: null          # No cycle limit
-      intelligent_termination: true
-      plateau_patience: 50      # Standard patience for plateau detection
-      degradation_threshold: 0.05  # 5% degradation threshold
-    
-    # Continuous training with full adaptation
-    continuous:
-      performance_window: 50    # Full performance tracking
-      recommendation_frequency: 10  # Regular recommendations
-      checkpoint_frequency: 25  # Regular checkpoints
-      
-      # Centralized evaluation settings
-      evaluation:
-        frequency: 50          # Updates between evaluations
-        episodes: 10           # Episodes per evaluation
-      
-      # Adaptive data difficulty
-      adaptation_enabled: true
-    
-    # Adaptive data lifecycle (no fixed stages)
-    data_lifecycle:
-      enabled: true
-      
-      # Data cycle management (when to switch days/reset points)
-      cycles:
-        episode_max_steps: 256           # Steps per episode
-        day_max_episodes: null           # No episode limit per day
-        day_max_updates: null            # No update limit per day
-        day_max_cycles: 100                # Cycle through all reset points 3 times per day
-      
-      # Adaptive data selection
-      adaptive_data:
-        symbols: ["MLGO"]
-        date_range: ["2025-02-21", "2025-02-24"]  # [start_date, end_date] inclusive
-        day_score_range: [0.0, 1.0]               # [min_quality, max_quality] filter
-        roc_range: [0.00, 1.0]                    # [min_roc, max_roc] momentum filter
-        activity_range: [0.0, 1.0]                # [min_activity, max_activity] filter
-        
-        # DAY SELECTION: How to pick which trading day to use next
-        day_selection_mode: "sequential"           # Options: "sequential" (chronological), "quality_weighted" (by score), "random"
-        
-        # RESET POINT SELECTION: How to cycle through reset points within each day  
-        reset_point_selection_mode: "sequential"  # Options: "sequential" (by quality), "random"
-      
-      preloading:
-        preload_enabled: true
+    mode: "training"
+    termination_max_episodes: 1000
+    termination_max_updates: 500
+    eval_frequency: 50
+    eval_episodes: 10
+    symbols: ["MLGO"]
+    date_range: ["2025-02-21", "2025-02-24"]
 
-# Model configuration for training
-model: {}
+# Logging configuration
+logging:
+  level: "INFO"
+  console_enabled: true
 
-# Production W&B settings
-wandb:
+# Data configuration  
+data:
+  provider: "databento"
+  data_dir: "dnb"
+
+# Evaluation configuration
+evaluation:
   enabled: true
-  project: fx-ai-production
-  tags: [production, training]
-  notes: "Full production training with model insights"
-
-# Captum feature attribution for production insights
-captum:
-  enabled: true
-  # Balanced methods for production insights
-  methods:
-    - integrated_gradients    # More accurate attribution
-    - gradient_shap  # Robust method for complex models
-  
-  # Production analysis parameters
-  n_steps: 50      # Balanced accuracy/speed
-  n_samples: 10     # Reasonable sampling
-  
-  # Full analysis settings for production
-  analyze_branches: true
-  analyze_fusion: true   # Include attention analysis
-  analyze_actions: true
-  baseline_type: zero
-  
-  # Production visualization settings
-  save_visualizations: false  # Skip plots for speed, focus on data
-  visualization_dir: outputs/captum_prod
-  heatmap_threshold: 0.01      # Lower threshold for detail
-  
-  # Production performance settings
-  batch_analysis: false  # Single sample analysis for production
-  
-  # Conservative analysis frequency for production
-  callback:
-    analyze_every_n_episodes: null  # Disabled
-    analyze_every_n_updates: 10     # Every 10 updates
-    save_to_wandb: true             # Focus on WandB logging
-    save_to_dashboard: false        # Reduce overhead
-    output_dir: outputs/captum_prod
+  seed: 42
+  deterministic_actions: true
+  use_fixed_episodes: true
+  episodes: 10
+  episode_selection: "diverse"

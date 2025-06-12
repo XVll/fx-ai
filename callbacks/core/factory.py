@@ -10,7 +10,8 @@ from config import CallbackConfig
 
 if TYPE_CHECKING:
     from config.attribution.attribution_config import AttributionConfig
-from core.evaluation import Evaluator
+    from core.evaluation import Evaluator
+    
 from core.model_manager import ModelManager
 from . import CallbackManager
 from ..continuous_training_callback import ContinuousTrainingCallback
@@ -38,7 +39,7 @@ from ..optuna_callback import OptunaCallback
 def create_callbacks_from_config(
     config: CallbackConfig,
     model_manager: Optional[ModelManager] = None,
-    evaluator: Optional[Evaluator] = None,
+    evaluator: Optional["Evaluator"] = None,
     attribution_config: Optional["AttributionConfig"] = None,
     optuna_trial: Optional[Any] = None,
 ) -> CallbackManager:

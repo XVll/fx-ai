@@ -2,7 +2,7 @@
 Environment configuration for trading environment settings.
 """
 
-from typing import Optional, Literal, Any
+from typing import Optional, Any
 from dataclasses import dataclass, field
 from config.rewards import RewardConfig
 
@@ -17,7 +17,7 @@ class EnvironmentConfig:
     bankruptcy_threshold_factor: float = 0.01   # Bankruptcy threshold
 
     # Environment settings
-    render_mode: Literal["human", "logs", "none"] = "none"  # Render mode
+    render_mode: str = "none"  # Options: human, logs, none  # Render mode
 
     # Reward system
     reward: RewardConfig = field(default_factory=RewardConfig)

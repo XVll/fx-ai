@@ -26,17 +26,17 @@ class DatabentoFileProvider(HistoricalDataProvider):
         "status": "status",
     }
 
-    def __init__(self, config: DataConfig, symbol_info_file: Optional[list[str]] = None):
+    def __init__(self, config: DataConfig, symbols: Optional[List[str]] = None):
         """
         Initialize the Databento file provider.
 
         Args:
-            data_dir: Directory containing Databento job folders
-            symbol_info_file: Optional path to a CSV file with symbol metadata
-            verbose: Enable verbose logging for debugging
-            dbn_cache_size: Max DBN file contents to keep in LRU cache
+            config: Data configuration
+            symbols: Optional list of symbols to filter for
         """
         self.data_dir = config.data_dir
+        self.symbols = symbols
+        self.verbose = getattr(config, 'verbose', False)
         self.logger = logging.getLogger(__name__)
 
         # Set log level based on verbosity
@@ -45,9 +45,9 @@ class DatabentoFileProvider(HistoricalDataProvider):
         else:
             self.logger.setLevel(logging.INFO)
 
-        # Load symbol info if provided
+        # Load symbol info if provided (disabled for now)
         self._symbol_info_map = {}
-        if symbol_info_file and os.path.exists(symbol_info_file):
+        if False:  # symbol_info_file and os.path.exists(symbol_info_file):
             try:
                 df_info = pd.read_csv(symbol_info_file)
                 if "symbol" in df_info.columns:

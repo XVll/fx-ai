@@ -7,12 +7,14 @@ adaptive training, etc.
 """
 
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from datetime import datetime
 
 from callbacks.core.base import BaseCallback
-from core.evaluation.evaluator import Evaluator
-from core.evaluation import EvaluationResult
+
+if TYPE_CHECKING:
+    from core.evaluation.evaluator import Evaluator
+    from core.evaluation import EvaluationResult
 
 
 class EvaluationCallback(BaseCallback):
@@ -33,7 +35,7 @@ class EvaluationCallback(BaseCallback):
     
     def __init__(
         self, 
-        evaluator: Evaluator,
+        evaluator: "Evaluator",
         update_frequency: int = 50,
         episode_frequency: Optional[int] = None,
         time_frequency_minutes: Optional[float] = None,
@@ -62,7 +64,7 @@ class EvaluationCallback(BaseCallback):
         self.last_evaluation_update = 0
         self.last_evaluation_episode = 0
         self.last_evaluation_time = datetime.now()
-        self.evaluation_history: List[EvaluationResult] = []
+        self.evaluation_history: List["EvaluationResult"] = []
         
         self.logger.info(
             f"🔍 EvaluationCallback initialized (update_freq={update_frequency})"
@@ -179,7 +181,7 @@ class EvaluationCallback(BaseCallback):
     
     def _create_evaluation_context(
         self, 
-        result: EvaluationResult, 
+        result: "EvaluationResult", 
         trigger_type: str,
         original_context: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -214,7 +216,7 @@ class EvaluationCallback(BaseCallback):
             'extended_metrics': self._extract_extended_metrics(result)
         }
     
-    def _extract_extended_metrics(self, result: EvaluationResult) -> Dict[str, Any]:
+    def _extract_extended_metrics(self, result: "EvaluationResult") -> Dict[str, Any]:
         """Extract any additional metrics from evaluation result."""
         extended = {}
         
@@ -233,11 +235,11 @@ class EvaluationCallback(BaseCallback):
     
     # Public API for other callbacks and external access
     
-    def get_latest_result(self) -> Optional[EvaluationResult]:
+    def get_latest_result(self) -> Optional["EvaluationResult"]:
         """Get the most recent evaluation result."""
         return self.evaluation_history[-1] if self.evaluation_history else None
     
-    def get_evaluation_history(self) -> List[EvaluationResult]:
+    def get_evaluation_history(self) -> List["EvaluationResult"]:
         """Get all evaluation results."""
         return self.evaluation_history.copy()
     
@@ -257,7 +259,7 @@ class EvaluationCallback(BaseCallback):
             "last_evaluation_time": self.last_evaluation_time.isoformat()
         }
     
-    def force_evaluation(self, context: Dict[str, Any]) -> Optional[EvaluationResult]:
+    def force_evaluation(self, context: Dict[str, Any]) -> Optional["EvaluationResult"]:
         """Force an immediate evaluation (useful for testing/debugging)."""
         self.logger.info("🔍 Forcing immediate evaluation")
         self._run_evaluation(context, trigger_type="forced")

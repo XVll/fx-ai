@@ -6,8 +6,7 @@ from typing import Optional, Dict, Any
 import optuna
 
 from callbacks.core.base import BaseCallback
-from callbacks.core.types import CallbackContext
-from core.data_structures import EvaluationResult
+from core.evaluation.types import EvaluationResult
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,7 @@ class OptunaCallback(BaseCallback):
         self.best_value = float('-inf')
         self.current_step = 0
         
-    def on_evaluation_complete(self, context: CallbackContext) -> None:
+    def on_evaluation_complete(self, context: Dict[str, Any]) -> None:
         """Report evaluation results to Optuna trial.
         
         This method is called after each evaluation completes. It extracts
@@ -63,7 +62,7 @@ class OptunaCallback(BaseCallback):
             return
             
         # Get evaluation result from context
-        eval_result = context.shared_data.get('evaluation_result')
+        eval_result = context.get('evaluation_result')
         if not isinstance(eval_result, EvaluationResult):
             logger.warning("No evaluation result found in context")
             return
@@ -86,7 +85,7 @@ class OptunaCallback(BaseCallback):
             
         # Report value to Optuna
         report_value = self.best_value if self.use_best_value else value
-        self.current_step = context.global_updates
+        self.current_step = context.get('global_updates', 0)
         
         logger.info(
             f"Reporting to Optuna - Step: {self.current_step}, "
@@ -136,13 +135,13 @@ class OptunaCallback(BaseCallback):
                 
         return None
         
-    def on_training_end(self, context: CallbackContext) -> None:
+    def on_training_end(self, context: Dict[str, Any]) -> None:
         """Handle training end - report final value if available."""
         if not self.trial:
             return
             
         # Try to get final evaluation result
-        eval_result = context.shared_data.get('evaluation_result')
+        eval_result = context.get('evaluation_result')
         if isinstance(eval_result, EvaluationResult):
             value = self._extract_metric_value(eval_result)
             if value is not None:

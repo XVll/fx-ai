@@ -42,11 +42,14 @@ class MultiBranchTransformer(nn.Module):
         self.continuous_action = False
 
         # Handle discrete action dimensions
-        if isinstance(model_config.action_dim, (list, tuple)):
-            self.action_types = int(model_config.action_dim[0])
-            self.action_sizes = int(model_config.action_dim[1])
+        # Convert OmegaConf ListConfig to list if needed
+        action_dim = list(model_config.action_dim) if hasattr(model_config.action_dim, '__iter__') else model_config.action_dim
+        
+        if isinstance(action_dim, (list, tuple)):
+            self.action_types = int(action_dim[0])
+            self.action_sizes = int(action_dim[1])
         else:
-            self.action_types = model_config.action_dim
+            self.action_types = int(action_dim)
             self.action_sizes = None
 
         # Store model config and dimensions for reference

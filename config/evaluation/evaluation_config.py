@@ -3,7 +3,7 @@ Evaluation configuration for model performance assessment.
 """
 
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Optional
 
 
 @dataclass
@@ -21,7 +21,7 @@ class EvaluationConfig:
     
     # Episode selection
     use_fixed_episodes: bool = True  # Use same episodes every time
-    episode_selection: Literal["diverse", "best", "worst", "random"] = "diverse"
+    episode_selection: str = "diverse"  # Options: diverse, best, worst, random
     
     # Benchmark-specific settings
     benchmark_episodes: int = 100    # More episodes for comprehensive benchmarking

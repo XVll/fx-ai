@@ -1,7 +1,7 @@
 """Optuna (Hyperparameter Optimization) structured configuration for Hydra."""
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Union, Literal
+from typing import Dict, List, Optional, Any, Union
 from enum import Enum
 
 
@@ -94,7 +94,7 @@ class PrunerConfig:
 class StudyConfig:
     """Configuration for an Optuna study."""
     study_name: str                                    # Unique name for the study
-    direction: Literal["minimize", "maximize"] = "maximize"  # Optimization direction
+    direction: str = "maximize"  # Options: minimize, maximize  # Optimization direction
     metric_name: str = "mean_reward"                   # Metric to optimize
     
     # Storage settings

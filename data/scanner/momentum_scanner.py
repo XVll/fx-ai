@@ -27,22 +27,20 @@ class MomentumScanner:
 
     def __init__(
         self,
-        config:ScannerConfig,
+        config: ScannerConfig,
         scanner_config: Optional[ScannerConfig] = None,
     ):
         """Initialize the momentum scanner.
 
         Args:
-            data_dir: Directory containing Databento files
-            output_dir: Directory to save index files
-            scanner_config: Consolidated scanner configuration
-            logger: Optional logger instance
+            config: Scanner configuration with data_dir and output_dir
+            scanner_config: Additional scanner configuration (deprecated)
         """
-        self.data_dir = Path(data_dir)
-        self.output_dir = Path(output_dir)
+        self.data_dir = Path(config.data_dir)
+        self.output_dir = Path(config.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
 
         # Configuration with defaults
         self.config = scanner_config or ScannerConfig()

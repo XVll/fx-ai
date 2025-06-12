@@ -39,15 +39,14 @@ class DataManager:
         Args:
             provider: DataProvider instance (historical or live)
             momentum_scanner: Optional momentum scanner for index-based loading
-            preload_days: Number of days to keep in L2 cache
-            logger: Optional logger
+            config: Data configuration
         """
         self.provider: HistoricalDataProvider = provider
         self.momentum_scanner = momentum_scanner
-        self.preload_days = preload_days
-        self.logger = logger or logging.getLogger(__name__)
-        self.date_range = date_range  # [start_date, end_date] strings
-        self.include_weekends = include_weekends
+        self.preload_days = getattr(config, 'preload_days', 3)
+        self.logger = logging.getLogger(__name__)
+        self.date_range = getattr(config, 'date_range', [None, None])  
+        self.include_weekends = getattr(config, 'include_weekends', False)
 
         # Two-tier cache structure
         # L1 - Active day cache (single day episode data)
