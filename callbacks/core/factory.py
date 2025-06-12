@@ -31,12 +31,16 @@ except ImportError:
     CAPTUM_CALLBACK_AVAILABLE = False
     CaptumAttributionCallback = None
 
+# Import Optuna callback (always available since it's in our codebase)
+from ..optuna_callback import OptunaCallback
+
 
 def create_callbacks_from_config(
     config: CallbackConfig,
     model_manager: Optional[ModelManager] = None,
     evaluator: Optional[Evaluator] = None,
     attribution_config: Optional["AttributionConfig"] = None,
+    optuna_trial: Optional[Any] = None,
 ) -> CallbackManager:
     """
     Create callback manager from configuration.
@@ -46,6 +50,7 @@ def create_callbacks_from_config(
         model_manager: ModelManager instance for continuous training
         evaluator: Evaluator instance for evaluation callback
         attribution_config: Attribution configuration for feature analysis
+        optuna_trial: Optuna trial object for hyperparameter optimization
         
     Returns:
         CallbackManager with configured callbacks
@@ -128,5 +133,18 @@ def create_callbacks_from_config(
         import logging
         logger = logging.getLogger(__name__)
         logger.warning("Captum attribution callback enabled but no attribution config provided")
+    
+    # Optuna callback
+    if config.optuna.enabled and optuna_trial is not None:
+        callbacks.append(OptunaCallback(
+            trial=optuna_trial,
+            metric_name=config.optuna.metric_name,
+            report_interval=config.optuna.report_interval,
+            use_best_value=config.optuna.use_best_value,
+        ))
+    elif config.optuna.enabled and optuna_trial is None:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("Optuna callback enabled but no trial provided")
     
     return CallbackManager(callbacks)

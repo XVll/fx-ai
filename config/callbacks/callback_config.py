@@ -74,6 +74,15 @@ class CaptumAttributionCallbackConfig:
     output_dir: str = "outputs/captum"      # Output directory for reports
 
 
+@dataclass
+class OptunaCallbackConfig:
+    """Configuration for OptunaCallback."""
+    enabled: bool = False                   # Whether callback is active
+    metric_name: str = "mean_reward"        # Metric to optimize
+    report_interval: int = 1                # Report every N evaluations
+    use_best_value: bool = False            # Report best value seen so far
+
+
 
 
 @dataclass
@@ -86,3 +95,4 @@ class CallbackConfig:
     model_metrics: ModelMetricsCallbackConfig = field(default_factory=ModelMetricsCallbackConfig)
     session_metrics: SessionMetricsCallbackConfig = field(default_factory=SessionMetricsCallbackConfig)
     captum_attribution: CaptumAttributionCallbackConfig = field(default_factory=CaptumAttributionCallbackConfig)
+    optuna: OptunaCallbackConfig = field(default_factory=OptunaCallbackConfig)

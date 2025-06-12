@@ -1,3 +1,8 @@
+# @package _global_
+
+# Phase 2: Reward system optimization
+# Optimizes reward coefficients with fixed foundation parameters
+
 name: phase2_reward_optimization
 description: "Phase 2: Reward system optimization with fixed foundation parameters from Phase 1"
 version: "1.0"
@@ -5,17 +10,23 @@ version: "1.0"
 dashboard_port: 8052
 log_level: INFO
 results_dir: sweep_results
-save_study_plots: true
+generate_plots: true
 
 studies:
   - study_name: fx_ai_reward
     direction: maximize
     metric_name: mean_reward
-    storage: sqlite:///sweep_studies.db
+    storage: sqlite:///optuna_studies.db
     load_if_exists: true
     
-    # NEW: Base config reference system
-    base_config: sweep
+    # Base config to use as starting point
+    base_config: config
+    
+    # Evaluation settings for optuna trials
+    evaluation_interval: 10000  # Run evaluation every N updates
+    evaluation_episodes: 10     # Episodes per evaluation
+    report_interval: 1          # Report to optuna every evaluation
+    use_best_value: false       # Report current value, not best
     
     sampler:
       type: CmaEsSampler      # Better for continuous reward coefficients
@@ -30,7 +41,7 @@ studies:
       interval_steps: 4
       n_min_trials: 4
     
-    # ONLY reward system parameters (will be populated by transfer script)
+    # Reward system parameters to optimize
     parameters:
       - name: env.reward.pnl_coefficient
         type: float
@@ -97,29 +108,52 @@ studies:
     n_jobs: 1
     catch_exceptions: true
     
-    # ONLY trial-specific overrides (foundation params will be set by transfer script)
+    # Trial-specific config overrides
     trial_overrides:
-      experiment_name: sweep_reward
+      experiment_name: optuna_reward
       
       training:
+        n_epochs: 2
         continue_training: false
+        save_checkpoints: false
         
-        # FIXED foundation parameters (populated by transfer script)
-        # learning_rate: [SET BY TRANSFER]
-        # batch_size: [SET BY TRANSFER]
-        # entropy_coef: [SET BY TRANSFER]
-        # gamma: [SET BY TRANSFER]
+        # NOTE: Foundation parameters should be set manually
+        # based on best results from Phase 1
+        # learning_rate: 0.0003    # Example from Phase 1
+        # batch_size: 64           # Example from Phase 1
+        # entropy_coef: 0.01       # Example from Phase 1
+        # gamma: 0.99              # Example from Phase 1
       
       model:
-        # FIXED foundation parameters (populated by transfer script)
-        # d_model: [SET BY TRANSFER]
-        # n_layers: [SET BY TRANSFER]
-        # dropout: [SET BY TRANSFER]
+        # NOTE: Architecture parameters should be set manually
+        # based on best results from Phase 1
+        # d_model: 128             # Example from Phase 1
+        # n_layers: 6              # Example from Phase 1
+        # dropout: 0.1             # Example from Phase 1
       
+      # Disable heavy callbacks during optimization
+      callbacks:
+        optuna:
+          enabled: true
+        continuous:
+          enabled: false
+        ppo_metrics:
+          enabled: true
+        execution_metrics:
+          enabled: false
+        portfolio_metrics:
+          enabled: false
+        model_metrics:
+          enabled: false
+        session_metrics:
+          enabled: false
+        captum_attribution:
+          enabled: false
+          
+      # Disable wandb during optimization
       wandb:
-        enabled: true
-        project: fx-ai-sweep-reward
-        tags: [sweep, phase2, reward]
-        notes: "Phase 2: Reward system optimization with fixed foundation"
-    
-    save_checkpoints: false
+        enabled: false
+        
+      # Disable dashboard for speed
+      dashboard:
+        enabled: false

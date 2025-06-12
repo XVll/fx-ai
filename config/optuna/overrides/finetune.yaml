@@ -1,124 +1,136 @@
+# @package _global_
+
+# Phase 3: Fine-tuning optimization
+# Fine-tunes remaining parameters with fixed foundation and reward parameters
+
 name: phase3_finetune_optimization
-description: "Phase 3: Fine-tuning optimization with fixed foundation and reward parameters from Phases 1-2"
+description: "Phase 3: Fine-tuning optimization with fixed foundation and reward parameters"
 version: "1.0"
 
 dashboard_port: 8052
 log_level: INFO
 results_dir: sweep_results
-save_study_plots: true
+generate_plots: true
 
 studies:
   - study_name: fx_ai_finetune
     direction: maximize
     metric_name: mean_reward
-    storage: sqlite:///sweep_studies.db
+    storage: sqlite:///optuna_studies.db
     load_if_exists: true
     
-    # NEW: Base config reference system
-    base_config: sweep
+    # Base config to use as starting point
+    base_config: config
+    
+    # Evaluation settings for optuna trials
+    evaluation_interval: 20000  # Run evaluation every N updates
+    evaluation_episodes: 20     # More episodes for final tuning
+    report_interval: 1          # Report to optuna every evaluation
+    use_best_value: true        # Report best value for stability
     
     sampler:
-      type: TPESampler      # Fine-grained exploration for remaining parameters
-      n_startup_trials: 8
+      type: TPESampler
+      n_startup_trials: 10
       multivariate: true
       seed: 42
       consider_prior: true
       prior_weight: 1.0
-      consider_magic_clip: true
-      consider_endpoints: false
+      n_ei_candidates: 24
     
     pruner:
-      type: MedianPruner
-      n_startup_trials: 5
-      n_warmup_steps: 25
+      type: PercentilePruner
+      percentile: 75.0        # Keep top 25% of trials
+      n_startup_trials: 10
+      n_warmup_steps: 30
       interval_steps: 5
-      n_min_trials: 3
+      n_min_trials: 5
     
-    # ONLY fine-tuning parameters (foundation+reward will be set by transfer script)
+    # Fine-tuning parameters
     parameters:
-      - name: training.value_coef
+      # PPO algorithm fine-tuning
+      - name: training.value_loss_coef
         type: float
-        low: 0.2
-        high: 1.5
+        low: 0.1
+        high: 1.0
       
-      - name: training.gae_lambda
+      - name: training.max_grad_norm
         type: float
-        low: 0.85
-        high: 0.98
+        low: 0.1
+        high: 2.0
       
-      - name: training.clip_epsilon
+      - name: training.clip_range
         type: float
         low: 0.1
         high: 0.3
       
-      - name: training.max_grad_norm
+      - name: training.clip_range_vf
         type: float
-        low: 0.3
-        high: 1.0
+        low: 5.0
+        high: 50.0
       
-      - name: training.n_epochs
-        type: int
-        low: 8
-        high: 16
+      - name: training.gae_lambda
+        type: float
+        low: 0.9
+        high: 0.99
       
+      # Advanced model parameters
       - name: model.n_heads
         type: categorical
         choices: [4, 8, 16]
       
-      - name: simulation.commission_rate
-        type: float
-        low: 0.0005
-        high: 0.002
+      - name: model.max_position_embeddings
+        type: categorical
+        choices: [512, 1024, 2048]
       
-      - name: simulation.slippage_rate
-        type: float
-        low: 0.0001
-        high: 0.001
+      # Environment fine-tuning
+      - name: env.initial_cash
+        type: categorical
+        choices: [50000, 75000, 100000]
+      
+      - name: env.max_position_size
+        type: categorical
+        choices: [0.2, 0.3, 0.4]
     
     n_trials: 50
     timeout: null
     n_jobs: 1
     catch_exceptions: true
     
-    # ONLY trial-specific overrides (foundation+reward params will be set by transfer script)
+    # Trial-specific config overrides
     trial_overrides:
-      experiment_name: sweep_finetune
+      experiment_name: optuna_finetune
       
       training:
+        n_epochs: 3              # More epochs for final tuning
         continue_training: false
+        save_checkpoints: false
         
-        # FIXED foundation parameters (populated by transfer script)
-        # learning_rate: [SET BY TRANSFER]
-        # batch_size: [SET BY TRANSFER]
-        # entropy_coef: [SET BY TRANSFER]
-        # gamma: [SET BY TRANSFER]
+        # NOTE: Foundation & reward parameters should be set manually
+        # based on best results from Phase 1 and Phase 2
       
-      model:
-        # FIXED foundation parameters (populated by transfer script)
-        # d_model: [SET BY TRANSFER]
-        # n_layers: [SET BY TRANSFER]
-        # dropout: [SET BY TRANSFER]
-        
-      env:
-        reward:
-          # FIXED parameters from previous phases (populated by transfer script)
-          # pnl_coefficient: [SET BY TRANSFER]
-          # holding_penalty_coefficient: [SET BY TRANSFER]
-          # drawdown_penalty_coefficient: [SET BY TRANSFER]
-          # profit_closing_bonus_coefficient: [SET BY TRANSFER]
-          # clean_trade_coefficient: [SET BY TRANSFER]
-          # base_multiplier: [SET BY TRANSFER]
-          # bankruptcy_penalty_coefficient: [SET BY TRANSFER]
-          # profit_giveback_penalty_coefficient: [SET BY TRANSFER]
-          # max_drawdown_penalty_coefficient: [SET BY TRANSFER]
-          # activity_bonus_per_trade: [SET BY TRANSFER]
-          # hold_penalty_per_step: [SET BY TRANSFER]
-          # max_holding_time_steps: [SET BY TRANSFER]
-      
+      # Disable heavy callbacks during optimization
+      callbacks:
+        optuna:
+          enabled: true
+        continuous:
+          enabled: false
+        ppo_metrics:
+          enabled: true
+        execution_metrics:
+          enabled: true   # Enable for fine-tuning
+        portfolio_metrics:
+          enabled: true   # Enable for fine-tuning
+        model_metrics:
+          enabled: false
+        session_metrics:
+          enabled: false
+        captum_attribution:
+          enabled: false
+          
+      # Disable wandb during optimization
       wandb:
-        enabled: true
-        project: fx-ai-sweep-finetune
-        tags: [sweep, phase3, finetune]
-        notes: "Phase 3: Fine-tuning with fixed foundation and reward parameters"
-    
-    save_checkpoints: false
+        enabled: false
+        
+      # Disable dashboard for speed
+      dashboard:
+        enabled: false

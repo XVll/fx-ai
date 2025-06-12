@@ -1,3 +1,8 @@
+# @package _global_
+
+# Phase 1: Foundation hyperparameter optimization
+# Focuses on core training stability and model architecture
+
 name: phase1_foundation_optimization
 description: "Phase 1: Foundation hyperparameter optimization focusing on core training stability and model architecture"
 version: "1.0"
@@ -5,17 +10,23 @@ version: "1.0"
 dashboard_port: 8052
 log_level: INFO
 results_dir: sweep_results
-save_study_plots: true
+generate_plots: true
 
 studies:
   - study_name: fx_ai_foundation
     direction: maximize
     metric_name: mean_reward
-    storage: sqlite:///sweep_studies.db
+    storage: sqlite:///optuna_studies.db
     load_if_exists: true
     
-    # NEW: Base config reference system
-    base_config: optuna
+    # Base config to use as starting point
+    base_config: config  # Main config file name
+    
+    # Evaluation settings for optuna trials
+    evaluation_interval: 10000  # Run evaluation every N updates
+    evaluation_episodes: 10     # Episodes per evaluation
+    report_interval: 1          # Report to optuna every evaluation
+    use_best_value: false       # Report current value, not best
     
     sampler:
       type: TPESampler
@@ -26,6 +37,8 @@ studies:
       prior_weight: 1.0
       consider_magic_clip: true
       consider_endpoints: false
+      n_ei_candidates: 24
+      warn_independent_sampling: true
     
     pruner:
       type: MedianPruner
@@ -34,7 +47,7 @@ studies:
       interval_steps: 3
       n_min_trials: 5
     
-    # ONLY the parameters we're optimizing
+    # Parameters to optimize
     parameters:
       # Tier 1: Critical training parameters (4 params)
       - name: training.learning_rate
@@ -82,17 +95,43 @@ studies:
         low: 80.0
         high: 300.0
     
-    n_trials: 5
+    n_trials: 100
     timeout: null
     n_jobs: 1
     catch_exceptions: true
     
-    # ONLY trial-specific overrides (inherits sweep base config)
+    # Trial-specific config overrides
     trial_overrides:
-      experiment_name: sweep_foundation
+      experiment_name: optuna_foundation
       
       training:
         n_epochs: 2              # Fewer epochs for speed
         continue_training: false # Always start fresh
-    
-    save_checkpoints: false      # Don't save checkpoints during foundation
+        save_checkpoints: false  # Don't save during optimization
+        
+      # Disable heavy callbacks during optimization
+      callbacks:
+        optuna:
+          enabled: true          # Enable optuna callback
+        continuous:
+          enabled: false         # Disable model saving
+        ppo_metrics:
+          enabled: true
+        execution_metrics:
+          enabled: false
+        portfolio_metrics:
+          enabled: false
+        model_metrics:
+          enabled: false
+        session_metrics:
+          enabled: false
+        captum_attribution:
+          enabled: false
+          
+      # Disable wandb during optimization
+      wandb:
+        enabled: false
+        
+      # Disable dashboard for speed
+      dashboard:
+        enabled: false

@@ -14,10 +14,10 @@ benchmark = "poetry run python main.py --config-name benchmark --benchmark.model
 
 
 # Hyperparameter Optimization with Optuna (Centralized Config)
-optuna-foundation = "poetry run python run_optuna.py --config optuna --optuna=foundation"
-optuna-reward = "poetry run python run_optuna.py --config optuna --optuna=reward"
-optuna-finetune = "poetry run python run_optuna.py --config optuna --optuna=finetune"
-optuna-dashboard = "optuna-dashboard sqlite:///sweep_studies.db"
+optuna-foundation = "poetry run python core/optuna/optuna_runner.py --spec config/optuna/overrides/foundation.yaml"
+optuna-reward = "poetry run python core/optuna/optuna_runner.py --spec config/optuna/overrides/reward.yaml"
+optuna-finetune = "poetry run python core/optuna/optuna_runner.py --spec config/optuna/overrides/finetune.yaml"
+optuna-dashboard = "optuna-dashboard sqlite:///optuna_studies.db"
 
 # Scan for momentum days in data
 build-index = "poetry run python scripts/build_index.py"
