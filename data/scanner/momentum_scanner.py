@@ -28,7 +28,6 @@ class MomentumScanner:
         data_dir: Optional[str] = None,
         output_dir: Optional[str] = None,
         scanner_config: Optional[ScannerConfig] = None,
-        logger: Optional[logging.Logger] = None,
     ):
         """Initialize the momentum scanner.
 
@@ -52,7 +51,7 @@ class MomentumScanner:
         else:
             self.output_dir = path_manager.scanner_cache_dir
 
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
 
         # Configuration with defaults
         self.config = scanner_config or ScannerConfig()

@@ -137,7 +137,10 @@ class PathManager:
     @property
     def databento_dir(self) -> Path:
         """Databento data files directory."""
-        return self.get_data_subdir("dnb")
+        # Use the dnb directory at project root instead of data/dnb
+        path = self._base_dir / "dnb"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
     
     @property
     def features_cache_dir(self) -> Path:

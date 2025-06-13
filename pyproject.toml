@@ -8,10 +8,10 @@ package-mode = false
 
 [tool.poe.tasks]
 
+# Development commands
 train = "poetry run python main.py --config-name training-default"
-train-quick = "poetry run python main.py --config-name training-quick"
+quick = "poetry run python main.py --config-name training-quick"
 benchmark = "poetry run python main.py --config-name benchmark --benchmark.model {model}"
-
 
 # Hyperparameter Optimization with Optuna (Centralized Config)
 optuna-foundation = "poetry run python core/optuna/optuna_runner.py --spec config/optuna/overrides/foundation.yaml"
@@ -20,7 +20,7 @@ optuna-finetune = "poetry run python core/optuna/optuna_runner.py --spec config/
 optuna-dashboard = "optuna-dashboard sqlite:///optuna_studies.db"
 
 # Scan for momentum days in data
-scan = "poetry run python data/scanner/momentum_scanner.py"
+scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.0"
 
 # Testing & Linting
 test = "poetry run pytest -v"
