@@ -27,6 +27,7 @@ class CallbackManager:
         self.trainer = None
         self.environment = None
         self.data_manager = None
+        self.episode_manager = None
 
         self.logger.info(f"CallbackManager initialized with {len(self.callbacks)} callbacks")
 
@@ -39,6 +40,7 @@ class CallbackManager:
             callback.trainer = self.trainer
             callback.environment = self.environment
             callback.data_manager = self.data_manager
+            callback.episode_manager = self.episode_manager
 
             self.logger.info(f"Added callback: {callback.name}")
 
@@ -124,6 +126,12 @@ class CallbackManager:
         self.data_manager = data_manager
         for callback in self.callbacks:
             callback.data_manager = data_manager
+
+    def register_episode_manager(self, episode_manager) -> None:
+        """Register episode manager with all callbacks."""
+        self.episode_manager = episode_manager
+        for callback in self.callbacks:
+            callback.episode_manager = episode_manager
 
     # Utilities
 

@@ -59,12 +59,14 @@ class TradingEnvironment(gym.Env):
             self,
             config: Config,
             data_manager: DataManager,
+            callback_manager=None,
     ):
         """Initialize the environment with minimal dependencies."""
         super().__init__()
 
         self.config = config
         self.data_manager = data_manager
+        self.callback_manager = callback_manager
         self.logger = logging.getLogger(__name__)
 
         # Simulators (initialized when the environment is set up)
@@ -149,6 +151,7 @@ class TradingEnvironment(gym.Env):
 
             self.reward_calculator = RewardSystem(
                 config=self.config,
+                callback_manager=self.callback_manager,
                 logger=self.logger
             )
 

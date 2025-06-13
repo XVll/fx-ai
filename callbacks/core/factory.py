@@ -18,6 +18,7 @@ from ..metrics import (
     ModelMetricsCallback,
     SessionMetricsCallback,
 )
+from ..metrics.evaluation_metrics_callback import EvaluationMetricsCallback
 
 # Import Captum callback with graceful fallback
 try:
@@ -59,6 +60,12 @@ def create_callbacks_from_config(
     if config.evaluation.enabled:
         callbacks.append(EvaluationCallback(
             config=config.evaluation
+        ))
+    
+    # Evaluation metrics callback for WandB
+    if config.evaluation_metrics.enabled:
+        callbacks.append(EvaluationMetricsCallback(
+            enabled=config.evaluation_metrics.enabled
         ))
     
     # PPO metrics callback

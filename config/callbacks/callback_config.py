@@ -34,21 +34,21 @@ class EvaluationCallbackConfig:
 @dataclass
 class PPOMetricsCallbackConfig:
     """Configuration for PPOMetricsCallback."""
-    enabled: bool = True                    # Whether callback is active
+    enabled: bool = False                    # Whether callback is active
     buffer_size: int = 1000                 # Buffer size for rolling metrics
 
 
 @dataclass
 class ExecutionMetricsCallbackConfig:
     """Configuration for ExecutionMetricsCallback."""
-    enabled: bool = True                    # Whether callback is active
+    enabled: bool = False                    # Whether callback is active
     buffer_size: int = 2000                 # Buffer size for execution metrics
 
 
 @dataclass
 class PortfolioMetricsCallbackConfig:
     """Configuration for PortfolioMetricsCallback."""
-    enabled: bool = True                    # Whether callback is active
+    enabled: bool = False                    # Whether callback is active
     buffer_size: int = 1000                 # Buffer size for portfolio metrics
     log_frequency: int = 10                 # Episode frequency for logging
 
@@ -56,7 +56,7 @@ class PortfolioMetricsCallbackConfig:
 @dataclass
 class ModelMetricsCallbackConfig:
     """Configuration for ModelMetricsCallback."""
-    enabled: bool = True                    # Whether callback is active
+    enabled: bool = False                    # Whether callback is active
     buffer_size: int = 500                  # Buffer size for model metrics
 
 
@@ -71,10 +71,16 @@ class SessionMetricsCallbackConfig:
 @dataclass 
 class CaptumAttributionCallbackConfig:
     """Configuration for CaptumAttributionCallback."""
-    enabled: bool = True                    # Whether callback is active
+    enabled: bool = False                    # Whether callback is active
     analyze_every_n_episodes: Optional[int] = 10    # Episodes between analyses
     analyze_every_n_updates: Optional[int] = 5      # Updates between analyses  
     save_to_wandb: bool = True              # Log results to WandB
+
+
+@dataclass
+class EvaluationMetricsCallbackConfig:
+    """Configuration for EvaluationMetricsCallback."""
+    enabled: bool = True                    # Whether callback is active
 
 
 @dataclass
@@ -92,6 +98,7 @@ class OptunaCallbackConfig:
 class CallbackConfig:
     continuous: ContinuousCallbackConfig = field(default_factory=ContinuousCallbackConfig)
     evaluation: EvaluationCallbackConfig = field(default_factory=EvaluationCallbackConfig)
+    evaluation_metrics: EvaluationMetricsCallbackConfig = field(default_factory=EvaluationMetricsCallbackConfig)
     ppo_metrics: PPOMetricsCallbackConfig = field(default_factory=PPOMetricsCallbackConfig)
     execution_metrics: ExecutionMetricsCallbackConfig = field(default_factory=ExecutionMetricsCallbackConfig)
     portfolio_metrics: PortfolioMetricsCallbackConfig = field(default_factory=PortfolioMetricsCallbackConfig)

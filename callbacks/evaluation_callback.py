@@ -137,7 +137,7 @@ class EvaluationCallback(BaseCallback):
                 trainer=self.trainer,
                 environment=self.environment,
                 data_manager=self.data_manager,
-                episode_manager=context.get('episode_manager')
+                episode_manager=self.episode_manager
             )
             
             if not result:

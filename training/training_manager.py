@@ -44,10 +44,9 @@ class TrainingManager:
     - Callback coordination
     """
 
-    def __init__(self, config: TrainingManagerConfig, model_manager: ModelManager):
+    def __init__(self, config: TrainingManagerConfig, model_manager: ModelManager, episode_manager: EpisodeManager):
         """Initialize TrainingManager as a single source of truth for training state."""
         self.config = config
-        self.model_manager = model_manager
         self.mode = TrainingMode(config.mode)
         self.logger = logging.getLogger(f"{__name__}.TrainingManager")
 
@@ -56,11 +55,12 @@ class TrainingManager:
         self.termination_reason: Optional[str] = None
 
         # Component references (set during start)
+        self.model_manager = model_manager
+        self.episode_manager: Optional[EpisodeManager] =  episode_manager
         self.trainer: Optional[PPOTrainer] = None
         self.environment: Optional[TradingEnvironment] = None
         self.data_manager: Optional[DataManager] = None
         self.callback_manager: Optional[CallbackManager] = None
-        self.episode_manager: Optional[EpisodeManager] = None
 
         self.logger.info(f"🎯 TrainingManager initialized in {self.mode.value} mode as single source of truth")
 
@@ -78,8 +78,6 @@ class TrainingManager:
 
         # Handle model loading if continuing training
         self.state.initial_model_metadata = self._load_model()
-
-        self.episode_manager = EpisodeManager(self.config, self.data_manager, self.callback_manager)
 
         # Initialize episode manager (it manages day/reset point loops internally)
         try:

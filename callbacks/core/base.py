@@ -50,6 +50,7 @@ class BaseCallback(IShutdownHandler, ABC):
         self.trainer = None
         self.environment = None
         self.data_manager = None
+        self.episode_manager = None
         
         self.logger.debug(f"Initialized {self.name}")
     

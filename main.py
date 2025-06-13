@@ -5,6 +5,7 @@ from typing import Optional
 import numpy as np
 import torch
 import hydra
+import wandb
 from hydra.core.hydra_config import HydraConfig
 
 from core.evaluation import Evaluator
@@ -16,6 +17,7 @@ from data import DatabentoFileProvider
 from envs.trading_environment import TradingEnvironment
 from agent.ppo_agent import PPOTrainer
 from model.transformer import MultiBranchTransformer
+from training.episode_manager import EpisodeManager
 from training.training_manager import TrainingManager
 from callbacks import create_callbacks_from_config, CallbackManager
 from core.logger import setup_rich_logging
@@ -55,6 +57,9 @@ class ApplicationBootstrap:
         self.data_manager: Optional[DataManager] = None
         self.device: Optional[torch.device] = None
         self.callback_manager: Optional[CallbackManager] = None
+        self.episode_manager: Optional[EpisodeManager] = None
+        self.training_manager: Optional[TrainingManager] = None
+        self.model_manager: Optional[ModelManager] = None
 
     def initialize(self) -> None:
         """Initialize the application with Hydra configuration."""
@@ -81,18 +86,17 @@ class ApplicationBootstrap:
             # Todo : add /logs output directory support (self.output_path / "logs")
         )
 
-    def _create_training_manager(self, model_manager:ModelManager) -> TrainingManager:
+    def _create_training_manager(self) -> TrainingManager:
         """Create and configure a training manager with config."""
+        self.logger.info("🎯 Creating training manager")
 
         training_manager = TrainingManager(
             config=self.config.training.training_manager,
-            model_manager=model_manager,
+            model_manager=self.model_manager,
+            episode_manager=self.episode_manager
         )
 
-        # Set data manager reference for integrated data lifecycle
-        training_manager.data_manager = self.data_manager
-        training_manager.callback_manager = self.callback_manager
-
+        self.logger.info("✅ Training manager created")
         return training_manager
 
     def _initialize_components(self) -> None:
@@ -101,21 +105,25 @@ class ApplicationBootstrap:
         self.logger.info("🔧 Initializing application components")
 
         self.device = self._create_device()
-        model_manager = ModelManager(self.config.model_storage)
+        self.model_manager = ModelManager(self.config.model_storage)
 
+        self.logger.info("🔧 Creating callbacks from configuration")
         self.callback_manager = create_callbacks_from_config(
             config=self.config.callbacks,
             attribution_config=self.config.attribution
         )
+        self.logger.info(f"📊 Created {len(self.callback_manager.callbacks)} callbacks")
 
         self.data_manager = self._create_data_manager()
         self.environment = self._create_environment()
         self.trainer = self._create_trainer()
-        self.training_manager = self._create_training_manager(model_manager)
+        self.episode_manager = EpisodeManager(self.config.training.training_manager, self.data_manager, self.callback_manager)
+        self.training_manager = self._create_training_manager()
 
         self.callback_manager.register_trainer(trainer=self.trainer)
         self.callback_manager.register_environment(environment=self.environment)
         self.callback_manager.register_data_manager(data_manager=self.data_manager)
+        self.callback_manager.register_episode_manager(episode_manager=self.training_manager.episode_manager)
 
         # Components automatically register for shutdown via IShutdownHandler metaclass
 
@@ -162,6 +170,7 @@ class ApplicationBootstrap:
         environment = TradingEnvironment(
             config=self.config,
             data_manager=self.data_manager,
+            callback_manager=self.callback_manager,
         )
 
         self.logger.info("✅ Trading environment created")
@@ -188,17 +197,6 @@ class ApplicationBootstrap:
 
         return model
 
-    def _create_training_manager(self, model_manager: ModelManager) -> TrainingManager:
-        """Create a training manager from configuration."""
-        self.logger.info("🎯 Creating training manager")
-        
-        training_manager = TrainingManager(
-            config=self.config.training.training_manager,
-            model_manager=model_manager
-        )
-        
-        self.logger.info("✅ Training manager created")
-        return training_manager
 
 
 # Hydra handles argument parsing automatically
@@ -232,8 +230,8 @@ def execute_training(training_manager: TrainingManager, app: ApplicationBootstra
         import wandb
         import os
         if not wandb.run:
-            # Set local WandB configuration (offline mode to avoid auth issues)
-            os.environ['WANDB_MODE'] = 'offline'
+            # Set local WandB server configuration
+            os.environ['WANDB_BASE_URL'] = 'http://localhost:8080'
             
             # Create simplified config for WandB (only serializable values)
             wandb_config = {
@@ -332,4 +330,5 @@ if __name__ == "__main__":
     register_configs()
     # Hydra will handle the rest
     exit_code = main()
+    wandb.finish()
     sys.exit(exit_code)
