@@ -151,7 +151,6 @@ class TradingEnvironment(gym.Env):
 
             self.reward_calculator = RewardSystem(
                 config=self.config,
-                callback_manager=self.callback_manager,
                 logger=self.logger
             )
 
@@ -291,12 +290,18 @@ class TradingEnvironment(gym.Env):
         # Get portfolio state before action
         portfolio_before = self.portfolio_simulator.get_portfolio_state(current_time)
 
-        # Decode and validate action
-        action = self._validate_action(action, portfolio_before, market_state)
+        # Convert linear action to (action_type, size) tuple for execution simulator
+        action_dim = self.config.model.action_dim
+        action_type_idx = int(action) // action_dim[1]
+        size_idx = int(action) % action_dim[1]
+        action_tuple = (action_type_idx, size_idx)
+
+        # Validate action bounds
+        validated_action = self._validate_action(action, portfolio_before, market_state)
 
         # Execute action through execution simulator
         execution_result = self.execution_simulator.execute_action(
-            raw_action=action,
+            raw_action=action_tuple,
             market_state=market_state,
             portfolio_state=portfolio_before,
             primary_asset=self.symbol,
@@ -355,7 +360,7 @@ class TradingEnvironment(gym.Env):
         # Build minimal info
         info = {
             'timestamp': current_time.isoformat(),
-            'action_taken': execution_result.action_decode_result.to_dict()
+            'action_taken': execution_result.action_decode_result.to_dict() if execution_result.action_decode_result else {}
         }
         if terminated:
             info['termination_reason'] = term_reason
@@ -431,7 +436,7 @@ class TradingEnvironment(gym.Env):
 
     def _check_termination(self, portfolio_state: PortfolioState) -> Tuple[bool, Optional[str]]:
         """Check basic termination conditions."""
-        equity = portfolio_state.get("total_equity", 0.0)
+        equity = portfolio_state["total_equity"]
         initial = self.portfolio_simulator.initial_capital
 
         # Bankruptcy
@@ -447,7 +452,7 @@ class TradingEnvironment(gym.Env):
     def _calculate_terminal_reward(self, portfolio_state: PortfolioState) -> float:
         """Calculate reward for terminal state."""
         # Simple PnL-based terminal reward
-        equity = portfolio_state.get("total_equity", 0.0)
+        equity = portfolio_state["total_equity"]
         initial = self.portfolio_simulator.initial_capital
         pnl = equity - initial
         return pnl / initial  # Normalized PnL

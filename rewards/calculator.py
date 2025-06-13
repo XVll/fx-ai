@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 
 from config import Config
-from callbacks import CallbackManager
 from rewards.core import RewardState
 from rewards.components import (
     PnLReward,
@@ -45,11 +44,9 @@ class RewardSystem:
     def __init__(
         self,
         config: Config,
-        callback_manager: Optional[CallbackManager] = None,
         logger: Optional[logging.Logger] = None,
     ):
         self.config = config.env.reward
-        self.callback_manager = callback_manager or CallbackManager()
         self.logger = logger or logging.getLogger(__name__)
 
         # Initialize components based on new config
@@ -283,20 +280,7 @@ class RewardSystem:
         # Update episode total
         self.episode_total_reward += total_reward
 
-        # Simplified callback - no metrics collection
-        if self.callback_manager:
-            self.callback_manager.trigger(
-                "on_custom_event",
-                "reward_calculation",
-                {
-                    "reward": total_reward,
-                    "reward_components": component_rewards,
-                    "action": str(decoded_action.get("type", "unknown")),
-                    "is_invalid": bool(decoded_action.get("invalid_reason")),
-                    "step_count": self.step_count,
-                    "episode_total_reward": self.episode_total_reward,
-                },
-            )
+        # No callback manager needed for now
 
         self.step_count += 1
         return total_reward
