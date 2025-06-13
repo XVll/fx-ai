@@ -226,6 +226,42 @@ def execute_benchmark(config: Config, app: 'ApplicationBootstrap') -> None:
 
 def execute_training(training_manager: TrainingManager, app: ApplicationBootstrap) -> None:
     logger.info("🔄 Starting training loop")
+    
+    # Initialize WandB for experiment tracking
+    try:
+        import wandb
+        import os
+        if not wandb.run:
+            # Set local WandB configuration (offline mode to avoid auth issues)
+            os.environ['WANDB_MODE'] = 'offline'
+            
+            # Create simplified config for WandB (only serializable values)
+            wandb_config = {
+                "model_dim": getattr(app.config.model, 'dim', None),
+                "learning_rate": getattr(app.config.training, 'learning_rate', None),
+                "batch_size": getattr(app.config.training, 'batch_size', None),
+                "n_epochs": getattr(app.config.training, 'n_epochs', None),
+                "gamma": getattr(app.config.training, 'gamma', None),
+                "device": getattr(app.config.training, 'device', None),
+                "environment": getattr(app.config.env, 'name', 'TradingEnvironment'),
+                "symbol": getattr(app.config.data, 'symbol', None),
+                "rollout_steps": getattr(app.config.training.training_manager, 'rollout_steps', None)
+            }
+            # Filter out None values
+            wandb_config = {k: v for k, v in wandb_config.items() if v is not None}
+            
+            wandb.init(
+                project="fx-ai-training",
+                entity="local-user",
+                config=wandb_config,
+                tags=["momentum-trading", "ppo", "transformer"]
+            )
+            logger.info("🎯 WandB tracking initialized with local server")
+    except ImportError:
+        logger.warning("WandB not available - training will continue without experiment tracking")
+    except Exception as e:
+        logger.warning(f"WandB initialization failed: {e} - training will continue without experiment tracking")
+    
     training_manager.start(
         trainer=app.trainer,
         environment=app.environment,

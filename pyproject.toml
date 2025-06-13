@@ -22,6 +22,11 @@ optuna-dashboard = "optuna-dashboard sqlite:///optuna_studies.db"
 # Scan for momentum days in data
 scan = "poetry run python data/scanner/momentum_scanner.py --min-quality 0.0"
 
+# Local WandB Server Management
+wandb-start = "bash scripts/start_wandb.sh"
+wandb-stop = "docker stop wandb-local"
+wandb-logs = "docker logs wandb-local"
+
 # Testing & Linting
 test = "poetry run pytest -v"
 test-fast = "poetry run pytest --tb=short"

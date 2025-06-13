@@ -34,8 +34,8 @@ class TrainingManagerConfig:
     symbols: List[str] = field(default_factory=lambda: [])                    # Trading symbols to use
     date_range: List[Optional[str]] = field(default_factory=lambda: [None, None])  # Date range [start, end] or [None, None] for all
 
-    day_score_range: List[float] = field(default_factory=lambda: [0.7, 1.0])       # Day quality score filter range [min, max]
-    reset_roc_range: List[float] = field(default_factory=lambda: [0.05, 1.0])      # Reset point ROC score filter range
+    day_score_range: List[float] = field(default_factory=lambda: [0.0, 1.0])       # Day quality score filter range [min, max]
+    reset_roc_range: List[float] = field(default_factory=lambda: [0.0, 1.0])      # Reset point ROC score filter range
     reset_activity_range: List[float] = field(default_factory=lambda: [0.0, 1.0])  # Reset point activity score filter range
 
     day_selection_mode: str = "sequential"          # Day ordering: sequential/quality/random
