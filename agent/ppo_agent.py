@@ -252,19 +252,14 @@ class PPOTrainer:
                 elif batch_advantages.ndim == 1:
                     batch_advantages = batch_advantages.unsqueeze(1)
                 
-                # Discrete action distributions
-                action_type_logits, action_size_logits = action_params
-                action_types_taken = batch_actions[:, 0].long()
-                action_sizes_taken = batch_actions[:, 1].long()
+                # Single discrete action distribution
+                action_logits = action_params[0]
+                actions_taken = batch_actions.long().squeeze(-1) if batch_actions.ndim > 1 else batch_actions.long()
                 
-                type_dist = torch.distributions.Categorical(logits=action_type_logits)
-                size_dist = torch.distributions.Categorical(logits=action_size_logits)
+                action_dist = torch.distributions.Categorical(logits=action_logits)
                 
-                new_type_log_probs = type_dist.log_prob(action_types_taken)
-                new_size_log_probs = size_dist.log_prob(action_sizes_taken)
-                new_log_probs = (new_type_log_probs + new_size_log_probs).unsqueeze(1)
-                
-                entropy = (type_dist.entropy() + size_dist.entropy()).unsqueeze(1)
+                new_log_probs = action_dist.log_prob(actions_taken).unsqueeze(1)
+                entropy = action_dist.entropy().unsqueeze(1)
                 
                 # PPO loss calculation
                 ratio = torch.exp(new_log_probs - batch_old_log_probs)
@@ -325,10 +320,7 @@ class PPOTrainer:
     @staticmethod
     def _convert_action_for_env(action_tensor: torch.Tensor) -> Any:
         """Convert model action tensor to environment format."""
-        if action_tensor.ndim > 0 and action_tensor.shape[-1] == 2:
-            return action_tensor.cpu().numpy().squeeze().astype(int)
-        else:
-            return action_tensor.cpu().numpy().item()
+        return action_tensor.cpu().numpy().item()
 
     def _compute_advantages_and_returns(self):
         """Compute GAE advantages and returns."""

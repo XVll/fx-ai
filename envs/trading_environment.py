@@ -87,8 +87,7 @@ class TradingEnvironment(gym.Env):
 
     def _setup_spaces(self):
         """Set up gymnasium action and observation spaces."""
-        action_dim = self.config.model.action_dim
-        self.action_space = spaces.Discrete(action_dim[0] * action_dim[1])
+        self.action_space = spaces.Discrete(self.config.model.action_count)
 
         # Observation space: multi-branch features
         model_cfg = self.config.model
@@ -290,18 +289,12 @@ class TradingEnvironment(gym.Env):
         # Get portfolio state before action
         portfolio_before = self.portfolio_simulator.get_portfolio_state(current_time)
 
-        # Convert linear action to (action_type, size) tuple for execution simulator
-        action_dim = self.config.model.action_dim
-        action_type_idx = int(action) // action_dim[1]
-        size_idx = int(action) % action_dim[1]
-        action_tuple = (action_type_idx, size_idx)
-
         # Validate action bounds
         validated_action = self._validate_action(action, portfolio_before, market_state)
 
-        # Execute action through execution simulator
+        # Execute action through execution simulator (direct pass-through)
         execution_result = self.execution_simulator.execute_action(
-            raw_action=action_tuple,
+            raw_action=validated_action,
             market_state=market_state,
             portfolio_state=portfolio_before,
             primary_asset=self.symbol,
@@ -396,20 +389,19 @@ class TradingEnvironment(gym.Env):
             action = int(action)
 
         # Validate bounds
-        if not 0 <= action < 12:
+        if not 0 <= action < 7:
             self.logger.warning(f"Invalid action {action}, defaulting to HOLD")
-            return 0  # HOLD_25
+            return 0  # HOLD
 
         # Apply action masking if enabled
-        if self.config.simulation.use_action_masking and self.action_mask:
+        if hasattr(self.config.simulation, 'use_action_masking') and self.config.simulation.use_action_masking and self.action_mask:
             mask = self.action_mask.get_action_mask(portfolio_state, market_state)
             if not mask[action]:
-                # Find first valid action (prefer HOLD actions)
-                for hold_action in [0, 1, 2, 3]:  # HOLD actions
-                    if mask[hold_action]:
-                        return hold_action
-                # If no HOLD valid, find any valid action
-                for i in range(12):
+                # Find first valid action (prefer HOLD action)
+                if mask[0]:  # HOLD action
+                    return 0
+                # If HOLD not valid, find any valid action
+                for i in range(7):
                     if mask[i]:
                         return i
                 # Should not reach here if mask is properly constructed

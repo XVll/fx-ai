@@ -36,10 +36,8 @@ class ActionMask:
         self.min_order_value = config.min_trade_value  # Minimum order value in $
         self.min_shares_fraction = 0.01  # Minimum 1% of position for partial sells
         
-        # Define action space structure (3 types × 4 sizes = 12 actions)
-        self.n_action_types = len(ActionType)
-        self.n_position_sizes = len(PositionSizeType)
-        self.n_actions = self.n_action_types * self.n_position_sizes
+        # Define action space structure (7 single actions)
+        self.n_actions = 7  # HOLD, BUY_25, BUY_50, BUY_100, SELL_25, SELL_50, SELL_100
         
         self.logger.debug(
             f"ActionMask initialized: max_position_ratio={self.max_position_ratio:.2f}, "
@@ -89,21 +87,19 @@ class ActionMask:
         sell_price = bid_price if bid_price > 0 else current_price
         
         if buy_price <= 0 or sell_price <= 0:
-            # Invalid market data - only allow HOLD actions
-            mask[self._get_action_indices(ActionType.HOLD)] = True
+            # Invalid market data - only allow HOLD action
+            mask[0] = True  # HOLD is index 0
             return mask
         
         # Calculate position limits
         max_position_value = total_equity * self.max_position_ratio
         
-        # HOLD actions - always valid
-        hold_indices = self._get_action_indices(ActionType.HOLD)
-        mask[hold_indices] = True
+        # Action 0: HOLD - always valid
+        mask[0] = True
         
-        # BUY actions - check cash and position limits
-        buy_indices = self._get_action_indices(ActionType.BUY)
-        for i, size_type in enumerate(PositionSizeType):
-            size_fraction = self._get_size_fraction(size_type)
+        # Actions 1-3: BUY actions (25%, 50%, 100%)
+        buy_sizes = [0.25, 0.50, 1.00]
+        for i, size_fraction in enumerate(buy_sizes):
             buy_value = cash * size_fraction
             new_position_value = current_position_value + buy_value
             
@@ -114,13 +110,12 @@ class ActionMask:
                 cash >= buy_value  # Have sufficient cash
             )
             
-            mask[buy_indices[i]] = can_buy
+            mask[1 + i] = can_buy  # Actions 1, 2, 3
         
-        # SELL actions - check if we have position to sell
+        # Actions 4-6: SELL actions (25%, 50%, 100%)
         if current_shares > 0 and sell_price > 0:
-            sell_indices = self._get_action_indices(ActionType.SELL)
-            for i, size_type in enumerate(PositionSizeType):
-                size_fraction = self._get_size_fraction(size_type)
+            sell_sizes = [0.25, 0.50, 1.00]
+            for i, size_fraction in enumerate(sell_sizes):
                 shares_to_sell = current_shares * size_fraction
                 sell_value = shares_to_sell * sell_price
                 
@@ -130,7 +125,7 @@ class ActionMask:
                     sell_value >= self.min_order_value  # Meets minimum order value
                 )
                 
-                mask[sell_indices[i]] = can_sell
+                mask[4 + i] = can_sell  # Actions 4, 5, 6
         
         return mask
     
@@ -162,65 +157,62 @@ class ActionMask:
         if prob_sum > 0:
             masked_probs = masked_probs / prob_sum
         else:
-            # Emergency fallback - uniform distribution over HOLD actions
-            hold_indices = self._get_action_indices(ActionType.HOLD)
+            # Emergency fallback - set HOLD action to 1.0
             masked_probs = np.zeros_like(action_probs)
-            masked_probs[hold_indices] = 1.0 / len(hold_indices)
+            masked_probs[0] = 1.0  # HOLD action
             self.logger.warning("No valid actions found, defaulting to HOLD")
         
         return masked_probs
     
-    def decode_action(self, action_idx: int) -> Tuple[ActionType, PositionSizeType]:
+    def decode_action(self, action_idx: int) -> Tuple[ActionType, Optional[float]]:
         """
-        Decode linear action index into action type and position size.
+        Decode single action index into action type and position size.
         
         Args:
-            action_idx: Linear action index (0-11)
+            action_idx: Single action index (0-6)
             
         Returns:
-            Tuple of (ActionType, PositionSizeType)
+            Tuple of (ActionType, size_float)
         """
         if not 0 <= action_idx < self.n_actions:
             raise ValueError(f"Invalid action index: {action_idx}")
         
-        action_type_idx = action_idx // self.n_position_sizes
-        size_idx = action_idx % self.n_position_sizes
-        
-        action_type = list(ActionType)[action_type_idx]
-        position_size = list(PositionSizeType)[size_idx]
-        
-        return action_type, position_size
+        # Use the same mapping as in core.types
+        from core.types import single_index_to_type_size
+        return single_index_to_type_size(action_idx)
     
-    def encode_action(self, action_type: ActionType, position_size: PositionSizeType) -> int:
+    def encode_action(self, action_type: ActionType, size_float: Optional[float] = None) -> int:
         """
-        Encode action type and position size into linear index.
+        Encode action type and position size into single action index.
         
         Args:
             action_type: Type of action
-            position_size: Size of position
+            size_float: Size as float (0.25, 0.50, 0.75) or None for HOLD
             
         Returns:
-            Linear action index (0-11)
+            Single action index (0-6)
         """
-        action_type_idx = list(ActionType).index(action_type)
-        size_idx = list(PositionSizeType).index(position_size)
-        
-        return action_type_idx * self.n_position_sizes + size_idx
+        # Use the same mapping as in core.types
+        from core.types import type_size_to_single_index
+        return type_size_to_single_index(action_type, size_float)
     
     def get_action_description(self, action_idx: int) -> str:
         """
         Get human-readable description of action.
         
         Args:
-            action_idx: Linear action index
+            action_idx: Single action index (0-6)
             
         Returns:
             Action description string
         """
         try:
-            action_type, position_size = self.decode_action(action_idx)
-            size_pct = int(self._get_size_fraction(position_size) * 100)
-            return f"{action_type.name}_{size_pct}%"
+            action_type, size_float = self.decode_action(action_idx)
+            if size_float is None:
+                return action_type.name  # HOLD
+            else:
+                size_pct = int(size_float * 100)
+                return f"{action_type.name}_{size_pct}%"
         except ValueError:
             return f"INVALID_ACTION_{action_idx}"
     
@@ -244,16 +236,6 @@ class ActionMask:
         
         return valid_actions
     
-    def _get_action_indices(self, action_type: ActionType) -> NDArray[np.int32]:
-        """Get array of action indices for a specific action type."""
-        action_type_idx = list(ActionType).index(action_type)
-        start_idx = action_type_idx * self.n_position_sizes
-        return np.arange(start_idx, start_idx + self.n_position_sizes, dtype=np.int32)
-    
-    def _get_size_fraction(self, position_size: PositionSizeType) -> float:
-        """Convert position size enum to fraction."""
-        # Map SIZE_25 -> 0.25, SIZE_50 -> 0.50, etc.
-        return (position_size.value + 1) * 0.25
     
     def _get_current_shares(self, portfolio_state: Dict[str, Any]) -> float:
         """Extract current share count from portfolio state."""

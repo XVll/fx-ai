@@ -61,6 +61,20 @@ class PositionSizeType(IntEnum):
     SIZE_100 = 3  # 100% of available capital
 
 
+class ActionIndex(IntEnum):
+    """Single-index action space for clean 7 actions.
+    
+    Eliminates redundant HOLD variants and provides direct action mapping.
+    """
+    HOLD = 0
+    BUY_25 = 1
+    BUY_50 = 2  
+    BUY_100 = 3
+    SELL_25 = 4
+    SELL_50 = 5
+    SELL_100 = 6
+
+
 class OrderType(Enum):
     """Order types for execution."""
     MARKET = "MARKET"      # Immediate execution at current price
@@ -266,3 +280,32 @@ class UpdateResult:
     explained_variance: float = 0.0
     advantage_mean: float = 0.0
     interrupted: bool = False
+
+
+# Action mapping utilities for single-index action space
+ACTION_TO_TYPE_SIZE = {
+    ActionIndex.HOLD: (ActionType.HOLD, None),
+    ActionIndex.BUY_25: (ActionType.BUY, 0.25),
+    ActionIndex.BUY_50: (ActionType.BUY, 0.50),
+    ActionIndex.BUY_100: (ActionType.BUY, 1.00),
+    ActionIndex.SELL_25: (ActionType.SELL, 0.25),
+    ActionIndex.SELL_50: (ActionType.SELL, 0.50),
+    ActionIndex.SELL_100: (ActionType.SELL, 1.00),
+}
+
+TYPE_SIZE_TO_ACTION = {v: k for k, v in ACTION_TO_TYPE_SIZE.items()}
+
+
+def single_index_to_type_size(action_index: int) -> tuple[ActionType, Optional[float]]:
+    """Convert single action index to (ActionType, size) tuple."""
+    if action_index not in ACTION_TO_TYPE_SIZE:
+        raise ValueError(f"Invalid action index: {action_index}. Must be 0-6.")
+    return ACTION_TO_TYPE_SIZE[action_index]
+
+
+def type_size_to_single_index(action_type: ActionType, size: Optional[float] = None) -> int:
+    """Convert (ActionType, size) tuple to single action index."""
+    key = (action_type, size)
+    if key not in TYPE_SIZE_TO_ACTION:
+        raise ValueError(f"Invalid action combination: {action_type}, {size}")
+    return TYPE_SIZE_TO_ACTION[key]

@@ -39,8 +39,8 @@ class ModelConfig:
     portfolio_seq_len: int = 5                      # Portfolio sequence length
     portfolio_feat_dim: int = 10                    # Portfolio features count
 
-    # Action space
-    action_dim: List[int] = field(default_factory=lambda: [3, 4])  # [action_types, position_sizes] = [BUY/SELL/HOLD, 25%/50%/75%/100%]
+    # Action space - single index for clean 7 actions
+    action_count: int = 7  # HOLD, BUY_25, BUY_50, BUY_100, SELL_25, SELL_50, SELL_100
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -48,13 +48,9 @@ class ModelConfig:
         if not 0.0 <= self.dropout <= 1.0:
             raise ValueError(f"dropout {self.dropout} must be in range [0.0, 1.0]")
         
-        # Validate action dimensions
-        if len(self.action_dim) != 2:
-            raise ValueError("action_dim must have exactly 2 elements [action_types, position_sizes]")
-        if self.action_dim[0] != 3:
-            raise ValueError("action_types must be 3 (BUY, SELL, HOLD)")
-        if self.action_dim[1] != 4:
-            raise ValueError("position_sizes must be 4 (25%, 50%, 75%, 100%)")
+        # Validate action count
+        if self.action_count != 7:
+            raise ValueError("action_count must be 7 (HOLD, BUY_25, BUY_50, BUY_100, SELL_25, SELL_50, SELL_100)")
         
         # Validate attention heads divide evenly into d_model
         if self.d_model % self.n_heads != 0:

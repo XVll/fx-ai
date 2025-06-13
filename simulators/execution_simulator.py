@@ -124,9 +124,10 @@ class ExecutionSimulator:
         self.np_random = np_random
         self.market_simulator = market_simulator
 
-        # Action space configuration
-        self.action_types = ["HOLD", "BUY", "SELL"]  # indices 0, 1, 2
-        self.position_sizes = [0.25, 0.50, 0.75, 1.0]  # indices 0, 1, 2, 3
+        # Action space configuration - single index mapping
+        # Import here to avoid circular imports
+        from core.types import single_index_to_type_size
+        self.action_mapper = single_index_to_type_size
 
         # Execution parameters from schema
         self.base_latency_ms = simulation_config.mean_latency_ms
@@ -171,31 +172,33 @@ class ExecutionSimulator:
         Decode agent's raw action into structured format.
 
         Args:
-            raw_action: Agent's action (tuple, list, or numpy array)
+            raw_action: Agent's action (single integer index 0-6)
             current_time: Current simulation time for market hours check
 
         Returns:
             ActionDecodeResult with decoded action and validation
         """
         try:
-            # Extract action components
+            # Convert to single integer index
             if isinstance(raw_action, (tuple, list)):
-                action_idx, size_idx = raw_action
-                raw_action_list = list(raw_action)
-            elif hasattr(raw_action, "tolist"):  # NumPy array or PyTorch tensor
-                action_idx, size_idx = raw_action
-                raw_action_list = raw_action.tolist()
+                action_index = int(raw_action[0])  # Take first element if tuple/list
+                raw_action_list = [action_index]
+            elif hasattr(raw_action, "item"):  # NumPy array or PyTorch tensor
+                action_index = int(raw_action.item())
+                raw_action_list = [action_index]
             else:
-                self.logger.warning(f"Unexpected action type: {type(raw_action)}")
-                action_idx, size_idx = 0, 0
-                raw_action_list = [0, 0]
+                action_index = int(raw_action)
+                raw_action_list = [action_index]
 
-            # Ensure indices are valid
-            action_idx = int(action_idx) % len(self.action_types)
-            size_idx = int(size_idx) % len(self.position_sizes)
+            # Validate action index bounds
+            if not 0 <= action_index <= 6:
+                self.logger.warning(f"Invalid action index: {action_index}, defaulting to HOLD")
+                action_index = 0
+                raw_action_list = [0]
 
-            action_type = self.action_types[action_idx]
-            size_float = self.position_sizes[size_idx]
+            # Map single index to (action_type, size)
+            action_type_enum, size_float = self.action_mapper(action_index)
+            action_type = action_type_enum.name  # Convert enum to string
 
             # Basic validation
             if current_time and self._is_market_closed(current_time):
@@ -220,7 +223,7 @@ class ExecutionSimulator:
             return ActionDecodeResult(
                 action_type="HOLD",
                 size_float=0.0,
-                raw_action=[0, 0],
+                raw_action=[0],
                 is_valid=False,
                 rejection_reason=RejectionReason.SYSTEM_ERROR,
                 rejection_details=str(e),
