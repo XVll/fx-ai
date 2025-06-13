@@ -11,6 +11,7 @@ from .episode_manager import EpisodeManager, EpisodeManagerException
 from agent.ppo_agent import PPOTrainer
 from core.types import RolloutResult, UpdateResult
 from core.model_manager import ModelManager
+from core.shutdown import IShutdownHandler, get_global_shutdown_manager
 from config.training.training_config import TrainingManagerConfig
 from envs import TradingEnvironment
 
@@ -35,7 +36,7 @@ class TrainingState:
     start_timestamp: datetime = datetime.now()
 
 
-class TrainingManager:
+class TrainingManager(IShutdownHandler):
     """
     Responsibilities:
     - Training termination decisions (single source of truth)
@@ -189,7 +190,13 @@ class TrainingManager:
             return False, None
 
     def _should_terminate_training(self) -> bool:
-        """Check if training should terminate based on global limits."""
+        """Check if training should terminate based on global limits or shutdown signal."""
+        # Check for shutdown signal first
+        shutdown_manager = get_global_shutdown_manager()
+        if shutdown_manager.is_shutdown_requested():
+            self.termination_reason = "shutdown_requested"
+            return True
+        
         # Note: Callbacks will handle intelligent termination
 
         if self.config.termination_max_episodes and self.state.global_episodes >= self.config.termination_max_episodes:
@@ -258,4 +265,30 @@ class TrainingManager:
             self.logger.info("🆕 Starting fresh training")
 
         return loaded_metadata
+
+    def register_shutdown(self) -> None:
+        """Register this component with the global shutdown manager."""
+        shutdown_manager = get_global_shutdown_manager()
+        shutdown_manager.register_component(
+            self,
+            name="TrainingManager",
+            timeout= 30
+        )
+        self.logger.debug("🔗 TrainingManager registered with shutdown manager")
+
+    def shutdown(self) -> None:
+        """Perform graceful shutdown - save state and cleanup resources."""
+        self.logger.info("🛑 TrainingManager shutdown initiated")
+        
+        try:
+            # Set termination reason if not already set
+            if not self.termination_reason:
+                self.termination_reason = "shutdown_requested"
+                
+            # Finalize training will handle callbacks and cleanup
+            self._finalize_training(self.termination_reason)
+            
+            self.logger.info("✅ TrainingManager shutdown completed")
+        except Exception as e:
+            self.logger.error(f"❌ TrainingManager shutdown failed: {e}")
 
