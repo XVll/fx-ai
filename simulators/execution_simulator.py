@@ -1,14 +1,13 @@
 """
-Enhanced Execution Simulator - Handles action decoding and realistic execution
+Execution Simulator - Handles action decoding and realistic execution
 
 This simulator is responsible for:
 1. Decoding agent actions into order parameters
-2. Realistic execution simulation with improved slippage, latency, fees
+2. Realistic execution simulation with slippage, latency, fees
 3. Order validation and rejection handling
 4. Market impact modeling
-5. Session tracking and statistics
 
-The environment's job is simplified to just handle portfolio updates.
+Focused purely on simulation functionality - no metrics or statistics collection.
 """
 
 import logging
@@ -106,11 +105,10 @@ class ExecutionResult(NamedTuple):
     fill_details: Optional[FillDetails]
     action_decode_result: ActionDecodeResult
     order_request: Optional[OrderRequest]
-    execution_stats: Dict[str, Any]
 
 
 class ExecutionSimulator:
-    """Enhanced execution simulator with action decoding and realistic execution."""
+    """Execution simulator with action decoding and realistic execution - focused on simulation only."""
 
     def __init__(
         self,
@@ -150,20 +148,9 @@ class ExecutionSimulator:
         # Trading limits from schema
         self.allow_shorting = simulation_config.allow_shorting
 
-        # Session tracking
-        self.session_fills = 0
+        # Minimal state for simulation - only session volume/turnover needed for slippage calculation
         self.session_volume = 0.0
         self.session_turnover = 0.0
-        self.session_commission = 0.0
-        self.session_slippage = 0.0
-        self.total_orders_attempted = 0
-        self.total_orders_filled = 0
-        self.total_orders_rejected = 0
-
-        # Performance tracking
-        self.rejection_counts = {reason: 0 for reason in RejectionReason}
-        self.fill_latencies = []
-        self.slippage_history = []
 
     def decode_action(
         self, raw_action, current_time: Optional[datetime] = None
@@ -363,8 +350,6 @@ class ExecutionSimulator:
             FillDetails if order filled, None if rejected
         """
         try:
-            self.total_orders_attempted += 1
-
             # Simulate execution latency
             latency_ms = self._simulate_latency()
 
@@ -405,18 +390,13 @@ class ExecutionSimulator:
                 slippage_cost_total=slippage_cost,
             )
 
-            # Update session tracking
-            self._update_session_stats(fill_details, latency_ms, slippage_bps)
+            # Update minimal session state for slippage calculation
+            self._update_session_state(fill_details)
 
-            # NOTE: Execution metrics will be recorded by callbacks in TradingEnvironment
-            # after portfolio processing with correct P&L calculation
-
-            self.total_orders_filled += 1
             return fill_details
 
         except Exception as e:
             self.logger.error(f"Error executing order: {e}")
-            self.total_orders_rejected += 1
             return None
 
     def execute_action(
@@ -460,33 +440,15 @@ class ExecutionSimulator:
             )
             fill_details = self.execute_order(order_request, execution_context)
 
-            if fill_details is None:
-                self.total_orders_rejected += 1
-                if action_result.is_valid:  # Order was created but execution failed
-                    action_result.is_valid = False
-                    action_result.rejection_reason = RejectionReason.SYSTEM_ERROR
-                    action_result.rejection_details = "Execution failed"
-        elif not action_result.is_valid:
-            self.total_orders_rejected += 1
-            if action_result.rejection_reason:
-                self.rejection_counts[action_result.rejection_reason] += 1
-
-        # Compile execution stats
-        execution_stats = {
-            "session_fills": self.session_fills,
-            "session_volume": self.session_volume,
-            "session_turnover": self.session_turnover,
-            "total_attempted": self.total_orders_attempted,
-            "total_filled": self.total_orders_filled,
-            "total_rejected": self.total_orders_rejected,
-            "fill_rate": self.total_orders_filled / max(1, self.total_orders_attempted),
-        }
+            if fill_details is None and action_result.is_valid:  # Order was created but execution failed
+                action_result.is_valid = False
+                action_result.rejection_reason = RejectionReason.SYSTEM_ERROR
+                action_result.rejection_details = "Execution failed"
 
         return ExecutionResult(
             fill_details=fill_details,
             action_decode_result=action_result,
             order_request=order_request,
-            execution_stats=execution_stats,
         )
 
     def _simulate_latency(self) -> float:
@@ -569,19 +531,10 @@ class ExecutionSimulator:
         """Calculate regulatory and exchange fees."""
         return quantity * self.fee_per_share
 
-    def _update_session_stats(
-        self, fill: FillDetails, latency_ms: float, slippage_bps: float
-    ):
-        """Update session tracking statistics."""
-        self.session_fills += 1
+    def _update_session_state(self, fill: FillDetails):
+        """Update minimal session state needed for slippage calculation."""
         self.session_volume += fill.executed_quantity
         self.session_turnover += fill.executed_quantity * fill.executed_price
-        self.session_commission += fill.commission
-        self.session_slippage += fill.slippage_cost_total
-
-        # Performance tracking
-        self.fill_latencies.append(latency_ms)
-        self.slippage_history.append(slippage_bps)
 
     # Removed _record_execution_metrics - handled by callbacks in TradingEnvironment
 
@@ -609,43 +562,12 @@ class ExecutionSimulator:
         else:
             return (hour - 4) / 16.0  # 16 hour trading day
 
-    def get_session_stats(self) -> Dict[str, Any]:
-        """Get comprehensive session statistics."""
-        avg_latency = np.mean(self.fill_latencies) if self.fill_latencies else 0.0
-        avg_slippage = np.mean(self.slippage_history) if self.slippage_history else 0.0
-
-        return {
-            "session_fills": self.session_fills,
-            "session_volume": self.session_volume,
-            "session_turnover": self.session_turnover,
-            "session_commission": self.session_commission,
-            "session_slippage": self.session_slippage,
-            "total_orders_attempted": self.total_orders_attempted,
-            "total_orders_filled": self.total_orders_filled,
-            "total_orders_rejected": self.total_orders_rejected,
-            "fill_rate": self.total_orders_filled / max(1, self.total_orders_attempted),
-            "avg_latency_ms": avg_latency,
-            "avg_slippage_bps": avg_slippage,
-            "rejection_counts": dict(self.rejection_counts),
-            "avg_trade_size": self.session_volume / max(1, self.session_fills),
-        }
 
     def reset(self, np_random_seed_source: Optional[np.random.Generator] = None):
         """Reset for new episode/session."""
         if np_random_seed_source:
             self.np_random = np_random_seed_source
 
-        # Reset session tracking
-        self.session_fills = 0
+        # Reset minimal session state
         self.session_volume = 0.0
         self.session_turnover = 0.0
-        self.session_commission = 0.0
-        self.session_slippage = 0.0
-        self.total_orders_attempted = 0
-        self.total_orders_filled = 0
-        self.total_orders_rejected = 0
-
-        # Reset performance tracking
-        self.rejection_counts = {reason: 0 for reason in RejectionReason}
-        self.fill_latencies = []
-        self.slippage_history = []

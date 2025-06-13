@@ -1,4 +1,4 @@
-# rewards/calculator.py - Clean percentage-based reward system
+# rewards/calculator.py - Focused reward calculation system
 
 import logging
 from typing import Any, Dict, List, Optional
@@ -38,7 +38,7 @@ class TradeTracker:
 
 class RewardSystem:
     """
-    Clean percentage-based reward system without complex metrics
+    Reward system focused purely on reward calculation
     """
 
     def __init__(
@@ -52,14 +52,9 @@ class RewardSystem:
         # Initialize components based on new config
         self.components = self._initialize_components()
 
-        # Simple tracking
+        # Essential state for reward calculation
         self.step_count = 0
         self.current_trade: Optional[TradeTracker] = None
-        self.episode_total_reward = 0.0
-        self.component_totals = {}
-
-        # Component tracking for display
-        self._last_component_rewards = {}
 
         self.logger.info(
             f"Initialized percentage-based reward system with {len(self.components)} components"
@@ -179,9 +174,6 @@ class RewardSystem:
         """Reset for new episode"""
         self.step_count = 0
         self.current_trade = None
-        self.episode_total_reward = 0.0
-        self.component_totals = {}
-        self._last_component_rewards = {}
 
         # Reset components that have state
         for component in self.components:
@@ -259,58 +251,14 @@ class RewardSystem:
 
         # Calculate component rewards
         total_reward = 0.0
-        component_rewards = {}
 
         for component in self.components:
             reward_value, diagnostics = component(state)
             total_reward += reward_value
-            component_rewards[component.metadata.name] = reward_value
-
-            # Track component totals
-            if component.metadata.name not in self.component_totals:
-                self.component_totals[component.metadata.name] = 0.0
-            self.component_totals[component.metadata.name] += reward_value
-
-        # Store last component rewards for access
-        self._last_component_rewards = component_rewards.copy()
 
         # Update trade tracking
         self._update_trade_tracking(state)
 
-        # Update episode total
-        self.episode_total_reward += total_reward
-
-        # No callback manager needed for now
-
         self.step_count += 1
         return total_reward
 
-    def get_last_reward_components(self) -> Dict[str, float]:
-        """Get the last reward components for compatibility"""
-        return self._last_component_rewards.copy()
-
-    def get_episode_summary(
-        self, final_portfolio_state: PortfolioState
-    ) -> Dict[str, Any]:
-        """Get episode summary"""
-        account_value = final_portfolio_state.get("total_equity", 25000.0)
-        realized_pnl = final_portfolio_state.get("realized_pnl_session", 0.0)
-
-        return {
-            "total_reward": self.episode_total_reward,
-            "component_totals": self.component_totals.copy(),
-            "final_account_value": account_value,
-            "realized_pnl_dollars": realized_pnl,
-            "realized_pnl_percentage": (realized_pnl / 25000.0)
-            * 100,  # Assuming 25k initial
-            "total_steps": self.step_count,
-        }
-
-    def get_metrics_for_display(self) -> Dict[str, Any]:
-        """Get current metrics formatted for display"""
-        return {
-            "episode_reward": self.episode_total_reward,
-            "component_rewards": self._last_component_rewards.copy(),
-            "component_totals": self.component_totals.copy(),
-            "current_step": self.step_count,
-        }

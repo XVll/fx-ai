@@ -1,16 +1,14 @@
 """
-Portfolio Simulator - Redesigned for new architecture
+Portfolio Simulator - Focused on core simulation functionality
 
 Handles portfolio state management, position tracking, and P&L calculation.
 Works with ExecutionSimulator and TradingEnvironment in the new data flow.
 
 Key features:
-- Portfolio state tracking with proper metrics integration
-- Position management with real-time P&L calculation
-- Trade logging with comprehensive analytics
+- Portfolio state tracking and position management
+- Real-time P&L calculation and market value updates
 - Feature extraction for model observations
-- Configurable through schemas with proper defaults
-- Testable design with clear interfaces
+- Clean simulation-focused design
 """
 
 import logging
@@ -149,13 +147,12 @@ class PortfolioObservation(TypedDict):
 
 class PortfolioSimulator:
     """
-    Portfolio management with enhanced tracking and metrics.
+    Portfolio simulation focused on core functionality.
 
     Designed to work with:
     - ExecutionSimulator: Receives FillDetails from order execution
     - TradingEnvironment: Provides portfolio state and observations
     - MarketSimulator: Uses market prices for valuation
-    - Metrics systems: Reports portfolio performance
     """
 
     def __init__(
@@ -201,20 +198,12 @@ class PortfolioSimulator:
         self.open_trades: Dict[str, TradeRecord] = {}  # trade_id -> TradeRecord
         self.completed_trades: List[TradeRecord] = []
 
-        # Session tracking
+        # Minimal session state
         self.session_start_time: Optional[datetime] = None
         self.session_realized_pnl: float = 0.0
-        self.session_commission: float = 0.0
-        self.session_fees: float = 0.0
-        self.session_slippage: float = 0.0
-        self.session_volume: float = 0.0
-        self.session_turnover: float = 0.0
 
-        # Performance tracking
-        self.equity_history: List[Tuple[datetime, float]] = []
+        # Essential state for model observations
         self.feature_history: deque = deque(maxlen=max(1, self.portfolio_seq_len))
-        self.peak_equity: float = 0.0
-        self.max_drawdown: float = 0.0
 
         # Trade ID generation
         self.trade_counter: int = 0
@@ -226,7 +215,6 @@ class PortfolioSimulator:
         """Reset portfolio for new session/episode."""
         self.session_start_time = session_start
         self.cash = self.initial_capital
-        self.peak_equity = self.initial_capital
 
         # Reset positions
         self.positions = {
@@ -245,17 +233,8 @@ class PortfolioSimulator:
         self.open_trades.clear()
         self.completed_trades.clear()
 
-        # Reset session metrics
+        # Reset minimal session state
         self.session_realized_pnl = 0.0
-        self.session_commission = 0.0
-        self.session_fees = 0.0
-        self.session_slippage = 0.0
-        self.session_volume = 0.0
-        self.session_turnover = 0.0
-        self.max_drawdown = 0.0
-
-        # Reset history
-        self.equity_history = [(session_start, self.initial_capital)]
         self.feature_history.clear()
 
         # Initialize feature history with initial features
@@ -294,13 +273,6 @@ class PortfolioSimulator:
         commission = fill.commission
         fees = fill.fees
         slippage = fill.slippage_cost_total
-
-        # Update session metrics
-        self.session_commission += commission
-        self.session_fees += fees
-        self.session_slippage += slippage
-        self.session_volume += abs(fill_qty)
-        self.session_turnover += abs(fill_value)
 
         # Adjust cash for transaction costs
         self.cash -= commission + fees
@@ -608,21 +580,6 @@ class PortfolioSimulator:
             if position.trade_id and position.trade_id in self.open_trades:
                 self._update_trade_excursions(position, current_price)
 
-        # Update equity tracking
-        total_equity = self.cash + total_market_value
-        self.equity_history.append((current_time, total_equity))
-
-        # Track peak equity and drawdown
-        if total_equity > self.peak_equity:
-            self.peak_equity = total_equity
-
-        current_drawdown = (
-            (self.peak_equity - total_equity) / self.peak_equity
-            if self.peak_equity > 0
-            else 0
-        )
-        self.max_drawdown = max(self.max_drawdown, current_drawdown)
-
         # Update feature history
         features = self._calculate_portfolio_features(current_time)
         self.feature_history.append(features)
@@ -661,10 +618,22 @@ class PortfolioSimulator:
             return features  # No assets or position data
 
         # Validate timestamp to prevent negative time calculations
-        if timestamp is None or (
-            position.entry_timestamp and timestamp < position.entry_timestamp
-        ):
+        if timestamp is None:
             return features
+            
+        if position.entry_timestamp:
+            # Ensure both timestamps are comparable datetime objects
+            current_ts = timestamp
+            entry_ts = position.entry_timestamp
+            
+            # Convert pandas Timestamps to datetime if needed
+            if hasattr(current_ts, 'to_pydatetime'):
+                current_ts = current_ts.to_pydatetime()
+            if hasattr(entry_ts, 'to_pydatetime'):
+                entry_ts = entry_ts.to_pydatetime()
+            
+            if current_ts < entry_ts:
+                return features
 
         total_equity = self.cash + sum(
             pos.market_value for pos in self.positions.values()
@@ -844,12 +813,8 @@ class PortfolioSimulator:
                 primary_avg_entry_price = position.avg_price
                 break
 
-        # Calculate current drawdown percentage
+        # Calculate current drawdown percentage (set to 0 as we removed peak tracking)
         current_drawdown_pct = 0.0
-        if self.peak_equity > 0:
-            current_drawdown_pct = max(
-                0, (self.peak_equity - total_equity) / self.peak_equity
-            )
 
         return PortfolioState(
             timestamp=timestamp,
@@ -858,15 +823,7 @@ class PortfolioSimulator:
             unrealized_pnl=total_unrealized_pnl,
             realized_pnl_session=self.session_realized_pnl,
             positions=positions_dict,
-            session_metrics={
-                "total_commissions_session": self.session_commission,
-                "total_fees_session": self.session_fees,
-                "total_slippage_cost_session": self.session_slippage,
-                "total_volume_traded_session": self.session_volume,
-                "total_turnover_session": self.session_turnover,
-                "max_drawdown": self.max_drawdown,
-                "peak_equity": self.peak_equity,
-            },
+            session_metrics={},
             # Additional fields for reward system compatibility
             position_side=primary_position_side,
             position_value=total_position_value,
@@ -875,78 +832,6 @@ class PortfolioSimulator:
             avg_entry_price=primary_avg_entry_price,
         )
 
-    def get_trading_metrics(self) -> Dict[str, Any]:
-        """Get comprehensive trading performance metrics."""
-        total_trades = len(self.completed_trades)
-
-        if total_trades == 0:
-            return {
-                "total_trades": 0,
-                "win_rate": 0.0,
-                "avg_pnl_per_trade": 0.0,
-                "total_realized_pnl": self.session_realized_pnl,
-                "total_commission": self.session_commission,
-                "total_fees": self.session_fees,
-                "total_slippage": self.session_slippage,
-                "volume_traded": self.session_volume,
-                "turnover": self.session_turnover,
-            }
-
-        # Analyze completed trades
-        winning_trades = [
-            t
-            for t in self.completed_trades
-            if t["realized_pnl"] and t["realized_pnl"] > 0
-        ]
-        losing_trades = [
-            t
-            for t in self.completed_trades
-            if t["realized_pnl"] and t["realized_pnl"] <= 0
-        ]
-
-        win_rate = len(winning_trades) / total_trades * 100
-        total_realized = sum(
-            t["realized_pnl"] for t in self.completed_trades if t["realized_pnl"]
-        )
-        avg_pnl = total_realized / total_trades if total_trades > 0 else 0
-
-        avg_win = (
-            np.mean([t["realized_pnl"] for t in winning_trades])
-            if winning_trades
-            else 0
-        )
-        avg_loss = (
-            np.mean([t["realized_pnl"] for t in losing_trades]) if losing_trades else 0
-        )
-
-        # Holding periods
-        holding_periods = [
-            t["holding_period_seconds"]
-            for t in self.completed_trades
-            if t["holding_period_seconds"] is not None
-        ]
-        avg_holding_time = np.mean(holding_periods) if holding_periods else 0
-
-        return {
-            "total_trades": total_trades,
-            "winning_trades": len(winning_trades),
-            "losing_trades": len(losing_trades),
-            "win_rate": win_rate,
-            "avg_pnl_per_trade": avg_pnl,
-            "avg_winning_trade": avg_win,
-            "avg_losing_trade": avg_loss,
-            "total_realized_pnl": total_realized,
-            "total_commission": self.session_commission,
-            "total_fees": self.session_fees,
-            "total_slippage": self.session_slippage,
-            "volume_traded": self.session_volume,
-            "turnover": self.session_turnover,
-            "avg_holding_time_seconds": avg_holding_time,
-            "max_drawdown": self.max_drawdown * 100,  # As percentage
-            "profit_factor": abs(avg_win / avg_loss)
-            if avg_loss < 0
-            else (float("inf") if avg_win > 0 else 0),
-        }
 
     def get_current_position(self, asset_id: str) -> Optional[Position]:
         """Get current position for an asset."""
@@ -975,5 +860,5 @@ class PortfolioSimulator:
 
         return (
             f"PortfolioSimulator(equity=${total_equity:.2f}, cash=${self.cash:.2f}, "
-            f"positions={open_positions}, trades={len(self.completed_trades)})"
+            f"positions={open_positions})"
         )

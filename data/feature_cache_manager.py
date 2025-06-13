@@ -22,6 +22,7 @@ from dataclasses import dataclass
 import json
 from feature.simple_feature_manager import SimpleFeatureManager
 from core.path_manager import get_path_manager
+from core.shutdown import IShutdownHandler, get_global_shutdown_manager
 
 
 @dataclass
@@ -38,7 +39,7 @@ class CacheMetadata:
     version: str = "1.0"
 
 
-class FeatureCacheManager:
+class FeatureCacheManager(IShutdownHandler):
     """Manages persistent feature caching with automatic invalidation and loading"""
 
     def __init__(
@@ -61,6 +62,9 @@ class FeatureCacheManager:
         self._current_metadata: Optional[CacheMetadata] = None
         self._current_session: Optional[Tuple[str, date]] = None
         self._dirty_timestamps: Set[pd.Timestamp] = set()
+        
+        # Shutdown state
+        self._shutdown_requested: bool = False
 
         self.logger.info(
             f"FeatureCacheManager initialized with cache_dir: {self.cache_dir}"
@@ -391,8 +395,8 @@ class FeatureCacheManager:
         self._current_cache[timestamp_key] = features
         self._dirty_timestamps.add(storage_timestamp)
 
-        # Auto-save every 10 cached features to avoid data loss
-        if len(self._dirty_timestamps) >= 10:
+        # Auto-save every 10 cached features to avoid data loss (unless shutdown requested)
+        if len(self._dirty_timestamps) >= 10 and not self._shutdown_requested:
             self._save_current_progress()
 
     def is_timestamp_cached(self, timestamp: pd.Timestamp) -> bool:
@@ -496,3 +500,38 @@ class FeatureCacheManager:
                 f"Exception during auto-save for {symbol} {cache_date}: {e}"
             )
             return False
+
+    def register_shutdown(self) -> None:
+        """Register this component with the global shutdown manager."""
+        try:
+            shutdown_manager = get_global_shutdown_manager()
+            shutdown_manager.register_component(
+                name="FeatureCacheManager",
+                shutdown_func=self.shutdown,
+                timeout=10.0
+            )
+            self.logger.debug("FeatureCacheManager registered with shutdown manager")
+        except Exception as e:
+            self.logger.warning(f"Failed to register FeatureCacheManager with shutdown manager: {e}")
+
+    def shutdown(self) -> None:
+        """Perform graceful shutdown - save any pending cache and stop operations."""
+        self.logger.info("🛑 FeatureCacheManager shutdown initiated")
+        
+        # Set shutdown flag to stop auto-save operations
+        self._shutdown_requested = True
+        
+        try:
+            # Save any pending cached features before shutdown
+            if self._dirty_timestamps and self._current_session:
+                symbol, cache_date = self._current_session
+                self.logger.info(f"Saving {len(self._dirty_timestamps)} pending cached features for {symbol} {cache_date}")
+                self._save_current_progress()
+            
+            # Unload current session
+            self.unload_session()
+            
+            self.logger.info("✅ FeatureCacheManager shutdown completed")
+            
+        except Exception as e:
+            self.logger.error(f"Error during FeatureCacheManager shutdown: {e}")

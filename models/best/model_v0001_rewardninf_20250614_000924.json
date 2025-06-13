@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "timestamp": "20250614_000924",
+  "reward": -Infinity,
+  "metrics": {
+    "model_type": "final",
+    "timestamp": 1749848963.998483,
+    "datetime": "2025-06-14T00:09:23.998483",
+    "global_updates": 0,
+    "total_episodes": 1,
+    "metric_name": "mean_reward",
+    "metric_mode": "max",
+    "best_metric_value": -Infinity,
+    "session_models_saved": 1,
+    "trainer_config": "{'seed': 42, 'shutdown_timeout': 10, 'device': 'mps', 'learning_rate': 0.00015, 'batch_size': 64, 'n_epochs': 8, 'gamma': 0.99, 'gae_lambda': 0.95, 'clip_epsilon': 0.15, 'value_coef': 0.5, 'entropy_coef': 0.01, 'max_grad_norm': 0.3, 'training_manager': {'mode': 'training', 'termination_max_episodes': 1000, 'termination_max_updates': 500, 'termination_max_cycles': None, 'intelligent_termination': True, 'plateau_patience': 50, 'degradation_threshold': 0.05, 'episode_max_steps': None, 'daily_max_episodes': None, 'daily_max_updates': None, 'daily_max_cycles': 3, 'symbols': ['MLGO'], 'date_range': ['2025-02-21', '2025-02-21'], 'day_score_range': [0.0, 1.0], 'reset_roc_range': [0.0, 1.0], 'reset_activity_range': [0.0, 1.0], 'day_selection_mode': 'sequential', 'reset_point_selection_mode': 'sequential', 'preload_enabled': True, 'eval_frequency': 50, 'eval_episodes': 10, 'performance_window': 50, 'recommendation_frequency': 10, 'adaptation_enabled': True, 'early_stop_patience': 300, 'early_stop_min_delta': 0.01, 'best_model_metric': 'mean_reward', 'continue_with_best_model': True, 'keep_best_n_models': 5, 'checkpoint_frequency': 25, 'rollout_steps': 2048}}",
+    "session_duration": 0.07788205146789551,
+    "models_saved_this_session": 1,
+    "is_final": true
+  },
+  "source": "cache/temp/final_checkpoint_u0_20250614_000923.pt",
+  "file_size": 7989751
+}
