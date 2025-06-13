@@ -15,9 +15,13 @@ from config.evaluation.evaluation_config import EvaluationConfig
 from core.evaluation.evaluator import Evaluator
 from .types import EvaluationResult
 from core.model_manager import ModelManager
-from agent.ppo_agent import PPOTrainer
 from envs import TradingEnvironment
 from data.data_manager import DataManager
+
+# Import PPOTrainer only when needed to avoid circular import
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from agent.ppo_agent import PPOTrainer
 
 
 class BenchmarkResult:
@@ -85,7 +89,7 @@ class BenchmarkRunner:
     
     def run_benchmark(
         self,
-        trainer: PPOTrainer,
+        trainer: "PPOTrainer",
         environment: TradingEnvironment,
         data_manager: DataManager,
         model_manager: Optional[ModelManager] = None
@@ -162,7 +166,7 @@ class BenchmarkRunner:
     def benchmark_model(
         self,
         model_path: str,
-        trainer: PPOTrainer,
+        trainer: "PPOTrainer",
         environment: TradingEnvironment,
         data_manager: DataManager,
         output_dir: Optional[str] = None
@@ -231,7 +235,7 @@ class BenchmarkRunner:
     def benchmark_best_model(
         self,
         model_manager: ModelManager,
-        trainer: PPOTrainer,
+        trainer: "PPOTrainer",
         environment: TradingEnvironment,
         data_manager: DataManager,
         output_dir: Optional[str] = None
@@ -274,7 +278,7 @@ class BenchmarkRunner:
     def compare_models(
         self,
         model_paths: List[str],
-        trainer: PPOTrainer,
+        trainer: "PPOTrainer",
         environment: TradingEnvironment,
         data_manager: DataManager,
         output_dir: Optional[str] = None
@@ -320,7 +324,7 @@ class BenchmarkRunner:
         
         return results
     
-    def _load_model(self, model_path: str, trainer: PPOTrainer) -> bool:
+    def _load_model(self, model_path: str, trainer: "PPOTrainer") -> bool:
         """Load model from path into trainer."""
         try:
             # Use stored model manager or create a basic one

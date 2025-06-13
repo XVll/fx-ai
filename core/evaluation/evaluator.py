@@ -15,10 +15,14 @@ import torch
 
 from config.evaluation.evaluation_config import EvaluationConfig
 from .types import EvaluationResult, EvaluationEpisodeResult
-from agent.ppo_agent import PPOTrainer
 from envs import TradingEnvironment
 from data.data_manager import DataManager
 from training.episode_manager import EpisodeManager
+
+# Import PPOTrainer only when needed to avoid circular import
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from agent.ppo_agent import PPOTrainer
 
 
 class EvaluationState:
@@ -55,7 +59,7 @@ class Evaluator:
     
     def evaluate_model(
         self,
-        trainer: PPOTrainer,
+        trainer: "PPOTrainer",
         environment: TradingEnvironment,
         data_manager: DataManager,
         episode_manager: Optional[EpisodeManager] = None
@@ -113,7 +117,7 @@ class Evaluator:
     
     def evaluate_single_episode(
         self,
-        trainer: PPOTrainer,
+        trainer: "PPOTrainer",
         environment: TradingEnvironment,
         episode_context: Any,
         max_steps: int = 1000
@@ -151,7 +155,7 @@ class Evaluator:
             self.logger.warning(f"Single episode evaluation failed: {e}")
             return None
     
-    def _save_state(self, trainer: PPOTrainer, episode_manager: Optional[Any]) -> None:
+    def _save_state(self, trainer: "PPOTrainer", episode_manager: Optional[Any]) -> None:
         """Save current state for restoration after evaluation."""
         self._saved_state = EvaluationState()
         
@@ -169,7 +173,7 @@ class Evaluator:
         
         self.logger.debug("🔄 State saved for evaluation")
     
-    def _restore_state(self, trainer: PPOTrainer, episode_manager: Optional[Any]) -> None:
+    def _restore_state(self, trainer: "PPOTrainer", episode_manager: Optional[Any]) -> None:
         """Restore state after evaluation."""
         if not self._saved_state:
             self.logger.warning("No saved state to restore")
@@ -242,7 +246,7 @@ class Evaluator:
     
     def _run_evaluation_episodes(
         self,
-        trainer: PPOTrainer,
+        trainer: "PPOTrainer",
         environment: TradingEnvironment,
         episodes: List[Any]
     ) -> List[EvaluationEpisodeResult]:
