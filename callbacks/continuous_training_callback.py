@@ -194,17 +194,19 @@ class ContinuousTrainingCallback(BaseCallback):
             # Create temporary checkpoint path
             temp_path = self._create_temp_checkpoint_path(context, "initial")
             
-            # Save model
-            self.trainer.save_model(temp_path)
-            
             # Create metadata
             metadata = self._create_model_metadata(context, "initial")
             
-            # Save via model manager
-            saved_path = self.model_manager.save_best_model(
-                model_path=temp_path,
-                metrics=metadata,
-                target_reward=self.best_metric_value
+            # Save model using model manager
+            saved_path = self.model_manager.save_checkpoint(
+                model=self.trainer.model,
+                optimizer=self.trainer.optimizer if hasattr(self.trainer, 'optimizer') else None,
+                global_step_counter=context.get('global_steps', 0),
+                global_episode_counter=context.get('total_episodes', 0),
+                global_update_counter=context.get('global_updates', 0),
+                global_cycle_counter=context.get('global_cycles', 0),
+                metadata=metadata,
+                checkpoint_path=temp_path
             )
             
             self.initial_model_saved = True
@@ -234,15 +236,24 @@ class ContinuousTrainingCallback(BaseCallback):
             # Create temporary checkpoint path
             temp_path = self._create_temp_checkpoint_path(context, "best")
             
-            # Save model
-            self.trainer.save_model(temp_path)
-            
             # Create comprehensive metadata
             metadata = self._create_model_metadata(context, "best", evaluation_result)
             
-            # Save via model manager
+            # Save model using model manager
+            checkpoint_path = self.model_manager.save_checkpoint(
+                model=self.trainer.model,
+                optimizer=self.trainer.optimizer if hasattr(self.trainer, 'optimizer') else None,
+                global_step_counter=context.get('global_steps', 0),
+                global_episode_counter=context.get('total_episodes', 0),
+                global_update_counter=context.get('global_updates', 0),
+                global_cycle_counter=context.get('global_cycles', 0),
+                metadata=metadata,
+                checkpoint_path=temp_path
+            )
+            
+            # Save via model manager as best model
             saved_path = self.model_manager.save_best_model(
-                model_path=temp_path,
+                model_path=checkpoint_path,
                 metrics=metadata,
                 target_reward=metric_value
             )
@@ -283,15 +294,24 @@ class ContinuousTrainingCallback(BaseCallback):
             # Create checkpoint path
             temp_path = self._create_temp_checkpoint_path(context, "periodic")
             
-            # Save model
-            self.trainer.save_model(temp_path)
-            
             # Create metadata
             metadata = self._create_model_metadata(context, "periodic")
             
+            # Save model using model manager
+            checkpoint_path = self.model_manager.save_checkpoint(
+                model=self.trainer.model,
+                optimizer=self.trainer.optimizer if hasattr(self.trainer, 'optimizer') else None,
+                global_step_counter=context.get('global_steps', 0),
+                global_episode_counter=context.get('total_episodes', 0),
+                global_update_counter=context.get('global_updates', 0),
+                global_cycle_counter=context.get('global_cycles', 0),
+                metadata=metadata,
+                checkpoint_path=temp_path
+            )
+            
             # Save via model manager (with current best reward)
             saved_path = self.model_manager.save_best_model(
-                model_path=temp_path,
+                model_path=checkpoint_path,
                 metrics=metadata,
                 target_reward=self.best_metric_value
             )
@@ -315,9 +335,6 @@ class ContinuousTrainingCallback(BaseCallback):
             # Create final checkpoint path
             temp_path = self._create_temp_checkpoint_path(context, "final")
             
-            # Save model
-            self.trainer.save_model(temp_path)
-            
             # Create final metadata
             metadata = self._create_model_metadata(context, "final")
             metadata.update({
@@ -326,9 +343,21 @@ class ContinuousTrainingCallback(BaseCallback):
                 'is_final': True
             })
             
+            # Save model using model manager
+            checkpoint_path = self.model_manager.save_checkpoint(
+                model=self.trainer.model,
+                optimizer=self.trainer.optimizer if hasattr(self.trainer, 'optimizer') else None,
+                global_step_counter=context.get('global_steps', 0),
+                global_episode_counter=context.get('total_episodes', 0),
+                global_update_counter=context.get('global_updates', 0),
+                global_cycle_counter=context.get('global_cycles', 0),
+                metadata=metadata,
+                checkpoint_path=temp_path
+            )
+            
             # Save via model manager
             saved_path = self.model_manager.save_best_model(
-                model_path=temp_path,
+                model_path=checkpoint_path,
                 metrics=metadata,
                 target_reward=self.best_metric_value
             )

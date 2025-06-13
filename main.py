@@ -231,7 +231,7 @@ def execute_training(training_manager: TrainingManager, app: ApplicationBootstra
         import os
         if not wandb.run:
             # Set local WandB server configuration
-            os.environ['WANDB_BASE_URL'] = 'http://localhost:8080'
+            # os.environ['WANDB_BASE_URL'] = 'http://localhost:8080'
             
             # Create simplified config for WandB (only serializable values)
             wandb_config = {
@@ -249,8 +249,8 @@ def execute_training(training_manager: TrainingManager, app: ApplicationBootstra
             wandb_config = {k: v for k, v in wandb_config.items() if v is not None}
             
             wandb.init(
-                project="fx-ai-training",
-                entity="local-user",
+                project="fx-ai",
+                entity="onur03-fx",
                 config=wandb_config,
                 tags=["momentum-trading", "ppo", "transformer"]
             )
